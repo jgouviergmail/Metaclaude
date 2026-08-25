@@ -32,6 +32,25 @@
 	# Caddy ignores it otherwise.
 	email {$METACLAUDE_TLS_EMAIL:internal}
 
+	# Which certificate to serve when the client sends no SNI at all.
+	#
+	# RFC 6066 forbids IP literals in SNI, so *every* browser reaching this
+	# server by address rather than by name sends none. Caddy then falls back to
+	# the connection's local address to choose a certificate — which works when
+	# Caddy owns the address, and does not here: behind Docker's published ports
+	# the local address is the container's (172.x.y.z), and no certificate covers
+	# that. The handshake dies before any log line:
+	#
+	#     curl: (35) ... error:0A000438:SSL routines::tlsv1 alert internal error
+	#
+	# So the IP modes were unusable from a browser, and only requests that
+	# happened to send SNI — Docker's own healthcheck among them — got through.
+	# Naming the site closes it: the emitted policy then matches `sni: ["", …]`,
+	# and the empty string is precisely the no-SNI case.
+	#
+	# Inert where a hostname is used, because browsers always send SNI for a name.
+	default_sni {$METACLAUDE_SITE:localhost}
+
 	# Deliberately absent: `trusted_proxies`. Caddy is the edge here — there is
 	# nothing in front of it — so it must not honour an X-Forwarded-For header a
 	# client made up. Caddy's default is to trust none, which is correct; naming

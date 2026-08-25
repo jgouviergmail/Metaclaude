@@ -92,6 +92,15 @@ if docker compose version >/dev/null 2>&1; then
       # wrong snippet would still validate.
       if printf '%s' "$out" | grep -q "docker/tls/$mode.caddy"; then
         ok "TLS mode $mode"
+        # Not about this mode, but this is the loop that already has compose
+        # resolved. A client reaching the server by address sends no SNI (RFC
+        # 6066 forbids IP literals there), and Caddy then picks a certificate by
+        # the connection's local address — the container's, behind published
+        # ports, which nothing certifies. Without default_sni the handshake dies
+        # before any log line and only SNI-sending clients get through.
+        if [ "$mode" = "internal" ] && ! grep -q '^\s*default_sni ' "$REPO_ROOT/docker/Caddyfile"; then
+          bad "docker/Caddyfile sets no default_sni" "a browser reaching this server by IP gets a TLS alert"
+        fi
       else
         bad "TLS mode $mode" "compose is valid but does not mount $mode.caddy"
       fi
