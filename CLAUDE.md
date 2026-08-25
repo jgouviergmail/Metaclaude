@@ -10,7 +10,8 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 758 tests, ~7s
+pnpm test:run                            # 793 tests, ~8s
+./deploy/check.sh                        # the deploy scripts, off-box
 ```
 
 Run one package: `pnpm --filter @metaclaude/api <script>`.

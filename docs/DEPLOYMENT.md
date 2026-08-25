@@ -149,6 +149,22 @@ and `METACLAUDE_TLS_EMAIL`, and nothing else changes.
 
 ## First run
 
+Steps 2 to 5 can be run as a single command once you have the keys from step 1:
+
+```bash
+sudo ./deploy/bootstrap.sh \
+  --admin-key  "$(cat ~/.ssh/metaclaude_admin.pub)" \
+  --deploy-key "$(cat ~/.ssh/metaclaude_deploy.pub)"
+```
+
+It calls the same two scripts in the same order, prompts for the three secrets
+that cannot be generated, generates the ones that can, and starts the stack. The
+lockout guards are unchanged and still interactive — including the confirmation
+from a second SSH session — so run it somewhere you can answer them.
+
+The steps are written out below anyway. A script that provisions your only
+server is not one to run without knowing what it does.
+
 ### 1. Keys, generated on your laptop
 
 Two, never one. They have different authority and different blast radius.
@@ -206,6 +222,13 @@ METACLAUDE_SITE=               # your IP, or the Tailscale name
 METACLAUDE_TLS_MODE=           # internal | acme-ip | file | acme-dns
 METACLAUDE_BIND=0.0.0.0        # or the Tailscale address. Default is loopback.
 ```
+
+**A dollar sign in any of these values needs quoting.** Compose expands `.env`
+before the container sees it, so `pa$sword` arrives as `pa` — the login simply
+fails, with nothing in any log to say why. Write it `"pa$$sword"`. Quote the
+value either way if it begins with `'` or `"`, or compose rejects the whole file
+and every other setting goes with it. `bootstrap.sh` does this for you; hand
+edits are on you.
 
 **Set `METACLAUDE_MASTER_KEY` explicitly and keep a copy in your password
 manager.** Left empty, it is generated into `/var/lib/metaclaude/master.key` —
@@ -315,6 +338,12 @@ not evidence that it is. Run this **from your laptop**, never on the server:
 ```bash
 ./deploy/verify.sh <ip> --ipv6 <ipv6>
 ```
+
+Its counterpart needs no server at all. `./deploy/check.sh` checks the deploy
+scripts themselves — that they parse and lint, that compose is valid under every
+TLS mode, and that a password full of awkward characters still reaches the
+container intact. CI runs it on every push; run it yourself after editing
+anything in `deploy/`.
 
 It checks that your key opens a session and that passwords and root do not, that
 the ports which should be shut are shut on **both** address families, that HTTP
