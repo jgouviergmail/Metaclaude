@@ -117,6 +117,43 @@ History stays truthful and the UI does not show a phantom live run.
 
 ---
 
+## Automations and time
+
+The scheduler ticks once a minute and fires whatever is due. Three rules make
+that safe to leave running unattended:
+
+- **A missed window fires once, not once per missed slot.** A server down for a
+  day must not wake up and run a nightly job twenty-four times.
+- **A firing is skipped, not queued, when the previous one is still in flight.**
+  Otherwise a job slower than its own interval builds an unbounded backlog. The
+  check is against the session the *previous* firing used, deliberately: a
+  one-shot automation mints a fresh session each time, so asking the new one
+  whether it is busy always answers "no" and the guard never fires.
+- **Repeated unattended failures disable the automation** and raise a
+  notification, so a loop that has started failing stops burning budget. A human
+  pressing "Run now" is exempt: debugging an automation should not switch it off
+  underneath you.
+
+Cron expressions are parsed and projected in-process (`services/cron.ts`) rather
+than through a library, because the scheduler needs the next fire time from an
+*arbitrary* instant — for catch-up after downtime and for the "next run" the UI
+shows — and most small cron libraries only offer a callback timer.
+
+The subtlety worth stating is daylight saving. Fire times are built from local
+calendar fields, never by stepping a cursor minute by minute, because stepping a
+`Date` steps *wall-clock* minutes:
+
+- **Spring forward.** Local 02:00–02:59 does not exist. A stepping cursor goes
+  01:59 → 03:00 and never visits them, so `30 2 * * *` silently skips that day —
+  and in a zone whose transition is at midnight, `@daily` loses a whole day.
+  Building the candidate from local fields normalises it onto the first instant
+  that does exist, which is what Vixie cron does.
+- **Fall back.** Local 02:00–02:59 happens twice. Constructing from local fields
+  resolves to the first occurrence and never offers the second, so an automation
+  cannot run twice because a clock moved backwards.
+
+---
+
 ## Data model
 
 SQLite in WAL mode, one synchronous connection. For a single-user OS this is a
@@ -153,9 +190,29 @@ cookie (sent on the upgrade request); the first frame must then present the CSRF
 token, which is what stops a cross-origin page from opening an authenticated
 socket — `WebSocket` ignores CORS entirely.
 
-The bus keeps a bounded per-topic ring buffer so a client reconnecting within a
-minute can replay what it missed instead of refetching. Delta frames are excluded
-from replay: they are superseded by the transcript event that follows.
+### Resuming after a drop
+
+A phone suspends a background tab within seconds, so a dropped socket is the
+normal case, not the edge one. The bus keeps a bounded per-topic ring buffer
+(256 frames, 60 seconds) and the protocol has a cursor to read it with:
+
+1. Every frame the bus publishes goes on the wire with its **sequence number**
+   alongside it — outside the frame union, so all fourteen variants need not
+   carry it.
+2. The client records the highest sequence it has applied.
+3. On reconnect it re-subscribes with `since: <cursor>`, and the server replays
+   that topic's buffered frames before attaching the live listener. The
+   `subscribed` acknowledgement reports how many were replayed.
+
+Replayed frames carry their own sequence, so the cursor advances past them and a
+second reconnect does not receive the same window again. Delta frames are
+excluded from the buffer entirely: they are superseded by the transcript event
+that follows, so replaying them would duplicate text already on screen.
+
+Anything older than the buffer falls outside this mechanism. The session page
+covers that separately — it refetches whenever the socket transitions back to
+`open`, so a long disconnect resyncs from the database instead of silently
+showing a run that finished ten minutes ago as still in flight.
 
 ---
 

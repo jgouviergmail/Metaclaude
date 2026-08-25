@@ -147,6 +147,23 @@ A bandit with forty arms and a handful of runs per week never converges. These
 span the useful frontier — cheap and fast, balanced, deep — and the operator can
 always override per message.
 
+### When the learner is consulted at all
+
+Only when nothing upstream pinned a model or an effort. An explicit choice in the
+composer, or a workspace setting, wins outright — the point of the learner is to
+answer the question nobody has answered, not to overrule someone who has.
+
+That distinction turns on `undefined`, and one caller got it wrong in a way worth
+recording. An automation's policy defaults to `model: 'default'`, meaning "let
+Metaclaude choose". The scheduler forwarded the whole policy as run overrides, so
+the kernel saw a *defined* `model` and stopped consulting the bandit. Automations
+are the runs that repeat most — the workload where a few dozen samples per arm is
+actually reachable — so this quietly excluded exactly the traffic the learner
+needed, permanently. The scheduler now forwards only what the operator pinned.
+
+The lesson generalises: `'default'` is a value, not an absence. Anything that
+means "unset" has to be `undefined`, or it will be read as a decision.
+
 ### The reward
 
 ```

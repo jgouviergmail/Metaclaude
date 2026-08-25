@@ -182,6 +182,16 @@ Migrations run automatically at boot, inside a transaction, recorded in
 `_migrations`. They are append-only: a shipped migration is never edited, so an
 upgrade cannot corrupt an existing database. Back up first anyway.
 
+One upgrade does more than add a column. Migration 4 moves MCP **header values**
+into the encrypted vault — they used to sit in plaintext on the server row, which
+mattered because an HTTP MCP server authenticates through `Authorization`. The
+column can only hold names after that, but migrations run before the vault key is
+loaded, so the values are drained on the first boot of the new version instead:
+the registry seals each one, records its name, and empties the old column. It
+logs how many servers it converted and is a no-op on every boot afterwards. The
+practical consequence is that this upgrade needs `master.key` to be present —
+which it must be anyway, or no secret would decrypt.
+
 The Claude CLI version is pinned in the Dockerfile (`CLAUDE_CLI_VERSION`).
 Bumping it is a deliberate, reviewable change — an upstream CLI update should not
 silently alter how your agent behaves.
