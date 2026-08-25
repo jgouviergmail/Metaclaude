@@ -1,0 +1,552 @@
+/**
+ * Workspace overview — sessions, settings and health for one project.
+ *
+ * Opening a workspace with no session at all jumps straight into a new one:
+ * the operator came here to talk to the agent, not to press "new" first.
+ */
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { GitBranch, Loader2, Plus, Settings2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import {
+  PERMISSION_MODE_INFO,
+  type EffortLevel,
+  type PermissionMode,
+  type WorkspaceSettings,
+} from '@metaclaude/shared';
+import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SessionList } from '@/components/workspace/SessionList';
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
+import { Modal } from '@/components/ui/Modal';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  Label,
+  Spinner,
+  Stat,
+  Textarea,
+  Tooltip,
+} from '@/components/ui/primitives';
+import { api, ApiError } from '@/lib/api';
+import { useUiStore } from '@/lib/store';
+import { formatRelative } from '@/lib/utils';
+
+export function WorkspacePage() {
+  const { workspaceId = '' } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const setLastWorkspace = useUiStore((state) => state.setLastWorkspace);
+
+  const [showSettings, setShowSettings] = useState(false);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['workspace', workspaceId],
+    queryFn: () => api.workspace(workspaceId),
+    enabled: Boolean(workspaceId),
+  });
+
+  useEffect(() => {
+    if (workspaceId) setLastWorkspace(workspaceId);
+  }, [workspaceId, setLastWorkspace]);
+
+  const createSession = useMutation({
+    mutationFn: () => api.createSession({ workspaceId }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+      navigate(`/w/${workspaceId}/s/${result.session.id}`);
+    },
+    onError: () => toast.error('Could not start a session.'),
+  });
+
+  const workspace = data?.workspace;
+  const sessions = data?.sessions ?? [];
+
+  // Land directly in a session when this workspace has none yet.
+  const noSessions = Boolean(data) && sessions.length === 0;
+  useEffect(() => {
+    if (noSessions && !createSession.isPending && !createSession.isSuccess) {
+      createSession.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noSessions]);
+
+  const sidebar = (
+    <SessionList
+      workspaceId={workspaceId}
+      activeSessionId=""
+      sessions={sessions}
+      onCreate={() => createSession.mutate()}
+      creating={createSession.isPending}
+    />
+  );
+
+  if (isLoading) {
+    return (
+      <AppShell sidebar={sidebar}>
+        <div className="flex flex-1 items-center justify-center">
+          <Spinner className="size-6" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (isError || !workspace) {
+    return (
+      <AppShell>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <p className="text-sm text-muted">That workspace could not be loaded.</p>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces')}>
+            All workspaces
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const git = data?.gitStatus;
+  const memoryStats = data?.memoryStats;
+  const totalMemories = memoryStats
+    ? memoryStats.episodic + memoryStats.semantic + memoryStats.procedural
+    : 0;
+
+  return (
+    <AppShell sidebar={sidebar}>
+      <ContentHeader
+        title={workspace.name}
+        subtitle={workspace.path}
+        icon={
+          <span
+            className="block size-4 rounded"
+            style={{ background: workspace.color }}
+            aria-hidden
+          />
+        }
+        actions={
+          <>
+            <Tooltip content="Workspace settings">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Workspace settings"
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings2 className="size-4" />
+              </Button>
+            </Tooltip>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => createSession.mutate()}
+              loading={createSession.isPending}
+            >
+              <Plus className="size-4" aria-hidden />
+              New session
+            </Button>
+          </>
+        }
+      />
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
+          {workspace.description ? (
+            <p className="text-[13.5px] leading-relaxed text-muted">{workspace.description}</p>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Stat label="Sessions" value={sessions.length} />
+            <Stat
+              label="Memories"
+              value={totalMemories}
+              hint={
+                memoryStats
+                  ? `${memoryStats.semantic} facts · ${memoryStats.procedural} procedures`
+                  : undefined
+              }
+            />
+            <Stat
+              label="Permission mode"
+              value={
+                <span className="text-base">
+                  {PERMISSION_MODE_INFO[workspace.settings.defaultPermissionMode].label}
+                </span>
+              }
+              tone={
+                workspace.settings.defaultPermissionMode === 'bypassPermissions'
+                  ? 'danger'
+                  : undefined
+              }
+            />
+            <Stat
+              label="Branch"
+              value={<span className="text-base">{git?.branch ?? '—'}</span>}
+              hint={
+                git?.isRepo
+                  ? `${git.modified.length} modified · ${git.untracked.length} untracked`
+                  : 'Not a git repository'
+              }
+            />
+          </div>
+
+          {git?.isRepo && (git.modified.length > 0 || git.untracked.length > 0) ? (
+            <Card>
+              <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+                <GitBranch className="size-4 shrink-0 text-muted" aria-hidden />
+                <h2 className="text-sm font-semibold text-ink">Uncommitted changes</h2>
+                <Badge tone="warning" className="ml-auto">
+                  {git.modified.length + git.untracked.length}
+                </Badge>
+              </div>
+              <ul className="max-h-56 overflow-y-auto px-4 py-2">
+                {[...git.modified.map((p) => ({ path: p, kind: 'modified' as const })),
+                  ...git.untracked.map((p) => ({ path: p, kind: 'untracked' as const }))]
+                  .slice(0, 40)
+                  .map((entry) => (
+                    <li key={`${entry.kind}-${entry.path}`} className="flex items-center gap-2 py-1">
+                      <Badge tone={entry.kind === 'modified' ? 'warning' : 'neutral'}>
+                        {entry.kind === 'modified' ? 'M' : 'U'}
+                      </Badge>
+                      <code className="min-w-0 truncate font-mono text-[12px] text-muted">
+                        {entry.path}
+                      </code>
+                    </li>
+                  ))}
+              </ul>
+            </Card>
+          ) : null}
+
+          <Card>
+            <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+              <h2 className="text-sm font-semibold text-ink">Sessions</h2>
+              <span className="text-[12px] text-subtle">{sessions.length}</span>
+            </div>
+
+            {sessions.length === 0 ? (
+              <EmptyState
+                icon={<Loader2 className="animate-spin" />}
+                title="Starting your first session"
+                description="One moment."
+              />
+            ) : (
+              <ul className="divide-y divide-[var(--mc-border)]">
+                {sessions.map((session) => (
+                  <li key={session.id}>
+                    <Link
+                      to={`/w/${workspaceId}/s/${session.id}`}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-raised"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13.5px] font-medium text-ink">
+                          {session.title || 'New session'}
+                        </p>
+                        <p className="text-[11.5px] text-subtle">
+                          {session.runCount} run{session.runCount === 1 ? '' : 's'} ·{' '}
+                          {formatRelative(session.lastActivityAt)}
+                        </p>
+                      </div>
+                      {session.status === 'running' ? <Badge tone="accent">running</Badge> : null}
+                      {session.status === 'waiting_approval' ? (
+                        <Badge tone="warning">waiting</Badge>
+                      ) : null}
+                      {session.status === 'error' ? <Badge tone="danger">error</Badge> : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      <WorkspaceSettingsModal
+        open={showSettings}
+        onOpenChange={setShowSettings}
+        workspaceId={workspaceId}
+        settings={workspace.settings}
+        name={workspace.name}
+        description={workspace.description}
+      />
+    </AppShell>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+const MODELS = ['default', 'opus', 'sonnet', 'haiku', 'opusplan'];
+const EFFORTS: Array<EffortLevel | null> = [null, 'low', 'medium', 'high', 'xhigh', 'max'];
+
+function WorkspaceSettingsModal({
+  open,
+  onOpenChange,
+  workspaceId,
+  settings,
+  name,
+  description,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workspaceId: string;
+  settings: WorkspaceSettings;
+  name: string;
+  description: string;
+}) {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<WorkspaceSettings>(settings);
+  const [draftName, setDraftName] = useState(name);
+  const [draftDescription, setDraftDescription] = useState(description);
+
+  // Re-seed whenever the dialog opens, so a cancelled edit does not persist.
+  useEffect(() => {
+    if (open) {
+      setDraft(settings);
+      setDraftName(name);
+      setDraftDescription(description);
+    }
+  }, [open, settings, name, description]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.updateWorkspace(workspaceId, {
+        name: draftName.trim(),
+        description: draftDescription.trim(),
+        settings: draft,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      toast.success('Settings saved');
+      onOpenChange(false);
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not save the settings.'),
+  });
+
+  const update = <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]): void =>
+    setDraft((current) => ({ ...current, [key]: value }));
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Workspace settings"
+      description="Defaults for every session started in this workspace."
+      size="lg"
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" loading={save.isPending} onClick={() => save.mutate()}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <Label htmlFor="ws-edit-name">
+          Name
+          <Input
+            id="ws-edit-name"
+            value={draftName}
+            onChange={(event) => setDraftName(event.target.value)}
+            className="mt-1.5"
+          />
+        </Label>
+
+        <Label htmlFor="ws-edit-description">
+          Description
+          <Textarea
+            id="ws-edit-description"
+            value={draftDescription}
+            onChange={(event) => setDraftDescription(event.target.value)}
+            rows={2}
+            className="mt-1.5"
+          />
+        </Label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink">Default model</span>
+            <Menu
+              side="bottom"
+              trigger={
+                <Button variant="secondary" size="sm" className="w-full justify-between">
+                  {String(draft.defaultModel)}
+                </Button>
+              }
+            >
+              {MODELS.map((model) => (
+                <MenuItem
+                  key={model}
+                  selected={draft.defaultModel === model}
+                  onSelect={() => update('defaultModel', model)}
+                >
+                  {model}
+                </MenuItem>
+              ))}
+            </Menu>
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink">Default effort</span>
+            <Menu
+              side="bottom"
+              trigger={
+                <Button variant="secondary" size="sm" className="w-full justify-between">
+                  {draft.defaultEffort ?? 'auto'}
+                </Button>
+              }
+            >
+              {EFFORTS.map((effort) => (
+                <MenuItem
+                  key={effort ?? 'auto'}
+                  selected={draft.defaultEffort === effort}
+                  onSelect={() => update('defaultEffort', effort)}
+                >
+                  {effort ?? 'auto'}
+                </MenuItem>
+              ))}
+            </Menu>
+          </div>
+        </div>
+
+        <div>
+          <span className="mb-1.5 block text-[13px] font-medium text-ink">
+            Default permission mode
+          </span>
+          <Menu
+            side="bottom"
+            trigger={
+              <Button variant="secondary" size="sm" className="w-full justify-between">
+                {PERMISSION_MODE_INFO[draft.defaultPermissionMode].label}
+              </Button>
+            }
+          >
+            <MenuLabel>How much to ask before acting</MenuLabel>
+            {(Object.keys(PERMISSION_MODE_INFO) as PermissionMode[]).map((mode) => (
+              <MenuItem
+                key={mode}
+                selected={draft.defaultPermissionMode === mode}
+                onSelect={() => update('defaultPermissionMode', mode)}
+                description={PERMISSION_MODE_INFO[mode].description}
+                tone={PERMISSION_MODE_INFO[mode].risk === 'high' ? 'danger' : undefined}
+              >
+                {PERMISSION_MODE_INFO[mode].label}
+              </MenuItem>
+            ))}
+          </Menu>
+        </div>
+
+        <MenuSeparator />
+
+        <fieldset className="space-y-3">
+          <legend className="text-[13px] font-semibold text-ink">Learning</legend>
+
+          <Toggle
+            checked={draft.memoryEnabled}
+            onChange={(value) => update('memoryEnabled', value)}
+            label="Recall long-term memory"
+            hint="Inject what Metaclaude learned in earlier sessions into each run's context."
+          />
+          <Toggle
+            checked={draft.autoPolicyEnabled}
+            onChange={(value) => update('autoPolicyEnabled', value)}
+            label="Choose the model automatically"
+            hint="Pick model and effort from what has performed best on similar tasks here."
+          />
+          <Toggle
+            checked={draft.reflexionEnabled}
+            onChange={(value) => update('reflexionEnabled', value)}
+            label="Reflect after each run"
+            hint="Run a small, tool-less pass that extracts durable lessons from what happened."
+          />
+          <Toggle
+            checked={draft.checkpointing}
+            onChange={(value) => update('checkpointing', value)}
+            label="File checkpointing"
+            hint="Track file changes so a run can be rewound."
+          />
+        </fieldset>
+
+        <MenuSeparator />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Label htmlFor="ws-max-turns" hint="Blank means no limit.">
+            Max turns per run
+            <Input
+              id="ws-max-turns"
+              type="number"
+              min={1}
+              max={1000}
+              value={draft.maxTurns ?? ''}
+              onChange={(event) =>
+                update('maxTurns', event.target.value ? Number(event.target.value) : null)
+              }
+              className="mt-1.5"
+            />
+          </Label>
+
+          <Label htmlFor="ws-max-budget" hint="Stops a run once it reaches this cost.">
+            Cost ceiling (USD)
+            <Input
+              id="ws-max-budget"
+              type="number"
+              min={0}
+              step={0.5}
+              value={draft.maxBudgetUsd ?? ''}
+              onChange={(event) =>
+                update('maxBudgetUsd', event.target.value ? Number(event.target.value) : null)
+              }
+              className="mt-1.5"
+            />
+          </Label>
+        </div>
+
+        <Label
+          htmlFor="ws-system-prompt"
+          hint="Appended to Claude Code's own system prompt for every run here. Project conventions, things to avoid, house style."
+        >
+          Additional instructions
+          <Textarea
+            id="ws-system-prompt"
+            value={draft.systemPromptAppend}
+            onChange={(event) => update('systemPromptAppend', event.target.value)}
+            rows={5}
+            className="mt-1.5 font-mono text-[12.5px]"
+          />
+        </Label>
+      </div>
+    </Modal>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)]"
+      />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium text-ink">{label}</span>
+        <span className="block text-[12px] leading-relaxed text-muted">{hint}</span>
+      </span>
+    </label>
+  );
+}

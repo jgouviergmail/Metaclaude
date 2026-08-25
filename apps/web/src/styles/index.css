@@ -1,0 +1,369 @@
+@import 'tailwindcss';
+
+/*
+ * Metaclaude design system.
+ *
+ * Dark-first, because this is a tool people leave open next to an editor. The
+ * palette is a warm-neutral greyscale with a single indigo accent, so the only
+ * saturated colour on screen is meaningful: agent state, risk, and the
+ * workspace's own identity colour.
+ *
+ * Every token is defined once here and consumed through Tailwind utilities,
+ * which keeps light and dark in lockstep automatically.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Type ------------------------------------------------------------------ */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Code', 'Source Code Pro', Menlo, Consolas,
+    'DejaVu Sans Mono', monospace;
+
+  /* Motion ---------------------------------------------------------------- */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces, from furthest back to closest to the reader. */
+  --mc-bg: oklch(98.5% 0.002 265);
+  --mc-surface: oklch(100% 0 0);
+  --mc-surface-raised: oklch(100% 0 0);
+  --mc-surface-sunken: oklch(96.5% 0.003 265);
+  --mc-overlay: oklch(100% 0 0 / 0.86);
+
+  --mc-border: oklch(90% 0.005 265);
+  --mc-border-strong: oklch(83% 0.008 265);
+
+  --mc-text: oklch(21% 0.012 265);
+  --mc-text-muted: oklch(48% 0.012 265);
+  --mc-text-subtle: oklch(62% 0.01 265);
+
+  --mc-accent: oklch(54% 0.19 275);
+  --mc-accent-hover: oklch(48% 0.2 275);
+  --mc-accent-soft: oklch(94% 0.03 275);
+  --mc-accent-text: oklch(100% 0 0);
+
+  /* Semantic states. */
+  --mc-success: oklch(58% 0.15 155);
+  --mc-success-soft: oklch(94% 0.04 155);
+  --mc-warning: oklch(70% 0.16 75);
+  --mc-warning-soft: oklch(95% 0.05 75);
+  --mc-danger: oklch(56% 0.21 25);
+  --mc-danger-soft: oklch(95% 0.04 25);
+  --mc-info: oklch(60% 0.14 240);
+  --mc-info-soft: oklch(95% 0.03 240);
+
+  /* Agent-specific accents: thinking is deliberately quiet. */
+  --mc-thinking: oklch(58% 0.09 300);
+  --mc-thinking-soft: oklch(96% 0.02 300);
+
+  --mc-diff-add: oklch(93% 0.06 150);
+  --mc-diff-remove: oklch(93% 0.05 25);
+
+  --mc-shadow-sm: 0 1px 2px oklch(20% 0.02 265 / 0.06);
+  --mc-shadow: 0 4px 16px -4px oklch(20% 0.02 265 / 0.1);
+  --mc-shadow-lg: 0 16px 48px -12px oklch(20% 0.02 265 / 0.18);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --mc-bg: oklch(15.5% 0.008 275);
+  --mc-surface: oklch(18.5% 0.009 275);
+  --mc-surface-raised: oklch(22% 0.01 275);
+  --mc-surface-sunken: oklch(13% 0.007 275);
+  --mc-overlay: oklch(18.5% 0.009 275 / 0.9);
+
+  --mc-border: oklch(27% 0.011 275);
+  --mc-border-strong: oklch(36% 0.014 275);
+
+  --mc-text: oklch(94% 0.005 275);
+  --mc-text-muted: oklch(70% 0.011 275);
+  --mc-text-subtle: oklch(55% 0.012 275);
+
+  --mc-accent: oklch(68% 0.16 275);
+  --mc-accent-hover: oklch(74% 0.16 275);
+  --mc-accent-soft: oklch(28% 0.06 275);
+  --mc-accent-text: oklch(14% 0.01 275);
+
+  --mc-success: oklch(72% 0.15 155);
+  --mc-success-soft: oklch(26% 0.05 155);
+  --mc-warning: oklch(80% 0.14 75);
+  --mc-warning-soft: oklch(28% 0.05 75);
+  --mc-danger: oklch(68% 0.18 25);
+  --mc-danger-soft: oklch(27% 0.06 25);
+  --mc-info: oklch(72% 0.12 240);
+  --mc-info-soft: oklch(26% 0.05 240);
+
+  --mc-thinking: oklch(72% 0.09 300);
+  --mc-thinking-soft: oklch(24% 0.03 300);
+
+  --mc-diff-add: oklch(28% 0.06 150);
+  --mc-diff-remove: oklch(28% 0.06 25);
+
+  --mc-shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
+  --mc-shadow: 0 4px 16px -4px oklch(0% 0 0 / 0.45);
+  --mc-shadow-lg: 0 16px 48px -12px oklch(0% 0 0 / 0.6);
+}
+
+/* Expose the tokens as Tailwind colours so `bg-surface`, `text-muted` etc. work. */
+@theme inline {
+  --color-bg: var(--mc-bg);
+  --color-surface: var(--mc-surface);
+  --color-raised: var(--mc-surface-raised);
+  --color-sunken: var(--mc-surface-sunken);
+  --color-overlay: var(--mc-overlay);
+  --color-line: var(--mc-border);
+  --color-line-strong: var(--mc-border-strong);
+  --color-ink: var(--mc-text);
+  --color-muted: var(--mc-text-muted);
+  --color-subtle: var(--mc-text-subtle);
+  --color-accent: var(--mc-accent);
+  --color-accent-hover: var(--mc-accent-hover);
+  --color-accent-soft: var(--mc-accent-soft);
+  --color-accent-ink: var(--mc-accent-text);
+  --color-success: var(--mc-success);
+  --color-success-soft: var(--mc-success-soft);
+  --color-warning: var(--mc-warning);
+  --color-warning-soft: var(--mc-warning-soft);
+  --color-danger: var(--mc-danger);
+  --color-danger-soft: var(--mc-danger-soft);
+  --color-info: var(--mc-info);
+  --color-info-soft: var(--mc-info-soft);
+  --color-thinking: var(--mc-thinking);
+  --color-thinking-soft: var(--mc-thinking-soft);
+  --color-diff-add: var(--mc-diff-add);
+  --color-diff-remove: var(--mc-diff-remove);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Base                                                                        */
+/* -------------------------------------------------------------------------- */
+
+@layer base {
+  * {
+    border-color: var(--mc-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--mc-bg);
+    color: var(--mc-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* The chat view manages its own scrolling; the page itself never scrolls. */
+    overflow: hidden;
+    /* Respect the notch and the home indicator on iOS. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+
+  /* A visible, consistent focus ring everywhere — this app is keyboard-driven. */
+  :focus-visible {
+    outline: 2px solid var(--mc-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--mc-accent-soft);
+    color: var(--mc-text);
+  }
+
+  /* Slim, unobtrusive scrollbars that still show where you are. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--mc-border-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--mc-border-strong);
+    border-radius: 6px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--mc-text-subtle);
+    background-clip: content-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Components                                                                  */
+/* -------------------------------------------------------------------------- */
+
+@layer components {
+  /* Rendered markdown from the assistant. */
+  .prose-mc {
+    @apply text-[15px] leading-[1.7];
+  }
+  .prose-mc > * + * {
+    @apply mt-4;
+  }
+  .prose-mc h1 {
+    @apply mt-6 text-xl font-semibold tracking-tight;
+  }
+  .prose-mc h2 {
+    @apply mt-6 text-lg font-semibold tracking-tight;
+  }
+  .prose-mc h3 {
+    @apply mt-5 text-base font-semibold;
+  }
+  .prose-mc h4,
+  .prose-mc h5,
+  .prose-mc h6 {
+    @apply mt-4 text-sm font-semibold uppercase tracking-wide text-[var(--mc-text-muted)];
+  }
+  .prose-mc p {
+    @apply leading-[1.7];
+  }
+  .prose-mc a {
+    @apply text-[var(--mc-accent)] underline decoration-[var(--mc-accent)]/30 underline-offset-2 hover:decoration-[var(--mc-accent)];
+  }
+  .prose-mc strong {
+    @apply font-semibold text-[var(--mc-text)];
+  }
+  .prose-mc ul {
+    @apply list-disc space-y-1.5 pl-5;
+  }
+  .prose-mc ol {
+    @apply list-decimal space-y-1.5 pl-5;
+  }
+  .prose-mc li > ul,
+  .prose-mc li > ol {
+    @apply mt-1.5;
+  }
+  .prose-mc blockquote {
+    @apply border-l-2 border-[var(--mc-border-strong)] pl-4 italic text-[var(--mc-text-muted)];
+  }
+  .prose-mc hr {
+    @apply my-6 border-t border-[var(--mc-border)];
+  }
+  .prose-mc code {
+    @apply rounded bg-[var(--mc-surface-sunken)] px-[0.35em] py-[0.15em] font-mono text-[0.875em] text-[var(--mc-text)];
+  }
+  .prose-mc pre {
+    @apply overflow-x-auto rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface-sunken)] p-4 text-[13px] leading-[1.6];
+  }
+  .prose-mc pre code {
+    @apply bg-transparent p-0 text-[13px];
+  }
+  .prose-mc table {
+    @apply block w-full overflow-x-auto text-sm;
+  }
+  .prose-mc th {
+    @apply border-b border-[var(--mc-border-strong)] px-3 py-2 text-left font-semibold;
+  }
+  .prose-mc td {
+    @apply border-b border-[var(--mc-border)] px-3 py-2 align-top;
+  }
+  .prose-mc img {
+    @apply max-w-full rounded-lg;
+  }
+
+  /* Streaming caret shown at the end of in-flight assistant text. */
+  .caret::after {
+    content: '';
+    display: inline-block;
+    width: 0.5em;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--mc-accent);
+    animation: mc-blink 1.1s steps(2, start) infinite;
+  }
+
+  @keyframes mc-blink {
+    to {
+      visibility: hidden;
+    }
+  }
+
+  /* The soft pulse that marks a live run. */
+  .pulse-ring::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 1.5px solid var(--mc-accent);
+    animation: mc-pulse 1.8s var(--ease-out-quint) infinite;
+  }
+
+  @keyframes mc-pulse {
+    0% {
+      opacity: 0.7;
+      transform: scale(0.96);
+    }
+    70%,
+    100% {
+      opacity: 0;
+      transform: scale(1.14);
+    }
+  }
+
+  @keyframes mc-fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .animate-in-up {
+    animation: mc-fade-up 0.22s var(--ease-out-quint) both;
+  }
+
+  /* Unified-diff colouring. */
+  .diff-line-add {
+    background: var(--mc-diff-add);
+  }
+  .diff-line-remove {
+    background: var(--mc-diff-remove);
+  }
+}
+
+@layer utilities {
+  /* Fade the top edge of a scroll region so content does not hard-clip. */
+  .mask-fade-top {
+    mask-image: linear-gradient(to bottom, transparent, black 24px);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}

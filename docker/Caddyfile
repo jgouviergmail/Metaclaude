@@ -1,0 +1,59 @@
+# Caddy — TLS termination and the only public entry point.
+#
+# With METACLAUDE_DOMAIN unset it defaults to `localhost`, and Caddy issues a
+# local self-signed certificate. That means a fresh `docker compose up` serves
+# HTTPS immediately, with no DNS and no public address — and the app's Secure
+# cookies work from the very first request.
+#
+# Set METACLAUDE_DOMAIN to a real hostname that resolves to this machine and
+# Caddy obtains a Let's Encrypt certificate automatically.
+
+{
+	email {$METACLAUDE_TLS_EMAIL}
+	# Never advertise the server software to the internet.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+{$METACLAUDE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# HSTS. Two years, subdomains included.
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# This is a private tool; nothing here should ever be indexed.
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+		-Server
+	}
+
+	# The WebSocket upgrade needs its own route so Caddy does not buffer it.
+	@websocket {
+		path /api/ws
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket app:8787
+
+	reverse_proxy app:8787 {
+		# An agent run can stream for a long time between tokens; the default
+		# read timeout would cut a long tool call short.
+		transport http {
+			read_timeout 30m
+			write_timeout 30m
+		}
+		health_uri /api/health
+		health_interval 30s
+		health_timeout 5s
+	}
+
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+}

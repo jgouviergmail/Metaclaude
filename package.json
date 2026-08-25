@@ -1,0 +1,28 @@
+{
+  "name": "metaclaude",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Metaclaude — a private, self-hosted agentic OS built on the Claude CLI",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.11.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter @metaclaude/shared build && pnpm -r --filter @metaclaude/api build && pnpm -r --filter @metaclaude/web build",
+    "dev": "pnpm -r --parallel --filter @metaclaude/api --filter @metaclaude/web dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:run": "pnpm -r test:run",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r exec rm -rf dist node_modules/.vite .tsbuildinfo",
+    "docker:build": "docker build -f docker/Dockerfile -t metaclaude:latest .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

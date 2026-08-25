@@ -1,0 +1,35 @@
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.vite/
+coverage/
+
+# Runtime data — never commit
+data/
+workspaces/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Secrets
+.env
+.env.local
+.env.*.local
+secrets/
+caddy_data/
+caddy_config/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*

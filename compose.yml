@@ -1,0 +1,142 @@
+# Metaclaude — production compose file.
+#
+# Two services:
+#   app   — the agent OS, on an internal network only
+#   proxy — Caddy, terminating TLS and the only thing bound to the host
+#
+# The app never publishes a port. Everything reaches it through the proxy, which
+# means TLS is not optional and cannot be forgotten.
+#
+# Quick start:
+#   cp .env.example .env    # then edit it
+#   docker compose up -d
+
+name: metaclaude
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: metaclaude:latest
+    restart: unless-stopped
+
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Behind the proxy, TLS terminates upstream: honour X-Forwarded-For and
+      # keep the Secure attribute on cookies.
+      METACLAUDE_TRUST_PROXY: "1"
+
+      METACLAUDE_MASTER_KEY: ${METACLAUDE_MASTER_KEY:-}
+      METACLAUDE_BOOTSTRAP_USER: ${METACLAUDE_BOOTSTRAP_USER:-}
+      METACLAUDE_BOOTSTRAP_PASSWORD: ${METACLAUDE_BOOTSTRAP_PASSWORD:-}
+      METACLAUDE_ALLOWED_ORIGINS: ${METACLAUDE_ALLOWED_ORIGINS:-}
+      METACLAUDE_MAX_CONCURRENT_RUNS: ${METACLAUDE_MAX_CONCURRENT_RUNS:-4}
+      METACLAUDE_RUN_TIMEOUT_MS: ${METACLAUDE_RUN_TIMEOUT_MS:-2700000}
+      METACLAUDE_EMBEDDINGS: ${METACLAUDE_EMBEDDINGS:-hash}
+      METACLAUDE_ALLOW_BYPASS_PERMISSIONS: ${METACLAUDE_ALLOW_BYPASS_PERMISSIONS:-}
+
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-Metaclaude}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-metaclaude@localhost}
+      TZ: ${TZ:-UTC}
+
+    volumes:
+      - metaclaude-data:/var/lib/metaclaude
+      # Workspaces are separate so they can be backed up, or bind-mounted to a
+      # host directory, independently of the database.
+      - metaclaude-workspaces:/var/lib/metaclaude/workspaces
+      # The Claude CLI keeps its session transcripts under $HOME/.claude, and
+      # Metaclaude resumes those sessions by id. On tmpfs they would vanish on
+      # every restart and every existing conversation would start cold.
+      - metaclaude-home:/home/metaclaude
+
+    networks:
+      - internal
+
+    # ── Hardening ─────────────────────────────────────────────────────────────
+    # The agent executes model-authored commands. Everything below limits what
+    # that can reach if a command does something unintended.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # The CLI writes to its own cache and needs a real /tmp; the rootfs stays
+    # read-only so nothing else in the image can be modified at runtime.
+    read_only: true
+    tmpfs:
+      # `noexec` is deliberately absent: build tooling the agent runs (node-gyp,
+      # cargo, pip) executes helper binaries it writes into /tmp, and forbidding
+      # that breaks ordinary development work rather than an attack.
+      - /tmp:rw,nosuid,size=1g
+    ulimits:
+      nofile: { soft: 8192, hard: 16384 }
+      nproc: 4096
+
+    deploy:
+      resources:
+        limits:
+          cpus: '${METACLAUDE_CPU_LIMIT:-4}'
+          memory: ${METACLAUDE_MEMORY_LIMIT:-4g}
+
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:8787/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+
+    ports:
+      - '${METACLAUDE_HTTP_PORT:-80}:80'
+      - '${METACLAUDE_HTTPS_PORT:-443}:443'
+
+    environment:
+      # A bare hostname gets a real certificate from Let's Encrypt.
+      # The default, `localhost`, makes Caddy issue a local self-signed one,
+      # so a first run works with no DNS and no public address.
+      METACLAUDE_DOMAIN: ${METACLAUDE_DOMAIN:-localhost}
+      METACLAUDE_TLS_EMAIL: ${METACLAUDE_TLS_EMAIL:-internal}
+
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+    networks:
+      - internal
+      - public
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+
+networks:
+  # The app is unreachable except through the proxy.
+  internal:
+    internal: true
+  public:
+
+volumes:
+  metaclaude-data:
+  metaclaude-workspaces:
+  metaclaude-home:
+  caddy-data:
+  caddy-config:

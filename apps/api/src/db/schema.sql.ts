@@ -1,0 +1,329 @@
+/**
+ * Database schema, expressed as an ordered list of migrations.
+ *
+ * Migrations are append-only: never edit a shipped statement, add a new one.
+ * The runner records each applied version in `_migrations` inside the same
+ * transaction that applies it, so a crash mid-migration leaves no partial state.
+ */
+
+export interface Migration {
+  version: number;
+  name: string;
+  sql: string;
+}
+
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    version: 1,
+    name: 'initial_schema',
+    sql: /* sql */ `
+      -- ── Identity ───────────────────────────────────────────────────────────
+      CREATE TABLE users (
+        id             TEXT PRIMARY KEY,
+        username       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        display_name   TEXT NOT NULL DEFAULT '',
+        password_hash  TEXT NOT NULL,
+        role           TEXT NOT NULL CHECK (role IN ('owner','operator','viewer')),
+        totp_secret    TEXT,
+        totp_enabled   INTEGER NOT NULL DEFAULT 0,
+        recovery_codes TEXT NOT NULL DEFAULT '[]',
+        failed_logins  INTEGER NOT NULL DEFAULT 0,
+        locked_until   INTEGER,
+        created_at     INTEGER NOT NULL,
+        updated_at     INTEGER NOT NULL,
+        last_login_at  INTEGER
+      );
+
+      CREATE TABLE auth_sessions (
+        id          TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash  TEXT NOT NULL UNIQUE,
+        csrf_hash   TEXT NOT NULL,
+        user_agent  TEXT,
+        ip_address  TEXT,
+        created_at  INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        expires_at  INTEGER NOT NULL,
+        revoked_at  INTEGER
+      );
+      CREATE INDEX idx_auth_sessions_user ON auth_sessions(user_id, expires_at);
+
+      -- ── Workspaces ─────────────────────────────────────────────────────────
+      CREATE TABLE workspaces (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        slug        TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL DEFAULT '',
+        path        TEXT NOT NULL,
+        color       TEXT NOT NULL DEFAULT '#6366f1',
+        icon        TEXT NOT NULL DEFAULT 'folder',
+        archived    INTEGER NOT NULL DEFAULT 0,
+        settings    TEXT NOT NULL DEFAULT '{}',
+        created_at  INTEGER NOT NULL,
+        updated_at  INTEGER NOT NULL
+      );
+      CREATE INDEX idx_workspaces_archived ON workspaces(archived, updated_at DESC);
+
+      -- ── Sessions & runs ────────────────────────────────────────────────────
+      CREATE TABLE sessions (
+        id                 TEXT PRIMARY KEY,
+        workspace_id       TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        title              TEXT NOT NULL DEFAULT '',
+        claude_session_id  TEXT,
+        status             TEXT NOT NULL DEFAULT 'idle',
+        model              TEXT NOT NULL DEFAULT 'default',
+        effort             TEXT,
+        permission_mode    TEXT NOT NULL DEFAULT 'default',
+        agent_name         TEXT,
+        pinned             INTEGER NOT NULL DEFAULT 0,
+        archived           INTEGER NOT NULL DEFAULT 0,
+        total_cost_usd     REAL NOT NULL DEFAULT 0,
+        total_input_tokens INTEGER NOT NULL DEFAULT 0,
+        total_output_tokens INTEGER NOT NULL DEFAULT 0,
+        run_count          INTEGER NOT NULL DEFAULT 0,
+        created_at         INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL,
+        last_activity_at   INTEGER NOT NULL
+      );
+      CREATE INDEX idx_sessions_workspace ON sessions(workspace_id, archived, last_activity_at DESC);
+      CREATE INDEX idx_sessions_claude ON sessions(claude_session_id);
+
+      CREATE TABLE runs (
+        id            TEXT PRIMARY KEY,
+        session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        prompt        TEXT NOT NULL,
+        status        TEXT NOT NULL,
+        policy        TEXT NOT NULL DEFAULT '{}',
+        usage         TEXT NOT NULL DEFAULT '{}',
+        category      TEXT,
+        error         TEXT,
+        rating        REAL,
+        reward        REAL,
+        triggered_by  TEXT NOT NULL DEFAULT 'user',
+        started_at    INTEGER NOT NULL,
+        finished_at   INTEGER
+      );
+      CREATE INDEX idx_runs_session ON runs(session_id, started_at);
+      CREATE INDEX idx_runs_workspace_time ON runs(workspace_id, started_at DESC);
+      CREATE INDEX idx_runs_status ON runs(status) WHERE status IN ('queued','running','waiting_approval');
+      CREATE INDEX idx_runs_category ON runs(category, started_at DESC);
+
+      -- Transcript events are the append-only source of truth for a run.
+      CREATE TABLE transcript_events (
+        id        TEXT PRIMARY KEY,
+        run_id    TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        seq       INTEGER NOT NULL,
+        kind      TEXT NOT NULL,
+        at        INTEGER NOT NULL,
+        payload   TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_transcript_run_seq ON transcript_events(run_id, seq);
+      CREATE INDEX idx_transcript_session ON transcript_events(session_id, at);
+
+      -- ── Memory & learning ──────────────────────────────────────────────────
+      CREATE TABLE memories (
+        id            TEXT PRIMARY KEY,
+        workspace_id  TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        kind          TEXT NOT NULL,
+        title         TEXT NOT NULL,
+        content       TEXT NOT NULL,
+        tags          TEXT NOT NULL DEFAULT '[]',
+        confidence    REAL NOT NULL DEFAULT 0.7,
+        use_count     INTEGER NOT NULL DEFAULT 0,
+        success_count INTEGER NOT NULL DEFAULT 0,
+        pinned        INTEGER NOT NULL DEFAULT 0,
+        source_run_id TEXT,
+        embedding     BLOB,
+        embedding_dim INTEGER,
+        embedding_model TEXT,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        last_used_at  INTEGER
+      );
+      CREATE INDEX idx_memories_scope ON memories(workspace_id, kind, confidence DESC);
+      CREATE INDEX idx_memories_updated ON memories(updated_at DESC);
+
+      -- Full-text index keeps lexical recall alongside vector similarity; the
+      -- retriever fuses both, which beats either alone on short queries.
+      CREATE VIRTUAL TABLE memories_fts USING fts5(
+        title, content, tags,
+        content='memories', content_rowid='rowid', tokenize='porter unicode61'
+      );
+      CREATE TRIGGER memories_fts_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, title, content, tags)
+        VALUES (new.rowid, new.title, new.content, new.tags);
+      END;
+      CREATE TRIGGER memories_fts_ad AFTER DELETE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
+        VALUES ('delete', old.rowid, old.title, old.content, old.tags);
+      END;
+      CREATE TRIGGER memories_fts_au AFTER UPDATE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
+        VALUES ('delete', old.rowid, old.title, old.content, old.tags);
+        INSERT INTO memories_fts(rowid, title, content, tags)
+        VALUES (new.rowid, new.title, new.content, new.tags);
+      END;
+
+      -- Links a run to the memories retrieved for it, so reinforcement can be
+      -- credited precisely once the run's outcome is known.
+      CREATE TABLE memory_usages (
+        run_id    TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+        score     REAL NOT NULL,
+        PRIMARY KEY (run_id, memory_id)
+      );
+
+      CREATE TABLE policy_arms (
+        id             TEXT PRIMARY KEY,
+        workspace_id   TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        category       TEXT NOT NULL,
+        model          TEXT NOT NULL,
+        effort         TEXT,
+        alpha          REAL NOT NULL DEFAULT 1,
+        beta           REAL NOT NULL DEFAULT 1,
+        trials         INTEGER NOT NULL DEFAULT 0,
+        total_reward   REAL NOT NULL DEFAULT 0,
+        mean_cost_usd  REAL NOT NULL DEFAULT 0,
+        mean_duration_ms REAL NOT NULL DEFAULT 0,
+        updated_at     INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_policy_arm_unique
+        ON policy_arms(COALESCE(workspace_id,''), category, model, COALESCE(effort,''));
+
+      -- Labelled exemplars for the kNN task classifier.
+      CREATE TABLE task_exemplars (
+        id           TEXT PRIMARY KEY,
+        workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        category     TEXT NOT NULL,
+        text         TEXT NOT NULL,
+        embedding    BLOB NOT NULL,
+        embedding_dim INTEGER NOT NULL,
+        embedding_model TEXT NOT NULL,
+        weight       REAL NOT NULL DEFAULT 1,
+        created_at   INTEGER NOT NULL
+      );
+      CREATE INDEX idx_exemplars_scope ON task_exemplars(workspace_id, category);
+
+      CREATE TABLE insights (
+        id           TEXT PRIMARY KEY,
+        workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        run_id       TEXT REFERENCES runs(id) ON DELETE SET NULL,
+        kind         TEXT NOT NULL,
+        title        TEXT NOT NULL,
+        body         TEXT NOT NULL,
+        confidence   REAL NOT NULL DEFAULT 0.5,
+        status       TEXT NOT NULL DEFAULT 'new',
+        payload      TEXT,
+        created_at   INTEGER NOT NULL
+      );
+      CREATE INDEX idx_insights_status ON insights(status, created_at DESC);
+
+      -- ── Extensibility: skills, agents, MCP ─────────────────────────────────
+      CREATE TABLE skills (
+        id            TEXT PRIMARY KEY,
+        workspace_id  TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        description   TEXT NOT NULL,
+        body          TEXT NOT NULL,
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        auto_generated INTEGER NOT NULL DEFAULT 0,
+        use_count     INTEGER NOT NULL DEFAULT 0,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_skills_name ON skills(COALESCE(workspace_id,''), name);
+
+      CREATE TABLE agents (
+        id           TEXT PRIMARY KEY,
+        workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        name         TEXT NOT NULL,
+        description  TEXT NOT NULL,
+        prompt       TEXT NOT NULL,
+        tools        TEXT,
+        model        TEXT,
+        enabled      INTEGER NOT NULL DEFAULT 1,
+        created_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_agents_name ON agents(COALESCE(workspace_id,''), name);
+
+      CREATE TABLE mcp_servers (
+        id           TEXT PRIMARY KEY,
+        workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        name         TEXT NOT NULL,
+        transport    TEXT NOT NULL,
+        command      TEXT,
+        args         TEXT NOT NULL DEFAULT '[]',
+        url          TEXT,
+        env_keys     TEXT NOT NULL DEFAULT '[]',
+        headers      TEXT NOT NULL DEFAULT '{}',
+        enabled      INTEGER NOT NULL DEFAULT 1,
+        status       TEXT NOT NULL DEFAULT 'unknown',
+        last_error   TEXT,
+        created_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_mcp_name ON mcp_servers(COALESCE(workspace_id,''), name);
+
+      -- ── Automations ────────────────────────────────────────────────────────
+      CREATE TABLE automations (
+        id            TEXT PRIMARY KEY,
+        workspace_id  TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        description   TEXT NOT NULL DEFAULT '',
+        prompt        TEXT NOT NULL,
+        trigger       TEXT NOT NULL,
+        policy        TEXT NOT NULL DEFAULT '{}',
+        continuous    INTEGER NOT NULL DEFAULT 0,
+        session_id    TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        max_consecutive_failures INTEGER NOT NULL DEFAULT 3,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        last_run_at   INTEGER,
+        last_status   TEXT,
+        next_run_at   INTEGER,
+        run_count     INTEGER NOT NULL DEFAULT 0,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+      );
+      CREATE INDEX idx_automations_due ON automations(enabled, next_run_at);
+
+      -- ── Secrets & audit ────────────────────────────────────────────────────
+      CREATE TABLE secrets (
+        id          TEXT PRIMARY KEY,
+        scope       TEXT NOT NULL,
+        key         TEXT NOT NULL,
+        ciphertext  BLOB NOT NULL,
+        iv          BLOB NOT NULL,
+        tag         BLOB NOT NULL,
+        created_at  INTEGER NOT NULL,
+        updated_at  INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_secrets_scope_key ON secrets(scope, key);
+
+      -- Hash-chained so tampering with any row invalidates every row after it.
+      CREATE TABLE audit_log (
+        id         TEXT PRIMARY KEY,
+        at         INTEGER NOT NULL,
+        actor      TEXT NOT NULL,
+        action     TEXT NOT NULL,
+        target     TEXT,
+        ip_address TEXT,
+        outcome    TEXT NOT NULL,
+        detail     TEXT,
+        prev_hash  TEXT NOT NULL,
+        hash       TEXT NOT NULL
+      );
+      CREATE INDEX idx_audit_at ON audit_log(at DESC);
+
+      -- Small persistent key/value store for kernel bookkeeping.
+      CREATE TABLE kv (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
+];

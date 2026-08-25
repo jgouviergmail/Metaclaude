@@ -1,0 +1,387 @@
+/**
+ * Workspace index — create, browse and archive projects.
+ */
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, FolderGit2, GitBranch, MoreVertical, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import type { Workspace } from '@metaclaude/shared';
+import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { Menu, MenuItem, MenuSeparator } from '@/components/ui/Menu';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Input,
+  Label,
+  Skeleton,
+  Textarea,
+} from '@/components/ui/primitives';
+import { api, ApiError } from '@/lib/api';
+import { colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
+
+export function WorkspacesPage() {
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [showArchived, setShowArchived] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null);
+
+  // `?new=1` lets the command palette deep-link straight into creation.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setCreating(true);
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['workspaces', showArchived],
+    queryFn: () => api.workspaces(showArchived),
+  });
+
+  const archive = useMutation({
+    mutationFn: ({ id, archived }: { id: string; archived: boolean }) =>
+      api.updateWorkspace(id, { archived }),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      toast.success(variables.archived ? 'Workspace archived' : 'Workspace restored');
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: ({ id, purge }: { id: string; purge: boolean }) => api.deleteWorkspace(id, purge),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      toast.success(variables.purge ? 'Workspace and files deleted' : 'Workspace removed');
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not delete the workspace.'),
+  });
+
+  const workspaces = data?.workspaces ?? [];
+
+  return (
+    <AppShell>
+      <ContentHeader
+        title="Workspaces"
+        subtitle="Each workspace is a project directory with its own agent policy and memory."
+        showSidebarToggle={false}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowArchived((value) => !value)}
+              aria-pressed={showArchived}
+            >
+              <Archive className="size-4" aria-hidden />
+              {showArchived ? 'Hide archived' : 'Show archived'}
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+              <Plus className="size-4" aria-hidden />
+              New
+            </Button>
+          </>
+        }
+      />
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-6xl p-4 sm:p-6">
+          {isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }, (_, i) => (
+                <Skeleton key={i} className="h-32" />
+              ))}
+            </div>
+          ) : workspaces.length === 0 ? (
+            <EmptyState
+              icon={<FolderGit2 />}
+              title="No workspaces"
+              description="Create one to give the agent a project directory to work in. You can start empty or clone a git repository."
+              action={
+                <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+                  <Plus className="size-4" aria-hidden />
+                  New workspace
+                </Button>
+              }
+            />
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {workspaces.map((workspace) => (
+                <li key={workspace.id} className="group relative">
+                  <Link
+                    to={`/w/${workspace.id}`}
+                    className="block h-full rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="size-10 shrink-0 rounded-lg"
+                        style={{ background: workspace.color }}
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink">{workspace.name}</p>
+                        <p className="truncate font-mono text-[11.5px] text-subtle">
+                          {workspace.slug}
+                        </p>
+                      </div>
+                    </div>
+
+                    {workspace.description ? (
+                      <p className="mt-3 line-clamp-2 text-[12.5px] leading-relaxed text-muted">
+                        {workspace.description}
+                      </p>
+                    ) : null}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      {workspace.archived ? <Badge tone="warning">archived</Badge> : null}
+                      {workspace.settings.autoPolicyEnabled ? (
+                        <Badge tone="thinking">learning</Badge>
+                      ) : null}
+                      {workspace.settings.defaultPermissionMode === 'bypassPermissions' ? (
+                        <Badge tone="danger">bypass</Badge>
+                      ) : null}
+                      <span className="ml-auto text-[11px] text-subtle">
+                        {formatRelative(workspace.updatedAt)}
+                      </span>
+                    </div>
+                  </Link>
+
+                  {/* Positioned over the link rather than inside it: nesting a
+                      menu trigger in an anchor breaks keyboard activation. */}
+                  <div className="absolute right-2 top-2">
+                    <Menu
+                      side="bottom"
+                      align="end"
+                      trigger={
+                        <button
+                          type="button"
+                          className="flex size-7 items-center justify-center rounded-md text-subtle opacity-0 transition-opacity hover:bg-raised hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+                          aria-label={`Actions for ${workspace.name}`}
+                        >
+                          <MoreVertical className="size-4" />
+                        </button>
+                      }
+                    >
+                      <MenuItem
+                        icon={<Archive />}
+                        onSelect={() =>
+                          archive.mutate({ id: workspace.id, archived: !workspace.archived })
+                        }
+                      >
+                        {workspace.archived ? 'Restore' : 'Archive'}
+                      </MenuItem>
+                      <MenuSeparator />
+                      <MenuItem
+                        icon={<Trash2 />}
+                        tone="danger"
+                        onSelect={() => setPendingDelete(workspace)}
+                      >
+                        Delete
+                      </MenuItem>
+                    </Menu>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <CreateWorkspaceModal open={creating} onOpenChange={setCreating} />
+
+      <DeleteWorkspaceDialog
+        workspace={pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={(purge) => {
+          if (pendingDelete) remove.mutate({ id: pendingDelete.id, purge });
+        }}
+      />
+    </AppShell>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+function CreateWorkspaceModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [gitUrl, setGitUrl] = useState('');
+  const [color, setColor] = useState<string>(WORKSPACE_COLORS[0]);
+  const [touchedColor, setTouchedColor] = useState(false);
+
+  // Until the user picks a colour, derive one from the name so each new
+  // workspace looks distinct without anyone having to choose.
+  useEffect(() => {
+    if (!touchedColor && name) setColor(colorForName(name));
+  }, [name, touchedColor]);
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.createWorkspace({
+        name: name.trim(),
+        description: description.trim(),
+        color,
+        ...(gitUrl.trim() ? { gitUrl: gitUrl.trim() } : {}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      toast.success('Workspace created');
+      onOpenChange(false);
+      setName('');
+      setDescription('');
+      setGitUrl('');
+      setTouchedColor(false);
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not create the workspace.'),
+  });
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="New workspace"
+      description="A directory the agent can work in, with its own settings, memory and automations."
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            loading={create.isPending}
+            disabled={!name.trim()}
+            onClick={() => create.mutate()}
+          >
+            Create
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Label htmlFor="ws-name">
+          Name
+          <Input
+            id="ws-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Payments service"
+            autoFocus
+            className="mt-1.5"
+          />
+        </Label>
+
+        <Label htmlFor="ws-description">
+          Description
+          <Textarea
+            id="ws-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="What this project is, in one line."
+            rows={2}
+            className="mt-1.5"
+          />
+        </Label>
+
+        <Label
+          htmlFor="ws-git"
+          hint="Optional. Leave blank to start from an empty directory with a starter CLAUDE.md."
+        >
+          Clone a repository
+          <Input
+            id="ws-git"
+            value={gitUrl}
+            onChange={(event) => setGitUrl(event.target.value)}
+            placeholder="https://github.com/you/project.git"
+            className="mt-1.5 font-mono text-[13px]"
+          />
+        </Label>
+
+        <fieldset>
+          <legend className="mb-1.5 text-[13px] font-medium text-ink">Colour</legend>
+          <div className="flex flex-wrap gap-2">
+            {WORKSPACE_COLORS.map((swatch) => (
+              <button
+                key={swatch}
+                type="button"
+                onClick={() => {
+                  setColor(swatch);
+                  setTouchedColor(true);
+                }}
+                aria-label={`Use colour ${swatch}`}
+                aria-pressed={color === swatch}
+                className="size-7 rounded-lg ring-offset-2 ring-offset-[var(--mc-surface)] transition-all data-[active=true]:ring-2 data-[active=true]:ring-[var(--mc-accent)]"
+                data-active={color === swatch}
+                style={{ background: swatch }}
+              />
+            ))}
+          </div>
+        </fieldset>
+      </div>
+    </Modal>
+  );
+}
+
+function DeleteWorkspaceDialog({
+  workspace,
+  onClose,
+  onConfirm,
+}: {
+  workspace: Workspace | null;
+  onClose: () => void;
+  onConfirm: (purge: boolean) => void;
+}) {
+  const [purge, setPurge] = useState(false);
+
+  useEffect(() => {
+    if (workspace) setPurge(false);
+  }, [workspace]);
+
+  return (
+    <ConfirmDialog
+      open={Boolean(workspace)}
+      onOpenChange={(open) => !open && onClose()}
+      title={`Delete "${workspace?.name ?? ''}"?`}
+      confirmLabel={purge ? 'Delete workspace and files' : 'Delete workspace'}
+      danger
+      onConfirm={() => onConfirm(purge)}
+      description={
+        <div className="space-y-3">
+          <p>
+            Its sessions, transcripts, memories and automations are removed permanently.
+          </p>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/30 p-3">
+            <input
+              type="checkbox"
+              checked={purge}
+              onChange={(event) => setPurge(event.target.checked)}
+              className="mt-0.5 size-3.5 accent-[var(--mc-danger)]"
+            />
+            <span className="text-[12.5px] leading-relaxed">
+              <span className="font-medium text-ink">Also delete the files on disk</span>
+              <br />
+              Everything under{' '}
+              <code className="font-mono text-[11.5px]">{workspace?.path}</code> is erased. This
+              cannot be undone. Leave this unchecked to keep the files and only forget the workspace.
+            </span>
+          </label>
+        </div>
+      }
+    />
+  );
+}
