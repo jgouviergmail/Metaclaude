@@ -364,8 +364,8 @@ rm -f /etc/ssh/sshd_config.d/99-metaclaude.conf
 cat > "$SSHD_DROPIN" <<SSHD
 # Written by Metaclaude provision.sh. Edit provision.sh, not this file.
 #
-# Note there is no `Port` here. On Debian 13 and Ubuntu 22.10+, sshd is socket
-# activated: ssh.socket owns the listener and `Port` in sshd_config is parsed
+# Note there is no Port directive here. On Debian 13 and Ubuntu 22.10+, sshd is
+# socket activated: ssh.socket owns the listener, and Port in sshd_config is read
 # and then ignored. Writing it here and opening only that port in the firewall
 # is a guaranteed lockout. The port is set below, on the socket, and verified.
 

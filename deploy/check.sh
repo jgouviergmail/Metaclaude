@@ -77,6 +77,24 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Heredocs do not execute their own prose"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# `cat > file <<EOF` — delimiter unquoted — expands its body, and a backtick in
+# a *comment* inside that body is a command substitution. provision.sh wrote
+# "there is no `Port` here" into an sshd config and the shell dutifully ran
+# `Port`, which is how a paragraph explaining a lockout became the thing that
+# stopped provisioning. Shellcheck does not look inside heredoc bodies.
+#
+# Only bare backticks count: an escaped one is already text.
+if out="$(python3 "$REPO_ROOT/deploy/.heredoc-check.py" "${SCRIPTS[@]}" 2>&1)"; then
+  ok "no bare backtick inside an unquoted heredoc"
+else
+  bad "prose inside a heredoc will be executed by the shell"
+  printf '%s\n' "$out" | sed 's/^/     /'
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "Compose, under every TLS mode"
 # ─────────────────────────────────────────────────────────────────────────────
 
