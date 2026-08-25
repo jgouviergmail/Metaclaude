@@ -674,7 +674,15 @@ ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10
 
 [sshd]
 enabled = true
-mode = aggressive
+# `normal`, not `aggressive`, and the reason is the operator rather than the
+# attacker. Aggressive counts publickey failures and closed connections, which
+# is precisely what setting up generates: trying root before mcadmin, or the
+# wrong key file, reaches maxretry in under a minute and bans the administrator
+# for an hour — with the ban presenting as `Connection refused`, which reads
+# like a dead server rather than a jail. Password authentication is already off,
+# so the aggressive patterns were buying almost nothing against the threat this
+# jail exists for: a bot filling the journal.
+mode = normal
 JAIL
 
 systemctl enable fail2ban >/dev/null 2>&1 || true
@@ -766,6 +774,17 @@ ss -tlnp 2>/dev/null | awk 'NR==1 || /LISTEN/' | sed 's/^/    /'
 
 printf '\n%sFirewall:%s\n' "$BOLD" "$OFF"
 ufw status verbose 2>/dev/null | sed 's/^/    /' || echo "    (not managed)"
+
+# The one failure mode of this host that looks exactly like a dead server.
+# fail2ban rejects rather than drops, so a banned address gets `Connection
+# refused` — indistinguishable from sshd being down unless you know to look.
+printf '\n%sIf SSH starts answering "Connection refused":%s\n' "$BOLD" "$OFF"
+printf '    You are probably banned by this box'"'"'s own fail2ban. Five failed\n'
+printf '    attempts in ten minutes — the wrong user, the wrong key — is a\n'
+printf '    one-hour ban, and it rejects rather than drops, so it reads as a\n'
+printf '    dead server. From this console, which is never affected:\n\n'
+printf '      fail2ban-client status sshd            # is your address listed\n'
+printf '      fail2ban-client unban --all            # release every ban\n'
 
 printf '\n%sIPv6:%s\n' "$BOLD" "$OFF"
 case "$HAS_IPV6" in
