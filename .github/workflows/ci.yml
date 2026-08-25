@@ -197,8 +197,16 @@ jobs:
 
       # Records, verifiably, that this image came from this workflow and this
       # commit — so a deploy can check it was not built somewhere else.
+      #
+      # Only possible on a public repository. GitHub's attestation API refuses
+      # outright for a user-owned private one — "Feature not available for
+      # user-owned private repositories. To enable this feature, please make
+      # this repository public" — and this repository is private on purpose:
+      # it holds the deployment for one person's server. Skipped rather than
+      # marked continue-on-error, so a real attestation failure on a repository
+      # that *can* attest still fails the build instead of passing quietly.
       - name: Attest provenance
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ steps.name.outputs.image }}
