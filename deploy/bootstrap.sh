@@ -76,10 +76,29 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || die "run this as root"
-if [ -z "$ADMIN_KEY" ] || [ -z "$DEPLOY_KEY" ]; then
-  usage
-  die "both keys are required"
-fi
+
+# An empty value here is almost never a forgotten flag. It is
+# `--admin-key "$(cat ~/.ssh/metaclaude_admin.pub)"` where the file is not on
+# this machine: cat writes its complaint to stderr, the substitution yields
+# nothing, and the flag arrives present but empty. "both keys are required" then
+# reads like an accusation of not passing them.
+for pair in "admin:$ADMIN_KEY" "deploy:$DEPLOY_KEY"; do
+  case "${pair#*:}" in
+    "")
+      usage
+      die "--${pair%%:*}-key is empty.
+     If you used \"\$(cat ~/.ssh/…​.pub)\", that file is not on this machine —
+     the keys live wherever you generated them. Paste the public key itself:
+
+       --${pair%%:*}-key \"ssh-ed25519 AAAA… comment\"" ;;
+    ssh-ed25519*|ssh-rsa*|ecdsa-sha2-*|sk-ssh-ed25519*|sk-ecdsa-sha2-*) ;;
+    *)
+      die "--${pair%%:*}-key does not look like an SSH *public* key.
+     It must be one line beginning with ssh-ed25519 (or ssh-rsa). A path is not
+     accepted here, and the private half — the file without .pub, starting
+     '-----BEGIN OPENSSH PRIVATE KEY-----' — must never leave your machine." ;;
+  esac
+done
 
 # ─────────────────────────────────────────────────────────────────────────────
 step "1/5  Provisioning the host"
