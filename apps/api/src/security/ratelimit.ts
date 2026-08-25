@@ -99,6 +99,19 @@ export function lockoutDurationMs(failedAttempts: number): number {
  * When running behind the bundled reverse proxy we honour `x-forwarded-for`;
  * otherwise we must not, because a client could otherwise spoof its own key and
  * bypass the limiter entirely.
+ *
+ * The entry we take is the **rightmost**, not the leftmost. `x-forwarded-for`
+ * grows left-to-right and each proxy *appends* the address it observed, so the
+ * last element is the one our own trusted proxy wrote and the only element it
+ * vouches for. Everything to its left was supplied by the caller: a client that
+ * sends `X-Forwarded-For: whatever` produces `whatever, <real ip>` at this end,
+ * so keying on the leftmost entry lets an attacker pick a fresh bucket per
+ * request and walk straight through the login lockout.
+ *
+ * This assumes exactly one trusted hop, which is what the bundled deployment
+ * has (Caddy → API on a private network). A second untrusted-but-forwarding hop
+ * would need the count made configurable; the API is not reachable that way in
+ * any supported topology.
  */
 export function clientKey(
   remoteAddress: string | undefined,
@@ -106,8 +119,12 @@ export function clientKey(
   trustProxy: boolean,
 ): string {
   if (trustProxy && forwardedFor) {
-    const first = forwardedFor.split(',')[0]?.trim();
-    if (first) return first;
+    const entries = forwardedFor
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const nearest = entries.at(-1);
+    if (nearest) return nearest;
   }
   return remoteAddress ?? 'unknown';
 }

@@ -144,7 +144,13 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     env: z.record(z.string().max(128), z.string().max(8192)).default({}),
     /** Secret keys to delete. Removing a credential must be deliberate. */
     removeEnvKeys: z.array(z.string().max(128)).max(64).default([]),
+    /**
+     * Header values. Sealed exactly like `env` — an HTTP MCP server
+     * authenticates through `Authorization`, so these are credentials.
+     */
     headers: z.record(z.string().max(128), z.string().max(2048)).default({}),
+    /** Header names to delete. */
+    removeHeaderKeys: z.array(z.string().max(128)).max(64).default([]),
     enabled: z.boolean().default(true),
   });
 

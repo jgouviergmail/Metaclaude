@@ -365,19 +365,22 @@ describe('TOTP enrolment and second-factor login', () => {
   let secret: string;
   let recoveryCodes: string[];
 
-  it('begins enrolment without enabling the factor yet', () => {
-    const enrolment = auth.beginTotpEnrolment(user.id);
-    secret = enrolment.secret;
+  it('begins enrolment without enabling the factor yet', async () => {
+    const enrolment = await auth.beginTotpEnrolment(user.id, PASSWORD);
+    expect(enrolment).not.toBeNull();
+    secret = enrolment!.secret;
 
     expect(secret).toMatch(/^[A-Z2-7]+$/);
-    expect(enrolment.uri.startsWith('otpauth://totp/Metaclaude:jules?')).toBe(true);
-    expect(enrolment.uri).toContain(`secret=${secret}`);
+    expect(enrolment!.uri.startsWith('otpauth://totp/Metaclaude:jules?')).toBe(true);
+    expect(enrolment!.uri).toContain(`secret=${secret}`);
     // Not enabled until a code is proven — a mis-scanned QR must not lock anyone out.
     expect(auth.getUser(user.id)!.totpEnabled).toBe(false);
   });
 
-  it('refuses to enrol an unknown user', () => {
-    expect(() => auth.beginTotpEnrolment('usr_nope')).toThrow(/User not found/);
+  it('refuses to enrol without the password, or for an unknown user', async () => {
+    expect(await auth.beginTotpEnrolment(user.id, 'not-the-password')).toBeNull();
+    expect(await auth.beginTotpEnrolment(user.id, '')).toBeNull();
+    expect(await auth.beginTotpEnrolment('usr_nope', PASSWORD)).toBeNull();
   });
 
   it('refuses to confirm with a wrong code', () => {
@@ -396,6 +399,34 @@ describe('TOTP enrolment and second-factor login', () => {
     expect(new Set(recoveryCodes).size).toBe(10);
     expect(auth.getUser(user.id)!.totpEnabled).toBe(true);
     expect(auth.remainingRecoveryCodes(user.id)).toBe(10);
+  });
+
+  it('does not weaken a working enrolment when a new one is started', async () => {
+    // The regression this guards: enrolment used to overwrite `totp_secret` and
+    // clear `totp_enabled` up front, so POSTing "begin" — reachable with only a
+    // session cookie — silently turned 2FA off and stepped around the password
+    // that `disableTotp` demands.
+    const replacement = await auth.beginTotpEnrolment(user.id, PASSWORD);
+    expect(replacement).not.toBeNull();
+    expect(replacement!.secret).not.toBe(secret);
+
+    // Still on, and still the *original* device that signs in.
+    expect(auth.getUser(user.id)!.totpEnabled).toBe(true);
+    unlock();
+    const outcome = await auth.login({
+      username: 'jules',
+      password: PASSWORD,
+      totp: totpCode(secret, Date.now()),
+    });
+    expect(outcome.status).toBe('ok');
+
+    // A wrong confirmation must not promote the candidate either.
+    expect(auth.confirmTotpEnrolment(user.id, wrongCodeFor(replacement!.secret))).toBeNull();
+    expect(auth.getUser(user.id)!.totpEnabled).toBe(true);
+
+    auth.cancelTotpEnrolment(user.id);
+    expect(auth.confirmTotpEnrolment(user.id, totpCode(replacement!.secret, Date.now()))).toBeNull();
+    expect(auth.getUser(user.id)!.totpEnabled).toBe(true);
   });
 
   it('now requires a second factor at login', async () => {

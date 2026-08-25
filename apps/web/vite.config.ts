@@ -1,7 +1,9 @@
 import { fileURLToPath, URL } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+// `vitest/config` re-exports Vite's `defineConfig` with the `test` key added;
+// importing it from 'vite' would reject the block below at type level.
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -45,5 +47,11 @@ export default defineConfig({
       },
     },
     chunkSizeWarningLimit: 900,
+  },
+  test: {
+    // The sanitiser parses into a real `<template>` on purpose — testing it
+    // needs a DOM, not a string-comparison stand-in.
+    environment: 'happy-dom',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 });

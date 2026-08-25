@@ -316,18 +316,10 @@ describe('remove', () => {
     expect(await exists('keep.txt')).toBe(true);
   });
 
-  /*
-   * BUG (apps/api/src/services/files.ts:190, and the identical guard in `move`
-   * at line 197): the root guard is `target === root`, comparing the *resolved*
-   * candidate against the raw `root` argument. `resolveInside` normalises its
-   * result, so any root that is not already normalised — a trailing slash is
-   * enough — slips past the guard and the workspace root is deleted outright
-   * (`rm(target, { recursive: true, force: true })`). Verified: with
-   * `remove(`${root}/`, '')` the guard does not fire and the whole root tree is
-   * removed. The fix is to compare against `resolve(root)`, the same
-   * normalisation `resolveInside` applies internally.
-   */
-  it.skip('refuses to delete the root even when the root argument is not normalised', async () => {
+  // The guard compares against the *resolved* root, because `resolveInside`
+  // normalises its result: comparing against the raw argument let a root passed
+  // with a trailing slash through, and `rm -r` then took the whole workspace.
+  it('refuses to delete the root even when the root argument is not normalised', async () => {
     await seedFiles({ 'keep.txt': 'k' });
     await expectStatus(files.remove(`${root}/`, ''), 400);
     expect(await exists('keep.txt')).toBe(true);

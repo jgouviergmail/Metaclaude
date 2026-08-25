@@ -2,6 +2,11 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+# tsc must never emit next to the sources; if it does, don't commit it.
+apps/web/src/**/*.js
+apps/web/src/**/*.js.map
+apps/web/vite.config.js
+apps/web/vite.config.js.map
 .vite/
 coverage/
 

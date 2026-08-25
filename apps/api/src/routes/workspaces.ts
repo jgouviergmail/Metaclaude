@@ -17,6 +17,8 @@ import {
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import { spreadInt, spreadTimestamp } from '../http/query.js';
+import { reviewAdditionalDirectories } from '../security/directories.js';
 
 export function registerWorkspaceRoutes(app: App, context: AppContext): void {
   /** Load a workspace or fail with 404. Used by every nested route. */
@@ -93,6 +95,18 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
         403,
         'Bypass mode is disabled on this deployment. Set METACLAUDE_ALLOW_BYPASS_PERMISSIONS to enable it.',
       );
+    }
+
+    // Reject an out-of-bounds extra directory here rather than silently
+    // dropping it at run time, so the operator learns the setting did not take.
+    const extraDirectories = parsed.data.settings?.additionalDirectories;
+    if (extraDirectories && extraDirectories.length > 0) {
+      const review = reviewAdditionalDirectories(extraDirectories, {
+        workspacesDir: context.config.workspacesDir,
+        dataDir: context.config.dataDir,
+      });
+      const first = review.rejected[0];
+      if (first) throw new HttpError(400, `"${first.path}" ${first.reason}.`);
     }
 
     const workspace = context.workspaceRepo.update(request.params.id, parsed.data);
@@ -300,8 +314,8 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     return reply.send({
       runs: context.runRepo.listRecent({
         ...(query.workspaceId ? { workspaceId: query.workspaceId } : {}),
-        ...(query.limit ? { limit: Number(query.limit) } : {}),
-        ...(query.since ? { since: Number(query.since) } : {}),
+        ...spreadInt('limit', query.limit, { min: 1, max: 500 }),
+        ...spreadTimestamp('since', query.since),
       }),
     });
   });
@@ -323,6 +337,14 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     const parsed = Decide.safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, 'Invalid decision.');
 
+    // Read the request *before* resolving it: the entry is removed on decision,
+    // and an audit line naming only an approval id that no longer exists cannot
+    // be reconstructed into what was actually authorised. The tool, its risk and
+    // the session are the parts worth keeping.
+    const pending = context.kernel.broker
+      .listPending()
+      .find((approval) => approval.id === request.params.id);
+
     const resolved = context.kernel.broker.resolve(
       request.params.id,
       parsed.data.approved,
@@ -331,12 +353,20 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     );
     if (!resolved) throw new HttpError(404, 'That approval is no longer pending.');
 
+    const detail = [
+      pending ? `${pending.toolName} (${pending.risk} risk)` : null,
+      pending?.summary ?? null,
+      parsed.data.remember ? 'remembered for the session' : null,
+    ]
+      .filter(Boolean)
+      .join(' — ');
+
     context.audit.record({
       actor: actor.username,
       action: parsed.data.approved ? 'approval.allow' : 'approval.deny',
-      target: request.params.id,
+      target: pending?.sessionId ?? request.params.id,
       ipAddress: requestIp(context, request),
-      detail: parsed.data.remember ? 'remembered for the session' : null,
+      detail: detail.length > 0 ? detail : null,
     });
     return reply.send({ ok: true });
   });

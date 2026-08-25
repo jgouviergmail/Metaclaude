@@ -176,7 +176,14 @@ export const api = {
       body,
     }),
 
-  totpBegin: () => request<{ secret: string; uri: string }>('/api/auth/totp/begin', { method: 'POST' }),
+  // Enrolment replaces the second factor, so it costs a password just like
+  // removing one does.
+  totpBegin: (password: string) =>
+    request<{ secret: string; uri: string }>('/api/auth/totp/begin', {
+      method: 'POST',
+      body: { password },
+    }),
+  totpCancel: () => request<{ ok: boolean }>('/api/auth/totp/cancel', { method: 'POST' }),
   totpConfirm: (code: string) =>
     request<{ recoveryCodes: string[] }>('/api/auth/totp/confirm', { method: 'POST', body: { code } }),
   totpDisable: (password: string) =>

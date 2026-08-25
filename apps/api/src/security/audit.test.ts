@@ -205,14 +205,12 @@ describe('verifyChain', () => {
   });
 
   /**
-   * BUG (apps/api/src/security/audit.ts:61, `AuditLog.lastHash`):
-   * the previous hash is looked up with `ORDER BY at DESC, id DESC`, but ids
-   * generated inside the same millisecond share a timestamp prefix and differ
-   * only by a random suffix. Two entries recorded in the same millisecond
-   * therefore chain onto whichever id happens to sort higher rather than onto
-   * the row actually inserted last, which permanently breaks `verifyChain()`
-   * on a log nobody has tampered with. Recording several events in one
-   * millisecond is routine (a login writes more than one entry).
+   * The chain is walked by `rowid`, not by `(at, id)`. Ids minted in the same
+   * millisecond share a timestamp prefix and differ only by a random suffix, so
+   * ordering by them would chain onto whichever id sorts higher rather than the
+   * row actually inserted last — permanently breaking `verifyChain()` on a log
+   * nobody touched. A single login writes more than one entry, so this is the
+   * normal case, not an edge one.
    */
   it('keeps a valid chain when several entries share a millisecond', () => {
     vi.setSystemTime(new Date(BASE));

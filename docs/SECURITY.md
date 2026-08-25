@@ -34,16 +34,34 @@ a pre-computed decoy hash, so response timing cannot enumerate accounts.
 
 **Two-factor authentication** is TOTP (RFC 6238), implemented directly on
 `node:crypto`. Verification checks every step in the ±1 window with no early
-exit, so timing cannot leak which digit was wrong. Enrolment is two-phase: the
-secret is stored immediately but `totp_enabled` stays false until the user proves
-they can generate a valid code — which prevents locking yourself out with a
-mis-scanned QR code. Ten single-use recovery codes are issued on confirmation
-and removed from the stored list the moment one is consumed.
+exit, so timing cannot leak which digit was wrong.
+
+Enrolment is two-phase, and both phases needed a fix:
+
+- The candidate secret is **staged** in `totp_pending_secret`, and only a correct
+  code promotes it. Writing it straight to `totp_secret` and clearing
+  `totp_enabled` — the obvious implementation — meant that *starting* an
+  enrolment silently switched 2FA off, reachable with nothing but a stolen
+  session cookie and neatly around the password that disabling demands.
+- Starting an enrolment therefore **costs a password**, and is audited, exactly
+  like disabling: re-enrolling replaces the second factor, so it carries the same
+  authority as removing it.
+
+`totp_enabled` stays false throughout, so a mis-scanned QR code cannot lock you
+out. Ten single-use recovery codes are issued on confirmation and removed from
+the stored list the moment one is consumed.
 
 **Brute force** is blunted twice over:
 
 - Per client address: a token bucket (10 attempts, refilling at one per six
-  seconds), reset on a successful login so a shared NAT does not punish you.
+  seconds), reset on a successful login so a shared NAT does not punish you. The
+  address is taken from the **rightmost** `x-forwarded-for` entry, and only when
+  `METACLAUDE_TRUST_PROXY` is set. The header grows left to right and each proxy
+  *appends*, so the last element is the one our own proxy vouches for and
+  everything left of it came from the caller: keying on the leftmost entry — the
+  default for `trustProxy: true` — would let a client pick a fresh bucket per
+  request and walk straight through this lockout. Fastify is configured with a
+  one-hop trust function for the same reason, so `request.ip` agrees.
 - Per account: exponential lockout persisted on the user row, so a restart does
   not hand the attacker a fresh budget. Three free attempts, then 2s, 4s, 8s …
   capped at fifteen minutes.
@@ -101,8 +119,11 @@ descriptor is opened:
 - **Symlinks are resolved.** A link the *agent itself* planted inside a workspace,
   pointing at `/etc` or at another workspace, is caught. For paths that do not
   exist yet, the nearest existing ancestor is resolved instead.
-- A small deny-list (`.git-credentials`, `.netrc`, `master.key`) is never
-  addressable.
+- A small deny-list (`.git`, `.git-credentials`, `.netrc`, `master.key`) is
+  never addressable. `.git` is on it in both directions: a credentialed clone
+  leaves a token in `.git/config`, and several git settings name a command git
+  will later execute — so an unprompted HTTP write there would be an
+  approval-free path to command execution.
 
 The test suite includes a real symlink escape against a real temporary directory,
 not a mocked one.
@@ -110,6 +131,19 @@ not a mocked one.
 Directory listings additionally hide `.git` internals and dependency directories,
 and refuse to stat sockets, FIFOs and device nodes — reading one can block
 indefinitely.
+
+Deleting or moving compares the target against the **resolved** root. Comparing
+against the raw argument let a root passed with a trailing slash slip past the
+guard, and `rm -r` then took the whole workspace.
+
+**`additionalDirectories`** — the per-workspace setting that widens a run's
+filesystem scope — is validated on save *and* again on every run. An entry must
+live under the workspaces root, must not be the root itself, and must neither be
+nor contain the data directory. Unvalidated it was a straight escalation: `/`
+hands the agent the container, and the data directory hands it the database
+(session and password hashes, the sealed vault) plus `master.key`. None of it
+would raise an approval prompt, because from the CLI's point of view the
+directory is simply in scope.
 
 ---
 
@@ -215,6 +249,14 @@ round-trip a value, so submitted secrets are *merged* over what is stored rather
 than replacing it — otherwise renaming a server would silently destroy every
 credential. Deleting one is an explicit act.
 
+That covers HTTP **headers** too, not just the env map. An HTTP MCP server
+authenticates through `Authorization`, so a header value is a credential far more
+often than it is metadata; keeping the map on the row put a bearer token in
+plaintext and handed it to anyone who could read the server list. Header names
+live on the row, values in the vault under a `header:` slot prefix that keeps
+them distinct from an env var of the same name. A database upgraded from an
+earlier build drains its plaintext headers into the vault on first boot.
+
 The master key comes from `METACLAUDE_MASTER_KEY`, or is generated on first boot
 and stored at `/var/lib/metaclaude/master.key` with mode 0600. At startup the
 vault self-tests every stored secret and logs loudly if decryption fails, turning
@@ -235,9 +277,24 @@ one before it:
 hash(n) = SHA-256( hash(n-1) ‖ id ‖ timestamp ‖ actor ‖ action ‖ target ‖ ip ‖ outcome ‖ detail )
 ```
 
-An attacker with write access to the database can delete rows, but cannot
-silently rewrite history: `verifyChain()` — exposed as a button in Settings —
-detects any edit, reorder or gap.
+`verifyChain()` — exposed as a button in Settings — recomputes the chain and
+reports any entry whose hash no longer matches.
+
+**Be precise about what that buys you.** The chain is a plain SHA-256 with no
+key, and the chaining rule is in this repository. It catches an edit, a
+reordering, a deletion or a partial-write corruption made *without* rehashing —
+which is what a careless edit, a botched restore or a failing disk produces. It
+does **not** stop an attacker who has write access to the database and knows the
+scheme: they can rewrite an entry and recompute every hash after it, and the
+result verifies clean. Keying the chain would not close that either, because the
+only key available is `master.key`, which sits on the same volume as the
+database.
+
+Detecting a deliberate, informed rewrite needs an anchor the attacker cannot
+reach — shipping entries to an append-only store off the host, or publishing the
+head hash somewhere they do not control. Neither is built in. Treat the audit log
+as a reliable record of what the *application* did, and as evidence of
+corruption, not as proof against a host-level intruder.
 
 Two subtleties that took a bug each to get right:
 

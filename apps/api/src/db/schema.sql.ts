@@ -339,4 +339,35 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE memories ADD COLUMN last_decayed_at INTEGER;
     `,
   },
+  {
+    version: 3,
+    name: 'staged_totp_enrolment',
+    sql: /* sql */ `
+      -- A TOTP secret that has been generated but not yet proven.
+      --
+      -- Enrolment used to write straight to \`totp_secret\` and clear
+      -- \`totp_enabled\`, which meant starting an enrolment *turned off* an
+      -- already-working second factor before anything was verified. Staging the
+      -- candidate here leaves the live secret untouched until the user proves
+      -- they can generate a code from the new one.
+      ALTER TABLE users ADD COLUMN totp_pending_secret TEXT;
+    `,
+  },
+  {
+    version: 4,
+    name: 'mcp_header_secrets',
+    sql: /* sql */ `
+      -- Header *names* for an HTTP MCP server; the values move to the vault.
+      --
+      -- An HTTP MCP server authenticates through \`Authorization\`, so the
+      -- headers map held credentials in plaintext on the row and returned them
+      -- through the API. The names stay visible (they are configuration); the
+      -- values are sealed like every other secret.
+      --
+      -- The existing \`headers\` column is left in place: migrations run before
+      -- the vault is available, so the Registry backfills it at construction —
+      -- moving any values it still holds into the vault and clearing it.
+      ALTER TABLE mcp_servers ADD COLUMN header_keys TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ];

@@ -9,6 +9,7 @@ import type { App } from '../http/types.js';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import { queryIntOr, spreadInt } from '../http/query.js';
 
 export function registerFileRoutes(app: App, context: AppContext): void {
   const mustGetWorkspace = (id: string) => {
@@ -110,7 +111,7 @@ export function registerFileRoutes(app: App, context: AppContext): void {
       if (!request.query.q) return reply.send({ entries: [] });
 
       const entries = await context.files.search(workspace.path, request.query.q, {
-        ...(request.query.limit ? { limit: Number(request.query.limit) } : {}),
+        ...spreadInt('limit', request.query.limit, { min: 1, max: 200 }),
       });
       return reply.send({ entries });
     },
@@ -145,7 +146,7 @@ export function registerFileRoutes(app: App, context: AppContext): void {
       const workspace = mustGetWorkspace(request.params.id);
       const commits = await context.git.log(
         workspace.path,
-        request.query.limit ? Number(request.query.limit) : 30,
+        queryIntOr(request.query.limit, { min: 1, max: 500 }, 30),
       );
       return reply.send({ commits });
     },

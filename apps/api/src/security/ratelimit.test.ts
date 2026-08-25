@@ -136,10 +136,18 @@ describe('clientKey', () => {
     expect(clientKey('10.0.0.1', '1.2.3.4, 5.6.7.8', false)).toBe('10.0.0.1');
   });
 
-  it('honours the first x-forwarded-for entry when the proxy is trusted', () => {
+  it('takes the entry the trusted proxy appended, not the one the client sent', () => {
     expect(clientKey('10.0.0.1', '1.2.3.4', true)).toBe('1.2.3.4');
-    expect(clientKey('10.0.0.1', '1.2.3.4, 5.6.7.8', true)).toBe('1.2.3.4');
-    expect(clientKey('10.0.0.1', '  1.2.3.4  ,5.6.7.8', true)).toBe('1.2.3.4');
+    // `1.2.3.4` here is client-supplied; `5.6.7.8` is what our proxy observed.
+    expect(clientKey('10.0.0.1', '1.2.3.4, 5.6.7.8', true)).toBe('5.6.7.8');
+    expect(clientKey('10.0.0.1', '  1.2.3.4  ,5.6.7.8  ', true)).toBe('5.6.7.8');
+  });
+
+  it('cannot be spoofed into a fresh bucket by prepending entries', () => {
+    const honest = clientKey('10.0.0.1', '5.6.7.8', true);
+    for (const forged of ['a, 5.6.7.8', 'a, b, 5.6.7.8', ' , ,5.6.7.8']) {
+      expect(clientKey('10.0.0.1', forged, true)).toBe(honest);
+    }
   });
 
   it('falls back to the socket address when the header is absent or empty', () => {

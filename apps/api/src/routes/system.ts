@@ -9,6 +9,7 @@ import type { App } from '../http/types.js';
 import { APP_VERSION, type SystemHealth } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { requireOwner } from '../http/guards.js';
+import { queryIntOr, spreadInt, spreadTimestamp } from '../http/query.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,7 +75,7 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
   app.get<{
     Querystring: { workspaceId?: string; days?: string; granularity?: string };
   }>('/api/analytics', async (request, reply) => {
-    const days = Math.min(Math.max(Number(request.query.days ?? 30), 1), 365);
+    const days = queryIntOr(request.query.days, { min: 1, max: 365 }, 30);
     const since = Date.now() - days * 86_400_000;
     const granularity =
       request.query.granularity === 'hour'
@@ -99,8 +100,8 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       requireOwner(request);
       return reply.send({
         entries: context.audit.list({
-          ...(request.query.limit ? { limit: Number(request.query.limit) } : {}),
-          ...(request.query.before ? { before: Number(request.query.before) } : {}),
+          ...spreadInt('limit', request.query.limit, { min: 1, max: 500 }),
+          ...spreadTimestamp('before', request.query.before),
           ...(request.query.action ? { action: request.query.action } : {}),
         }),
       });

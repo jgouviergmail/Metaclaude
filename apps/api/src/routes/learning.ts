@@ -11,6 +11,7 @@ import { CreateMemoryRequest, MemoryKind } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import { spreadInt } from '../http/query.js';
 import { listInsights, setInsightStatus } from '../learning/reflexion.js';
 
 export function registerLearningRoutes(app: App, context: AppContext): void {
@@ -39,8 +40,8 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       ...(workspaceFilter !== undefined ? { workspaceId: workspaceFilter } : {}),
       ...(parsedKind?.success ? { kind: parsedKind.data } : {}),
       ...(search ? { search } : {}),
-      ...(limit ? { limit: Number(limit) } : {}),
-      ...(offset ? { offset: Number(offset) } : {}),
+      ...spreadInt('limit', limit, { min: 1, max: 500 }),
+      ...spreadInt('offset', offset, { min: 0, max: 1_000_000 }),
     });
 
     return reply.send({
@@ -57,7 +58,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
 
       const results = await context.memory.search(request.query.q, {
         ...(request.query.workspaceId ? { workspaceId: request.query.workspaceId } : {}),
-        ...(request.query.limit ? { limit: Number(request.query.limit) } : {}),
+        ...spreadInt('limit', request.query.limit, { min: 1, max: 100 }),
       });
       return reply.send({ results });
     },
@@ -145,7 +146,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
           ...(status && ['new', 'accepted', 'rejected', 'applied'].includes(status)
             ? { status: status as 'new' | 'accepted' | 'rejected' | 'applied' }
             : {}),
-          ...(request.query.limit ? { limit: Number(request.query.limit) } : {}),
+          ...spreadInt('limit', request.query.limit, { min: 1, max: 200 }),
         }),
       });
     },

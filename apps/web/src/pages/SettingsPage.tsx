@@ -200,11 +200,26 @@ function TotpCard() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [disabling, setDisabling] = useState(false);
   const [password, setPassword] = useState('');
+  // Enrolment is password-gated server-side, so the UI asks first rather than
+  // letting the request come back 403.
+  const [confirmingIdentity, setConfirmingIdentity] = useState(false);
+  const [enrolPassword, setEnrolPassword] = useState('');
+
+  const closeEnrolment = () => {
+    setEnrolling(null);
+    setCode('');
+    // Drop the staged secret so an abandoned enrolment leaves nothing behind.
+    void api.totpCancel().catch(() => undefined);
+  };
 
   const begin = useMutation({
-    mutationFn: () => api.totpBegin(),
-    onSuccess: (data) => setEnrolling(data),
-    onError: () => toast.error('Could not start enrolment.'),
+    mutationFn: () => api.totpBegin(enrolPassword),
+    onSuccess: (data) => {
+      setConfirmingIdentity(false);
+      setEnrolPassword('');
+      setEnrolling(data);
+    },
+    onError: () => toast.error('That password is incorrect.'),
   });
 
   const confirm = useMutation({
@@ -257,27 +272,82 @@ function TotpCard() {
                 <span className="text-warning"> Consider re-enrolling to get a fresh set.</span>
               ) : null}
             </p>
-            <Button variant="outline" size="sm" onClick={() => setDisabling(true)}>
-              Turn off
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmingIdentity(true)}>
+                <Smartphone className="size-4" aria-hidden />
+                Re-enrol
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setDisabling(true)}>
+                Turn off
+              </Button>
+            </div>
           </>
         ) : (
-          <Button variant="primary" size="sm" loading={begin.isPending} onClick={() => begin.mutate()}>
+          <Button variant="primary" size="sm" onClick={() => setConfirmingIdentity(true)}>
             <Smartphone className="size-4" aria-hidden />
             Set up
           </Button>
         )}
       </div>
 
+      {/* Re-prove the first factor before touching the second. */}
+      <Modal
+        open={confirmingIdentity}
+        onOpenChange={(open) => {
+          setConfirmingIdentity(open);
+          if (!open) setEnrolPassword('');
+        }}
+        title="Confirm your password"
+        description={
+          user?.totpEnabled
+            ? 'Re-enrolling replaces your current authenticator and issues new recovery codes.'
+            : 'Enrolling a device changes how you sign in, so it needs your password.'
+        }
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmingIdentity(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={begin.isPending}
+              disabled={!enrolPassword}
+              onClick={() => begin.mutate()}
+            >
+              Continue
+            </Button>
+          </>
+        }
+      >
+        <Label htmlFor="totp-enrol-pw">
+          Password
+          <Input
+            id="totp-enrol-pw"
+            type="password"
+            value={enrolPassword}
+            onChange={(event) => setEnrolPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && enrolPassword) begin.mutate();
+            }}
+            autoFocus
+            className="mt-1.5"
+          />
+        </Label>
+      </Modal>
+
       {/* Enrolment */}
       <Modal
         open={Boolean(enrolling)}
-        onOpenChange={(open) => !open && setEnrolling(null)}
+        onOpenChange={(open) => {
+          if (!open) closeEnrolment();
+        }}
         title="Set up two-factor authentication"
         description="Add this secret to your authenticator app, then confirm with the code it shows."
         footer={
           <>
-            <Button variant="ghost" size="sm" onClick={() => setEnrolling(null)}>
+            <Button variant="ghost" size="sm" onClick={closeEnrolment}>
               Cancel
             </Button>
             <Button

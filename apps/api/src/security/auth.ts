@@ -45,6 +45,7 @@ interface UserRow {
   password_hash: string;
   role: string;
   totp_secret: string | null;
+  totp_pending_secret: string | null;
   totp_enabled: number;
   recovery_codes: string;
   failed_logins: number;
@@ -399,34 +400,71 @@ export class AuthService {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * Begin TOTP enrolment. The secret is stored immediately but `totp_enabled`
-   * stays false until the user proves they can generate a valid code — which
-   * prevents locking someone out with a mis-scanned QR code.
+   * Begin TOTP enrolment.
+   *
+   * Two properties this has to hold, both of which the obvious implementation
+   * gets wrong:
+   *
+   *  - **It must not weaken an enrolment that already works.** Writing the new
+   *    secret over `totp_secret` and clearing `totp_enabled` turns beginning an
+   *    enrolment into *silently disabling 2FA* — reachable with nothing but a
+   *    stolen session cookie, and a neat way around the password `disableTotp`
+   *    demands. The candidate is therefore staged in `totp_pending_secret` and
+   *    the live secret is left alone until `confirmTotpEnrolment` promotes it.
+   *  - **It must re-prove the first factor.** Re-enrolling is how you replace
+   *    the second factor, so it is worth exactly as much as disabling it and
+   *    carries the same password check.
+   *
+   * `totp_enabled` stays false through enrolment so a mis-scanned QR code
+   * cannot lock anyone out.
+   *
+   * @returns `null` when the password is wrong.
    */
-  beginTotpEnrolment(userId: string): { secret: string; uri: string } {
+  async beginTotpEnrolment(
+    userId: string,
+    password: string,
+  ): Promise<{ secret: string; uri: string } | null> {
     const row = this.db.prepare<[string], UserRow>('SELECT * FROM users WHERE id = ?').get(userId);
-    if (!row) throw new Error('User not found');
+    if (!row) return null;
+    if (!(await verifyPassword(password, row.password_hash))) return null;
 
     const secret = generateTotpSecret();
     this.db
-      .prepare('UPDATE users SET totp_secret = ?, totp_enabled = 0, updated_at = ? WHERE id = ?')
+      .prepare('UPDATE users SET totp_pending_secret = ?, updated_at = ? WHERE id = ?')
       .run(secret, Date.now(), userId);
 
     return { secret, uri: totpUri({ secret, account: row.username }) };
   }
 
-  /** Confirm enrolment and hand back one-time recovery codes. */
+  /**
+   * Confirm enrolment and hand back one-time recovery codes.
+   *
+   * The code is checked against the *pending* secret, and only a correct code
+   * promotes it. A failed confirmation leaves any existing enrolment intact.
+   */
   confirmTotpEnrolment(userId: string, code: string): { recoveryCodes: string[] } | null {
     const row = this.db.prepare<[string], UserRow>('SELECT * FROM users WHERE id = ?').get(userId);
-    if (!row?.totp_secret) return null;
-    if (!verifyTotp(row.totp_secret, code)) return null;
+    if (!row?.totp_pending_secret) return null;
+    if (!verifyTotp(row.totp_pending_secret, code)) return null;
 
     const recoveryCodes = generateRecoveryCodes();
     this.db
-      .prepare('UPDATE users SET totp_enabled = 1, recovery_codes = ?, updated_at = ? WHERE id = ?')
+      .prepare(
+        `UPDATE users SET
+           totp_secret = totp_pending_secret, totp_pending_secret = NULL,
+           totp_enabled = 1, recovery_codes = ?, updated_at = ?
+         WHERE id = ?`,
+      )
       .run(JSON.stringify(recoveryCodes), Date.now(), userId);
 
     return { recoveryCodes };
+  }
+
+  /** Discard a started-but-unconfirmed enrolment. */
+  cancelTotpEnrolment(userId: string): void {
+    this.db
+      .prepare('UPDATE users SET totp_pending_secret = NULL, updated_at = ? WHERE id = ?')
+      .run(Date.now(), userId);
   }
 
   async disableTotp(userId: string, password: string): Promise<boolean> {
@@ -437,7 +475,9 @@ export class AuthService {
 
     this.db
       .prepare(
-        `UPDATE users SET totp_enabled = 0, totp_secret = NULL, recovery_codes = '[]', updated_at = ?
+        `UPDATE users SET
+           totp_enabled = 0, totp_secret = NULL, totp_pending_secret = NULL,
+           recovery_codes = '[]', updated_at = ?
          WHERE id = ?`,
       )
       .run(Date.now(), userId);

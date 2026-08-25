@@ -177,7 +177,7 @@ export function LoginPage() {
         </form>
 
         <p className="mt-6 text-center text-[11.5px] leading-relaxed text-subtle">
-          This instance is private. Every action is recorded in a tamper-evident audit log.
+          This instance is private. Every action is recorded in a hash-chained audit log.
         </p>
       </div>
     </div>

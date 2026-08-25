@@ -181,6 +181,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeBinPath: config.claude.binPath,
     runTimeoutMs: config.runTimeoutMs,
     env: claudeEnv,
+    directoryPolicy: { workspacesDir: config.workspacesDir, dataDir: config.dataDir },
     log: kernelLog,
   });
 

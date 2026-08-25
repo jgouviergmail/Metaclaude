@@ -231,10 +231,41 @@ export function registerAuthRoutes(app: App, context: AppContext): void {
 
   /* ---------------------------- TOTP --------------------------------- */
 
+  /**
+   * Start enrolling a TOTP device.
+   *
+   * Password-gated and audited, like disabling: re-enrolling replaces the
+   * second factor, so it is the same authority as removing it.
+   */
   app.post('/api/auth/totp/begin', async (request, reply) => {
     const user = request.currentUser as NonNullable<typeof request.currentUser>;
-    const { secret, uri } = context.auth.beginTotpEnrolment(user.id);
-    return reply.send({ secret, uri });
+    const parsed = z.object({ password: z.string().min(1).max(1024) }).safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'Your password is required.');
+
+    const enrolment = await context.auth.beginTotpEnrolment(user.id, parsed.data.password);
+    if (!enrolment) {
+      context.audit.record({
+        actor: user.username,
+        action: 'auth.totp.begin',
+        outcome: 'failure',
+        ipAddress: requestIp(context, request),
+      });
+      throw new HttpError(403, 'That password is incorrect.');
+    }
+
+    context.audit.record({
+      actor: user.username,
+      action: 'auth.totp.begin',
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send(enrolment);
+  });
+
+  /** Abandon an enrolment that was started but never confirmed. */
+  app.post('/api/auth/totp/cancel', async (request, reply) => {
+    const user = request.currentUser as NonNullable<typeof request.currentUser>;
+    context.auth.cancelTotpEnrolment(user.id);
+    return reply.send({ ok: true });
   });
 
   app.post('/api/auth/totp/confirm', async (request, reply) => {

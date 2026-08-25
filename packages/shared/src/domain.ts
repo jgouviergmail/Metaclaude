@@ -594,7 +594,14 @@ export const McpServerRecord = z.object({
   url: z.string().nullable(),
   /** Env var names only; values live in the encrypted vault. */
   envKeys: z.array(z.string()).default([]),
-  headers: z.record(z.string(), z.string()).default({}),
+  /**
+   * Header names only; values live in the encrypted vault alongside the env
+   * secrets. An HTTP MCP server authenticates with `Authorization`, so a header
+   * value is a credential far more often than it is metadata — storing the map
+   * on the row would put a bearer token in plaintext and hand it to anyone who
+   * can read the server list.
+   */
+  headerKeys: z.array(z.string()).default([]),
   enabled: z.boolean(),
   status: z.enum(['unknown', 'connected', 'failed', 'disabled']),
   lastError: z.string().nullable(),

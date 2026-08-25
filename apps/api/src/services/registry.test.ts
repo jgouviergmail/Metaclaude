@@ -216,15 +216,9 @@ describe('skills', () => {
     expect(registry.deleteSkill('skl_nope')).toBe(false);
   });
 
-  /*
-   * BUG (apps/api/src/services/registry.ts:174-183, `upsertSkill` update path):
-   * the UPDATE is not wrapped in the `try/catch` that turns a UNIQUE violation
-   * into a `RegistryError(409)`, so renaming a skill onto a name that already
-   * exists in the same scope escapes as a raw `SqliteError`. The HTTP layer
-   * then answers 500 instead of 409. `upsertAgent` (282-297) and
-   * `upsertMcpServer` (417-436) have exactly the same gap.
-   */
-  it.skip('reports a rename collision as 409, like the insert path does', () => {
+  // Renaming onto a taken name is as much a conflict as creating a duplicate;
+  // it used to escape the update path as a raw driver error and surface as 500.
+  it('reports a rename collision as 409, like the insert path does', () => {
     registry.upsertSkill({ workspaceId: null, name: 'taken', description: 'd', body: 'b' });
     const other = registry.upsertSkill({
       workspaceId: null,
@@ -650,14 +644,18 @@ describe('MCP servers — secret handling', () => {
     expect(vault.listKeys(`mcp:${server.id}`)).toEqual(['B']);
   });
 
-  it('lets a key be removed and re-added in one save', () => {
+  it('resolves a contradictory save — remove and submit the same key — as a removal', () => {
     const server = create({ A: 'secret-a' });
     const saved = resave(server.id, { env: { A: 'fresh' }, removeEnvKeys: ['A'] });
 
-    // The removal filters the key out of `env_keys`, but the submitted value is
-    // still written to the vault, so the two must be read together.
+    // The UI cannot produce this (a removal is derived from keys the draft no
+    // longer has), so it only arrives from a caller that asked for both at
+    // once. Removal wins: the alternative left the value sealed in the vault
+    // under a key that no longer appeared in `env_keys`, which nothing would
+    // ever read and only `deleteMcpServer` would ever clean up.
     expect(saved.envKeys).toEqual([]);
-    expect(vault.get(`mcp:${server.id}`, 'A')).toBe('fresh');
+    expect(vault.get(`mcp:${server.id}`, 'A')).toBeNull();
+    expect(vault.listKeys(`mcp:${server.id}`)).toEqual([]);
   });
 
   it('clears the whole vault scope when the server is deleted', () => {
@@ -688,17 +686,9 @@ describe('MCP servers — secret handling', () => {
     expect(vault.get(`mcp:${first.id}`, 'A')).toBe('secret-a');
   });
 
-  /*
-   * BUG (apps/api/src/services/registry.ts:417-471, `upsertMcpServer`):
-   * when `input.id` names a server that does not exist, the UPDATE matches no
-   * rows, no INSERT is attempted, and the method returns `this.getMcpServer(id)`
-   * — i.e. `null` — cast to `McpServerRecord`. Callers get a `null` typed as a
-   * record. Worse, the submitted secrets are still written to the vault under
-   * `mcp:<unknown id>`, leaving credentials behind that nothing will ever clean
-   * up (`deleteMcpServer` is the only thing that clears a scope, and there is no
-   * row to delete). Skills and agents both raise a 404 in the same situation.
-   */
-  it.skip('throws 404 when updating an MCP server that is not there', () => {
+  // A phantom update must fail *before* the vault is touched: otherwise the
+  // submitted secrets land under `mcp:<unknown id>` with no row to delete them.
+  it('throws 404 when updating an MCP server that is not there', () => {
     expectRegistryError(
       () =>
         registry.upsertMcpServer({
@@ -712,6 +702,144 @@ describe('MCP servers — secret handling', () => {
       404,
     );
     expect(vault.listKeys('mcp:mcp_nope')).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* MCP servers — header secrets                                                */
+/* -------------------------------------------------------------------------- */
+
+describe('MCP servers — header secrets', () => {
+  function create(headers?: Record<string, string>) {
+    return registry.upsertMcpServer({
+      workspaceId: wsA.id,
+      name: 'remote',
+      transport: 'http',
+      url: 'https://mcp.example.test/v1',
+      ...(headers ? { headers } : {}),
+    });
+  }
+
+  function resave(
+    id: string,
+    patch: {
+      headers?: Record<string, string>;
+      removeHeaderKeys?: string[];
+      env?: Record<string, string>;
+      name?: string;
+    } = {},
+  ) {
+    return registry.upsertMcpServer({
+      id,
+      workspaceId: wsA.id,
+      name: patch.name ?? 'remote',
+      transport: 'http',
+      url: 'https://mcp.example.test/v1',
+      ...(patch.headers ? { headers: patch.headers } : {}),
+      ...(patch.removeHeaderKeys ? { removeHeaderKeys: patch.removeHeaderKeys } : {}),
+      ...(patch.env ? { env: patch.env } : {}),
+    });
+  }
+
+  it('seals a header value and never returns it', () => {
+    const server = create({ Authorization: 'Bearer super-secret' });
+
+    expect(server.headerKeys).toEqual(['Authorization']);
+    expect(JSON.stringify(server)).not.toContain('super-secret');
+
+    // Nor is it anywhere on the row.
+    const row = db
+      .prepare<[string], Record<string, unknown>>('SELECT * FROM mcp_servers WHERE id = ?')
+      .get(server.id)!;
+    expect(JSON.stringify(row)).not.toContain('super-secret');
+    expect(row.header_keys).toBe('["Authorization"]');
+  });
+
+  it('delivers the header to a run', () => {
+    create({ Authorization: 'Bearer super-secret', 'X-Tenant': 'acme' });
+    const entry = registry.resolve(wsA).mcpServers.remote as { headers: Record<string, string> };
+    expect(entry.headers).toEqual({
+      Authorization: 'Bearer super-secret',
+      'X-Tenant': 'acme',
+    });
+  });
+
+  it('keeps a stored header when the form submits a blank value', () => {
+    const server = create({ Authorization: 'Bearer super-secret' });
+    const saved = resave(server.id, { headers: { Authorization: '' }, name: 'renamed' });
+
+    // The form cannot round-trip a value it was never shown, so blank means
+    // "leave it alone" — otherwise renaming a server would break its auth.
+    expect(saved.name).toBe('renamed');
+    expect(saved.headerKeys).toEqual(['Authorization']);
+    const entry = registry.resolve(wsA).mcpServers.renamed as { headers: Record<string, string> };
+    expect(entry.headers.Authorization).toBe('Bearer super-secret');
+  });
+
+  it('rotates, merges and removes headers', () => {
+    const server = create({ Authorization: 'Bearer old' });
+
+    const merged = resave(server.id, { headers: { 'X-Tenant': 'acme' } });
+    expect(merged.headerKeys.sort()).toEqual(['Authorization', 'X-Tenant']);
+
+    const rotated = resave(server.id, { headers: { Authorization: 'Bearer new' } });
+    expect(rotated.headerKeys.sort()).toEqual(['Authorization', 'X-Tenant']);
+    const entry = registry.resolve(wsA).mcpServers.remote as { headers: Record<string, string> };
+    expect(entry.headers.Authorization).toBe('Bearer new');
+
+    const trimmed = resave(server.id, { removeHeaderKeys: ['Authorization'] });
+    expect(trimmed.headerKeys).toEqual(['X-Tenant']);
+    expect(vault.get(`mcp:${server.id}`, 'header:Authorization')).toBeNull();
+  });
+
+  it('keeps a header and an env var of the same name apart', () => {
+    const server = create({ TOKEN: 'header-value' });
+    resave(server.id, { env: { TOKEN: 'env-value' } });
+
+    const entry = registry.resolve(wsA).mcpServers.remote as { headers: Record<string, string> };
+    // Both are delivered as headers for an HTTP transport, and env wins by
+    // being merged last — but they are stored in distinct vault slots.
+    expect(vault.get(`mcp:${server.id}`, 'header:TOKEN')).toBe('header-value');
+    expect(vault.get(`mcp:${server.id}`, 'TOKEN')).toBe('env-value');
+    expect(entry.headers.TOKEN).toBe('env-value');
+  });
+
+  it('drops every secret, header slots included, when the server is deleted', () => {
+    const server = create({ Authorization: 'Bearer x' });
+    resave(server.id, { env: { TOKEN: 'y' } });
+    expect(vault.listKeys(`mcp:${server.id}`).sort()).toEqual(['TOKEN', 'header:Authorization']);
+
+    registry.deleteMcpServer(server.id);
+    expect(vault.listKeys(`mcp:${server.id}`)).toEqual([]);
+  });
+
+  it('drains a legacy plaintext headers column into the vault at construction', () => {
+    const server = create();
+    // Simulate a row written before headers were sealed.
+    db.prepare('UPDATE mcp_servers SET headers = ?, header_keys = ? WHERE id = ?').run(
+      JSON.stringify({ Authorization: 'Bearer legacy', 'X-Tenant': 'acme' }),
+      '[]',
+      server.id,
+    );
+
+    const reopened = new Registry(db, vault, () => {
+      /* no-op logger */
+    });
+
+    const migrated = reopened.getMcpServer(server.id)!;
+    expect(migrated.headerKeys.sort()).toEqual(['Authorization', 'X-Tenant']);
+    expect(vault.get(`mcp:${server.id}`, 'header:Authorization')).toBe('Bearer legacy');
+
+    const row = db
+      .prepare<[string], { headers: string }>('SELECT headers FROM mcp_servers WHERE id = ?')
+      .get(server.id)!;
+    expect(row.headers).toBe('{}');
+
+    // Idempotent: a second construction finds nothing left to drain.
+    const again = new Registry(db, vault, () => {
+      /* no-op logger */
+    });
+    expect(again.getMcpServer(server.id)!.headerKeys.sort()).toEqual(['Authorization', 'X-Tenant']);
   });
 });
 
@@ -731,7 +859,9 @@ describe('MCP servers — CRUD', () => {
 
     expect(created.id.startsWith('mcp_')).toBe(true);
     expect(created.transport).toBe('http');
-    expect(created.headers).toEqual({ 'X-Trace': 'on' });
+    // Header *names* only — the values are sealed, like the env secrets.
+    expect(created.headerKeys).toEqual(['X-Trace']);
+    expect(vault.get(`mcp:${created.id}`, 'header:X-Trace')).toBe('on');
     expect(created.args).toEqual([]);
     expect(created.command).toBeNull();
     expect(created.status).toBe('unknown');

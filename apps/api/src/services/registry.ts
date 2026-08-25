@@ -74,7 +74,9 @@ interface McpRow {
   args: string;
   url: string | null;
   env_keys: string;
+  /** Legacy plaintext name→value map, drained into the vault at construction. */
   headers: string;
+  header_keys: string;
   enabled: number;
   status: string;
   last_error: string | null;
@@ -117,7 +119,7 @@ const toMcp = (row: McpRow): McpServerRecord => ({
   args: parseJson<string[]>(row.args, []),
   url: row.url,
   envKeys: parseJson<string[]>(row.env_keys, []),
-  headers: parseJson<Record<string, string>>(row.headers, {}),
+  headerKeys: parseJson<string[]>(row.header_keys, []),
   enabled: toBool(row.enabled),
   status: row.status as McpServerRecord['status'],
   lastError: row.last_error,
@@ -148,12 +150,74 @@ function withConflict<T>(entity: 'A skill' | 'An agent' | 'An MCP server', name:
   }
 }
 
+/**
+ * Vault slot for an MCP header value.
+ *
+ * Headers and env vars share one scope (`mcp:<id>`), so header names are
+ * prefixed to keep `Authorization` as a header distinct from a hypothetical
+ * `Authorization` env var.
+ */
+const headerSlot = (name: string): string => `header:${name}`;
+
+/**
+ * Merge submitted secret values over the ones already stored.
+ *
+ * The API never returns a secret value, so an edit form cannot round-trip one:
+ * blank submissions mean "keep what is stored", not "clear it". Removal is
+ * therefore explicit. Returns the resulting key list plus the writes to apply.
+ */
+function mergeSecrets(
+  existingKeys: readonly string[],
+  submittedValues: Record<string, string> | undefined,
+  removeKeys: readonly string[] | undefined,
+): { keys: string[]; submitted: [string, string][]; removed: string[] } {
+  const removed = new Set(removeKeys ?? []);
+  const submitted = Object.entries(submittedValues ?? {}).filter(([, value]) => value.length > 0);
+  const keys = [...new Set([...existingKeys, ...submitted.map(([key]) => key)])].filter(
+    (key) => !removed.has(key),
+  );
+  return { keys, submitted: submitted.filter(([key]) => !removed.has(key)), removed: [...removed] };
+}
+
 export class Registry {
   constructor(
     private readonly db: Db,
     private readonly vault: Vault,
     private readonly log: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void,
-  ) {}
+  ) {
+    this.drainLegacyHeaders();
+  }
+
+  /**
+   * Move any header values still stored in plaintext into the vault.
+   *
+   * Migrations run before the vault exists, so the column could not be drained
+   * there. Running it here makes the upgrade lossless: the values are sealed,
+   * the names move to `header_keys`, and the plaintext column is emptied. It is
+   * a no-op on every boot after the first.
+   */
+  private drainLegacyHeaders(): void {
+    const rows = this.db
+      .prepare<[], { id: string; headers: string }>(
+        `SELECT id, headers FROM mcp_servers WHERE headers IS NOT NULL AND headers NOT IN ('', '{}')`,
+      )
+      .all();
+    if (rows.length === 0) return;
+
+    const clear = this.db.prepare(
+      "UPDATE mcp_servers SET header_keys = ?, headers = '{}' WHERE id = ?",
+    );
+
+    for (const row of rows) {
+      const legacy = parseJson<Record<string, string>>(row.headers, {});
+      const names = Object.keys(legacy);
+      for (const name of names) {
+        this.vault.set(`mcp:${row.id}`, headerSlot(name), legacy[name] as string);
+      }
+      clear.run(JSON.stringify(names), row.id);
+    }
+    this.log('info', `sealed MCP headers for ${rows.length} server(s) into the vault`);
+  }
 
   /* ----------------------------- Skills -------------------------------- */
 
@@ -389,7 +453,10 @@ export class Registry {
     env?: Record<string, string>;
     /** Secret keys to delete outright. */
     removeEnvKeys?: string[];
+    /** Header values, merged and sealed on exactly the same terms as `env`. */
     headers?: Record<string, string>;
+    /** Header names to delete outright. */
+    removeHeaderKeys?: string[];
     enabled?: boolean;
   }): McpServerRecord {
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(input.name)) {
@@ -427,13 +494,8 @@ export class Registry {
     // Merge the submitted secret keys over the existing ones, minus any the
     // caller explicitly asked to remove. Blank values are ignored so a form
     // that shows empty secret fields (as it must) keeps what is stored.
-    const existingKeys = existing?.envKeys ?? [];
-    const removed = new Set(input.removeEnvKeys ?? []);
-    const submitted = Object.entries(input.env ?? {}).filter(([, value]) => value.length > 0);
-
-    const envKeys = [
-      ...new Set([...existingKeys, ...submitted.map(([key]) => key)]),
-    ].filter((key) => !removed.has(key));
+    const env = mergeSecrets(existing?.envKeys ?? [], input.env, input.removeEnvKeys);
+    const headers = mergeSecrets(existing?.headerKeys ?? [], input.headers, input.removeHeaderKeys);
 
     // The row is written first, so a rejected write (a rename onto a name
     // already taken) leaves the stored credentials exactly as they were.
@@ -442,7 +504,8 @@ export class Registry {
         this.db
           .prepare(
             `UPDATE mcp_servers SET
-               name = ?, transport = ?, command = ?, args = ?, url = ?, env_keys = ?, headers = ?,
+               name = ?, transport = ?, command = ?, args = ?, url = ?,
+               env_keys = ?, header_keys = ?, headers = '{}',
                enabled = ?, status = 'unknown', last_error = NULL, updated_at = ?
              WHERE id = ?`,
           )
@@ -452,8 +515,8 @@ export class Registry {
             input.command ?? null,
             JSON.stringify(input.args ?? []),
             input.url ?? null,
-            JSON.stringify(envKeys),
-            JSON.stringify(input.headers ?? {}),
+            JSON.stringify(env.keys),
+            JSON.stringify(headers.keys),
             toInt(input.enabled ?? true),
             now,
             input.id,
@@ -464,7 +527,8 @@ export class Registry {
         this.db
           .prepare(
             `INSERT INTO mcp_servers
-               (id, workspace_id, name, transport, command, args, url, env_keys, headers, enabled, created_at, updated_at)
+               (id, workspace_id, name, transport, command, args, url, env_keys, header_keys,
+                enabled, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
@@ -475,8 +539,8 @@ export class Registry {
             input.command ?? null,
             JSON.stringify(input.args ?? []),
             input.url ?? null,
-            JSON.stringify(envKeys),
-            JSON.stringify(input.headers ?? {}),
+            JSON.stringify(env.keys),
+            JSON.stringify(headers.keys),
             toInt(input.enabled ?? true),
             now,
             now,
@@ -484,9 +548,12 @@ export class Registry {
       );
     }
 
-    for (const key of removed) this.vault.delete(`mcp:${id}`, key);
-    for (const [key, value] of submitted) {
-      this.vault.set(`mcp:${id}`, key, value);
+    for (const key of env.removed) this.vault.delete(`mcp:${id}`, key);
+    for (const [key, value] of env.submitted) this.vault.set(`mcp:${id}`, key, value);
+
+    for (const key of headers.removed) this.vault.delete(`mcp:${id}`, headerSlot(key));
+    for (const [key, value] of headers.submitted) {
+      this.vault.set(`mcp:${id}`, headerSlot(key), value);
     }
 
     return this.getMcpServer(id) as McpServerRecord;
@@ -527,11 +594,21 @@ export class Registry {
           };
         } else {
           if (!server.url) continue;
+          // Env secrets are still merged in for an HTTP server: it has no
+          // subprocess environment, so the env field is the natural place an
+          // operator puts a token, and dropping it here would silently break
+          // servers configured that way.
+          const sealedHeaders = this.vault.resolveEnv(
+            `mcp:${server.id}`,
+            server.headerKeys.map(headerSlot),
+          );
           mcpServers[server.name] = {
             type: server.transport,
             url: server.url,
             headers: {
-              ...server.headers,
+              ...Object.fromEntries(
+                server.headerKeys.map((name) => [name, sealedHeaders[headerSlot(name)] ?? '']),
+              ),
               ...this.vault.resolveEnv(`mcp:${server.id}`, server.envKeys),
             },
           };

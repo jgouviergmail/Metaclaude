@@ -862,8 +862,19 @@ function McpTab({
   });
 
   const save = useMutation({
-    mutationFn: (draft: McpDraft) =>
-      api.saveMcpServer({
+    mutationFn: (draft: McpDraft) => {
+      // Blank values mean "keep what is stored", so deleting a row has to be
+      // reported explicitly — otherwise a removed key would look like an
+      // untouched one and survive the save.
+      const original = draft.id
+        ? (query.data?.servers ?? []).find((server) => server.id === draft.id)
+        : undefined;
+      const dropped = (before: string[], after: Pair[]) => {
+        const kept = new Set(after.map((pair) => pair.key.trim()).filter(Boolean));
+        return before.filter((key) => !kept.has(key));
+      };
+
+      return api.saveMcpServer({
         ...(draft.id ? { id: draft.id } : {}),
         workspaceId: workspaceId ?? null,
         name: draft.name.trim(),
@@ -872,9 +883,12 @@ function McpTab({
         args: draft.transport === 'stdio' ? parseArgs(draft.args) : [],
         url: draft.transport === 'stdio' ? null : draft.url.trim(),
         env: pairsToRecord(draft.env),
+        removeEnvKeys: dropped(original?.envKeys ?? [], draft.env),
         headers: pairsToRecord(draft.headers),
+        removeHeaderKeys: dropped(original?.headerKeys ?? [], draft.headers),
         enabled: draft.enabled,
-      }),
+      });
+    },
     onSuccess: (result) => {
       onChanged();
       setEditing(null);
@@ -1044,7 +1058,7 @@ function draftFromServer(server: McpServerRecord): McpDraft {
     args: server.args.join(' '),
     url: server.url ?? '',
     env: server.envKeys.map((key) => ({ key, value: '' })),
-    headers: Object.entries(server.headers).map(([key, value]) => ({ key, value })),
+    headers: server.headerKeys.map((key) => ({ key, value: '' })),
     enabled: server.enabled,
   };
 }
@@ -1204,8 +1218,8 @@ function McpEditor({
                 existing server — the value cannot be shown, not even to you.
               </p>
               <p className="text-muted">
-                Saving replaces this server's whole secret set, so re-enter the value for any key you
-                want to keep. A key left blank is dropped.
+                A value left blank keeps whatever is stored, so you only re-enter the ones you want
+                to change. Delete a row to remove that key and its value for good.
               </p>
             </div>
           </div>
@@ -1219,17 +1233,18 @@ function McpEditor({
             pairs={value.env}
             onChange={(env) => setValue({ ...value, env })}
           />
-        </div>
 
-        <PairEditor
-          idPrefix="mcp-headers"
-          legend="Headers"
-          hint="Sent with every request. Not secret — these are stored and displayed in the clear."
-          keyPlaceholder="X-Tenant"
-          valuePlaceholder="acme"
-          pairs={value.headers}
-          onChange={(headers) => setValue({ ...value, headers })}
-        />
+          <PairEditor
+            idPrefix="mcp-headers"
+            legend="Headers"
+            hint="Sent with every request. Sealed like the secrets above — an HTTP server usually authenticates with one."
+            keyPlaceholder="Authorization"
+            valuePlaceholder="Bearer …"
+            secret
+            pairs={value.headers}
+            onChange={(headers) => setValue({ ...value, headers })}
+          />
+        </div>
 
         <CheckboxRow
           checked={value.enabled}

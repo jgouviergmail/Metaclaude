@@ -66,7 +66,16 @@ export async function buildServer(context: AppContext): Promise<App> {
 
   const app = Fastify({
     loggerInstance: context.log,
-    trustProxy: context.config.trustProxy,
+    // One hop, not `true`. `trustProxy: true` trusts the whole
+    // `x-forwarded-for` chain and resolves `request.ip` to its *leftmost*
+    // entry — which is whatever the client sent, since each proxy appends
+    // rather than replaces. That makes `request.ip` attacker-controlled, and
+    // with it the rate-limit bucket and every audit record.
+    //
+    // `proxy-addr` walks outwards from the socket, so hop 0 is the immediate
+    // peer: trusting only hop 0 stops at the address our own proxy appended.
+    // That is exactly one trusted hop — the bundled Caddy on a private network.
+    trustProxy: context.config.trustProxy ? (_address: string, hop: number) => hop === 0 : false,
     // Transcripts and file writes are the large payloads here.
     bodyLimit: 8 * 1024 * 1024,
     // Reject a request whose id header we did not generate.
@@ -88,7 +97,11 @@ export async function buildServer(context: AppContext): Promise<App> {
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'blob:'],
         fontSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'", 'ws:', 'wss:'],
+        // `'self'` covers same-origin `ws:`/`wss:` under CSP Level 3, which is
+        // the only socket the app opens. Listing the bare `ws:`/`wss:` schemes
+        // instead would authorise a connection to *any* host — an exfiltration
+        // channel for anything that ever manages to run script here.
+        connectSrc: ["'self'"],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],

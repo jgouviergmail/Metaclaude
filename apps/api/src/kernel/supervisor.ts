@@ -22,6 +22,8 @@ import type {
 } from '@metaclaude/shared';
 import { MAX_TOOL_RESULT_CHARS, newId } from '@metaclaude/shared';
 import { createHash } from 'node:crypto';
+import type { DirectoryPolicy } from '../security/directories.js';
+import { reviewAdditionalDirectories } from '../security/directories.js';
 import type { PermissionBroker } from './permissions.js';
 
 /* -------------------------------------------------------------------------- */
@@ -77,6 +79,8 @@ export interface SupervisorDeps {
   runTimeoutMs: number;
   /** Extra environment handed to the CLI subprocess (auth token lives here). */
   env: Record<string, string>;
+  /** Bounds on what `additionalDirectories` may grant. */
+  directoryPolicy: DirectoryPolicy;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }
 
@@ -205,8 +209,19 @@ export class AgentSupervisor {
     if (settings.maxBudgetUsd !== null) options.maxBudgetUsd = settings.maxBudgetUsd;
     if (settings.allowedTools.length > 0) options.allowedTools = settings.allowedTools;
     if (settings.disallowedTools.length > 0) options.disallowedTools = settings.disallowedTools;
+    // Re-checked here, not just where the setting is saved: this is the call
+    // that actually widens the agent's filesystem scope, and a row written
+    // before the rule existed (or by any future path into the settings) must
+    // not slip through. Invalid entries are dropped, never fatal.
     if (settings.additionalDirectories.length > 0) {
-      options.additionalDirectories = settings.additionalDirectories;
+      const review = reviewAdditionalDirectories(
+        settings.additionalDirectories,
+        this.deps.directoryPolicy,
+      );
+      for (const { path, reason } of review.rejected) {
+        this.deps.log('warn', `refusing additional directory "${path}": it ${reason}`);
+      }
+      if (review.allowed.length > 0) options.additionalDirectories = review.allowed;
     }
     if (settings.checkpointing) options.enableFileCheckpointing = true;
 
