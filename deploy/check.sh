@@ -127,6 +127,11 @@ if docker compose version >/dev/null 2>&1; then
   sed -n '/^env_quote() {/,/^}/p; /^set_env() {/,/^}/p' "$REPO_ROOT/deploy/bootstrap.sh" > "$WORK/funcs.sh"
   if [ "$(grep -c '^}' "$WORK/funcs.sh")" -ne 2 ]; then
     bad "extracting env_quote/set_env from bootstrap.sh" "the definitions moved; this check needs updating"
+  elif ! grep -q 'set_env METACLAUDE_IMAGE' "$REPO_ROOT/deploy/bootstrap.sh"; then
+    # compose defaults to `metaclaude:latest`, which exists nowhere. Left unset,
+    # bootstrap provisions the host, arms the firewall, and only then fails at
+    # `up` with `pull access denied`.
+    bad "bootstrap.sh never sets METACLAUDE_IMAGE" "the stack would start with an image that does not exist"
   else
     cat > "$WORK/drive.sh" <<'DRIVE'
 set -euo pipefail

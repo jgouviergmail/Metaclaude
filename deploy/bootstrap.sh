@@ -23,6 +23,7 @@ DEPLOY_KEY=""
 MODE="public"
 SITE=""
 TLS_EMAIL=""
+IMAGE=""
 APP_DIR="/opt/metaclaude"
 EXTRA=()
 
@@ -52,6 +53,9 @@ Options:
                       must then be taught to trust. Defaults to this host's IP.
   --email ADDR        Required with a hostname: where Let's Encrypt sends expiry
                       warnings. Never shown to visitors.
+  --image REF         Container image to run. Defaults to the GHCR image CI
+                      built for this checkout's commit, so what runs is the code
+                      you are standing on.
   --app-dir PATH      Default /opt/metaclaude.
   -h, --help
 USAGE
@@ -64,6 +68,7 @@ while [ $# -gt 0 ]; do
     --mode)       MODE="${2:-}"; shift 2 ;;
     --site)       SITE="${2:-}"; shift 2 ;;
     --email)      TLS_EMAIL="${2:-}"; shift 2 ;;
+    --image)      IMAGE="${2:-}"; shift 2 ;;
     --app-dir)    APP_DIR="${2:-}"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *)            usage; die "unknown argument: $1" ;;
@@ -220,6 +225,55 @@ fi
 
 chmod 0640 "$ENV_FILE"
 info "wrote $ENV_FILE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Which image, and how this host is allowed to pull it
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# compose.yml defaults METACLAUDE_IMAGE to `metaclaude:latest`, which exists
+# nowhere. Nothing set it and nothing logged in to the registry, so `up` failed
+# with `pull access denied` — after provisioning, with the firewall already
+# armed and the operator's shell already closed.
+#
+# The tag is this checkout's own commit. CI publishes `sha-<commit>` for every
+# push, so deploying the commit you are standing on is the one choice that
+# cannot silently run different code from the one you just read.
+if [ -z "$IMAGE" ]; then
+  REMOTE="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || echo '')"
+  SLUG="$(printf '%s' "$REMOTE" | sed -E 's#^.*github\.com[:/]##; s#\.git$##' | tr '[:upper:]' '[:lower:]')"
+  COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo '')"
+  if [ -n "$SLUG" ] && [ -n "$COMMIT" ]; then
+    IMAGE="ghcr.io/${SLUG}:sha-${COMMIT}"
+  else
+    die "could not derive the image from this checkout; pass --image"
+  fi
+fi
+info "image: $IMAGE"
+
+case "$IMAGE" in
+  ghcr.io/*)
+    # A package attached to a private repository is private too, so an
+    # anonymous pull gets denied. Try first — if the owner has made the package
+    # public there is nothing to ask for.
+    if ! docker pull "$IMAGE" >/dev/null 2>&1; then
+      printf '\n  %sGitHub token, to pull the image.%s The package is private because the\n' "$BOLD" "$OFF"
+      printf '  repository is. A fine-grained token with %sread:packages%s is enough — the\n' "$BOLD" "$OFF"
+      printf '  same one you used to clone works if it has that scope.\n\n'
+      printf '  Paste it and press Enter. Nothing will echo.\n\n  token: '
+      IFS= read -rs GH_TOKEN
+      printf '\n'
+      [ -n "$GH_TOKEN" ] || die "no token, and the image cannot be pulled without one"
+      printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${SLUG%%/*}" --password-stdin \
+        || die "GHCR rejected that token"
+      unset GH_TOKEN
+      docker pull "$IMAGE" \
+        || die "logged in, but $IMAGE is not there. Has CI finished building this commit?"
+    fi
+    info "image pulled"
+    ;;
+esac
+
+set_env METACLAUDE_IMAGE "$IMAGE"
 
 # ─────────────────────────────────────────────────────────────────────────────
 step "4/5  Starting"
