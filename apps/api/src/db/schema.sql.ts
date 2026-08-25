@@ -326,4 +326,17 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: 'incremental_memory_decay',
+    sql: /* sql */ `
+      -- When the forgetting curve was last applied to this row.
+      --
+      -- Decay must be measured from the previous sweep, not from the last use:
+      -- the janitor runs every six hours, so applying a factor derived from
+      -- total idle time to an already-decayed value compounds quadratically and
+      -- collects memories roughly eight times too early.
+      ALTER TABLE memories ADD COLUMN last_decayed_at INTEGER;
+    `,
+  },
 ];

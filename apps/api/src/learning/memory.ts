@@ -36,6 +36,7 @@ interface MemoryRow {
   created_at: number;
   updated_at: number;
   last_used_at: number | null;
+  last_decayed_at: number | null;
 }
 
 function toMemory(row: MemoryRow): Memory {
@@ -63,12 +64,41 @@ export interface RetrievalOptions {
   limit?: number;
   /** Fused scores below this are discarded rather than padded into the result. */
   minScore?: number;
+  /**
+   * Absolute cosine floor for the dense arm. Overrides the relative gate, for
+   * callers that know their embedder's scale.
+   */
+  minSimilarity?: number;
   /** Candidate pool size per retrieval arm before fusion. */
   candidatePool?: number;
 }
 
 /** Near-duplicate threshold. Above this cosine, two memories say the same thing. */
 export const DUPLICATE_THRESHOLD = 0.92;
+
+/**
+ * Relevance gate for the dense arm.
+ *
+ * Without a gate the dense arm contributes *every* embedded memory, sorted, and
+ * fusion gives them all a positive score — so on a small corpus the caller's
+ * `limit` is filled with whatever exists rather than with what is relevant.
+ * Eight unrelated memories in every system prompt is worse than none: it wastes
+ * context, and because `recordUsage` credits everything it injected, it feeds
+ * noise straight back into reinforcement.
+ *
+ * The gate is **relative to the best match**, not an absolute cosine, because
+ * the embedding provider is pluggable and the two providers do not share a
+ * scale. Measured on this corpus: the hashing embedder puts genuine matches at
+ * 0.09–0.39 and noise at up to 0.24 — overlapping ranges, so no fixed threshold
+ * separates them — while a sentence-transformer runs far higher and would have
+ * a fixed threshold admitting everything. "At least half as similar as the best
+ * hit" holds under both.
+ *
+ * `MIN_ABSOLUTE_SIMILARITY` then discards the degenerate case where even the
+ * best match is essentially orthogonal.
+ */
+export const RELATIVE_SIMILARITY_FLOOR = 0.5;
+export const MIN_ABSOLUTE_SIMILARITY = 0.05;
 
 /**
  * Confidence floor below which a memory stops being retrieved and becomes
@@ -112,16 +142,34 @@ export class MemoryStore {
       const confidence = Math.min(0.99, duplicate.confidence + 0.08);
       const mergedTags = [...new Set([...duplicate.tags, ...(input.tags ?? [])])].slice(0, 24);
 
+      // Keep the longer body: it is usually the more specific of the two.
+      const content =
+        input.content.length > duplicate.content.length ? input.content : duplicate.content;
+
+      // Re-embed when the stored text actually changes, or the vector would go
+      // on indexing text the row no longer contains.
+      const merged =
+        content === duplicate.content
+          ? null
+          : await this.embedder.embed(`${duplicate.title}\n\n${content}`);
+
       this.db
         .prepare(
-          `UPDATE memories SET content = ?, tags = ?, confidence = ?, updated_at = ? WHERE id = ?`,
+          `UPDATE memories SET
+             content = ?, tags = ?, confidence = ?, updated_at = ?,
+             embedding = COALESCE(?, embedding),
+             embedding_dim = COALESCE(?, embedding_dim),
+             embedding_model = COALESCE(?, embedding_model)
+           WHERE id = ?`,
         )
         .run(
-          // Keep the longer body: it is usually the more specific of the two.
-          input.content.length > duplicate.content.length ? input.content : duplicate.content,
+          content,
           JSON.stringify(mergedTags),
           confidence,
           Date.now(),
+          merged ? packEmbedding(merged) : null,
+          merged ? merged.length : null,
+          merged ? this.embedder.id : null,
           duplicate.id,
         );
       return { memory: this.get(duplicate.id) as Memory, merged: true };
@@ -220,16 +268,22 @@ export class MemoryStore {
     const queryVector = await this.embedder.embed(queryText);
 
     /* --- Arm 1: dense similarity ---------------------------------------- */
-    const dense: Array<{ id: string; score: number }> = [];
+    const scoredAll: Array<{ id: string; score: number }> = [];
     for (const row of rows) {
       const vector = unpackEmbedding(row.embedding);
       // Vectors written by a different provider are not comparable; they are
       // skipped here and rebuilt by `reindex`.
       if (!vector || row.embedding_model !== this.embedder.id) continue;
-      dense.push({ id: row.id, score: cosineSimilarity(queryVector, vector) });
+      scoredAll.push({ id: row.id, score: cosineSimilarity(queryVector, vector) });
     }
-    dense.sort((a, b) => b.score - a.score);
-    const denseTop = dense.slice(0, pool);
+    scoredAll.sort((a, b) => b.score - a.score);
+
+    const best = scoredAll[0]?.score ?? 0;
+    const floor = Math.max(
+      options.minSimilarity ?? best * RELATIVE_SIMILARITY_FLOOR,
+      MIN_ABSOLUTE_SIMILARITY,
+    );
+    const denseTop = scoredAll.filter((entry) => entry.score >= floor).slice(0, pool);
 
     /* --- Arm 2: lexical (BM25 via FTS5) --------------------------------- */
     const lexical = this.lexicalSearch(queryText, options, pool);
@@ -362,9 +416,19 @@ export class MemoryStore {
   /* Reinforcement                                                           */
   /* ---------------------------------------------------------------------- */
 
-  /** Record which memories were injected into a run, for later crediting. */
+  /**
+   * Record which memories were injected into a run, for later crediting.
+   *
+   * The stored score is **rank-normalised within this retrieval**, not the raw
+   * fused score. Fused RRF values live in a narrow band around 0.03, so using
+   * them directly made the attribution term in `reinforce` clamp to its floor
+   * every time — the top hit and a marginal one were credited identically, and
+   * the effective learning rate was five times smaller than intended.
+   */
   recordUsage(runId: string, results: MemorySearchResult[]): void {
     if (results.length === 0) return;
+    const best = Math.max(...results.map((result) => result.score), Number.EPSILON);
+
     tx(this.db, () => {
       const link = this.db.prepare(
         'INSERT OR REPLACE INTO memory_usages (run_id, memory_id, score) VALUES (?, ?, ?)',
@@ -374,7 +438,7 @@ export class MemoryStore {
       );
       const now = Date.now();
       for (const result of results) {
-        link.run(runId, result.memory.id, result.score);
+        link.run(runId, result.memory.id, Math.min(1, result.score / best));
         touch.run(now, result.memory.id);
       }
     });
@@ -387,7 +451,7 @@ export class MemoryStore {
    * is stable under noise: a single bad run cannot destroy a memory that has
    * been right fifty times, and a single good run cannot canonise a guess.
    */
-  reinforce(runId: string, reward: number): void {
+  reinforce(runId: string, reward: number, previousReward: number | null = null): void {
     const usages = this.db
       .prepare<[string], { memory_id: string; score: number }>(
         'SELECT memory_id, score FROM memory_usages WHERE run_id = ?',
@@ -407,14 +471,22 @@ export class MemoryStore {
         if (!row || toBool(row.pinned)) continue;
 
         // Attribute proportionally to how strongly the memory was retrieved:
-        // a marginal hit should not be blamed for the whole run.
-        const attribution = Math.min(1, Math.max(0.2, usage.score * 4));
+        // a marginal hit should not be blamed for the whole run. `score` is
+        // rank-normalised to [0,1] by `recordUsage`, with a floor so even the
+        // weakest retrieved memory moves a little.
+        const attribution = Math.min(1, Math.max(0.25, usage.score));
         const learningRate = 0.12 * attribution;
         const confidence = clamp01(row.confidence + learningRate * (reward - row.confidence));
 
+        // A re-rating supersedes the previous observation rather than adding to
+        // it; only the change in success-count needs undoing.
+        const successDelta =
+          (reward >= 0.6 ? 1 : 0) -
+          (previousReward !== null && previousReward >= 0.6 ? 1 : 0);
+
         update.run(
           confidence,
-          row.success_count + (reward >= 0.6 ? 1 : 0),
+          Math.max(0, row.success_count + successDelta),
           now,
           usage.memory_id,
         );
@@ -431,27 +503,51 @@ export class MemoryStore {
    *
    * This is a forgetting curve, not a cliff: something genuinely useful is
    * retrieved often enough that reinforcement outpaces decay, while a one-off
-   * observation fades below the retrieval floor within a few months.
+   * observation fades below the retrieval floor over a few months.
+   *
+   * The decay is **incremental**, measured from the last time this ran rather
+   * than from the last use. That distinction is the whole correctness of the
+   * function: the janitor calls it every six hours, so applying a factor
+   * derived from *total* idle time to an *already-decayed* value compounds
+   * quadratically. A memory intended to reach the 0.15 floor after ~200 idle
+   * days reached it after ~25 — and since a sub-floor memory is excluded from
+   * retrieval, it could never be used again, so `collect()` then deleted it
+   * permanently. That is silent, unrecoverable loss of exactly the data this
+   * subsystem exists to accumulate.
    */
   decay(options: { halfLifeDays?: number; now?: number } = {}): number {
     const halfLife = options.halfLifeDays ?? 90;
     const now = options.now ?? Date.now();
+    /** Idle grace period: nothing decays until it has been unused this long. */
+    const graceDays = halfLife / 4;
 
-    const rows = this.db
-      .prepare<[], MemoryRow>('SELECT * FROM memories WHERE pinned = 0')
-      .all();
+    const rows = this.db.prepare<[], MemoryRow>('SELECT * FROM memories WHERE pinned = 0').all();
 
     let updated = 0;
     tx(this.db, () => {
-      const update = this.db.prepare('UPDATE memories SET confidence = ? WHERE id = ?');
-      for (const row of rows) {
-        const reference = row.last_used_at ?? row.created_at;
-        const idleDays = (now - reference) / 86_400_000;
-        if (idleDays <= halfLife / 4) continue;
+      const update = this.db.prepare(
+        'UPDATE memories SET confidence = ?, last_decayed_at = ? WHERE id = ?',
+      );
 
-        const decayed = row.confidence * 0.5 ** (idleDays / halfLife);
-        if (Math.abs(decayed - row.confidence) < 0.001) continue;
-        update.run(decayed, row.id);
+      for (const row of rows) {
+        const lastUse = row.last_used_at ?? row.created_at;
+        const idleDays = (now - lastUse) / 86_400_000;
+        if (idleDays <= graceDays) continue;
+
+        // Decay only the interval not yet accounted for. On the first sweep
+        // that is the whole idle period (so the closed form
+        // `0.5^(idleDays / halfLife)` still holds exactly); afterwards it is
+        // just the time since the last sweep. The grace period only delays when
+        // decay starts being applied — it does not move the origin, or a
+        // memory idle for one half-life would end up above half.
+        const since = Math.max(row.last_decayed_at ?? lastUse, lastUse);
+        const elapsedDays = (now - since) / 86_400_000;
+        if (elapsedDays <= 0) continue;
+
+        const decayed = row.confidence * 0.5 ** (elapsedDays / halfLife);
+        if (Math.abs(decayed - row.confidence) < 0.0005) continue;
+
+        update.run(decayed, now, row.id);
         updated += 1;
       }
     });
@@ -544,14 +640,28 @@ export class MemoryStore {
       .map(toMemory);
   }
 
+  /**
+   * Count in the same scope `list` uses: a workspace id means that workspace
+   * *plus* globals. Counting with an exact match while listing with the union
+   * made the Memory page render more rows than the total beside them.
+   */
   count(workspaceId?: string | null): number {
     if (workspaceId === undefined) {
       return this.db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM memories').get()?.n ?? 0;
     }
+    if (workspaceId === null) {
+      return (
+        this.db
+          .prepare<[], { n: number }>(
+            'SELECT COUNT(*) AS n FROM memories WHERE workspace_id IS NULL',
+          )
+          .get()?.n ?? 0
+      );
+    }
     return (
       this.db
-        .prepare<[string | null], { n: number }>(
-          'SELECT COUNT(*) AS n FROM memories WHERE workspace_id IS ?',
+        .prepare<[string], { n: number }>(
+          'SELECT COUNT(*) AS n FROM memories WHERE workspace_id = ? OR workspace_id IS NULL',
         )
         .get(workspaceId)?.n ?? 0
     );
@@ -565,11 +675,18 @@ export class MemoryStore {
               'SELECT kind, COUNT(*) AS n FROM memories GROUP BY kind',
             )
             .all()
-        : this.db
-            .prepare<[string | null], { kind: string; n: number }>(
-              'SELECT kind, COUNT(*) AS n FROM memories WHERE workspace_id IS ? GROUP BY kind',
-            )
-            .all(workspaceId);
+        : workspaceId === null
+          ? this.db
+              .prepare<[], { kind: string; n: number }>(
+                'SELECT kind, COUNT(*) AS n FROM memories WHERE workspace_id IS NULL GROUP BY kind',
+              )
+              .all()
+          : this.db
+              .prepare<[string], { kind: string; n: number }>(
+                `SELECT kind, COUNT(*) AS n FROM memories
+                 WHERE workspace_id = ? OR workspace_id IS NULL GROUP BY kind`,
+              )
+              .all(workspaceId);
 
     const result: Record<MemoryKind, number> = { episodic: 0, semantic: 0, procedural: 0 };
     for (const row of rows) {

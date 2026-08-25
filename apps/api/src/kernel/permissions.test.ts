@@ -249,16 +249,64 @@ describe('PermissionBroker', () => {
     expect(resolved).toHaveLength(1);
   });
 
-  it('remembers an approval for the rest of the session', async () => {
-    const first = ask();
+  it('remembers an approval for equivalent later calls in the session', async () => {
+    const first = ask({ toolInput: { command: 'ls -la' } });
     broker.resolve(requested[0]!.id, true, true);
     await expect(first).resolves.toEqual({ behavior: 'allow' });
 
-    // The next identical call resolves immediately, with no new prompt.
-    const second = ask({ toolInput: { command: 'a totally different command' } });
+    // The same command resolves immediately, with no new prompt.
+    const second = ask({ toolInput: { command: 'ls -la src' } });
     await expect(second).resolves.toEqual({ behavior: 'allow' });
     expect(requested).toHaveLength(1);
     expect(resolved).toHaveLength(1);
+  });
+
+  it('does NOT extend a remembered grant to a different command', async () => {
+    // The grant must cover what the operator actually saw. Keyed on the bare
+    // tool name, approving `ls` once would silently authorise every later
+    // `Bash` in the session — including a destructive one that would otherwise
+    // have raised a high-risk prompt.
+    const first = ask({ toolInput: { command: 'ls -la' } });
+    broker.resolve(requested[0]!.id, true, true);
+    await expect(first).resolves.toEqual({ behavior: 'allow' });
+
+    const second = ask({ toolInput: { command: 'rm -rf /important' } });
+    expect(requested).toHaveLength(2);
+
+    broker.resolve(requested[1]!.id, false, false);
+    await expect(second).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  it('refuses to remember a high-risk approval even when asked to', async () => {
+    // The UI withholds the checkbox for high-risk prompts, but that is a
+    // client-side courtesy; a hand-crafted request must not route around it.
+    const first = ask({ toolInput: { command: 'rm -rf ./build' } });
+    expect(requested[0]!.risk).toBe('high');
+
+    broker.resolve(requested[0]!.id, true, true);
+    await expect(first).resolves.toEqual({ behavior: 'allow' });
+
+    const second = ask({ toolInput: { command: 'rm -rf ./build' } });
+    expect(requested).toHaveLength(2);
+    broker.resolve(requested[1]!.id, false, false);
+    await expect(second).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  it('reports when a remembered grant auto-approves a call', async () => {
+    const grants: string[] = [];
+    broker = new PermissionBroker({
+      onRequest: (request) => requested.push(request),
+      onResolved: (approvalId, approved) => resolved.push({ id: approvalId, approved }),
+      onGrantUsed: (info) => grants.push(info.toolName),
+    });
+
+    const first = ask({ toolInput: { command: 'ls -la' } });
+    broker.resolve(requested[0]!.id, true, true);
+    await first;
+
+    await ask({ toolInput: { command: 'ls -la docs' } });
+    // A grant that silently authorises tool calls is a grant nobody can audit.
+    expect(grants).toEqual(['Bash']);
   });
 
   it('remembers a denial too, and explains that retrying is pointless', async () => {

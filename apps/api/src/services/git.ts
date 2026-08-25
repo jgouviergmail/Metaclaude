@@ -33,13 +33,45 @@ const GIT_ENV = {
   // Colour codes and pager output would corrupt the parsers below.
   GIT_PAGER: 'cat',
   GIT_CONFIG_NOSYSTEM: '1',
+  // The container's own home directory is not the operator's; nothing there
+  // should influence how the agent's repositories are read.
+  GIT_CONFIG_GLOBAL: '/dev/null',
 } as const;
+
+/**
+ * Config overrides applied to every invocation.
+ *
+ * `GIT_CONFIG_NOSYSTEM` and `GIT_CONFIG_GLOBAL` cover the system and user files,
+ * but not the **repository-local** `.git/config` — and several git settings name
+ * a command that git then executes. `core.fsmonitor` is the sharp one: it runs
+ * on a plain `git status`, which this service performs whenever the operator
+ * opens a workspace page.
+ *
+ * That turns an approval-free file write into unapproved command execution: an
+ * agent following an injected instruction writes `.git/config` (no prompt at all
+ * in `acceptEdits` mode), and the command runs in the API process the next time
+ * anyone looks at the workspace. Pinning these on the command line beats
+ * anything a repository can set, so the permission prompt stays the only route
+ * to executing something.
+ */
+const GIT_SAFE_CONFIG = [
+  '-c', 'core.fsmonitor=false',
+  '-c', 'core.hooksPath=/dev/null',
+  '-c', 'core.sshCommand=',
+  '-c', 'core.askPass=',
+  '-c', 'core.editor=true',
+  '-c', 'core.pager=cat',
+  '-c', 'diff.external=',
+  '-c', 'protocol.ext.allow=never',
+  '-c', 'credential.helper=',
+  '-c', 'uploadpack.packObjectsHook=',
+] as const;
 
 export class GitService {
   /** Run a git command in `cwd`. Arguments are passed as an array, never a string. */
   private async run(cwd: string, args: string[], timeoutMs = 30_000): Promise<string> {
     try {
-      const { stdout } = await execFileAsync('git', ['--no-pager', ...args], {
+      const { stdout } = await execFileAsync('git', ['--no-pager', ...GIT_SAFE_CONFIG, ...args], {
         cwd,
         timeout: timeoutMs,
         maxBuffer: 16 * 1024 * 1024,
@@ -215,7 +247,9 @@ export class GitService {
     cwd: string,
     staged = false,
   ): Promise<Array<{ path: string; additions: number; deletions: number }>> {
-    const args = ['diff', '--numstat', '--no-color'];
+    // `--no-ext-diff` for the same reason `diff.external` is pinned empty: a
+    // repository must not be able to name a program that this call then runs.
+    const args = ['diff', '--numstat', '--no-color', '--no-ext-diff'];
     if (staged) args.push('--cached');
     const raw = await this.run(cwd, args);
 

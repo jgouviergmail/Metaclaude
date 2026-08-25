@@ -289,9 +289,28 @@ describe('search', () => {
     expect(results[0]!.score).toBeGreaterThan(0);
   });
 
+  it('does not pad the result with irrelevant memories', async () => {
+    // Without a relevance gate the dense arm contributes every memory it holds,
+    // so a small corpus fills the caller's limit with whatever exists. Eight
+    // unrelated memories in every system prompt wastes context and feeds noise
+    // into reinforcement, since recordUsage credits everything it injected.
+    await seedCorpus();
+
+    // A query sharing no vocabulary with the corpus must not drag it all back.
+    const unrelated = await store.search('parsnip violin sonata');
+    expect(unrelated.length).toBeLessThan(3);
+
+    // A query that does match still ranks the right memory first.
+    const relevant = await store.search('database migration schema');
+    expect(relevant.length).toBeGreaterThan(0);
+    expect(relevant[0]!.memory.title).toBe('Database migrations');
+  });
+
   it('respects the requested limit and filters by kind', async () => {
     await seedCorpus();
-    expect(await store.search('project', { limit: 1 })).toHaveLength(1);
+    // A query that genuinely matches more than one memory, capped to one.
+    expect(await store.search('how are migrations and tests handled')).not.toHaveLength(0);
+    expect(await store.search('how are migrations and tests handled', { limit: 1 })).toHaveLength(1);
 
     const procedural = await store.search('migrations schema', { kinds: ['procedural'] });
     expect(procedural.length).toBeGreaterThan(0);
@@ -423,7 +442,9 @@ describe('recordUsage and reinforce', () => {
         'SELECT memory_id, score FROM memory_usages WHERE run_id = ?',
       )
       .all(runId);
-    expect(links).toEqual([{ memory_id: result.memory.id, score: 0.5 }]);
+    // The stored score is rank-normalised within the retrieval, so the top hit
+    // is 1. Raw fused scores all sit near 0.03 and made attribution inert.
+    expect(links).toEqual([{ memory_id: result.memory.id, score: 1 }]);
   });
 
   it('is a no-op for an empty result set', () => {
@@ -497,6 +518,46 @@ describe('recordUsage and reinforce', () => {
 });
 
 describe('decay', () => {
+  it('does not compound when the janitor sweeps repeatedly', async () => {
+    // The janitor calls decay() every six hours. Applying a factor derived from
+    // TOTAL idle time to an ALREADY-DECAYED value compounds quadratically: a
+    // memory meant to reach the 0.15 floor after ~200 idle days reached it after
+    // ~25, became unretrievable, and was then deleted by collect(). Sweeping
+    // often must land in the same place as sweeping once.
+    const { memory: swept } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Swept often',
+      content: 'This one is decayed by a busy janitor.',
+      confidence: 0.8,
+    });
+    const { memory: once } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Swept once',
+      content: 'A completely unrelated note about parsnips and violins.',
+      confidence: 0.8,
+    });
+
+    const start = Date.now();
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+
+    // 180 days of sweeps, four per day, on the first memory only.
+    for (let t = SIX_HOURS; t <= 180 * DAY; t += SIX_HOURS) {
+      store.decay({ halfLifeDays: 90, now: start + t });
+    }
+
+    const sweptAfter = store.get(swept.id)!;
+    // A single sweep over the same span, for comparison.
+    store.decay({ halfLifeDays: 90, now: start + 180 * DAY });
+    const onceAfter = store.get(once.id)!;
+
+    expect(sweptAfter.confidence).toBeCloseTo(onceAfter.confidence, 4);
+    // Two half-lives: 0.8 -> 0.2, comfortably above the 0.15 collection floor.
+    expect(sweptAfter.confidence).toBeCloseTo(0.2, 3);
+    expect(sweptAfter.confidence).toBeGreaterThan(FORGET_THRESHOLD);
+  });
+
   it('reduces confidence for memories that have been idle', async () => {
     const { memory } = await store.remember({
       workspaceId: null,
@@ -743,16 +804,19 @@ describe('list / count / stats', () => {
     await seed();
     expect(store.count()).toBe(4);
     expect(store.count(null)).toBe(1);
-    expect(store.count(wsA)).toBe(2);
-    expect(store.count(wsB)).toBe(1);
-    expect(store.count('ws_nonexistent')).toBe(0);
+    // A workspace id counts that workspace plus the global memories, matching
+    // what `list` returns for the same scope.
+    expect(store.count(wsA)).toBe(3);
+    expect(store.count(wsB)).toBe(2);
+    expect(store.count('ws_nonexistent')).toBe(1);
   });
 
   it('reports counts per kind, always with every kind present', async () => {
     expect(store.stats()).toEqual({ episodic: 0, semantic: 0, procedural: 0 });
     await seed();
     expect(store.stats()).toEqual({ episodic: 1, semantic: 2, procedural: 1 });
-    expect(store.stats(wsA)).toEqual({ episodic: 1, semantic: 0, procedural: 1 });
+    // Workspace plus globals, consistent with `count` and `list`.
+    expect(store.stats(wsA)).toEqual({ episodic: 1, semantic: 1, procedural: 1 });
     expect(store.stats(null)).toEqual({ episodic: 0, semantic: 1, procedural: 0 });
   });
 });

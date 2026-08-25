@@ -94,12 +94,41 @@ interface ActiveRun {
 /* Kernel                                                                      */
 /* -------------------------------------------------------------------------- */
 
+/** Thrown out of `acquireSlot` when a queued run is cancelled before it starts. */
+class RunCancelled extends Error {
+  constructor() {
+    super('The run was cancelled before it started.');
+    this.name = 'RunCancelled';
+  }
+}
+
 export class Kernel {
   readonly broker: PermissionBroker;
 
   private readonly active = new Map<string, ActiveRun>();
-  /** Runs admitted but waiting for a concurrency slot, FIFO. */
-  private readonly queue: Array<{ runId: string; resolve: () => void }> = [];
+  /**
+   * Runs admitted but waiting for a concurrency slot, FIFO.
+   *
+   * `reject` is what makes cancellation real: resolving a queued waiter would
+   * *grant* it the slot and start the run the operator just asked to stop.
+   */
+  private readonly queue: Array<{
+    runId: string;
+    resolve: () => void;
+    reject: (error: Error) => void;
+  }> = [];
+
+  /**
+   * Sessions with a run admitted but not yet in `active`.
+   *
+   * `submit()` awaits the classifier before the run reaches the scheduler, and
+   * `execute()` only registers in `active` a microtask later. Without a
+   * synchronous reservation across that window, two concurrent submits both
+   * pass the "already running?" check, resume the same Claude session id and
+   * interleave their transcripts.
+   */
+  private readonly reserved = new Set<string>();
+
   private shuttingDown = false;
 
   constructor(private readonly deps: KernelDeps) {
@@ -135,29 +164,43 @@ export class Kernel {
     const prompt = options.prompt.trim();
     if (!prompt) throw new Error('The prompt is empty.');
 
-    /* -- Classify, then pick a policy ------------------------------------ */
-    const classification = await this.deps.classifier.classify(prompt, workspace.id);
-    const policy = this.choosePolicy(workspace, session, classification.category, options.overrides);
+    // Claim the session synchronously, before the first await. Everything from
+    // here to the point the run enters `active` must be covered.
+    this.reserved.add(session.id);
 
-    const run = this.deps.runs.create({
-      sessionId: session.id,
-      workspaceId: workspace.id,
-      prompt,
-      policy,
-      triggeredBy: options.triggeredBy ?? 'user',
-      category: classification.category,
-    });
+    try {
+      /* -- Classify, then pick a policy ---------------------------------- */
+      const classification = await this.deps.classifier.classify(prompt, workspace.id);
+      const policy = this.choosePolicy(
+        workspace,
+        session,
+        classification.category,
+        options.overrides,
+      );
 
-    // The first prompt names the session, so the sidebar is readable at a glance.
-    if (!session.title.trim()) {
-      const title = deriveTitle(prompt);
-      this.deps.sessions.setTitle(session.id, title);
-      this.publishSession(session.id);
+      const run = this.deps.runs.create({
+        sessionId: session.id,
+        workspaceId: workspace.id,
+        prompt,
+        policy,
+        triggeredBy: options.triggeredBy ?? 'user',
+        category: classification.category,
+      });
+
+      // The first prompt names the session, so the sidebar reads well at a glance.
+      if (!session.title.trim()) {
+        this.deps.sessions.setTitle(session.id, deriveTitle(prompt));
+        this.publishSession(session.id);
+      }
+
+      this.publishRun(run);
+      void this.schedule(run, session, workspace, classification.category);
+      return run;
+    } catch (error) {
+      // The run never reached the scheduler, so nothing else will release it.
+      this.reserved.delete(session.id);
+      throw error;
     }
-
-    this.publishRun(run);
-    void this.schedule(run, session, workspace, classification.category);
-    return run;
   }
 
   /**
@@ -221,9 +264,17 @@ export class Kernel {
     try {
       await this.acquireSlot(run.id);
     } catch {
-      // Cancelled while queued.
-      this.deps.runs.finish(run.id, { status: 'interrupted', usage: run.usage, error: 'Cancelled while queued.' });
+      // Cancelled while queued: no slot was ever held, so none is released.
+      this.reserved.delete(session.id);
+      this.deps.runs.finish(run.id, {
+        status: 'interrupted',
+        usage: run.usage,
+        error: 'Cancelled before it started.',
+      });
+      this.deps.sessions.setStatus(session.id, 'idle');
       this.publishRun(this.deps.runs.get(run.id) as Run);
+      this.publishSession(session.id);
+      this.publishMetrics();
       return;
     }
 
@@ -242,21 +293,23 @@ export class Kernel {
       this.publishRun(this.deps.runs.get(run.id) as Run);
       this.publishSession(session.id);
     } finally {
+      // `execute` owns removing itself from `active`; this only frees the slot
+      // and lets the next queued run in.
+      this.reserved.delete(session.id);
       this.releaseSlot();
     }
   }
 
   private acquireSlot(runId: string): Promise<void> {
     if (this.active.size < this.deps.maxConcurrentRuns) return Promise.resolve();
-    return new Promise<void>((resolve) => {
-      this.queue.push({ runId, resolve });
+    return new Promise<void>((resolve, reject) => {
+      this.queue.push({ runId, resolve, reject });
       this.publishMetrics();
     });
   }
 
   private releaseSlot(): void {
-    const next = this.queue.shift();
-    if (next) next.resolve();
+    this.queue.shift()?.resolve();
     this.publishMetrics();
   }
 
@@ -274,6 +327,26 @@ export class Kernel {
     const activeRun: ActiveRun = { run, session, controller, toolErrors: 0 };
     this.active.set(run.id, activeRun);
 
+    // Anything between the `set` above and the supervisor call can throw —
+    // vault decryption in `contextProvider.resolve`, a SQLITE_BUSY, a synchronous
+    // throw out of `buildOptions`. Without this the entry stays in `active`
+    // forever: that session can never run again and a slot is gone for good.
+    try {
+      await this.runToCompletion(run, session, workspace, category, activeRun, controller);
+    } finally {
+      this.active.delete(run.id);
+      this.broker.cancelRun(run.id);
+    }
+  }
+
+  private async runToCompletion(
+    run: Run,
+    session: Session,
+    workspace: Workspace,
+    category: TaskCategory,
+    activeRun: ActiveRun,
+    controller: AbortController,
+  ): Promise<void> {
     this.deps.runs.setStatus(run.id, 'running');
     this.deps.sessions.setStatus(session.id, 'running');
     this.publishRun({ ...run, status: 'running' });
@@ -356,9 +429,6 @@ export class Kernel {
         this.publishSession(session.id);
       },
     });
-
-    this.active.delete(run.id);
-    this.broker.cancelRun(run.id);
 
     /* -- Record ----------------------------------------------------------- */
     const finished =
@@ -473,8 +543,13 @@ export class Kernel {
   /**
    * Apply an operator rating to a finished run.
    *
-   * This is the strongest signal the learner gets, so it re-runs the reward
-   * computation and re-applies it to both the bandit and memory confidence.
+   * This is the strongest signal the learner gets, so the reward is recomputed
+   * and re-applied. The subtlety is that `learn()` already fed this run's
+   * inferred reward to the bandit and to memory: applying the rated reward
+   * naively would count one run twice, and rating it N times would count it N
+   * times. Both are therefore updated with the **delta** from the reward
+   * previously applied, which leaves the posterior exactly where a single
+   * observation of the rated value would have put it.
    */
   rateRun(runId: string, rating: number): Run | null {
     const run = this.deps.runs.get(runId);
@@ -483,24 +558,35 @@ export class Kernel {
     const clamped = Math.max(-1, Math.min(1, rating));
     this.deps.runs.setRating(runId, clamped);
 
+    const status =
+      run.status === 'succeeded' ? 'succeeded' : run.status === 'failed' ? 'failed' : 'interrupted';
+
+    // Rating 0 means "un-rate": fall back to the inferred signal rather than
+    // pinning quality at the neutral 0.5 that `rating: 0` would produce.
     const reward = computeReward({
-      status: run.status === 'succeeded' ? 'succeeded' : run.status === 'failed' ? 'failed' : 'interrupted',
+      status,
       usage: run.usage,
-      rating: clamped,
+      rating: clamped === 0 ? null : clamped,
+      hitLimit: Boolean(run.error?.includes('maximum number of turns')),
+      toolErrors: this.deps.transcript
+        .byRun(runId)
+        .filter((event) => event.kind === 'tool_call' && event.resultIsError).length,
     });
+
+    const previous = run.reward;
     this.deps.runs.setReward(runId, reward);
 
     const workspace = this.deps.workspaces.get(run.workspaceId);
     if (workspace?.settings.autoPolicyEnabled && run.category) {
-      this.deps.policy.update({
+      this.deps.policy.revise({
         workspaceId: workspace.id,
         category: run.category,
         arm: { model: run.policy.model, effort: run.policy.effort },
+        previousReward: previous,
         reward,
-        usage: run.usage,
       });
     }
-    this.deps.memory.reinforce(runId, reward);
+    this.deps.memory.reinforce(runId, reward, previous);
 
     const updated = this.deps.runs.get(runId) as Run;
     this.publishRun(updated);
@@ -520,20 +606,23 @@ export class Kernel {
       return true;
     }
 
-    // Also drop it if it is still queued.
+    // Also drop it if it is still queued. `reject`, not `resolve`: resolving
+    // would hand the waiter its slot and start the run the operator just
+    // stopped, while reporting success to them.
     const index = this.queue.findIndex((q) => {
       const run = this.deps.runs.get(q.runId);
       return run?.sessionId === sessionId;
     });
     if (index >= 0) {
       const [entry] = this.queue.splice(index, 1);
-      entry?.resolve();
+      entry?.reject(new RunCancelled());
       return true;
     }
     return false;
   }
 
   hasActiveRunForSession(sessionId: string): boolean {
+    if (this.reserved.has(sessionId)) return true;
     for (const entry of this.active.values()) {
       if (entry.session.id === sessionId) return true;
     }
@@ -551,8 +640,11 @@ export class Kernel {
   /** Stop accepting work and abort everything in flight. */
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    // Cancel the queue first, and by rejection: resolving would spawn a fresh
+    // CLI subprocess for every queued run *during shutdown*, which would then
+    // still be writing transcripts when the database closes underneath it.
+    for (const queued of this.queue.splice(0)) queued.reject(new RunCancelled());
     for (const entry of this.active.values()) entry.controller.abort();
-    for (const queued of this.queue.splice(0)) queued.resolve();
 
     // Give aborts a moment to unwind so transcripts are flushed.
     const deadline = Date.now() + 5000;

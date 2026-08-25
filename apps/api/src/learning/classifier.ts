@@ -40,7 +40,17 @@ export type TaskCategory = (typeof TASK_CATEGORIES)[number];
 
 export interface Classification {
   category: TaskCategory;
+  /** Agreement among the evidence: vote share for kNN, fixed for a rule hit. */
   confidence: number;
+  /**
+   * Mean similarity of the neighbours that voted, 0 for a rule hit.
+   *
+   * Kept separate from `confidence` because they answer different questions —
+   * "do the neighbours agree?" versus "are they actually close?" — and only
+   * requiring both keeps a unanimous vote among distant neighbours from
+   * overriding the rules.
+   */
+  similarity: number;
   /** How the decision was reached, for the "why this model?" tooltip. */
   reason: string;
 }
@@ -76,9 +86,9 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
   {
     category: 'debug',
     patterns: [
-      cue('debug\\w*', 'bugs?', 'crash(?:e[sd])?', 'stack ?traces?', 'traceback', 'exceptions?',
+      cue('debug[\\p{L}\\p{N}_]*', 'bugs?', 'crash(?:e[sd])?', 'stack ?traces?', 'traceback', 'exceptions?',
           'regressions?', 'failing', 'fails?', 'broken', 'errors?'),
-      cue('d[ée]bogu\\w*', 'd[ée]bugg\\w*', 'plante', 'erreurs?', 'panne', 'r[ée]gressions?',
+      cue('d[ée]bogu[\\p{L}\\p{N}_]*', 'd[ée]bugg[\\p{L}\\p{N}_]*', 'plante', 'erreurs?', 'panne', 'r[ée]gressions?',
           'ne marche pas', 'ne fonctionne pas'),
       /(?<![\p{L}\p{N}_])why (is|does|isn'?t|doesn'?t)(?![\p{L}\p{N}_]).*(fail|break|crash|work)/iu,
     ],
@@ -103,9 +113,9 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
   {
     category: 'refactor',
     patterns: [
-      cue('refactor\\w*', 'restructure', 'clean ?up', 'simplif\\w+', 'deduplicate', 'extract',
+      cue('refactor[\\p{L}\\p{N}_]*', 'restructure', 'clean ?up', 'simplif[\\p{L}\\p{N}_]+', 'deduplicate', 'extract',
           'rename'),
-      cue('refactoris\\w*', 'restructure', 'simplifie', 'nettoie', 'renomme', 'factoris\\w*'),
+      cue('refactoris[\\p{L}\\p{N}_]*', 'restructure', 'simplifie', 'nettoie', 'renomme', 'factoris[\\p{L}\\p{N}_]*'),
     ],
   },
   {
@@ -113,7 +123,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
     patterns: [
       cue('plan(?:s|ned|ning)?', 'design', 'architect', 'architecture', 'strategy', 'approach',
           'rfc', 'proposal', 'roadmap'),
-      cue('planifi\\w*', 'conception', 'architecture', 'strat[ée]gie', 'approche',
+      cue('planifi[\\p{L}\\p{N}_]*', 'conception', 'architecture', 'strat[ée]gie', 'approche',
           'feuille de route'),
     ],
   },
@@ -122,7 +132,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
     patterns: [
       cue('research', 'investigate', 'compare', 'evaluate', 'benchmark', 'find out', 'survey',
           'state of the art'),
-      cue('recherche', 'enqu[êe]te', 'compare', '[ée]valu\\w*', "[ée]tat de l'art",
+      cue('recherche', 'enqu[êe]te', 'compare', '[ée]valu[\\p{L}\\p{N}_]*', "[ée]tat de l'art",
           'documente-toi'),
     ],
   },
@@ -130,7 +140,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
     category: 'explain',
     patterns: [
       cue('explain', 'how does', 'what is', 'why does', 'walk me through', 'teach', 'understand'),
-      cue('expliqu\\w*', 'comment (?:ç|c)a march\\w*', "qu'est-ce", 'pourquoi',
+      cue('expliqu[\\p{L}\\p{N}_]*', 'comment (?:ç|c)a march[\\p{L}\\p{N}_]*', "qu'est-ce", 'pourquoi',
           'fais-moi comprendre'),
     ],
   },
@@ -138,8 +148,8 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
     category: 'ops',
     patterns: [
       cue('deploy(?:s|ed|ment)?', 'docker', 'kubernetes', 'k8s', 'ci\\/?cd', 'pipeline', 'nginx',
-          'terraform', 'systemd', 'infra\\w*'),
-      cue('d[ée]ploi\\w*', 'conteneuris\\w*', 'conteneur', 'infrastructure',
+          'terraform', 'systemd', 'infra[\\p{L}\\p{N}_]*'),
+      cue('d[ée]ploi[\\p{L}\\p{N}_]*', 'conteneuris[\\p{L}\\p{N}_]*', 'conteneur', 'infrastructure',
           'mise en production'),
     ],
   },
@@ -147,7 +157,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
     category: 'data',
     patterns: [
       cue('sql', 'quer(?:y|ies)', 'database', 'migrations?', 'schema', 'dataset', 'csv',
-          'analyz\\w+', 'aggregate'),
+          'analys[\\p{L}\\p{N}_]*', 'analyz[\\p{L}\\p{N}_]*', 'aggregate'),
       cue('base de donn[ée]es', 'requ[êe]tes?', 'sch[ée]ma', 'migrations?', 'jeu de donn[ée]es'),
     ],
   },
@@ -156,16 +166,16 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
     patterns: [
       cue('write (?:a |the )?(?:doc|readme|article|post|email|summary)', 'draft', 'documentation',
           'changelog'),
-      cue('[ée]cri(?:s|re|ez|vez)', 'r[ée]dig\\w*', 'documentation', 'r[ée]sum[ée]', 'article',
+      cue('[ée]cri(?:s|re|ez|vez)', 'r[ée]dig[\\p{L}\\p{N}_]*', 'documentation', 'r[ée]sum[ée]', 'article',
           'courriel'),
     ],
   },
   {
     category: 'code_write',
     patterns: [
-      cue('implement\\w*', 'build', 'create', 'add (?:a |an )?(?:feature|endpoint|component|function)',
+      cue('implement[\\p{L}\\p{N}_]*', 'build', 'create', 'add (?:a |an )?(?:feature|endpoint|component|function)',
           'scaffold', 'generate'),
-      cue('impl[ée]ment\\w*', 'cr[ée]e', 'construis', 'ajoute', 'g[ée]n[èe]re', 'd[ée]veloppe'),
+      cue('impl[ée]ment[\\p{L}\\p{N}_]*', 'cr[ée]e', 'construis', 'ajoute', 'g[ée]n[èe]re', 'd[ée]veloppe'),
     ],
   },
   {
@@ -186,9 +196,14 @@ export class TaskClassifier {
   /** Classify a prompt. Never throws; falls back to `chat`. */
   async classify(prompt: string, workspaceId: string | null): Promise<Classification> {
     const knn = await this.knnClassify(prompt, workspaceId);
-    // Trust learned exemplars once they agree strongly; the operator's own
-    // phrasing is a better signal than our generic keyword list.
-    if (knn && knn.confidence >= 0.62) return knn;
+
+    // Trust learned exemplars only when they agree *and* are actually similar.
+    // The vote share alone is a purity ratio: nine mutually unrelated
+    // neighbours at cosine 0.05 still yield 0.78 purity. Since the classifier
+    // is trained on its own predictions, accepting that would let one category
+    // become self-confirming and collapse the bandit's context to a single
+    // arm-set.
+    if (knn && knn.confidence >= 0.62 && knn.similarity >= 0.35) return knn;
 
     const rule = ruleClassify(prompt);
     if (rule) return rule;
@@ -198,6 +213,7 @@ export class TaskClassifier {
     return {
       category: 'chat',
       confidence: 0.3,
+      similarity: 0,
       reason: 'No strong signal; treated as a general request.',
     };
   }
@@ -308,10 +324,21 @@ export class TaskClassifier {
     if (!best) return null;
 
     const confidence = best.vote / total;
+    // Mean similarity of the neighbours that actually voted for the winner —
+    // the "are these genuinely close?" half of the decision.
+    const winners = scored.filter((entry) => entry.category === best.category && entry.score > 0);
+    const similarity =
+      winners.length > 0
+        ? winners.reduce((sum, entry) => sum + entry.score, 0) / winners.length
+        : 0;
+
     return {
       category: best.category as TaskCategory,
       confidence,
-      reason: `Matched ${scored.length} similar past task${scored.length === 1 ? '' : 's'} in this workspace.`,
+      similarity,
+      reason: `Matched ${winners.length} similar past task${
+        winners.length === 1 ? '' : 's'
+      } in this workspace (similarity ${similarity.toFixed(2)}).`,
     };
   }
 
@@ -344,6 +371,7 @@ export function ruleClassify(prompt: string): Classification | null {
           // Rules are decent but not authoritative; cap confidence so a
           // sufficiently confident kNN can override them.
           confidence: 0.6,
+          similarity: 0,
           reason: `Matched the phrase "${match[0].trim()}".`,
         };
       }

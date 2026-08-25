@@ -255,12 +255,26 @@ export class AgentSupervisor {
     const startedAt = Date.now();
     const controller = new AbortController();
 
-    // Chain the caller's signal into ours so either can stop the run.
-    const onExternalAbort = (): void => controller.abort();
-    request.abortSignal.addEventListener('abort', onExternalAbort, { once: true });
-
-    const timeout = setTimeout(() => controller.abort(), this.deps.runTimeoutMs);
+    let timedOut = false;
+    // One timer, and it sets the flag *before* aborting. With a second timer at
+    // the same delay the abort could settle the iterator and reach the catch
+    // block while the flag was still false, reporting a timeout as an operator
+    // interrupt.
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.deps.runTimeoutMs);
     timeout.unref?.();
+
+    // Chain the caller's signal into ours so either can stop the run. An
+    // already-aborted signal never fires 'abort', and the kernel can abort
+    // during memory retrieval — before this point — so the flag is checked too.
+    const onExternalAbort = (): void => controller.abort();
+    if (request.abortSignal.aborted) {
+      controller.abort();
+    } else {
+      request.abortSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
 
     const options = this.buildOptions(request);
     options.abortController = controller;
@@ -270,12 +284,6 @@ export class AgentSupervisor {
     let usage: RunUsage = { ...EMPTY_USAGE };
     let error: string | null = null;
     let status: RunOutcome['status'] = 'succeeded';
-    let timedOut = false;
-
-    const timeoutWatcher = setTimeout(() => {
-      timedOut = true;
-    }, this.deps.runTimeoutMs);
-    timeoutWatcher.unref?.();
 
     try {
       for await (const message of query({ prompt: request.prompt, options })) {
@@ -304,7 +312,6 @@ export class AgentSupervisor {
       }
     } finally {
       clearTimeout(timeout);
-      clearTimeout(timeoutWatcher);
       request.abortSignal.removeEventListener('abort', onExternalAbort);
       state.finalise();
     }
@@ -337,8 +344,16 @@ export class StreamState {
   private readonly openToolCalls = new Map<string, TranscriptEvent & { kind: 'tool_call' }>();
   /** Block counter per assistant message id, to reconstruct stream indices. */
   private readonly blockIndex = new Map<string, number>();
-  /** Message id currently being streamed, from the last `message_start`. */
-  private streamingMessageId: string | null = null;
+  /**
+   * Message id currently streaming, **per agent**.
+   *
+   * Keyed by `parent_tool_use_id` because subagents stream concurrently: with a
+   * single shared value, subagent A's `message_start` followed by subagent B's
+   * delta keys B's text under A's message id. The authoritative event then
+   * arrives under B's id, so the client never evicts the orphaned buffer and
+   * the text renders twice, interleaved.
+   */
+  private readonly streamingMessageIds = new Map<string, string>();
   private seq = 0;
   finalText = '';
 
@@ -532,13 +547,18 @@ export class StreamState {
       delta?: { type?: string; text?: string; thinking?: string };
     };
 
+    // '' is the main agent; a subagent is keyed by the Task call that spawned it.
+    const agent = message.parent_tool_use_id ?? '';
+
     if (event.type === 'message_start') {
-      this.streamingMessageId = event.message?.id ?? null;
+      const id = event.message?.id;
+      if (id) this.streamingMessageIds.set(agent, id);
+      else this.streamingMessageIds.delete(agent);
       return {};
     }
 
     if (event.type === 'content_block_delta' && typeof event.index === 'number') {
-      const messageId = this.streamingMessageId;
+      const messageId = this.streamingMessageIds.get(agent);
       if (!messageId) return {};
       const eventId = streamEventId(messageId, event.index);
 
@@ -585,7 +605,12 @@ export class StreamState {
       turns: message.num_turns ?? 0,
     };
 
-    if (message.subtype === 'success') {
+    // `subtype: 'success'` only means the turn completed the protocol — it can
+    // still carry `is_error: true`, with the API's error text in `result`.
+    // Treating that as a success recorded the error message as the assistant's
+    // answer, gave the run a 0.8 quality score, taught the bandit the arm
+    // worked, and fed the error string to reflexion as a lesson.
+    if (message.subtype === 'success' && !message.is_error) {
       if (message.result.trim()) this.finalText = message.result;
       return { usage, claudeSessionId: message.session_id };
     }
@@ -620,15 +645,27 @@ export class StreamState {
 
 function describeResultError(message: Extract<SDKMessage, { type: 'result' }>): string {
   const subtype = (message as { subtype?: string }).subtype ?? 'error';
-  const detail = (message as { result?: string }).result;
+
+  // The detail lives in different places depending on the shape: a successful
+  // turn that carried an API error puts it in `result`, while an error result
+  // carries `errors[]` and has no `result` field at all. Reading only `result`
+  // discarded every genuine diagnostic.
+  const detail =
+    (message as { result?: string }).result?.trim() ||
+    ((message as { errors?: string[] }).errors ?? []).join('; ').trim() ||
+    '';
+
   switch (subtype) {
     case 'error_max_turns':
       return 'The run stopped after reaching its maximum number of turns. Raise the limit in workspace settings or narrow the task.';
+    // The SDK's subtype is `error_max_budget_usd`; the shorter spelling never
+    // matched, so budget exhaustion fell through to the generic message.
+    case 'error_max_budget_usd':
     case 'error_max_budget':
       return 'The run stopped after reaching its cost ceiling for this workspace.';
     case 'error_during_execution':
-      return detail?.trim() || 'The agent stopped with an execution error.';
+      return detail || 'The agent stopped with an execution error.';
     default:
-      return detail?.trim() || `The run ended with status "${subtype}".`;
+      return detail || `The run ended with status "${subtype}".`;
   }
 }

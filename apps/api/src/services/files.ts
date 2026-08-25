@@ -9,7 +9,7 @@
 
 import { createReadStream } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { FileEntry } from '@metaclaude/shared';
 import { languageForPath, MAX_EDITABLE_FILE_BYTES } from '@metaclaude/shared';
 import { PathEscapeError, resolveInside, toRelative } from '../security/paths.js';
@@ -187,14 +187,25 @@ export class FileService {
 
   async remove(root: string, relative: string): Promise<void> {
     const target = this.resolve(root, relative);
-    if (target === root) throw new FileServiceError('The workspace root cannot be deleted.', 400);
+    // Compare against the *resolved* root: `resolveInside` normalises its
+    // result, so a root passed with a trailing slash (or any other
+    // non-normalised form) would not match the raw argument — and this guard is
+    // the only thing between an empty path and `rm -r` on the whole workspace.
+    if (target === resolve(root)) {
+      throw new FileServiceError('The workspace root cannot be deleted.', 400);
+    }
     await rm(target, { recursive: true, force: true });
   }
 
   async move(root: string, from: string, to: string): Promise<void> {
     const source = this.resolve(root, from);
     const destination = this.resolve(root, to);
-    if (source === root) throw new FileServiceError('The workspace root cannot be moved.', 400);
+    if (source === resolve(root)) {
+      throw new FileServiceError('The workspace root cannot be moved.', 400);
+    }
+    if (destination === resolve(root)) {
+      throw new FileServiceError('A file cannot replace the workspace root.', 400);
+    }
     await mkdir(dirname(destination), { recursive: true });
     await rename(source, destination);
   }

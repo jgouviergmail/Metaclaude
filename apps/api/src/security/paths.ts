@@ -17,8 +17,16 @@ export class PathEscapeError extends Error {
   }
 }
 
-/** Reserved names that must never be addressable through the file API. */
-const BLOCKED_SEGMENTS = new Set(['.git-credentials', '.netrc', 'master.key']);
+/**
+ * Path segments that must never be addressable through the file API.
+ *
+ * `.git` is here because its contents are dangerous in both directions: a
+ * credentialed clone leaves a token in `.git/config`, and several git settings
+ * name a command git will later execute. The agent still works with git through
+ * its own tools, which go through the permission prompt; this only closes the
+ * unprompted HTTP route.
+ */
+const BLOCKED_SEGMENTS = new Set(['.git', '.git-credentials', '.netrc', 'master.key']);
 
 /**
  * True when `child` is `root` itself or lives beneath it.

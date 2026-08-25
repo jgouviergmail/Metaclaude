@@ -233,7 +233,8 @@ export class ReflexionEngine {
 
     const toolCounts = new Map<string, number>();
     const errors: string[] = [];
-    let filesTouched = new Set<string>();
+    const commands: string[] = [];
+    const filesTouched = new Set<string>();
 
     for (const event of events) {
       if (event.kind === 'tool_call') {
@@ -244,12 +245,21 @@ export class ReflexionEngine {
         if (path) filesTouched.add(path);
 
         if (event.name === 'Bash' && typeof input?.command === 'string') {
-          lines.push(`- ran: \`${input.command.slice(0, 200)}\``);
+          commands.push(`- ran: \`${input.command.slice(0, 200)}\``);
         }
         if (event.resultIsError && event.result) {
           errors.push(`${event.name}: ${event.result.slice(0, 400)}`);
         }
       }
+    }
+
+    // Bounded like every other section. A run with hundreds of shell calls
+    // would otherwise build an 80 KB prompt, and the entire point of this pass
+    // is that reflection stays cheap enough to run after every single run.
+    const MAX_COMMANDS = 20;
+    lines.push(...commands.slice(0, MAX_COMMANDS));
+    if (commands.length > MAX_COMMANDS) {
+      lines.push(`- … and ${commands.length - MAX_COMMANDS} further commands`);
     }
 
     if (toolCounts.size > 0) {

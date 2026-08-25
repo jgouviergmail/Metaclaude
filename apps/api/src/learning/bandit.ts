@@ -75,6 +75,17 @@ function toArm(row: ArmRow): PolicyArm {
   };
 }
 
+/** Cost and duration are already recorded; a revision only changes the reward. */
+const EMPTY_USAGE_FOR_REVISION: RunUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+  costUsd: 0,
+  durationMs: 0,
+  turns: 0,
+};
+
 export class PolicyLearner {
   constructor(
     private readonly db: Db,
@@ -156,6 +167,50 @@ export class PolicyLearner {
     });
   }
 
+  /**
+   * Replace a previously recorded observation with a corrected one.
+   *
+   * Used when the operator rates a run whose inferred reward was already folded
+   * in. Applying the new reward with `update()` would count the same run twice —
+   * and rating it repeatedly would count it repeatedly. Moving by the delta
+   * leaves the posterior exactly where a single observation of the corrected
+   * value would have put it, and `trials` unchanged.
+   */
+  revise(input: {
+    workspaceId: string | null;
+    category: string;
+    arm: Arm;
+    /** The reward previously applied, or null if none was. */
+    previousReward: number | null;
+    reward: number;
+  }): void {
+    const reward = Math.min(1, Math.max(0, input.reward));
+    if (input.previousReward === null) {
+      // Nothing was applied for this run yet, so this is an ordinary update.
+      this.update({ ...input, reward, usage: EMPTY_USAGE_FOR_REVISION });
+      return;
+    }
+    const previous = Math.min(1, Math.max(0, input.previousReward));
+    if (previous === reward) return;
+
+    tx(this.db, () => {
+      const row = this.findOrCreate(input.workspaceId, input.category, input.arm);
+      this.db
+        .prepare(
+          'UPDATE policy_arms SET alpha = ?, beta = ?, total_reward = ?, updated_at = ? WHERE id = ?',
+        )
+        .run(
+          // Clamped at the Beta(1,1) prior so a correction can never drive a
+          // parameter to zero or negative, which would make sampling undefined.
+          Math.max(1, row.alpha - previous + reward),
+          Math.max(1, row.beta - (1 - previous) + (1 - reward)),
+          row.total_reward - previous + reward,
+          Date.now(),
+          row.id,
+        );
+    });
+  }
+
   /** All arms for a context, best posterior mean first. */
   list(workspaceId: string | null, category?: string): PolicyArm[] {
     const rows = category
@@ -213,10 +268,18 @@ export class PolicyLearner {
 
   private ensureArms(workspaceId: string | null, category: string): PolicyArm[] {
     const existing = this.list(workspaceId, category);
-    if (existing.length >= DEFAULT_ARMS.length) return existing;
+
+    // Membership, not a count. Comparing lengths breaks once the operator has
+    // used enough explicit model overrides to create five non-default arms:
+    // the check then passes forever and the intended exploration frontier is
+    // never created.
+    const key = (model: string, effort: string | null): string => `${model} ${effort ?? ''}`;
+    const present = new Set(existing.map((arm) => key(String(arm.model), arm.effort)));
+    const missing = DEFAULT_ARMS.filter((arm) => !present.has(key(String(arm.model), arm.effort)));
+    if (missing.length === 0) return existing;
 
     tx(this.db, () => {
-      for (const arm of DEFAULT_ARMS) this.findOrCreate(workspaceId, category, arm);
+      for (const arm of missing) this.findOrCreate(workspaceId, category, arm);
     });
     return this.list(workspaceId, category);
   }

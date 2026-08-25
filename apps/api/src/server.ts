@@ -134,17 +134,37 @@ export async function buildServer(context: AppContext): Promise<App> {
 
   /* ------------------------------- Guards ------------------------------- */
 
+  /**
+   * The authentication and CSRF guard.
+   *
+   * The path is taken from the **matched route**, never from `request.url`.
+   * `request.url` is the raw request target; Fastify's router normalises it —
+   * percent-decoding, stripping an absolute-form `scheme://authority` prefix —
+   * *before* matching, and `onRequest` runs *after* routing. Deriving the guard's
+   * path from the raw target therefore lets the two disagree: `/%61pi/workspaces`
+   * routes to `/api/workspaces` while a raw-target check sees a path that does
+   * not start with `/api/` and waves it through unauthenticated.
+   *
+   * `routeOptions.url` is the pattern of the handler that will actually run, so
+   * it cannot diverge from what executes. The check is also inverted to
+   * deny-by-default: anything under `/api/` is guarded unless it is explicitly
+   * public, so a new route is protected the moment it is added.
+   */
   app.addHook('onRequest', async (request) => {
-    const path = request.url.split('?')[0] ?? '';
+    const route = request.routeOptions?.url;
 
-    // Non-API paths are the SPA shell and its assets; they carry no data.
-    if (!path.startsWith('/api/')) return;
+    // No matched route: the request falls through to the not-found handler,
+    // which serves the SPA shell or a 404 and touches no data.
+    if (!route) return;
+
+    // Non-API routes are the SPA shell and its static assets.
+    if (!route.startsWith('/api/')) return;
 
     // The WebSocket route authenticates inside its own handler, where it can
     // close with a protocol-specific code instead of returning HTTP.
-    if (path === '/api/ws') return;
+    if (route === '/api/ws') return;
 
-    if (isPublicPath(path)) return;
+    if (isPublicPath(route)) return;
 
     authenticate(context, request);
     verifyCsrf(context, request);
