@@ -275,13 +275,40 @@ case "$IMAGE" in
     # anonymous pull gets denied. Try first — if the owner has made the package
     # public there is nothing to ask for.
     if ! docker pull "$IMAGE" >/dev/null 2>&1; then
-      printf '\n  %sGitHub token, to pull the image.%s The package is private because the\n' "$BOLD" "$OFF"
-      printf '  repository is. A fine-grained token with %sread:packages%s is enough — the\n' "$BOLD" "$OFF"
-      printf '  same one you used to clone works if it has that scope.\n\n'
-      printf '  Paste it and press Enter. Nothing will echo.\n\n  token: '
+      # A refused pull has two very different causes that look identical from
+      # `docker pull`: the package is private, or the tag does not exist. Ask
+      # the registry which, rather than demanding a token for a package that is
+      # already public and simply has no such tag.
+      REPO_PATH="${IMAGE#ghcr.io/}"; REPO_PATH="${REPO_PATH%%:*}"; REPO_PATH="${REPO_PATH%%@*}"
+      ANON="$(curl -sS --max-time 20 \
+        "https://ghcr.io/token?scope=repository:${REPO_PATH}:pull&service=ghcr.io" 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)"
+
+      printf '\n'
+      if [ -n "$ANON" ]; then
+        warn "the package is public, so this is not an authentication problem"
+        info "The tag is probably not there: CI may still be building this commit,"
+        info "or never built it. Check the run for $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null),"
+        info "then re-run — or pass --image with a tag that exists."
+      else
+        warn "the package is private"
+        info "Making the *repository* public does not change this. They are separate"
+        info "settings, and this is the one people miss. Either:"
+        printf '\n'
+        info "  1. Make the package public, once and for all:"
+        info "     https://github.com/users/${REPO_PATH%%/*}/packages/container/${REPO_PATH##*/}/settings"
+        info "     Danger Zone -> Change visibility -> Public, then re-run this script."
+        printf '\n'
+        info "  2. Or paste a GitHub token with read:packages below."
+      fi
+
+      printf '\n  token (or Enter to stop here): '
       IFS= read -rs GH_TOKEN
       printf '\n'
-      [ -n "$GH_TOKEN" ] || die "no token, and the image cannot be pulled without one"
+      [ -n "$GH_TOKEN" ] || die "stopped without an image.
+     Nothing that was already configured is undone — .env is written and the
+     host is provisioned. Fix the access above and run this again; it will pick
+     up where it left off."
       printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${SLUG%%/*}" --password-stdin \
         || die "GHCR rejected that token"
       unset GH_TOKEN
