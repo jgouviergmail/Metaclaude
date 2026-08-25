@@ -22,6 +22,7 @@ ADMIN_KEY=""
 DEPLOY_KEY=""
 MODE="public"
 SITE=""
+TLS_EMAIL=""
 APP_DIR="/opt/metaclaude"
 EXTRA=()
 
@@ -45,7 +46,12 @@ Required:
 
 Options:
   --mode public|vpn   Default public.
-  --site ADDR         What browsers will type. Defaults to this host's public IP.
+  --site ADDR         What browsers will type. A hostname that already resolves
+                      here gets a publicly trusted Let's Encrypt certificate; a
+                      bare IP falls back to Caddy's own CA, which every device
+                      must then be taught to trust. Defaults to this host's IP.
+  --email ADDR        Required with a hostname: where Let's Encrypt sends expiry
+                      warnings. Never shown to visitors.
   --app-dir PATH      Default /opt/metaclaude.
   -h, --help
 USAGE
@@ -57,6 +63,7 @@ while [ $# -gt 0 ]; do
     --deploy-key) DEPLOY_KEY="${2:-}"; shift 2 ;;
     --mode)       MODE="${2:-}"; shift 2 ;;
     --site)       SITE="${2:-}"; shift 2 ;;
+    --email)      TLS_EMAIL="${2:-}"; shift 2 ;;
     --app-dir)    APP_DIR="${2:-}"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *)            usage; die "unknown argument: $1" ;;
@@ -159,7 +166,33 @@ set_env METACLAUDE_BOOTSTRAP_USER "$OWNER_USER"
 set_env METACLAUDE_BOOTSTRAP_PASSWORD "$OWNER_PASS"
 set_env METACLAUDE_MASTER_KEY "$MASTER_KEY"
 set_env METACLAUDE_SITE "$SITE"
-set_env METACLAUDE_TLS_MODE "internal"
+
+# A hostname and a bare IP are not the same deployment, and the difference is
+# not cosmetic — it decides whether a browser trusts the certificate at all.
+#
+# With a name that resolves here, Let's Encrypt will issue for it over http-01,
+# which is publicly trusted: nothing to install on any device, the PWA installs
+# on iOS, and HSTS is meaningful from the first visit. With only an IP, Caddy
+# signs with its own CA and every device has to be taught to trust it.
+#
+# Detected rather than asked, because the answer is already in --site.
+if printf '%s' "$SITE" | grep -qE '^[0-9]+(\.[0-9]+){3}$|:'; then
+  set_env METACLAUDE_TLS_MODE "internal"
+  # Chrome refuses QUIC against a locally-signed certificate, so under
+  # `internal` advertising h3 only buys a declined handshake and an open UDP
+  # port.
+  set_env METACLAUDE_PROTOCOLS "h1 h2"
+  info "TLS: internal (a bare address has no other option) — install the CA on each device"
+else
+  [ -n "$TLS_EMAIL" ] || die "--site $SITE is a hostname, so ACME needs --email for expiry notices"
+  set_env METACLAUDE_TLS_MODE "acme-dns"
+  set_env METACLAUDE_TLS_EMAIL "$TLS_EMAIL"
+  # A publicly trusted certificate is the one case where advertising HTTP/3
+  # actually gets used, and a phone on a weak connection is where it pays.
+  set_env METACLAUDE_PROTOCOLS "h1 h2 h3"
+  info "TLS: Let's Encrypt for $SITE — nothing to install on any device"
+  info "     the name must already resolve to this server, and 80/443 must be reachable"
+fi
 
 # Sized from this host rather than left at the conservative default. The default
 # has to be startable on the smallest VPS anyone might use, which would otherwise
@@ -176,10 +209,6 @@ MEM_LIMIT_MB=$(( MEM_KB * 3 / 4 / 1024 ))
 set_env METACLAUDE_CPU_LIMIT "$CPU_TOTAL"
 set_env METACLAUDE_MEMORY_LIMIT "${MEM_LIMIT_MB}m"
 info "resource limits: ${CPU_TOTAL} cpus, ${MEM_LIMIT_MB}m memory"
-# Chrome refuses QUIC against a locally-signed certificate, so under `internal`
-# advertising h3 only buys a declined handshake and an open UDP port.
-set_env METACLAUDE_PROTOCOLS "h1 h2"
-
 if [ "$MODE" = "public" ]; then
   set_env METACLAUDE_BIND "0.0.0.0"
 else
@@ -215,19 +244,24 @@ info "health endpoint answers"
 step "5/5  What to do next"
 # ─────────────────────────────────────────────────────────────────────────────
 
-CA_FILE="/root/metaclaude-ca.crt"
-docker compose exec -T proxy cat /data/caddy/pki/authorities/local/root.crt > "$CA_FILE" 2>/dev/null || true
-
 cat <<DONE
 
   ${BOLD}https://${SITE}${OFF}
 
   Sign in as ${BOLD}${OWNER_USER}${OFF}, then turn on two-factor authentication
   immediately — Settings → Two-factor authentication. One screen.
+DONE
+
+# Only the internal CA needs installing, and saying so unconditionally taught
+# operators to expect a warning that a publicly trusted certificate never shows.
+if grep -q '^METACLAUDE_TLS_MODE="internal"' "$ENV_FILE"; then
+  CA_FILE="/root/metaclaude-ca.crt"
+  docker compose exec -T proxy cat /data/caddy/pki/authorities/local/root.crt > "$CA_FILE" 2>/dev/null || true
+  cat <<DONE
 
   ${BOLD}Your browser will warn the first time.${OFF} Caddy signed with its own
-  authority, because a bare IP has no other way to get a certificate. Install it
-  once per device:
+  authority, because a bare address has no other way to get a certificate.
+  Install it once per device:
 
     scp mcadmin@${SITE}:${CA_FILE} .
 
@@ -238,6 +272,20 @@ cat <<DONE
                 then enable full trust. Without this the origin is not
                 secure and the PWA will not install.
     Android  Settings → Security → Encryption → Install a certificate → CA
+DONE
+else
+  cat <<DONE
+
+  ${BOLD}The certificate is publicly trusted${OFF} — Let's Encrypt issued it for
+  ${SITE}. Nothing to install on any device, and the PWA installs on iOS.
+
+  If the browser cannot reach it, check the name still resolves to this host and
+  that 80 and 443 are open: http-01 validation needs 80, and Let's Encrypt will
+  not issue without it.
+DONE
+fi
+
+cat <<DONE
 
   ${BOLD}Write this down somewhere that is not this server:${OFF}
 

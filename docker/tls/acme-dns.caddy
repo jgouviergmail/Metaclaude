@@ -2,4 +2,27 @@
 #
 # Needs port 80 (http-01) or 443 (tls-alpn-01) reachable from the internet.
 # Nothing to install on any device.
+#
+# The name is misleading and worth reading twice: this is ACME *for a DNS name*,
+# not the dns-01 challenge. Caddy validates over http-01 or tls-alpn-01, so no
+# DNS-provider plugin is involved and the stock `caddy` image is sufficient. A
+# custom build with `caddy-dns/<provider>` is only needed for a wildcard, or
+# when 80 and 443 cannot be reached from outside.
+#
+# ── If the name sits behind a CDN, turn the proxy off ─────────────────────────
+#
+# On Cloudflare that is the grey cloud, "DNS only", rather than the orange one.
+# Three reasons, and the second one breaks the product outright:
+#
+#   · A proxy terminates TLS, so it reads every request in clear — including
+#     agent transcripts and anything the agent was asked to look at. This host
+#     exists to hold things you would not paste into a third party.
+#   · WebSockets through Cloudflare's proxy are dropped after ~100s idle on the
+#     free plan. An agent run streams over /api/ws and can sit quiet through a
+#     long tool call, which is exactly that shape. The Caddyfile sets a 30m
+#     read timeout for this reason; a proxy in front makes that setting a lie.
+#   · Request body limits apply to workspace uploads.
+#
+# Grey-cloud also keeps http-01 simple: Let's Encrypt reaches this server, not
+# a cache in front of it.
 tls {$METACLAUDE_TLS_EMAIL}
