@@ -165,10 +165,24 @@ export class AgentSupervisor {
       forwardSubagentText: true,
       agentProgressSummaries: true,
       env: this.deps.env,
-      // The CLI's own settings files are irrelevant inside the container and
-      // would be an injection vector from a cloned repository, so we opt out and
-      // pass everything explicitly.
-      settingSources: [],
+
+      // `project` is required for the CLI to discover `CLAUDE.md` and the
+      // workspace's `.claude/skills/` — both of which Metaclaude actively
+      // writes and advertises. `user` and `local` are excluded: they would read
+      // the container's own home directory, which is not the operator's.
+      settingSources: ['project'],
+
+      // Loading project settings means a cloned repository's `.claude/settings.json`
+      // is read, and left alone it could pre-approve tools, register hooks or add
+      // MCP servers — silently defeating the approval flow. These managed locks
+      // pin all three at the policy tier, which project settings cannot override.
+      // Project *context* is trusted; project *policy* is not.
+      managedSettings: {
+        allowManagedPermissionRulesOnly: true,
+        allowManagedHooksOnly: true,
+        allowManagedMcpServersOnly: true,
+      },
+
       strictMcpConfig: true,
       stderr: (data) => this.deps.log('debug', `[cli] ${data.trim()}`),
     };
@@ -202,6 +216,10 @@ export class AgentSupervisor {
     if (Object.keys(request.agents).length > 0) {
       options.agents = request.agents as Options['agents'];
     }
+    // Enable every skill the CLI discovers in the workspace. Metaclaude
+    // materialises only the enabled ones to disk before each run, so the
+    // filtering has already happened.
+    options.skills = 'all';
     if (this.deps.claudeBinPath) options.pathToClaudeCodeExecutable = this.deps.claudeBinPath;
 
     if (request.resumeSessionId) options.resume = request.resumeSessionId;
