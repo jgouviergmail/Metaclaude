@@ -1,12 +1,13 @@
 # Continuous integration.
 #
-# Five jobs, in the order a failure is cheapest to discover:
+# Six jobs, in the order a failure is cheapest to discover:
 #
 #   deploy-scripts  the deployment layer, off-box          ~30 s
 #   verify          typecheck, unit tests, build            ~2 min
 #   live            the real server, booted and driven      ~1 min   (needs `verify`'s build)
 #   browser         the real PWA in a real Chromium         ~3 min
 #   image           the production image, built and pushed  ~5 min
+#   smoke           that image, actually started and used   ~2 min   (needs `image`)
 #
 # `live` and `browser` run the same scripts an operator runs by hand
 # (`check:e2e`, `check:browser`), minus the parts that need Claude credentials —
@@ -204,6 +205,97 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+  # Everything above proves the source is good. This proves the *artefact* is:
+  # it starts the image that was just pushed, behind the real Caddy, with the
+  # real compose.yml, and drives it the way a browser would. Until now nothing
+  # ever ran the image — which is exactly how a base-image pin that had never
+  # existed survived in the Dockerfile.
+  smoke:
+    name: Deployed stack
+    needs: image
+    # A fork PR has no package write token, so there is no pushed digest to run.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # By digest, not by tag: this must be the artefact this commit produced,
+      # not whatever the tag points at by the time the job starts.
+      #
+      # The password carries a literal `$` and a literal `"`, written with the
+      # escaping .env.example documents. Signing in with the literal value at
+      # the end proves the whole chain held — the documented convention,
+      # compose's interpolation, the container's environment, and the owner
+      # account created on first boot.
+      - name: Configure the stack as a server would
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          {
+            echo "METACLAUDE_IMAGE=${IMAGE}"
+            echo 'METACLAUDE_SITE=127.0.0.1'
+            echo 'METACLAUDE_TLS_MODE=internal'
+            echo 'METACLAUDE_PROTOCOLS=h1 h2'
+            echo 'METACLAUDE_BIND=127.0.0.1'
+            echo 'METACLAUDE_BOOTSTRAP_USER=owner'
+            echo 'METACLAUDE_BOOTSTRAP_PASSWORD="sm0ke-pa$$sw\"rd-9x"'
+            echo "METACLAUDE_MASTER_KEY=$(openssl rand -hex 32)"
+          } > .env
+          echo "running ${IMAGE}"
+
+      - name: Start
+        run: docker compose up -d --wait --wait-timeout 240
+
+      - name: It answers over TLS, and redirects plain HTTP
+        run: |
+          set -euo pipefail
+          curl -fsS -k --max-time 15 https://127.0.0.1/api/health | grep -q '"status":"ok"'
+          ct="$(curl -fsS -k --max-time 15 -o /dev/null -w '%{content_type}' https://127.0.0.1/)"
+          case "$ct" in text/html*) ;; *) echo "the app root served '$ct', not HTML"; exit 1 ;; esac
+          code="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' http://127.0.0.1/)"
+          case "$code" in 301|308) ;; *) echo "plain HTTP returned $code, expected a redirect"; exit 1 ;; esac
+
+      - name: The security headers survive the proxy
+        run: |
+          set -euo pipefail
+          h="$(curl -sS -k --max-time 15 -D - -o /dev/null https://127.0.0.1/)"
+          for want in strict-transport-security x-content-type-options content-security-policy; do
+            printf '%s' "$h" | grep -qi "^${want}:" || { echo "missing $want"; printf '%s' "$h"; exit 1; }
+          done
+
+      - name: The owner account works, with the dollar intact
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -k --max-time 20 -o /tmp/login.json -w '%{http_code}' \
+            -X POST https://127.0.0.1/api/auth/login \
+            -H 'content-type: application/json' \
+            --data-binary '{"username":"owner","password":"sm0ke-pa$sw\"rd-9x"}')"
+          if [ "$code" != "200" ]; then
+            echo "sign-in returned $code — the password did not survive the trip into the container"
+            cat /tmp/login.json || true
+            exit 1
+          fi
+
+      - name: Logs
+        if: failure()
+        run: docker compose logs --tail 200
+
+      - name: Stop
+        if: always()
+        run: docker compose down -v
+
   # The deploy scripts are the only code here that can lock the owner out of
   # their own server, and they are the least exercised — nothing imports them,
   # so a typo survives every other job. This checks what can be checked without
@@ -225,7 +317,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [verify, live, browser, image, deploy-scripts]
+    needs: [verify, live, browser, image, smoke, deploy-scripts]
     runs-on: ubuntu-latest
     steps:
       - name: Verdict
@@ -234,6 +326,7 @@ jobs:
           echo "live=${{ needs.live.result }}"
           echo "browser=${{ needs.browser.result }}"
           echo "image=${{ needs.image.result }}"
+          echo "smoke=${{ needs.smoke.result }}"
           echo "deploy-scripts=${{ needs.deploy-scripts.result }}"
           # `contains` rather than `!= success` so a skipped job (a fork PR)
           # does not fail the gate, but a cancelled or failed one does.

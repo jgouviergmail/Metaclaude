@@ -32,6 +32,12 @@ WORKDIR /app
 # ──────────────────────────────────────────────────────────────────────────────
 FROM base AS deps
 
+# pnpm prompts before removing an existing modules directory, and a build has no
+# TTY to answer with — it aborts instead (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
+# Set here rather than in `base` so it reaches `deps` and `build` but never the
+# runtime image, where the agent spawns a CLI that reads this variable too.
+ENV CI=true
+
 # better-sqlite3 compiles a native addon when no prebuild matches the platform.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
@@ -59,6 +65,11 @@ RUN pnpm --filter @metaclaude/shared build \
  && pnpm --filter @metaclaude/web build
 
 # Strip dev dependencies from the tree we are about to copy into runtime.
+#
+# --ignore-scripts is safe here despite the native dependency: better-sqlite3 13
+# ships prebuilt binaries (prebuilds/linux-x64.node) and declares no install
+# script, so this replaces the modules directory without losing the addon.
+# Verified by running exactly this command and then opening a database.
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --prod --ignore-scripts
 
