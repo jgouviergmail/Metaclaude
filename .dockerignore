@@ -1,0 +1,30 @@
+# Keep the build context small and free of anything secret or machine-specific.
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.github
+
+# Runtime state — never bake this into an image.
+data
+workspaces
+*.db
+*.db-shm
+*.db-wal
+.data
+
+# Secrets
+.env
+.env.*
+!.env.example
+secrets
+caddy_data
+caddy_config
+
+coverage
+*.log
+.DS_Store
+.vscode
+.idea
+*.tsbuildinfo
