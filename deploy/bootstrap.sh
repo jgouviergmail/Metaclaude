@@ -24,16 +24,18 @@ MODE="public"
 SITE=""
 TLS_EMAIL=""
 IMAGE=""
+BUILD=0
 APP_DIR="/opt/metaclaude"
 EXTRA=()
 
 if [ -t 1 ]; then
-  BOLD=$'\033[1m'; RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; OFF=$'\033[0m'
+  BOLD=$'\033[1m'; RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; DIM=$'\033[2m'; OFF=$'\033[0m'
 else
-  BOLD=""; RED=""; GREEN=""; YELLOW=""; OFF=""
+  BOLD=""; RED=""; GREEN=""; YELLOW=""; DIM=""; OFF=""
 fi
 step() { printf '\n%s━━ %s%s%s\n' "$GREEN" "$BOLD" "$*" "$OFF"; }
 info() { printf '    %s\n' "$*"; }
+note() { printf '    %s%s%s\n' "$DIM" "$*" "$OFF"; }
 warn() { printf '%s !! %s%s\n' "$YELLOW" "$*" "$OFF" >&2; }
 die()  { printf '\n%s !! %s%s\n' "$RED" "$*" "$OFF" >&2; exit 1; }
 
@@ -55,7 +57,11 @@ Options:
                       warnings. Never shown to visitors.
   --image REF         Container image to run. Defaults to the GHCR image CI
                       built for this checkout's commit, so what runs is the code
-                      you are standing on.
+                      you are standing on. If that image cannot be pulled, the
+                      same code is built here instead — no token, ever.
+  --build             Skip the registry and build the image on this machine.
+                      Slower, needs no network beyond the base image, and is
+                      the only way to deploy an uncommitted change.
   --app-dir PATH      Default /opt/metaclaude.
   -h, --help
 USAGE
@@ -69,6 +75,7 @@ while [ $# -gt 0 ]; do
     --site)       SITE="${2:-}"; shift 2 ;;
     --email)      TLS_EMAIL="${2:-}"; shift 2 ;;
     --image)      IMAGE="${2:-}"; shift 2 ;;
+    --build)      BUILD=1; shift ;;
     --app-dir)    APP_DIR="${2:-}"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *)            usage; die "unknown argument: $1" ;;
@@ -257,67 +264,97 @@ info "wrote $ENV_FILE"
 # The tag is this checkout's own commit. CI publishes `sha-<commit>` for every
 # push, so deploying the commit you are standing on is the one choice that
 # cannot silently run different code from the one you just read.
-if [ -z "$IMAGE" ]; then
+#
+# Failing to derive it is not fatal any more: an archive download, a shallow
+# copy or a checkout with no remote all land here, and every one of them still
+# holds the source the image would be built from.
+if [ -z "$IMAGE" ] && [ "$BUILD" -eq 0 ]; then
   REMOTE="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || echo '')"
   SLUG="$(printf '%s' "$REMOTE" | sed -E 's#^.*github\.com[:/]##; s#\.git$##' | tr '[:upper:]' '[:lower:]')"
   COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo '')"
   if [ -n "$SLUG" ] && [ -n "$COMMIT" ]; then
     IMAGE="ghcr.io/${SLUG}:sha-${COMMIT}"
   else
-    die "could not derive the image from this checkout; pass --image"
+    note "no git remote here to name a published image — building from source"
+    BUILD=1
   fi
 fi
-info "image: $IMAGE"
+if [ "$BUILD" -eq 0 ]; then info "image: $IMAGE"; fi
 
-case "$IMAGE" in
-  ghcr.io/*)
-    # A package attached to a private repository is private too, so an
-    # anonymous pull gets denied. Try first — if the owner has made the package
-    # public there is nothing to ask for.
-    if ! docker pull "$IMAGE" >/dev/null 2>&1; then
-      # A refused pull has two very different causes that look identical from
-      # `docker pull`: the package is private, or the tag does not exist. Ask
-      # the registry which, rather than demanding a token for a package that is
-      # already public and simply has no such tag.
-      REPO_PATH="${IMAGE#ghcr.io/}"; REPO_PATH="${REPO_PATH%%:*}"; REPO_PATH="${REPO_PATH%%@*}"
-      ANON="$(curl -sS --max-time 20 \
-        "https://ghcr.io/token?scope=repository:${REPO_PATH}:pull&service=ghcr.io" 2>/dev/null \
-        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)"
+# Building here rather than pulling. The source is already on this machine —
+# the script is being run out of the checkout — so the registry is a
+# convenience, never a requirement.
+build_locally() {
+  command -v docker >/dev/null || die "docker is not installed"
+  [ -f "$REPO_ROOT/docker/Dockerfile" ] \
+    || die "no docker/Dockerfile in $REPO_ROOT — is this a full checkout?"
 
-      printf '\n'
-      if [ -n "$ANON" ]; then
-        warn "the package is public, so this is not an authentication problem"
-        info "The tag is probably not there: CI may still be building this commit,"
-        info "or never built it. Check the run for $(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null),"
-        info "then re-run — or pass --image with a tag that exists."
-      else
-        warn "the package is private"
-        info "Making the *repository* public does not change this. They are separate"
-        info "settings, and this is the one people miss. Either:"
-        printf '\n'
-        info "  1. Make the package public, once and for all:"
-        info "     https://github.com/users/${REPO_PATH%%/*}/packages/container/${REPO_PATH##*/}/settings"
-        info "     Danger Zone -> Change visibility -> Public, then re-run this script."
-        printf '\n'
-        info "  2. Or paste a GitHub token with read:packages below."
-      fi
-
-      printf '\n  token (or Enter to stop here): '
-      IFS= read -rs GH_TOKEN
-      printf '\n'
-      [ -n "$GH_TOKEN" ] || die "stopped without an image.
-     Nothing that was already configured is undone — .env is written and the
-     host is provisioned. Fix the access above and run this again; it will pick
-     up where it left off."
-      printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${SLUG%%/*}" --password-stdin \
-        || die "GHCR rejected that token"
-      unset GH_TOKEN
-      docker pull "$IMAGE" \
-        || die "logged in, but $IMAGE is not there. Has CI finished building this commit?"
+  # The web build runs Vite and Rollup in Node. On a 1 GB box with no swap the
+  # OOM killer takes the process and Docker reports only `exit code 137`, which
+  # says nothing about why. Warn before the twenty minutes are spent.
+  if [ "$MEM_KB" -lt 1800000 ]; then
+    SWAP_KB="$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+    if [ "${SWAP_KB:-0}" -lt 512000 ]; then
+      warn "this host has $(( MEM_KB / 1024 ))m of memory and little swap"
+      note "The bundler may be OOM-killed (docker reports a bare 'exit code 137')."
+      note "If that happens, add swap and re-run:"
+      note "  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile"
     fi
-    info "image pulled"
-    ;;
-esac
+  fi
+
+  IMAGE="metaclaude:local"
+  info "building $IMAGE from $REPO_ROOT — this takes a few minutes"
+  docker build -f "$REPO_ROOT/docker/Dockerfile" -t "$IMAGE" "$REPO_ROOT" \
+    || die "the image did not build — the error is above"
+  info "image built"
+}
+
+if [ "$BUILD" -eq 1 ]; then
+  build_locally
+else
+  case "$IMAGE" in
+    ghcr.io/*)
+      # A package attached to a private repository is private too, so an
+      # anonymous pull gets denied. Try first — if the owner has made the
+      # package public, or `docker login ghcr.io` has already been run here,
+      # this is the whole story.
+      if docker pull "$IMAGE" >/dev/null 2>&1; then
+        info "image pulled"
+      else
+        # No token prompt. Being asked for a GitHub credential in the middle of
+        # a deploy — on a machine that already holds the source it would build
+        # from — is friction for nothing, and it stopped a deploy dead more than
+        # once. The registry is an optimisation; the fallback is the same code.
+        #
+        # Still worth saying *which* failure this is, because the two look
+        # identical from `docker pull` and only one of them is worth fixing.
+        REPO_PATH="${IMAGE#ghcr.io/}"; REPO_PATH="${REPO_PATH%%:*}"; REPO_PATH="${REPO_PATH%%@*}"
+        ANON="$(curl -sS --max-time 20 \
+          "https://ghcr.io/token?scope=repository:${REPO_PATH}:pull&service=ghcr.io" 2>/dev/null \
+          | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)"
+
+        printf '\n'
+        if [ -n "$ANON" ]; then
+          warn "$IMAGE is not in the registry"
+          note "The package is public, so this is not an access problem: CI has"
+          note "not published this commit — it may still be running, or it failed."
+        else
+          warn "$IMAGE cannot be pulled anonymously"
+          note "The package is private. Note that a public *repository* does not"
+          note "make its packages public — they are separate settings, and this is"
+          note "the one everybody misses:"
+          note "  https://github.com/users/${REPO_PATH%%/*}/packages/container/${REPO_PATH##*/}/settings"
+          note "  Danger Zone -> Change visibility -> Public"
+          note "Or run 'docker login ghcr.io' yourself before this script, and the"
+          note "pull above will succeed."
+        fi
+        note "Neither is worth waiting for. Building the image here instead."
+        printf '\n'
+        build_locally
+      fi
+      ;;
+  esac
+fi
 
 set_env METACLAUDE_IMAGE "$IMAGE"
 

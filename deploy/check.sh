@@ -332,6 +332,46 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "A deploy never stops to ask for a credential"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# bootstrap.sh used to prompt for a GitHub token when the GHCR package turned
+# out to be private — halfway through, after provisioning, on a machine that was
+# already holding the source the image would be built from. It stopped real
+# deploys dead, repeatedly, for nothing: the fallback is the same code.
+#
+# The registry is allowed to be an optimisation. It is not allowed to be a
+# gate, so no registry credential may reappear here.
+#
+# Narrow on purpose. bootstrap.sh does prompt for CLAUDE_CODE_OAUTH_TOKEN, and
+# that is a different thing entirely: it is what the product needs to work at
+# all, it is asked for once, and no fallback can invent it. What is banned is
+# specifically a *registry* credential, which only ever buys a download.
+#
+# `docker login` is matched only where a command could start — at the beginning
+# of a line or after a pipe or a semicolon — so the sentence that tells an
+# operator they may run it themselves is not mistaken for the script doing it.
+offenders=""
+if grep -qE 'read [^#]*(GH_TOKEN|GITHUB_TOKEN|GHCR_TOKEN|REGISTRY_TOKEN)' \
+     "$REPO_ROOT/deploy/bootstrap.sh"; then
+  offenders="$offenders a-prompt-for-a-registry-token"
+fi
+if grep -qE '(^[[:space:]]*|[|;&][[:space:]]*)docker login' "$REPO_ROOT/deploy/bootstrap.sh"; then
+  offenders="$offenders docker-login"
+fi
+
+if [ -n "$offenders" ]; then
+  bad "bootstrap.sh can block on a credential:$offenders" \
+      "a deploy must never need one — it can build the image from the checkout"
+elif ! grep -q '^build_locally() {' "$REPO_ROOT/deploy/bootstrap.sh"; then
+  bad "bootstrap.sh has no build_locally fallback" "a failed pull would leave it with no image"
+elif ! grep -q -- '--build)' "$REPO_ROOT/deploy/bootstrap.sh"; then
+  bad "bootstrap.sh has no --build flag" "there would be no way to deploy an uncommitted change"
+else
+  ok "bootstrap.sh falls back to building locally and never prompts for a token"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 printf '\n%s%d passed, %d failed, %d skipped%s\n' "$BOLD" "$PASSED" "$FAILED" "$SKIPPED" "$OFF"
 [ "$FAILED" -eq 0 ] || exit 1

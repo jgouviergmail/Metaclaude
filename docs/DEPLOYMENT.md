@@ -162,6 +162,22 @@ that cannot be generated, generates the ones that can, and starts the stack. The
 lockout guards are unchanged and still interactive — including the confirmation
 from a second SSH session — so run it somewhere you can answer them.
 
+**No registry credential is ever required.** By default it runs the image CI
+published for the commit you are standing on, `ghcr.io/<owner>/<repo>:sha-<sha>`.
+If that image cannot be pulled — the package is private, or CI has not finished
+this commit — it builds the same source, on the spot, and says which of the two
+happened. Three consequences worth knowing:
+
+- A GHCR package attached to a **private repository is private too**, and making
+  the repository public does not change that. They are separate settings. If you
+  want the pull to work, flip the package's own visibility, or run
+  `docker login ghcr.io` before the script.
+- `--build` skips the registry entirely. It is the only way to deploy a change
+  you have not committed and pushed.
+- Building needs about 2 GB of memory. On a 1 GB VPS the bundler is OOM-killed
+  and Docker reports a bare `exit code 137`; add swap first. The script checks
+  and warns before spending the time.
+
 The steps are written out below anyway. A script that provisions your only
 server is not one to run without knowing what it does.
 
