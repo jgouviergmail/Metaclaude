@@ -249,6 +249,18 @@ step "Docker"
 if command -v docker >/dev/null 2>&1; then
   skip "docker $(docker --version | awk '{print $3}' | tr -d ,)"
 else
+  # Docker does not publish packages for a distribution release on the day it
+  # ships, and the codename goes straight into the repository URL. Checked
+  # before the source is written so a gap is one clear sentence here rather than
+  # an apt failure forty lines later that reads like a broken network.
+  if ! curl -fsI --max-time 20 \
+       "https://download.docker.com/linux/${ID}/dists/${VERSION_CODENAME}/Release" >/dev/null 2>&1; then
+    die "Docker publishes nothing for ${ID} ${VERSION_CODENAME} yet.
+     See https://download.docker.com/linux/${ID}/dists/ for what exists.
+     Install Docker by another route and re-run this — it skips Docker when
+     one is already present."
+  fi
+
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
