@@ -160,6 +160,22 @@ set_env METACLAUDE_BOOTSTRAP_PASSWORD "$OWNER_PASS"
 set_env METACLAUDE_MASTER_KEY "$MASTER_KEY"
 set_env METACLAUDE_SITE "$SITE"
 set_env METACLAUDE_TLS_MODE "internal"
+
+# Sized from this host rather than left at the conservative default. The default
+# has to be startable on the smallest VPS anyone might use, which would otherwise
+# cap a large server at 2 cores and 2 GB for no reason.
+#
+# Docker refuses outright to create a container whose cpus limit exceeds the
+# host's core count, so this value must come from the machine, never a guess.
+CPU_TOTAL="$(nproc 2>/dev/null || echo 2)"
+MEM_KB="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 2097152)"
+# Three quarters of RAM, floored at 1 GB: the rest is the host, Caddy, and the
+# page cache the database reads through.
+MEM_LIMIT_MB=$(( MEM_KB * 3 / 4 / 1024 ))
+[ "$MEM_LIMIT_MB" -lt 1024 ] && MEM_LIMIT_MB=1024
+set_env METACLAUDE_CPU_LIMIT "$CPU_TOTAL"
+set_env METACLAUDE_MEMORY_LIMIT "${MEM_LIMIT_MB}m"
+info "resource limits: ${CPU_TOTAL} cpus, ${MEM_LIMIT_MB}m memory"
 # Chrome refuses QUIC against a locally-signed certificate, so under `internal`
 # advertising h3 only buys a declined handshake and an open UDP port.
 set_env METACLAUDE_PROTOCOLS "h1 h2"

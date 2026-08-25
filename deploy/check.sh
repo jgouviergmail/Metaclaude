@@ -241,6 +241,24 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "The defaults start on the smallest plausible host"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Docker does not clamp a cpus limit to what the host has — it refuses to create
+# the container at all. A default of 4 therefore made the stack unstartable on
+# any 2-vCPU VPS, which is the size most people buy, and the failure arrives at
+# `up` on the server rather than anywhere earlier.
+CPU_DEFAULT="$(grep -oE "cpus: '\\\$\\{METACLAUDE_CPU_LIMIT:-[0-9.]+\\}'" "$REPO_ROOT/compose.yml" \
+               | grep -oE ':-[0-9.]+' | tr -d ':-')"
+if [ -z "$CPU_DEFAULT" ]; then
+  bad "reading the default cpus limit out of compose.yml" "the line moved; this check needs updating"
+elif awk -v v="$CPU_DEFAULT" 'BEGIN { exit !(v <= 2) }'; then
+  ok "default cpus limit is $CPU_DEFAULT — starts on a 2-vCPU host"
+else
+  bad "default cpus limit is $CPU_DEFAULT" "Docker refuses to create the container on a host with fewer cores"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section ".env.example stays in step with compose.yml"
 # ─────────────────────────────────────────────────────────────────────────────
 

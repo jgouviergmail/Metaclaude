@@ -84,8 +84,18 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '${METACLAUDE_CPU_LIMIT:-4}'
-          memory: ${METACLAUDE_MEMORY_LIMIT:-4g}
+          # A cpus limit above the host's core count is not clamped — Docker
+          # refuses to create the container at all ("range of CPUs is from 0.01
+          # to 2.00, as there are only 2 CPUs available"). The default therefore
+          # has to fit the smallest machine anyone would run this on, which is a
+          # 2-vCPU VPS; a default of 4 made the stack unstartable there with an
+          # unedited .env. bootstrap.sh raises it to the host's actual core count.
+          cpus: '${METACLAUDE_CPU_LIMIT:-2}'
+          # Not clamped either, but over-committing memory fails differently: the
+          # container is allowed to grow past what the host has and the host's OOM
+          # killer picks the victim, which may not be this container. bootstrap.sh
+          # sizes it from real RAM for the same reason.
+          memory: ${METACLAUDE_MEMORY_LIMIT:-2g}
 
     # The shutdown path gives in-flight runs 20 seconds to drain before forcing
     # exit. Docker's default grace is 10, so every deploy would SIGKILL the
