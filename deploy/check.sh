@@ -258,6 +258,30 @@ else
   bad "default cpus limit is $CPU_DEFAULT" "Docker refuses to create the container on a host with fewer cores"
 fi
 
+# `metaclaude-deploy` gates a release on `compose up --wait`, which is only as
+# strong as the healthchecks it waits for: a service without one is "healthy" as
+# soon as its container is running. The proxy had none, so `--wait` returned
+# before Caddy had a certificate and the release probe failed against a perfectly
+# good deployment.
+if docker compose version >/dev/null 2>&1; then
+  missing_hc=""
+  for service in $(METACLAUDE_TLS_MODE=internal docker compose -f "$REPO_ROOT/compose.yml" --env-file /dev/null config --services 2>/dev/null); do
+    METACLAUDE_TLS_MODE=internal docker compose -f "$REPO_ROOT/compose.yml" --env-file /dev/null config 2>/dev/null \
+      | python3 -c "
+import sys, yaml
+svc = yaml.safe_load(sys.stdin)['services']['$service']
+sys.exit(0 if svc.get('healthcheck', {}).get('test') else 1)
+" || missing_hc="$missing_hc $service"
+  done
+  if [ -z "$missing_hc" ]; then
+    ok "every service declares a healthcheck, so \`up --wait\` means something"
+  else
+    bad "services with no healthcheck:$missing_hc" "\`up --wait\` returns as soon as they are merely running"
+  fi
+else
+  skip "healthcheck coverage" "docker compose not available"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 section ".env.example stays in step with compose.yml"
 # ─────────────────────────────────────────────────────────────────────────────

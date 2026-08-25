@@ -180,6 +180,30 @@ services:
     security_opt:
       - no-new-privileges:true
 
+    # Without this the proxy had no healthcheck at all, and `up --wait` treats a
+    # merely-running container as ready. Caddy's own startup order is why that
+    # is not good enough:
+    #
+    #   "server running" protocols [h1 h2]      ← listening
+    #   "serving initial configuration"
+    #   "obtaining certificate" → "obtained"    ← only now can TLS complete
+    #
+    # `--wait` returned inside that window, and the next HTTPS request failed
+    # with `tlsv1 alert internal error` against a deployment that was fine. Only
+    # a real handshake closes it, so the probe speaks TLS; --no-check-certificate
+    # because under `internal` the CA is Caddy's own and the question here is
+    # readiness, not trust.
+    healthcheck:
+      test:
+        ['CMD', 'wget', '-q', '--no-check-certificate', '-O', '/dev/null', 'https://127.0.0.1/api/health']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      # Failures here do not count against `retries`, which matters in the ACME
+      # modes: issuance has to reach Let's Encrypt and validate before the first
+      # handshake can succeed.
+      start_period: 60s
+
     logging:
       driver: json-file
       options: { max-size: '10m', max-file: '3' }

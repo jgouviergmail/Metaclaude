@@ -42,6 +42,11 @@ ALLOWED_IMAGE_PREFIX="${ALLOWED_IMAGE_PREFIX:-ghcr.io/jgouviergmail/metaclaude}"
 # How long the container gets to report healthy before it is judged a failure.
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-180}"
 
+# How long the proxy gets to complete a TLS handshake once compose calls it
+# healthy. Separate from the above because it covers a different thing: not
+# whether the container came up, but whether its certificate is usable yet.
+PROXY_WAIT_SECONDS="${PROXY_WAIT_SECONDS:-60}"
+
 # shellcheck source=/dev/null
 [ -f "$APP_DIR/deploy.conf" ] && . "$APP_DIR/deploy.conf"
 
@@ -100,11 +105,24 @@ resolve_digest() {
 }
 
 # Docker's healthcheck runs inside the container, so it proves the process is
-# up but not that the proxy in front of it is routing. This asks from outside.
+# up but not that the proxy in front of it is routing. This asks from outside —
+# and asks more than once, because a single probe is not a health gate.
+#
+# Caddy starts listening before it has a certificate, so the first HTTPS request
+# after `up` can fail with a TLS alert on a deployment that is entirely healthy —
+# and this script's answer to a failed probe is to roll back, or to declare the
+# service down when there is nothing to roll back to. That is the shape of a
+# first deploy on a fresh server, where the local CA and the certificate are both
+# being minted. compose.yml now health-gates the proxy on a real handshake, and
+# this retries to a deadline as well: the two failure modes are independent.
 proxy_answers() {
-  local code
-  code="$(curl -sS -o /dev/null -w '%{http_code}' -k --max-time 10 https://127.0.0.1/api/health 2>/dev/null || echo 000)"
-  [ "$code" = "200" ]
+  local deadline=$(( SECONDS + PROXY_WAIT_SECONDS )) code
+  while :; do
+    code="$(curl -sS -o /dev/null -w '%{http_code}' -k --max-time 10 https://127.0.0.1/api/health 2>/dev/null || echo 000)"
+    [ "$code" = "200" ] && return 0
+    [ "$SECONDS" -ge "$deadline" ] && return 1
+    sleep 2
+  done
 }
 
 record() {
@@ -116,9 +134,12 @@ record() {
 bring_up() {
   local image="$1"
   printf 'METACLAUDE_IMAGE=%s\n' "$image" > "$IMAGE_ENV"
-  # `--wait` is the health gate: compose blocks until every service is running
-  # or healthy and exits non-zero on timeout, so the healthcheck already
-  # declared in compose.yml does the work with nothing new to keep in sync.
+  # `--wait` blocks until every service is healthy and exits non-zero on
+  # timeout. That is only as strong as the healthchecks themselves: the proxy
+  # had none, so `--wait` returned as soon as its container was running and the
+  # probe below could land before Caddy had a certificate. Both ends are fixed —
+  # compose.yml health-gates the proxy on a real handshake, and proxy_answers
+  # retries — but the gate is the healthcheck, so keep one on every service.
   compose up -d --remove-orphans --wait --wait-timeout "$HEALTH_TIMEOUT_SECONDS"
 }
 
