@@ -215,6 +215,30 @@ else
   info "created $ADMIN_USER"
 fi
 usermod -aG sudo "$ADMIN_USER"
+
+# Group membership authorises sudo; it does not make sudo usable.
+#
+# `adduser --disabled-password` means exactly that — no password exists — and
+# sudo authenticates the *invoking* user, not root. So the administrator account
+# was in the sudo group and could never satisfy the prompt: an account created
+# to administer the box, unable to. It surfaces only when someone logs in and
+# tries, which is far too late.
+#
+# NOPASSWD is not a loosening here, it is what makes the design coherent. The
+# boundary protecting this account is the SSH key; a password that was never set
+# protects nothing, and the alternative — inventing one and shipping it to the
+# operator — would be a real weakening.
+SUDOERS="/etc/sudoers.d/00-metaclaude-admin"
+printf '# Written by Metaclaude provision.sh.\n%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$ADMIN_USER" > "$SUDOERS"
+chmod 0440 "$SUDOERS"
+# A malformed file here breaks sudo for everyone, so it is validated in place
+# and removed if it does not parse. Never leave a broken sudoers behind.
+if ! visudo -cf "$SUDOERS" >/dev/null 2>&1; then
+  rm -f "$SUDOERS"
+  die "the sudoers snippet for $ADMIN_USER did not validate; nothing was left behind"
+fi
+info "$ADMIN_USER may sudo without a password (it has none — the key is the boundary)"
+
 install_key "$ADMIN_USER" "$ADMIN_KEY"
 info "admin key installed for $ADMIN_USER"
 
