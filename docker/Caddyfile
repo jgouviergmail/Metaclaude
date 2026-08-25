@@ -37,6 +37,16 @@
 	# client made up. Caddy's default is to trust none, which is correct; naming
 	# ranges here would only create a way to lie about the client address, and
 	# that address is what the login lockout counts against.
+
+	servers {
+		# HTTP/3 is worth having on a phone with a flaky connection, but it is
+		# not always available: Chrome refuses to use QUIC against a certificate
+		# signed by a locally-installed trust anchor, so under the `internal`
+		# mode h3 is advertised, declined, and silently falls back to TCP.
+		# Set METACLAUDE_PROTOCOLS="h1 h2" there to stop advertising it and to
+		# leave the UDP port closed.
+		protocols {$METACLAUDE_PROTOCOLS:h1 h2 h3}
+	}
 }
 
 {$METACLAUDE_SITE:localhost} {

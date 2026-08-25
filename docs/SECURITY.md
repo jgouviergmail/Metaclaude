@@ -339,8 +339,11 @@ The only route in is Caddy, which terminates TLS, sets HSTS, `nosniff`,
 
 **Do not expose this to the open internet unless you need to.** The strongest
 control available is not in this codebase: put it on a private network. A
-Tailscale or WireGuard address, with `METACLAUDE_DOMAIN` pointing at it, gives
-you access from every device with no public attack surface at all.
+Tailscale address, with `METACLAUDE_SITE` set to the `ts.net` name and
+`METACLAUDE_BIND` to the tailnet address, gives you access from every device
+with no public attack surface at all — and, because `tailscale cert` issues a
+genuinely trusted certificate for that name, without the per-device certificate
+install a private CA would need. See docs/DEPLOYMENT.md.
 
 If you do expose it publicly:
 

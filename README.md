@@ -57,13 +57,17 @@ Paste it into `.env` as `CLAUDE_CODE_OAUTH_TOKEN`, set
 docker compose up -d
 ```
 
-Open **https://localhost**. The certificate is self-signed on the default
-`localhost` domain, so your browser will ask once. Sign in with the bootstrap
-credentials and turn on two-factor authentication under Settings → Security.
+Open **https://localhost**. Caddy signs with its own certificate authority by
+default, so your browser will ask once. Sign in with the bootstrap credentials
+and turn on two-factor authentication under Settings → Security.
 
-To reach it from your phone, point `METACLAUDE_DOMAIN` at a hostname that
-resolves to the machine — a Tailscale name works well — and Caddy fetches a real
-certificate automatically.
+To reach it from a server, and from your phone, see
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The first decision it walks you
+through is how you obtain a certificate, because this app needs a *secure
+context* — a `Secure` cookie and a service worker — and over plain HTTP it does
+not degrade, it stops working. With no domain name there are three real answers
+and they trade off very differently; `deploy/provision.sh` and the CI/CD
+workflows cover the rest.
 
 ---
 

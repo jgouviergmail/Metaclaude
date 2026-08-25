@@ -144,6 +144,12 @@ services:
       METACLAUDE_ACME_DIR: ${METACLAUDE_ACME_DIR:-}
       # Only read by the file mode: /certs/<name>.crt and .key.
       METACLAUDE_CERT_NAME: ${METACLAUDE_CERT_NAME:-metaclaude}
+      # Chrome will not use QUIC against a locally-signed certificate, so under
+      # the `internal` TLS mode set this to "h1 h2": h3 would be advertised,
+      # declined, and silently fall back to TCP, leaving a UDP port open for
+      # nothing. Defaulted here rather than in the Caddyfile because compose
+      # passes an unset variable as the empty string, not as absent.
+      METACLAUDE_PROTOCOLS: ${METACLAUDE_PROTOCOLS:-h1 h2 h3}
 
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
