@@ -309,8 +309,21 @@ drift shows up as a warning rather than as a mystery.
 
 ## Verify it from outside
 
-On-box tools agree with themselves. The only test that counts comes from
-somewhere else:
+On-box tools agree with themselves. A firewall that believes it is closed is
+not evidence that it is. Run this **from your laptop**, never on the server:
+
+```bash
+./deploy/verify.sh <ip> --ipv6 <ipv6>
+```
+
+It checks that your key opens a session and that passwords and root do not, that
+the ports which should be shut are shut on **both** address families, that HTTP
+redirects, and that the security headers are present. It refuses to report on
+those headers unless the application itself answered first — otherwise an
+intercepting proxy's headers read as a pass, which is worse than reporting
+nothing.
+
+For the complete answer, sweep every port rather than the short list:
 
 ```bash
 nmap -Pn -p-       <ip>      # public mode: 22, 80, 443 — nothing else
@@ -319,9 +332,12 @@ nmap -6 -Pn -p-    <ipv6>    # do not skip this
 ```
 
 IPv6 is the most-missed gap: ufw, iptables and Docker keep entirely separate v6
-rulesets, and provision.sh warns rather than managing them. Either disable IPv6
-on the box or mirror the `DOCKER-USER` block into `/etc/ufw/after6.rules`.
-Half-configured is the worst of the three.
+rulesets, so a host with a global v6 address is reachable over it whether or not
+anyone configured it. provision.sh handles this symmetrically — it turns on
+ufw's v6 support, mirrors the `DOCKER-USER` block into `/etc/ufw/after6.rules`,
+and prints what is actually listening on v6 at the end. Verify it from outside
+anyway; a v4 firewall beside an unmanaged v6 one reads as "firewalled" and is
+not.
 
 To see the bypass this defends against, on a scratch machine:
 
