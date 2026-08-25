@@ -8,7 +8,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Files, GitBranch, Plus, Sparkles, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -22,7 +22,22 @@ import { Composer, type ComposerValue } from '@/components/transcript/Composer';
 import { MessageStream } from '@/components/transcript/MessageStream';
 import { Button, Spinner, Tooltip } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/Modal';
-import { FilesPanel } from '@/components/workspace/FilesPanel';
+// CodeMirror is 265 kB gzipped — more than the rest of the application put
+// together — and it is only ever needed once someone opens the file browser.
+// Imported statically it landed in index.html as a modulepreload, so a phone
+// downloaded a code editor to reach the sign-in screen.
+const FilesPanel = lazy(async () => ({
+  default: (await import('@/components/workspace/FilesPanel')).FilesPanel,
+}));
+
+/** Holds the panel's shape while the editor chunk arrives, so nothing reflows. */
+function PanelLoading() {
+  return (
+    <div className="flex h-full items-center justify-center" role="status" aria-label="Loading the editor">
+      <Spinner className="size-5" />
+    </div>
+  );
+}
 import { GitPanel } from '@/components/workspace/GitPanel';
 import { SessionList } from '@/components/workspace/SessionList';
 import { api, ApiError } from '@/lib/api';
@@ -334,7 +349,9 @@ export function SessionPage() {
         {panel !== 'none' ? (
           <aside className="hidden w-[26rem] shrink-0 border-l border-line bg-surface xl:flex xl:flex-col">
             {panel === 'files' ? (
-              <FilesPanel workspaceId={workspaceId} onClose={() => setPanel('none')} />
+              <Suspense fallback={<PanelLoading />}>
+                <FilesPanel workspaceId={workspaceId} onClose={() => setPanel('none')} />
+              </Suspense>
             ) : (
               <GitPanel workspaceId={workspaceId} onClose={() => setPanel('none')} />
             )}
@@ -346,7 +363,9 @@ export function SessionPage() {
       {panel !== 'none' ? (
         <div className="fixed inset-0 z-40 flex flex-col bg-surface xl:hidden">
           {panel === 'files' ? (
-            <FilesPanel workspaceId={workspaceId} onClose={() => setPanel('none')} />
+            <Suspense fallback={<PanelLoading />}>
+              <FilesPanel workspaceId={workspaceId} onClose={() => setPanel('none')} />
+            </Suspense>
           ) : (
             <GitPanel workspaceId={workspaceId} onClose={() => setPanel('none')} />
           )}

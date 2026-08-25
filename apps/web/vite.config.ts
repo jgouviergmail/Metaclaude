@@ -25,12 +25,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    // Keep the initial payload small on a phone: the editor and the chart
-    // library are only needed on screens the user may never open.
+    // Only React is named here, and deliberately so.
     //
-    // The function form (rather than the record form) is what current Rollup
-    // types accept, and it lets one rule cover a whole dependency subtree —
-    // CodeMirror ships as a dozen separate packages.
+    // The editor and the chart library used to be named chunks too, with the
+    // stated intent of keeping them off a phone's first load. It achieved the
+    // opposite: naming a manual chunk puts it in the entry's own graph, so
+    // index.html emitted `<link rel="modulepreload">` for both and fetched
+    // 362 kB gzipped of CodeMirror and Recharts before the sign-in form —
+    // whether or not the visitor ever opened a file or a chart.
+    //
+    // Left alone, the bundler derives those chunks from the dynamic import
+    // boundaries instead (the lazy routes, and the lazy Files panel), which is
+    // what actually defers them. React stays named because it genuinely is
+    // static, shared by every route, and worth caching across deploys.
     rollupOptions: {
       output: {
         manualChunks(id: string) {
@@ -38,10 +45,6 @@ export default defineConfig({
           if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id)) {
             return 'react';
           }
-          if (/[\\/]node_modules[\\/](@codemirror|@uiw|@lezer|codemirror)[\\/]/.test(id)) {
-            return 'editor';
-          }
-          if (/[\\/]node_modules[\\/](recharts|d3-|victory-)/.test(id)) return 'charts';
           return undefined;
         },
       },

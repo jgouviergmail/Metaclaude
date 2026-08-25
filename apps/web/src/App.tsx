@@ -7,7 +7,7 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { type ComponentType, lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { SYSTEM_TOPIC } from '@metaclaude/shared';
@@ -21,16 +21,27 @@ import {
   useSessionStore,
   useUiStore,
 } from '@/lib/store';
-import { AgentsPage } from '@/pages/AgentsPage';
-import { AnalyticsPage } from '@/pages/AnalyticsPage';
-import { AutomationsPage } from '@/pages/AutomationsPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { LoginPage } from '@/pages/LoginPage';
-import { MemoryPage } from '@/pages/MemoryPage';
-import { SessionPage } from '@/pages/SessionPage';
-import { SettingsPage } from '@/pages/SettingsPage';
-import { WorkspacePage } from '@/pages/WorkspacePage';
-import { WorkspacesPage } from '@/pages/WorkspacesPage';
+
+// Login and the dashboard stay eager: one is the first screen an anonymous
+// visitor sees, the other is where every authenticated load lands, and making
+// either wait on a second round trip buys nothing. Everything else is split.
+//
+// The measurable half of this is the chart library, which only Analytics uses.
+// Imported statically it was preloaded by index.html on every page — 114 kB
+// gzipped of plotting code fetched to render a sign-in form on a phone.
+const lazyPage = <K extends string>(load: () => Promise<Record<K, ComponentType>>, key: K) =>
+  lazy(async () => ({ default: (await load())[key] }));
+
+const AgentsPage = lazyPage(() => import('@/pages/AgentsPage'), 'AgentsPage');
+const AnalyticsPage = lazyPage(() => import('@/pages/AnalyticsPage'), 'AnalyticsPage');
+const AutomationsPage = lazyPage(() => import('@/pages/AutomationsPage'), 'AutomationsPage');
+const MemoryPage = lazyPage(() => import('@/pages/MemoryPage'), 'MemoryPage');
+const SessionPage = lazyPage(() => import('@/pages/SessionPage'), 'SessionPage');
+const SettingsPage = lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPage');
+const WorkspacePage = lazyPage(() => import('@/pages/WorkspacePage'), 'WorkspacePage');
+const WorkspacesPage = lazyPage(() => import('@/pages/WorkspacesPage'), 'WorkspacesPage');
 
 export function App() {
   const navigate = useNavigate();
@@ -167,19 +178,30 @@ export function App() {
   return (
     <>
       <CommandPalette />
-      <Routes>
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/workspaces" element={<WorkspacesPage />} />
-        <Route path="/w/:workspaceId" element={<WorkspacePage />} />
-        <Route path="/w/:workspaceId/s/:sessionId" element={<SessionPage />} />
-        <Route path="/memory" element={<MemoryPage />} />
-        <Route path="/automations" element={<AutomationsPage />} />
-        <Route path="/agents" element={<AgentsPage />} />
-        <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      {/* One boundary around the table rather than one per route: navigating
+          between split pages should read as a single transition, not as ten
+          independent ones that each flash their own spinner. */}
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center bg-bg">
+            <Spinner className="size-6" />
+          </div>
+        }
+      >
+        <Routes>
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/workspaces" element={<WorkspacesPage />} />
+          <Route path="/w/:workspaceId" element={<WorkspacePage />} />
+          <Route path="/w/:workspaceId/s/:sessionId" element={<SessionPage />} />
+          <Route path="/memory" element={<MemoryPage />} />
+          <Route path="/automations" element={<AutomationsPage />} />
+          <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </>
   );
 }
