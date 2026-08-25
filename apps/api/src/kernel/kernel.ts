@@ -72,6 +72,14 @@ export interface KernelDeps {
   contextProvider: ContextProvider;
   supervisor: AgentSupervisor;
   maxConcurrentRuns: number;
+  /**
+   * Called once per run, after it reaches a terminal state and its usage has
+   * been recorded. A direct hook rather than an event-bus subscription: run
+   * frames are published to session and workspace topics, and adding them to
+   * `system` purely so one server-side listener could see them would fan out a
+   * frame to every connected client for every run in the OS.
+   */
+  onRunFinished?: (run: Run) => void;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }
 
@@ -383,6 +391,15 @@ export class Kernel {
     this.publishRun(finished);
     this.publishSession(session.id);
     this.publishMetrics();
+
+    try {
+      this.deps.onRunFinished?.(finished);
+    } catch (error) {
+      // A listener must never be able to fail the run that just succeeded.
+      this.deps.log('warn', 'onRunFinished listener threw', {
+        message: (error as Error).message,
+      });
+    }
 
     this.notifyCompletion(finished, workspace, session);
 

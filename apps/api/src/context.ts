@@ -184,6 +184,9 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     log: kernelLog,
   });
 
+  // Declared before the kernel because the kernel's completion hook feeds it.
+  let schedulerRef: Scheduler | null = null;
+
   const kernel = new Kernel({
     db,
     bus,
@@ -198,6 +201,12 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     contextProvider: registry,
     supervisor,
     maxConcurrentRuns: config.maxConcurrentRuns,
+    // Every finished run is offered, not only automation-triggered ones: a human
+    // pressing "Run now" produces a `user` run against the automation's session,
+    // and its outcome still belongs in that automation's status.
+    // `recordOutcome` no-ops for a session that has no automation.
+    onRunFinished: (run) =>
+      schedulerRef?.recordOutcome(run.sessionId, run.status, run.triggeredBy === 'user'),
     log: kernelLog,
   });
   kernelRef = kernel;
@@ -217,14 +226,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     log: kernelLog,
   });
 
-  // Feed finished runs back to the scheduler so automations track their own
-  // health without the kernel needing to know automations exist.
-  bus.subscribe('system', (frame) => {
-    if (frame.type !== 'run') return;
-    if (frame.run.triggeredBy !== 'automation' && frame.run.triggeredBy !== 'loop') return;
-    if (frame.run.status === 'queued' || frame.run.status === 'running') return;
-    scheduler.recordOutcome(frame.run.sessionId, frame.run.status);
-  });
+  schedulerRef = scheduler;
 
   const context: AppContext = {
     config,

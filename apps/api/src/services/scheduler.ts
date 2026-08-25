@@ -318,19 +318,28 @@ export class Scheduler {
   }
 
   /**
-   * Record how a run triggered by an automation ended.
-   * Called by the kernel through the event bus wiring in `server.ts`.
+   * Record how a run belonging to an automation ended.
+   * Wired to the event bus in `context.ts`; a session with no automation is a
+   * no-op, so this is safe to call for every finished run.
+   *
+   * `attended` distinguishes a human pressing "Run now" from an unattended
+   * firing. Both update `lastStatus` — the UI shows it either way — but only an
+   * unattended failure counts toward the auto-disable guard. Someone actively
+   * debugging an automation should not have it switched off underneath them.
    */
-  recordOutcome(sessionId: string, status: RunStatus): void {
+  recordOutcome(sessionId: string, status: RunStatus, attended = false): void {
     const row = this.deps.db
       .prepare<[string], AutomationRow>('SELECT * FROM automations WHERE session_id = ?')
       .get(sessionId);
     if (!row) return;
 
     const failed = status === 'failed';
-    const consecutive = failed ? row.consecutive_failures + 1 : 0;
+    const consecutive = attended ? row.consecutive_failures : failed ? row.consecutive_failures + 1 : 0;
     const shouldDisable =
-      failed && row.max_consecutive_failures > 0 && consecutive >= row.max_consecutive_failures;
+      !attended &&
+      failed &&
+      row.max_consecutive_failures > 0 &&
+      consecutive >= row.max_consecutive_failures;
 
     this.deps.db
       .prepare(
