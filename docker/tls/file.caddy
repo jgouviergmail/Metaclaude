@@ -1,0 +1,16 @@
+# A certificate obtained outside Caddy, mounted at /certs.
+#
+# This is the Tailscale route, and the best answer to "no domain name":
+#
+#   tailscale cert --cert-file /opt/metaclaude/certs/mc.crt \
+#                  --key-file  /opt/metaclaude/certs/mc.key \
+#                  <machine>.<tailnet>.ts.net
+#
+# You get a real, publicly-trusted certificate and a stable hostname without
+# owning a domain, and the server needs no inbound ports open at all — set
+# METACLAUDE_BIND to the node's Tailscale address and nothing is exposed.
+#
+# Renewal is yours to schedule: `tailscale cert` does not renew on its own.
+# A systemd timer that re-runs it and then `docker compose kill -s HUP proxy`
+# is the whole job.
+tls /certs/{$METACLAUDE_CERT_NAME:metaclaude}.crt /certs/{$METACLAUDE_CERT_NAME:metaclaude}.key

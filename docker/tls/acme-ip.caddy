@@ -1,0 +1,31 @@
+# A publicly-trusted Let's Encrypt certificate for a bare IP address.
+#
+# Generally available since 15 January 2026, and hedged about in ways that
+# matter operationally:
+#
+#   · Only the `shortlived` profile issues for IP identifiers. Certificates
+#     live 160 hours — under seven days — so renewal is not a background
+#     detail: a few days of broken ACME and every device gets a hard error.
+#   · Only http-01 and tls-alpn-01 validate an IP. dns-01 cannot, by
+#     construction. Keep 80 and 443 both reachable.
+#   · Five certificates per exact identifier set per 7 days, with no override
+#     available. Iterate against the staging directory, never production —
+#     set METACLAUDE_ACME_DIR to
+#     https://acme-staging-v02.api.letsencrypt.org/directory while testing.
+#   · Private ranges are refused outright: RFC1918, CGNAT (100.64/10, which is
+#     Tailscale), link-local. This mode needs a genuinely public address.
+#
+# `dir` is named explicitly rather than left to the default issuer pair,
+# because that pair's ZeroSSL half cannot issue for IPs and would fail over to
+# a CA that always refuses.
+#
+# `profile` is still experimental in Caddy and rests on an Internet-Draft, not
+# an RFC — which is why compose.yml pins the Caddy version rather than
+# following a tag.
+tls {
+	issuer acme {
+		dir {$METACLAUDE_ACME_DIR:https://acme-v02.api.letsencrypt.org/directory}
+		email {$METACLAUDE_TLS_EMAIL}
+		profile shortlived
+	}
+}

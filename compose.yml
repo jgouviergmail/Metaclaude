@@ -87,6 +87,11 @@ services:
           cpus: '${METACLAUDE_CPU_LIMIT:-4}'
           memory: ${METACLAUDE_MEMORY_LIMIT:-4g}
 
+    # The shutdown path gives in-flight runs 20 seconds to drain before forcing
+    # exit. Docker's default grace is 10, so every deploy would SIGKILL the
+    # process midway through writing a transcript.
+    stop_grace_period: 30s
+
     healthcheck:
       test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:8787/api/health']
       interval: 30s
@@ -99,7 +104,10 @@ services:
       options: { max-size: '10m', max-file: '5' }
 
   proxy:
-    image: caddy:2.10-alpine
+    # Pinned, and 2.11.4 is a floor rather than a preference: earlier releases
+    # cannot order a Let's Encrypt certificate for an IP address at all, and
+    # the `profile` subdirective that mode needs is still experimental.
+    image: caddy:2.11.4-alpine
     restart: unless-stopped
     depends_on:
       app:
@@ -115,28 +123,38 @@ services:
     #   0.0.0.0     public: the server is reached at its own IP
     #   100.x.y.z   VPN: the Tailscale/WireGuard address, nothing else exposed
     #   127.0.0.1   local only, for a tunnel
+    #
+    # The default is the *closed* one on purpose. An unset or mistyped variable
+    # should make the service unreachable, not world-readable; exposing it
+    # publicly is then something an operator wrote down deliberately.
     ports:
-      - '${METACLAUDE_BIND:-0.0.0.0}:${METACLAUDE_HTTP_PORT:-80}:80'
-      - '${METACLAUDE_BIND:-0.0.0.0}:${METACLAUDE_HTTPS_PORT:-443}:443'
+      - '${METACLAUDE_BIND:-127.0.0.1}:${METACLAUDE_HTTP_PORT:-80}:80'
+      - '${METACLAUDE_BIND:-127.0.0.1}:${METACLAUDE_HTTPS_PORT:-443}:443'
       # HTTP/3. Caddy advertises it via Alt-Svc, and a phone on a flaky mobile
       # network is exactly where it earns its keep.
-      - '${METACLAUDE_BIND:-0.0.0.0}:${METACLAUDE_HTTPS_PORT:-443}:443/udp'
+      - '${METACLAUDE_BIND:-127.0.0.1}:${METACLAUDE_HTTPS_PORT:-443}:443/udp'
 
     environment:
       # The address browsers use: an IP, or a hostname. See docker/Caddyfile.
       METACLAUDE_SITE: ${METACLAUDE_SITE:-localhost}
-      # How the certificate is obtained: `internal` (Caddy's own CA — the only
-      # option that works with nothing but an IP), an email address (public
-      # ACME), or a `cert key` pair (Tailscale, or your own).
-      METACLAUDE_TLS: ${METACLAUDE_TLS:-internal}
       METACLAUDE_TLS_EMAIL: ${METACLAUDE_TLS_EMAIL:-internal}
+      # Only read by the acme-ip mode. Point it at the staging directory while
+      # testing: production allows five certificates per identifier set per
+      # seven days, with no override.
+      METACLAUDE_ACME_DIR: ${METACLAUDE_ACME_DIR:-}
+      # Only read by the file mode: /certs/<name>.crt and .key.
+      METACLAUDE_CERT_NAME: ${METACLAUDE_CERT_NAME:-metaclaude}
 
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      # One file per TLS mode; the mode names which is mounted here.
+      - ./docker/tls/${METACLAUDE_TLS_MODE:-internal}.caddy:/etc/caddy/tls.caddy:ro
+      # Holds the local CA under `internal`, and the ACME account and
+      # certificates otherwise. Back it up: losing it under `internal` mints a
+      # new CA, which every device then distrusts.
       - caddy-data:/data
       - caddy-config:/config
-      # Only used when METACLAUDE_TLS names a certificate pair. Left empty
-      # otherwise, which costs nothing.
+      # Only read in `file` mode. Empty otherwise, which costs nothing.
       - ${METACLAUDE_CERTS_DIR:-./docker/certs}:/certs:ro
 
     networks:

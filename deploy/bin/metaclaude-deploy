@@ -28,6 +28,9 @@ RELEASES="$APP_DIR/releases"
 CURRENT="$RELEASES/current"
 PREVIOUS="$RELEASES/previous"
 LOCK="$RELEASES/.lock"
+# Written by this script, read by compose. Separate from .env so a deployment
+# never touches the file holding the Claude token and the master key.
+IMAGE_ENV="$RELEASES/.env.image"
 
 # A stolen deploy key must not be able to point this host at someone else's
 # image — so the allow-list is the exact repository, not merely the registry.
@@ -77,27 +80,23 @@ read -r ACTION ARGUMENT _ <<<"$REQUEST"
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-compose() { docker compose --project-directory "$APP_DIR" "$@"; }
+# Both env files, always, and in this order: the operator's .env first, then
+# the image this script chose. Later files win, so the deploy decides the image
+# without ever rewriting the file the operator edits by hand.
+compose() {
+  docker compose --project-directory "$APP_DIR" \
+    --env-file "$APP_DIR/.env" \
+    --env-file "$IMAGE_ENV" "$@"
+}
 
-container_id() { compose ps -q app 2>/dev/null | head -1; }
-
-# The container declares its own healthcheck, so this reads Docker's verdict
-# rather than inventing a second, disagreeing one.
-wait_until_healthy() {
-  local deadline=$(( SECONDS + HEALTH_TIMEOUT_SECONDS )) id status
-  while [ "$SECONDS" -lt "$deadline" ]; do
-    id="$(container_id)"
-    if [ -n "$id" ]; then
-      status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || echo unknown)"
-      case "$status" in
-        healthy|running) log "container is $status"; return 0 ;;
-        unhealthy)      log "container reports unhealthy"; return 1 ;;
-      esac
-    fi
-    sleep 3
-  done
-  log "gave up after ${HEALTH_TIMEOUT_SECONDS}s"
-  return 1
+# Resolve a reference to the digest the registry actually served.
+#
+# A tag is a mutable pointer — GHCR has no immutability setting, and anything
+# with write access can move `:latest` or even `sha-<commit>`. Recording a tag
+# would mean "roll back" resolves to whatever that tag points at *now*, which
+# is not what was running. The digest is the only stable name for an image.
+resolve_digest() {
+  docker inspect --format '{{index .RepoDigests 0}}' "$1" 2>/dev/null | head -1
 }
 
 # Docker's healthcheck runs inside the container, so it proves the process is
@@ -116,9 +115,11 @@ record() {
 
 bring_up() {
   local image="$1"
-  # The shell environment wins over .env, so the image is chosen without
-  # rewriting a file the operator also edits by hand.
-  METACLAUDE_IMAGE="$image" compose up -d --remove-orphans
+  printf 'METACLAUDE_IMAGE=%s\n' "$image" > "$IMAGE_ENV"
+  # `--wait` is the health gate: compose blocks until every service is running
+  # or healthy and exits non-zero on timeout, so the healthcheck already
+  # declared in compose.yml does the work with nothing new to keep in sync.
+  compose up -d --remove-orphans --wait --wait-timeout "$HEALTH_TIMEOUT_SECONDS"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +192,21 @@ PRIOR="$( [ -f "$CURRENT" ] && cat "$CURRENT" || echo '')"
 log "pulling"
 docker pull --quiet "$TARGET" >/dev/null || die "could not pull $TARGET — nothing was changed"
 
+# From here on, work with the digest rather than whatever was asked for. A
+# rollback must return to the bytes that were running, not to wherever a
+# mutable tag has since been moved.
+if [ "$ACTION" != "rollback" ]; then
+  DIGEST_REF="$(resolve_digest "$TARGET")"
+  if [ -n "$DIGEST_REF" ]; then
+    [ "$DIGEST_REF" != "$TARGET" ] && log "resolved to $DIGEST_REF"
+    TARGET="$DIGEST_REF"
+  else
+    # A locally-built image has no RepoDigest. Deploying one is not the
+    # supported path, but failing here would be worse than proceeding loudly.
+    log "warning: $TARGET has no registry digest; recording the tag as given"
+  fi
+fi
+
 record "$TARGET"
 
 log "starting"
@@ -204,7 +220,7 @@ if ! bring_up "$TARGET"; then
   die "deployment failed at startup"
 fi
 
-if wait_until_healthy && proxy_answers; then
+if proxy_answers; then
   log "healthy, and answering through the proxy"
   print_infra_digests
   docker image prune -f --filter 'until=168h' >/dev/null 2>&1 || true
@@ -224,7 +240,7 @@ fi
 
 log "rolling back to $PRIOR"
 printf '%s\n' "$PRIOR" > "$CURRENT"
-if bring_up "$PRIOR" && wait_until_healthy; then
+if bring_up "$PRIOR"; then
   compose logs --tail 60 app 2>&1 || true
   die "deployment of $TARGET failed; rolled back to $PRIOR, which is healthy"
 fi

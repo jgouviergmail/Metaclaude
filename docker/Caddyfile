@@ -11,37 +11,20 @@
 #
 # Two variables, and nothing else changes between deployments:
 #
-#   METACLAUDE_SITE   the address browsers use — an IP, or a hostname
-#   METACLAUDE_TLS    how the certificate is obtained
+#   METACLAUDE_SITE       the address browsers use — an IP, or a hostname
+#   METACLAUDE_TLS_MODE   which docker/tls/<mode>.caddy is mounted here
 #
-# The three values METACLAUDE_TLS takes:
+# The four modes, each documented in its own file:
 #
-#   internal
-#       Caddy runs its own certificate authority and signs for METACLAUDE_SITE,
-#       an IP address included. Nothing external is involved and nothing needs
-#       to resolve. The cost: the CA is unknown to your devices until you
-#       install it once each — until then every visit shows a warning, and iOS
-#       in particular will not treat the origin as secure, so the PWA will not
-#       install. Extract it with:
-#
-#           docker compose exec proxy \
-#             cat /data/caddy/pki/authorities/local/root.crt > metaclaude-ca.crt
-#
-#       This is the default because it is the only option that works with
-#       nothing but an IP address and no third party.
-#
-#   <your-email@example.com>
-#       Public ACME (Let's Encrypt) using that address for expiry notices.
-#       Requires METACLAUDE_SITE to be something the CA will issue for and can
-#       reach on port 80 or 443. Certificates for bare IP addresses are a recent
-#       and still-restricted capability — check it works before relying on it.
-#       No warning, nothing to install on any device.
-#
-#   /path/to/cert.pem /path/to/key.pem
-#       A certificate obtained elsewhere. This is the Tailscale route: run
-#       `tailscale cert <machine>.<tailnet>.ts.net`, mount the pair in, and set
-#       METACLAUDE_SITE to that name. You get a publicly-trusted certificate
-#       without owning a domain, and the server needs no open ports at all.
+#   internal   Caddy's own CA. Works with nothing but an IP and no third party.
+#              Install the root once per device or every visit warns.
+#   acme-dns   Public Let's Encrypt for a hostname that resolves here.
+#   acme-ip    Public Let's Encrypt for the bare IP itself. Real certificate,
+#              nothing to install — but 160-hour lifetimes and a hard 5-per-week
+#              issuance ceiling, so renewal has to actually work.
+#   file       A certificate from elsewhere. The Tailscale route: a real
+#              hostname and a real certificate without owning a domain, and no
+#              inbound ports at all.
 #
 # See docs/DEPLOYMENT.md for which to pick.
 {
@@ -57,7 +40,11 @@
 }
 
 {$METACLAUDE_SITE:localhost} {
-	tls {$METACLAUDE_TLS:internal}
+	# Mounted by compose from docker/tls/<METACLAUDE_TLS_MODE>.caddy.
+	# A snippet rather than `tls {$VAR}` because the ACME-on-IP mode needs a
+	# block — `profile shortlived` is a subdirective of `issuer acme` — and
+	# the Caddyfile has no conditionals.
+	import /etc/caddy/tls.caddy
 
 	encode zstd gzip
 

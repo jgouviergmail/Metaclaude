@@ -228,8 +228,16 @@ fi
 # forwarding, agent forwarding, a pty and user-rc; the forced command means the
 # key cannot be used for a shell even if it is stolen from GitHub's secret
 # store. What CI asks for arrives in $SSH_ORIGINAL_COMMAND and is parsed there.
-install_key "$DEPLOY_USER" "$DEPLOY_KEY" "restrict,command=\"$APP_DIR/bin/metaclaude-deploy\""
-info "deploy key installed for $DEPLOY_USER, restricted to $APP_DIR/bin/metaclaude-deploy"
+# `expiry-time` turns key rotation from an intention into a date the server
+# enforces. Eighteen months: long enough not to be a nuisance, short enough
+# that a forgotten key does not outlive the project.
+DEPLOY_KEY_EXPIRY="$(date -u -d '+18 months' +%Y%m%d 2>/dev/null || echo '')"
+DEPLOY_KEY_OPTIONS="restrict,command=\"$APP_DIR/bin/metaclaude-deploy\""
+[ -n "$DEPLOY_KEY_EXPIRY" ] && DEPLOY_KEY_OPTIONS="$DEPLOY_KEY_OPTIONS,expiry-time=\"$DEPLOY_KEY_EXPIRY\""
+
+install_key "$DEPLOY_USER" "$DEPLOY_KEY" "$DEPLOY_KEY_OPTIONS"
+info "deploy key installed, restricted to $APP_DIR/bin/metaclaude-deploy"
+[ -n "$DEPLOY_KEY_EXPIRY" ] && info "it stops working on $DEPLOY_KEY_EXPIRY — rotate before then"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Docker
@@ -251,22 +259,43 @@ REPO
   info "installed $(docker --version)"
 fi
 
-# Log rotation is not a default. Without it a chatty container fills the disk,
-# and a full disk on this box means the agent OS stops accepting runs.
+# Docker 28 is a floor, not a preference: it drops unsolicited inbound traffic
+# to container IPs by default, and closes the older hole where a port published
+# on 127.0.0.1 was still reachable from other hosts on the same L2 segment.
+DOCKER_VERSION="$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 0)"
+if [ "${DOCKER_VERSION%%.*}" -lt 28 ] 2>/dev/null; then
+  warn "Docker $DOCKER_VERSION is older than 28.0, which had weaker default"
+  warn "network isolation. Upgrade before exposing this host."
+fi
+
 mkdir -p /etc/docker
 if [ -f /etc/docker/daemon.json ]; then
   skip "/etc/docker/daemon.json exists — leaving it alone"
+  grep -q host_binding_ipv4 /etc/docker/daemon.json \
+    || warn "it has no default host binding; a forgotten -p publishes to the world"
 else
+  # `default-network-opts` inverts the failure mode of a forgotten `-p 8080:80`:
+  # it binds to loopback instead of every interface, so a mistake is unreachable
+  # rather than world-open. It does NOT retrofit existing networks — recreate
+  # them with `docker compose down && up` for it to take effect.
+  #
+  # Deliberately absent: `"iptables": false`. It stops Docker writing any rules,
+  # which also removes the MASQUERADE the agent needs to reach the network at
+  # all. The DOCKER-USER chain is the supported way to filter, and it is what
+  # the firewall section uses.
   cat > /etc/docker/daemon.json <<'DAEMON'
 {
   "log-driver": "json-file",
-  "log-opts": { "max-size": "10m", "max-file": "5" },
+  "log-opts": { "max-size": "10m", "max-file": "3", "compress": "true" },
   "live-restore": true,
-  "no-new-privileges": true
+  "no-new-privileges": true,
+  "default-network-opts": {
+    "bridge": { "com.docker.network.bridge.host_binding_ipv4": "127.0.0.1" }
+  }
 }
 DAEMON
   systemctl restart docker
-  info "wrote /etc/docker/daemon.json"
+  info "wrote /etc/docker/daemon.json (published ports default to loopback)"
 fi
 
 usermod -aG docker "$DEPLOY_USER"
@@ -282,12 +311,22 @@ warn "account already has sudo."
 
 step "Layout"
 
-install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR"
-install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR/bin"
+# Ownership here is a security boundary, not tidiness.
+#
+# The deploy account runs a forced command and must not be able to rewrite it,
+# nor compose.yml — otherwise a stolen CI key edits the very file that is
+# supposed to constrain it, and the next deploy runs whatever it likes as root.
+# So: root owns the executables and the compose file; the deploy user owns only
+# its own state.
+install -d -m 0755 -o root -g "$DEPLOY_USER" "$APP_DIR"
+install -d -m 0755 -o root -g root "$APP_DIR/bin"
+install -d -m 0755 -o root -g root "$APP_DIR/docker"
 install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR/releases"
-# The admin needs to read and edit .env without becoming the deploy user.
+install -d -m 0750 -o root -g "$DEPLOY_USER" "$APP_DIR/certs"
+
+# The admin edits .env; the deploy user only reads it.
 usermod -aG "$DEPLOY_USER" "$ADMIN_USER"
-info "$APP_DIR ready"
+info "$APP_DIR ready (bin/ and compose.yml stay root-owned)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SSH hardening — staged so a mistake cannot lock you out
@@ -295,27 +334,27 @@ info "$APP_DIR ready"
 
 step "SSH"
 
-SSHD_DROPIN="/etc/ssh/sshd_config.d/99-metaclaude.conf"
+# The filename has to sort FIRST, and this is the opposite of the usual
+# convention.
+#
+# sshd_config(5): "for each keyword, the first obtained value will be used".
+# `Include /etc/ssh/sshd_config.d/*.conf` sits at the top of the main file and
+# expands in lexical order, so a `99-` file loses every contested keyword to
+# the `50-cloud-init.conf` that most provider images ship — and those commonly
+# set `PasswordAuthentication yes`. `00-` wins instead.
+SSHD_DROPIN="/etc/ssh/sshd_config.d/00-metaclaude.conf"
 install -d -m 0755 /etc/ssh/sshd_config.d
 
-# Some images ship a cloud-init drop-in that re-enables password auth and would
-# override ours by sorting later. Ours is 99- so it wins on Debian/Ubuntu, where
-# the *first* occurrence of a keyword takes effect and Include comes first —
-# hence checking rather than assuming.
-if grep -rqs '^[[:space:]]*PasswordAuthentication[[:space:]]\+yes' /etc/ssh/sshd_config.d/ 2>/dev/null; then
-  for f in /etc/ssh/sshd_config.d/*.conf; do
-    [ "$f" = "$SSHD_DROPIN" ] && continue
-    if grep -qs '^[[:space:]]*PasswordAuthentication[[:space:]]\+yes' "$f"; then
-      sed -i 's/^[[:space:]]*PasswordAuthentication[[:space:]]\+yes/# disabled by metaclaude provision.sh\n#&/' "$f"
-      warn "commented out PasswordAuthentication yes in $f"
-    fi
-  done
-fi
+# Clean up the previous, wrongly-named file if this script created one before.
+rm -f /etc/ssh/sshd_config.d/99-metaclaude.conf
 
 cat > "$SSHD_DROPIN" <<SSHD
 # Written by Metaclaude provision.sh. Edit provision.sh, not this file.
-
-Port $SSH_PORT
+#
+# Note there is no `Port` here. On Debian 13 and Ubuntu 22.10+, sshd is socket
+# activated: ssh.socket owns the listener and `Port` in sshd_config is parsed
+# and then ignored. Writing it here and opening only that port in the firewall
+# is a guaranteed lockout. The port is set below, on the socket, and verified.
 
 # Keys only. This box runs an agent that executes model-authored commands;
 # a guessable password is not an acceptable second path in.
@@ -361,7 +400,40 @@ grep -qF "$(printf '%s' "$ADMIN_KEY" | awk '{print $2}')" "$ADMIN_HOME/.ssh/auth
 info "admin key confirmed present"
 
 systemctl reload ssh 2>/dev/null || systemctl reload sshd
-info "sshd reloaded — password and root login are now off"
+
+# Assert on the *parsed* configuration, not on the file we wrote. This is what
+# catches a drop-in ordering surprise, a distro default we did not expect, or a
+# keyword the running sshd does not support.
+effective="$(sshd -T 2>/dev/null || true)"
+for expected in "permitrootlogin no" "passwordauthentication no" "pubkeyauthentication yes"; do
+  printf '%s\n' "$effective" | grep -qi "^$expected$" \
+    || die "sshd's effective config does not have '$expected'. Nothing else was changed; inspect /etc/ssh/sshd_config.d/."
+done
+printf '%s\n' "$effective" | grep -qi "^allowusers .*$ADMIN_USER" \
+  || die "sshd's effective AllowUsers does not include $ADMIN_USER"
+info "verified against \`sshd -T\`: keys only, no root login, $ADMIN_USER allowed"
+
+# ── The listening port, which is a separate question under socket activation ─
+if [ "$SSH_PORT" != "22" ]; then
+  if systemctl is-enabled --quiet ssh.socket 2>/dev/null; then
+    install -d -m 0755 /etc/systemd/system/ssh.socket.d
+    # The bare `ListenStream=` is mandatory: it clears the inherited 22.
+    # Without it the socket listens on both, and the firewall rule below then
+    # closes the one you are connected through.
+    printf '[Socket]\nListenStream=\nListenStream=%s\n' "$SSH_PORT" \
+      > /etc/systemd/system/ssh.socket.d/10-metaclaude-port.conf
+    systemctl daemon-reload
+    systemctl restart ssh.socket
+    info "ssh.socket moved to $SSH_PORT"
+  fi
+  # Refuse to firewall a port nothing answers on. This is the last chance to
+  # catch the mismatch before ufw makes it permanent.
+  ss -tlnp 2>/dev/null | grep -q ":$SSH_PORT " \
+    || die "nothing is listening on port $SSH_PORT — refusing to build a firewall around it"
+  info "confirmed sshd is listening on $SSH_PORT"
+fi
+
+info "password and root login are now off"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Firewall
@@ -373,44 +445,76 @@ if [ "$SKIP_FIREWALL" = "yes" ]; then
 else
   step "Firewall"
 
-  # Docker writes its own iptables rules into the DOCKER chain, which the kernel
-  # consults *before* the FORWARD rules ufw manages. The consequence surprises
-  # people every time: a container published with `-p 8080:8080` is reachable
-  # from the internet even with `ufw deny 8080` in place, because the packet
-  # never reaches ufw's chain.
+  # ── The Docker/ufw bypass, and why the obvious fix is not one ─────────────
   #
-  # DOCKER-USER is the chain Docker guarantees to consult first and never to
-  # rewrite, so that is where the rule belongs. ufw's after.rules is the right
-  # file because ufw reapplies it on every reload — a rule added with a bare
-  # `iptables -I` would vanish on the next `ufw reload`.
+  # ufw filters INPUT. Docker DNATs in nat/PREROUTING and filters in FORWARD, so
+  # a packet for a published port is redirected and then *forwarded* — it never
+  # traverses INPUT at all. `ufw deny 8080` is therefore true and irrelevant:
+  # the container answers anyway.
+  #
+  # DOCKER-USER is the one chain Docker consults first and never rewrites, so
+  # that is where a rule has to go. Two details decide whether it works:
+  #
+  #   · The rule must DROP. An earlier version of this script ended the chain
+  #     with `-j RETURN` under a comment claiming it refused everything —
+  #     RETURN falls through to Docker's own per-port ACCEPT, so the block was
+  #     decorative.
+  #   · Matching must use conntrack's --ctorigdstport, not --dport. By the time
+  #     a packet reaches DOCKER-USER it has already been DNAT'd, so --dport
+  #     reads the *container* port. --ctorigdstport reads what the client
+  #     actually asked for, which is also the only value that survives
+  #     recreating the container.
+  #
+  # after.rules is the right file because ufw reapplies it on every reload; a
+  # bare `iptables -I` evaporates on the next `ufw reload` and on every
+  # `systemctl restart docker`, which recreates DOCKER-USER empty.
+  EXT_IF="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+  [ -n "$EXT_IF" ] || die "could not determine the external interface from the default route"
+  info "external interface: $EXT_IF"
+
   AFTER_RULES="/etc/ufw/after.rules"
+
+  # Remove any previous block, including the broken one, before writing.
   if grep -q 'METACLAUDE-DOCKER-BEGIN' "$AFTER_RULES" 2>/dev/null; then
-    skip "DOCKER-USER rules already present in $AFTER_RULES"
-  else
-    cat >> "$AFTER_RULES" <<'DOCKERRULES'
+    sed -i '/# METACLAUDE-DOCKER-BEGIN/,/# METACLAUDE-DOCKER-END/d' "$AFTER_RULES"
+    info "removed the previous DOCKER-USER block"
+  fi
 
-# METACLAUDE-DOCKER-BEGIN
-# Docker's own chains are consulted before ufw's, so a published container port
-# is reachable from anywhere regardless of what ufw says. DOCKER-USER is the one
-# chain Docker checks first and never rewrites — filtering here is the only
-# placement that actually holds.
-*filter
-:ufw-docker-forward - [0:0]
-:DOCKER-USER - [0:0]
+  {
+    printf '\n# METACLAUDE-DOCKER-BEGIN\n'
+    printf '# Written by provision.sh. Docker bypasses ufw for published ports;\n'
+    printf '# this chain is the only placement that actually filters them.\n'
+    printf '*filter\n'
+    printf ':DOCKER-USER - [0:0]\n\n'
+    printf -- '-A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN\n'
+    printf -- '-A DOCKER-USER -m conntrack --ctstate INVALID -j DROP\n\n'
+    printf '# Host-local, inter-container, and VPN traffic.\n'
+    printf -- '-A DOCKER-USER -s 172.16.0.0/12 -j RETURN\n'
+    printf -- '-A DOCKER-USER -s 192.168.0.0/16 -j RETURN\n'
+    printf -- '-A DOCKER-USER -s 10.0.0.0/8    -j RETURN\n'
+    printf -- '-A DOCKER-USER -s 100.64.0.0/10 -j RETURN\n\n'
+    if [ "$MODE" = "public" ]; then
+      printf '# The only container ports the internet may open a connection to.\n'
+      printf -- '-A DOCKER-USER -i %s -p tcp -m conntrack --ctorigdstport 443 --ctstate NEW -j RETURN\n' "$EXT_IF"
+      printf -- '-A DOCKER-USER -i %s -p udp -m conntrack --ctorigdstport 443 --ctstate NEW -j RETURN\n' "$EXT_IF"
+      printf -- '-A DOCKER-USER -i %s -p tcp -m conntrack --ctorigdstport 80  --ctstate NEW -j RETURN\n' "$EXT_IF"
+    else
+      printf '# vpn mode: no container port is reachable from the public interface.\n'
+    fi
+    printf -- '-A DOCKER-USER -i %s -j DROP\n\n' "$EXT_IF"
+    printf -- '-A DOCKER-USER -j RETURN\n'
+    printf 'COMMIT\n'
+    printf '# METACLAUDE-DOCKER-END\n'
+  } >> "$AFTER_RULES"
+  info "wrote DOCKER-USER filtering to $AFTER_RULES ($MODE mode)"
 
-# Traffic already belonging to a connection this host allowed out.
--A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
-# Anything originating on this host or between containers.
--A DOCKER-USER -s 172.16.0.0/12 -j RETURN
--A DOCKER-USER -s 192.168.0.0/16 -j RETURN
--A DOCKER-USER -s 10.0.0.0/8 -j RETURN
-# Everything else reaching a container from outside is refused. Ports meant to
-# be public are opened by binding them explicitly in compose.yml, not here.
--A DOCKER-USER -j RETURN
-COMMIT
-# METACLAUDE-DOCKER-END
-DOCKERRULES
-    info "added DOCKER-USER filtering to $AFTER_RULES"
+  # IPv6 keeps an entirely separate ruleset. Half-configured is worse than
+  # either extreme: v4 looks locked down while v6 is wide open.
+  if [ -f /proc/net/if_inet6 ] && ip -6 addr show scope global 2>/dev/null | grep -q inet6; then
+    warn "this host has a global IPv6 address."
+    warn "Docker's IPv6 rules are separate and this script does not manage them."
+    warn "Either disable IPv6 on the box, or mirror the DOCKER-USER block into"
+    warn "/etc/ufw/after6.rules. Verify from outside with: nmap -6 -Pn -p- <addr>"
   fi
 
   ufw --force reset >/dev/null 2>&1 || true

@@ -1,0 +1,16 @@
+# Caddy signs with a certificate authority it runs itself.
+#
+# The only mode that works with nothing but an IP address, no DNS, and no third
+# party. The cost is that the CA is unknown to your devices until you install it
+# once on each — until then every visit warns, and iOS needs two separate steps
+# (install the profile, *then* enable full trust under Certificate Trust
+# Settings) before the origin counts as secure.
+#
+# Extract the root to install:
+#   docker compose exec proxy \
+#     cat /data/caddy/pki/authorities/local/root.crt > metaclaude-ca.crt
+#
+# Back up the `caddy-data` volume. Losing it mints a brand-new CA, and once a
+# browser has recorded this site's HSTS header the resulting mismatch is an
+# interstitial you cannot click through.
+tls internal

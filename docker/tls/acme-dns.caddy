@@ -1,0 +1,5 @@
+# Public ACME for a real hostname that resolves to this server.
+#
+# Needs port 80 (http-01) or 443 (tls-alpn-01) reachable from the internet.
+# Nothing to install on any device.
+tls {$METACLAUDE_TLS_EMAIL}

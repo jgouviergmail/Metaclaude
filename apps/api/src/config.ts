@@ -170,7 +170,15 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   const bootstrapUser = env.METACLAUDE_BOOTSTRAP_USER?.trim();
   const bootstrapPassword = env.METACLAUDE_BOOTSTRAP_PASSWORD;
 
-  if (bootstrapPassword !== undefined && bootstrapPassword.length < 12) {
+  // Empty means "not set", and must not be an error.
+  //
+  // `compose.yml` passes `${METACLAUDE_BOOTSTRAP_PASSWORD:-}`, which sets the
+  // variable to the empty string rather than leaving it absent. Testing against
+  // `undefined` therefore rejected the empty value and threw at startup, so the
+  // container crash-looped on the very first `docker compose up` with an
+  // unedited `.env` — and again later, when the operator follows .env.example's
+  // own advice to blank the password once the account exists.
+  if (bootstrapPassword && bootstrapPassword.length < 12) {
     throw new Error('METACLAUDE_BOOTSTRAP_PASSWORD must be at least 12 characters.');
   }
 

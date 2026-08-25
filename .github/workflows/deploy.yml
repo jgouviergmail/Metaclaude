@@ -15,6 +15,12 @@
 # this workflow's secrets buys "deploy an image from our own registry", not a
 # shell. Health gating and rollback live server-side too, because a runner that
 # loses its network in the middle of a deploy must not leave a broken version up.
+#
+# The four DEPLOY_* secrets belong to the `production` **environment**, not to
+# the repository. That is what makes an approval rule a real control: an
+# environment secret is unreadable by the job until the environment's protection
+# rules have passed, whereas a repository secret is readable immediately and the
+# gate is only advice.
 
 name: Deploy
 
@@ -165,6 +171,7 @@ jobs:
           # out. The remote end is a forced command; the argument here is the
           # entire request it will parse.
           ssh -i ~/.ssh/deploy \
+              -o IdentitiesOnly=yes \
               -o BatchMode=yes \
               -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts \
@@ -196,6 +203,37 @@ jobs:
             tail -40 /tmp/deploy.log 2>/dev/null || echo "(no output captured)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # compose.yml and the Caddyfile stay on the server on purpose (an image
+      # that supplied its own could ask for a host mount and leave the very
+      # confinement compose.yml imposes). That means they can drift, so the
+      # server reports what it ran with and this compares.
+      - name: Check the server's infrastructure files match this commit
+        if: always() && steps.run.outcome != 'skipped'
+        run: |
+          set -uo pipefail
+          drift=0
+          for pair in "compose.yml:compose.yml" "Caddyfile:docker/Caddyfile"; do
+            reported="${pair%%:*}"; local_path="${pair##*:}"
+            theirs="$(grep -oP "(?<=^${reported}-sha256: )\S+" /tmp/deploy.log 2>/dev/null | tail -1 || true)"
+            [ -n "$theirs" ] || continue
+            ours="$(sha256sum "$local_path" | cut -c1-16)"
+            if [ "$theirs" != "$ours" ]; then
+              echo "::warning::$local_path differs — server $theirs, this commit $ours"
+              drift=1
+            fi
+          done
+          if [ "$drift" = "1" ]; then
+            {
+              echo ""
+              echo "> **The server's compose.yml or Caddyfile is not the one in this commit.**"
+              echo "> Those files are deliberately not shipped in the image, so changing them"
+              echo "> is an admin step. On the server:"
+              echo "> \`\`\`"
+              echo "> cd /path/to/checkout && git pull && sudo ./deploy/install-app.sh"
+              echo "> \`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Always remove the key from the runner
         if: always()

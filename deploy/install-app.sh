@@ -72,16 +72,25 @@ id "$DEPLOY_USER" >/dev/null 2>&1 || die "no user '$DEPLOY_USER'. Run deploy/pro
 
 step "Files"
 
-install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR" "$APP_DIR/bin" "$APP_DIR/docker" "$APP_DIR/releases"
+# root owns everything the deploy account executes or is constrained by. A
+# stolen CI key must not be able to rewrite its own forced command, nor the
+# compose file that confines the container it starts.
+install -d -m 0755 -o root -g "$DEPLOY_USER" "$APP_DIR"
+install -d -m 0755 -o root -g root "$APP_DIR/bin" "$APP_DIR/docker" "$APP_DIR/docker/tls"
+install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR/releases"
+install -d -m 0750 -o root -g "$DEPLOY_USER" "$APP_DIR/docker/certs"
 
-install -m 0640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$REPO_ROOT/compose.yml"          "$APP_DIR/compose.yml"
-install -m 0640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$REPO_ROOT/docker/Caddyfile"     "$APP_DIR/docker/Caddyfile"
-install -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$REPO_ROOT/deploy/bin/metaclaude-deploy" "$APP_DIR/bin/metaclaude-deploy"
-install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR/docker/certs"
+install -m 0644 -o root -g root "$REPO_ROOT/compose.yml"      "$APP_DIR/compose.yml"
+install -m 0644 -o root -g root "$REPO_ROOT/docker/Caddyfile" "$APP_DIR/docker/Caddyfile"
+for snippet in "$REPO_ROOT"/docker/tls/*.caddy; do
+  install -m 0644 -o root -g root "$snippet" "$APP_DIR/docker/tls/$(basename "$snippet")"
+done
+install -m 0755 -o root -g root "$REPO_ROOT/deploy/bin/metaclaude-deploy" "$APP_DIR/bin/metaclaude-deploy"
 
-info "compose.yml        $(sha256sum "$APP_DIR/compose.yml" | cut -c1-16)"
-info "docker/Caddyfile   $(sha256sum "$APP_DIR/docker/Caddyfile" | cut -c1-16)"
-info "bin/metaclaude-deploy"
+info "compose.yml        $(sha256sum "$APP_DIR/compose.yml" | cut -c1-16)  root:root 0644"
+info "docker/Caddyfile   $(sha256sum "$APP_DIR/docker/Caddyfile" | cut -c1-16)  root:root 0644"
+info "docker/tls/        $(ls -1 "$APP_DIR/docker/tls" | tr '\n' ' ')"
+info "bin/metaclaude-deploy                   root:root 0755 — deploy cannot write it"
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -95,6 +104,8 @@ if [ -z "$IMAGE_PREFIX" ]; then
   IMAGE_PREFIX="ghcr.io/$(printf '%s' "$slug" | tr '[:upper:]' '[:lower:]')"
 fi
 
+# Read-only to the deploy account: it names the images that account may pull,
+# so it must not be one the account can edit.
 cat > "$APP_DIR/deploy.conf" <<CONF
 # Read by bin/metaclaude-deploy. Written by install-app.sh.
 
@@ -106,7 +117,7 @@ ALLOWED_IMAGE_PREFIX="$IMAGE_PREFIX"
 # How long a new container may take to report healthy before it is rolled back.
 HEALTH_TIMEOUT_SECONDS=180
 CONF
-chown "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR/deploy.conf"
+chown root:"$DEPLOY_USER" "$APP_DIR/deploy.conf"
 chmod 0640 "$APP_DIR/deploy.conf"
 info "images restricted to $IMAGE_PREFIX*"
 
@@ -124,7 +135,9 @@ if [ -f "$APP_DIR/.env" ]; then
   done < <(grep -oE '^[A-Z_][A-Z0-9_]*=' "$REPO_ROOT/.env.example" | tr -d '=')
   [ -n "$missing" ] && warn "new settings in .env.example not present in your .env:$missing"
 else
-  install -m 0600 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$REPO_ROOT/.env.example" "$APP_DIR/.env"
+  # The admin edits it, the deploy account only reads it: it holds the Claude
+  # token and the master key.
+  install -m 0640 -o root -g "$DEPLOY_USER" "$REPO_ROOT/.env.example" "$APP_DIR/.env"
   info "created $APP_DIR/.env from the example"
   warn "it has no Claude token yet — agent runs will fail until you set one."
 fi
@@ -144,7 +157,14 @@ cat <<DONE
     METACLAUDE_BOOTSTRAP_USER   the owner account to create on first boot
     METACLAUDE_BOOTSTRAP_PASSWORD
     METACLAUDE_SITE             this server's IP, or a hostname
-    METACLAUDE_TLS              internal | <email> | <cert> <key>
+    METACLAUDE_TLS_MODE         internal | acme-dns | acme-ip | file
+    METACLAUDE_BIND             0.0.0.0 for a public IP, or the VPN address.
+                                It defaults to 127.0.0.1, which is unreachable
+                                from anywhere else — on purpose.
+    METACLAUDE_MASTER_KEY       openssl rand -hex 32, and keep a copy in your
+                                password manager. Left empty it is generated
+                                into the same volume as the database it
+                                encrypts, so one snapshot carries both.
 
   Then either push a version tag to deploy through CI, or start it by hand:
 
