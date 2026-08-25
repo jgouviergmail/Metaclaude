@@ -184,6 +184,63 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Pinned upstream versions exist"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# `node:22.20.1-bookworm-slim` sat in the Dockerfile for real, and was never a
+# published tag — every build of the image failed at the first FROM. Nothing
+# caught it because the image job had never run. The Caddy pin in compose.yml is
+# the same hazard with a worse ending: it fails on the server, at `up`, with the
+# proxy that terminates TLS never starting.
+#
+# Asked over the registry APIs rather than by pulling: no layers, no daemon, no
+# credentials, and it works from a laptop.
+hub_tag() {
+  local repo="$1" tag="$2" body
+  body="$(curl -sS --max-time 20 "https://hub.docker.com/v2/repositories/library/${repo}/tags/${tag}" 2>/dev/null || true)"
+  if [ -z "$body" ]; then
+    skip "$repo:$tag" "could not reach Docker Hub"
+  elif printf '%s' "$body" | grep -q '"name"'; then
+    ok "$repo:$tag"
+  else
+    bad "$repo:$tag is not a published tag" "a build or a deploy will fail on this pin"
+  fi
+}
+
+# Official images pinned in compose.yml. `${VAR:-...}` references start with a
+# dollar and are skipped by the pattern, which is what we want — those are ours.
+while IFS= read -r ref; do
+  hub_tag "${ref%%:*}" "${ref#*:}"
+done < <(grep -oE '^[[:space:]]*image:[[:space:]]+[a-z0-9]+:[A-Za-z0-9._-]+' "$REPO_ROOT/compose.yml" | awk '{print $2}')
+
+# The Dockerfile's base image, with the variant taken from the FROM line rather
+# than assumed, so this stays right if bookworm-slim ever changes.
+NODE_PIN="$(grep -oE '^ARG NODE_VERSION=[A-Za-z0-9._-]+' "$REPO_ROOT/docker/Dockerfile" | head -1 | cut -d= -f2)"
+NODE_FROM="$(grep -oE '^FROM node:\$\{NODE_VERSION\}[A-Za-z0-9._-]*' "$REPO_ROOT/docker/Dockerfile" | head -1)"
+if [ -n "$NODE_PIN" ] && [ -n "$NODE_FROM" ]; then
+  hub_tag node "${NODE_PIN}${NODE_FROM#FROM node:\$\{NODE_VERSION\}}"
+else
+  bad "reading the Node pin out of docker/Dockerfile" "the ARG or the FROM line moved"
+fi
+
+# The Claude CLI, which the runtime stage installs globally — the Agent SDK
+# spawns it as a subprocess, so a bad version here is an image that builds
+# nothing and an agent that cannot run.
+CLI_PIN="$(grep -oE '^ARG CLAUDE_CLI_VERSION=[A-Za-z0-9._-]+' "$REPO_ROOT/docker/Dockerfile" | head -1 | cut -d= -f2)"
+if [ -z "$CLI_PIN" ]; then
+  bad "reading CLAUDE_CLI_VERSION out of docker/Dockerfile" "the ARG moved"
+else
+  cli_body="$(curl -sS --max-time 20 "https://registry.npmjs.org/@anthropic-ai/claude-code/${CLI_PIN}" 2>/dev/null || true)"
+  if [ -z "$cli_body" ]; then
+    skip "@anthropic-ai/claude-code@$CLI_PIN" "could not reach the npm registry"
+  elif printf '%s' "$cli_body" | grep -q "\"version\"[[:space:]]*:[[:space:]]*\"${CLI_PIN}\""; then
+    ok "@anthropic-ai/claude-code@$CLI_PIN"
+  else
+    bad "@anthropic-ai/claude-code@$CLI_PIN is not published" "the runtime stage will fail"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section ".env.example stays in step with compose.yml"
 # ─────────────────────────────────────────────────────────────────────────────
 

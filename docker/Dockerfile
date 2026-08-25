@@ -11,7 +11,10 @@
 # spawns it as a subprocess, so it must exist in the final image, not just at
 # build time.
 
-ARG NODE_VERSION=22.20.1
+# A full patch version, not `22`, so a rebuild months from now produces the same
+# image. Check the tag exists before bumping it: `node:22.20.1-bookworm-slim` was
+# pinned here and was never published, which fails the build at the first FROM.
+ARG NODE_VERSION=22.23.2
 
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS base
