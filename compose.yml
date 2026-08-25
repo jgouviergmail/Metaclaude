@@ -15,10 +15,14 @@ name: metaclaude
 
 services:
   app:
+    # A deployment sets METACLAUDE_IMAGE to the exact image CI built and tested
+    # — `ghcr.io/<owner>/metaclaude:sha-<commit>` — so what runs here is the
+    # artefact the tests ran against, not a rebuild of the same source. Left
+    # unset, this builds locally, which is what a developer wants.
+    image: ${METACLAUDE_IMAGE:-metaclaude:latest}
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: metaclaude:latest
     restart: unless-stopped
 
     environment:
@@ -101,21 +105,39 @@ services:
       app:
         condition: service_healthy
 
+    # The bind address is explicit, and that matters more than it looks.
+    #
+    # Docker writes its own iptables rules into a chain the kernel consults
+    # *before* ufw's, so a port published on 0.0.0.0 is reachable from the
+    # internet even with a `ufw deny` in place. Naming the interface here is the
+    # one control that holds regardless of what the firewall says.
+    #
+    #   0.0.0.0     public: the server is reached at its own IP
+    #   100.x.y.z   VPN: the Tailscale/WireGuard address, nothing else exposed
+    #   127.0.0.1   local only, for a tunnel
     ports:
-      - '${METACLAUDE_HTTP_PORT:-80}:80'
-      - '${METACLAUDE_HTTPS_PORT:-443}:443'
+      - '${METACLAUDE_BIND:-0.0.0.0}:${METACLAUDE_HTTP_PORT:-80}:80'
+      - '${METACLAUDE_BIND:-0.0.0.0}:${METACLAUDE_HTTPS_PORT:-443}:443'
+      # HTTP/3. Caddy advertises it via Alt-Svc, and a phone on a flaky mobile
+      # network is exactly where it earns its keep.
+      - '${METACLAUDE_BIND:-0.0.0.0}:${METACLAUDE_HTTPS_PORT:-443}:443/udp'
 
     environment:
-      # A bare hostname gets a real certificate from Let's Encrypt.
-      # The default, `localhost`, makes Caddy issue a local self-signed one,
-      # so a first run works with no DNS and no public address.
-      METACLAUDE_DOMAIN: ${METACLAUDE_DOMAIN:-localhost}
+      # The address browsers use: an IP, or a hostname. See docker/Caddyfile.
+      METACLAUDE_SITE: ${METACLAUDE_SITE:-localhost}
+      # How the certificate is obtained: `internal` (Caddy's own CA — the only
+      # option that works with nothing but an IP), an email address (public
+      # ACME), or a `cert key` pair (Tailscale, or your own).
+      METACLAUDE_TLS: ${METACLAUDE_TLS:-internal}
       METACLAUDE_TLS_EMAIL: ${METACLAUDE_TLS_EMAIL:-internal}
 
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+      # Only used when METACLAUDE_TLS names a certificate pair. Left empty
+      # otherwise, which costs nothing.
+      - ${METACLAUDE_CERTS_DIR:-./docker/certs}:/certs:ro
 
     networks:
       - internal

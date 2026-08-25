@@ -1,0 +1,210 @@
+# Deployment.
+#
+# Deploys an image that CI already built and tested — never one built here.
+# The unit of deployment is a commit: CI pushes `sha-<full-sha>` on every push,
+# and this workflow resolves a tag to its commit and deploys that. So what
+# reaches the server is byte-for-byte what the tests ran against, and a tag is
+# a pointer rather than a rebuild.
+#
+# Triggered by:
+#   · a version tag (v1.2.3)
+#   · manually, on any ref, or to roll back
+#
+# The server does the actual work. This workflow can only ask, over SSH, with a
+# key whose authorized_keys entry pins it to one command — so a compromise of
+# this workflow's secrets buys "deploy an image from our own registry", not a
+# shell. Health gating and rollback live server-side too, because a runner that
+# loses its network in the middle of a deploy must not leave a broken version up.
+
+name: Deploy
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit SHA or tag to deploy. Defaults to the current branch head.'
+        required: false
+        type: string
+      action:
+        description: 'What to do'
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, rollback, status]
+
+# Never cancel a deployment in flight: a half-applied deploy is worse than a
+# queued one. A second run waits, and the server holds its own lock as well.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: ${{ inputs.action || 'deploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Attach protection rules (a required reviewer, a wait timer) to this
+    # environment in the repository settings to gate deploys without touching
+    # this file.
+    # Optional: set the repository variable DEPLOY_URL to make the deployment
+    # link in the GitHub UI point at the server. The IP itself stays a secret.
+    environment:
+      name: production
+      url: ${{ vars.DEPLOY_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A tag needs its commit resolved, so the history has to be there.
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Check the required secrets are present
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=()
+          [ -n "$HOST" ]  || missing+=(DEPLOY_HOST)
+          [ -n "$USER" ]  || missing+=(DEPLOY_USER)
+          [ -n "$KEY" ]   || missing+=(DEPLOY_SSH_KEY)
+          [ -n "$KNOWN" ] || missing+=(DEPLOY_KNOWN_HOSTS)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::missing repository secrets: ${missing[*]}"
+            echo "See docs/DEPLOYMENT.md — deploy/provision.sh prints the values to use."
+            exit 1
+          fi
+
+      - name: Resolve the image to deploy
+        id: image
+        if: inputs.action != 'rollback' && inputs.action != 'status'
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          sha="$(git rev-parse HEAD)"
+          ref="${image}:sha-${sha}"
+          echo "image=${image}"  >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}"      >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}"      >> "$GITHUB_OUTPUT"
+          {
+            echo "### Deploying"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| commit | \`${sha}\` |"
+            echo "| image  | \`${ref}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to GHCR
+        if: inputs.action != 'rollback' && inputs.action != 'status'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fail here, with an explanation, rather than on the server after it has
+      # already stopped the running container. The usual cause is a tag placed
+      # on a commit that never went through CI.
+      - name: Confirm the image exists
+        if: inputs.action != 'rollback' && inputs.action != 'status'
+        run: |
+          set -euo pipefail
+          if ! docker manifest inspect "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
+            echo "::error::no image at ${{ steps.image.outputs.ref }}"
+            echo "CI publishes sha-<commit> on every push. Either that commit never"
+            echo "finished CI, or the tag points at a commit that was never pushed."
+            exit 1
+          fi
+          echo "found ${{ steps.image.outputs.ref }}"
+
+      # Pinned from a secret rather than disabled. `StrictHostKeyChecking=no`
+      # would make this workflow deploy to whatever answers on that IP, which
+      # on a machine that runs an agent OS is not a risk worth the convenience.
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          ssh-keygen -l -f ~/.ssh/deploy >/dev/null || { echo "::error::DEPLOY_SSH_KEY is not a valid private key"; exit 1; }
+
+      - name: Deploy
+        id: run
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          ACTION: ${{ inputs.action || 'deploy' }}
+          REF: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            deploy)   request="deploy $REF" ;;
+            rollback) request="rollback" ;;
+            status)   request="status" ;;
+            *) echo "::error::unknown action $ACTION"; exit 1 ;;
+          esac
+
+          echo "asking $USER@$HOST: $request"
+          # BatchMode so a prompt fails instead of hanging until the job times
+          # out. The remote end is a forced command; the argument here is the
+          # entire request it will parse.
+          ssh -i ~/.ssh/deploy \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=30 \
+              -p "$PORT" \
+              "$USER@$HOST" "$request" 2>&1 | tee /tmp/deploy.log
+
+      # The server rolls itself back on a failed health check, so by the time a
+      # failure reaches here the service is already back on the previous image.
+      # This exists to say so, rather than leaving the operator to guess.
+      - name: Explain a failure
+        if: failure() && steps.run.outcome == 'failure'
+        run: |
+          {
+            echo "### Deployment failed"
+            echo ""
+            echo "The server rolls back on its own when a new image does not become"
+            echo "healthy, so the previous version is most likely serving again."
+            echo "Confirm with the \`status\` action, or on the box:"
+            echo ""
+            echo '```'
+            echo "ssh <admin>@<host> 'cd /opt/metaclaude && docker compose ps'"
+            echo '```'
+            echo ""
+            echo "Server output:"
+            echo ""
+            echo '```'
+            tail -40 /tmp/deploy.log 2>/dev/null || echo "(no output captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Always remove the key from the runner
+        if: always()
+        run: rm -f ~/.ssh/deploy
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo ""
+            echo "Deployed and healthy."
+          } >> "$GITHUB_STEP_SUMMARY"

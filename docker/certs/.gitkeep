@@ -1,0 +1,5 @@
+Mount point for a certificate obtained outside Caddy.
+
+Used only when METACLAUDE_TLS names a pair, e.g. after
+`tailscale cert <machine>.<tailnet>.ts.net`. Empty otherwise, and nothing
+reads it. Never commit a private key here — .gitignore covers *.pem and *.key.

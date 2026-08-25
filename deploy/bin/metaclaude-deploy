@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+#
+# The only thing the CI key can do on this server.
+#
+# Installed as the forced command in the deploy account's authorized_keys:
+#
+#   restrict,command="/opt/metaclaude/bin/metaclaude-deploy" ssh-ed25519 AAAA…
+#
+# so whatever CI asks for arrives in $SSH_ORIGINAL_COMMAND and is parsed here
+# rather than executed. That inversion is the whole security model: the key
+# cannot open a shell, cannot forward a port, and cannot run a command this
+# script does not recognise — even if GitHub's secret store leaks it.
+#
+# Grammar, and nothing else is accepted:
+#
+#   deploy <image-reference>   pull, switch, health-check, roll back on failure
+#   rollback                   return to the previously healthy image
+#   status                     what is running
+#   health                     the health endpoint's own answer
+#
+# The image reference is checked against ALLOWED_IMAGE_PREFIX, so a stolen key
+# cannot deploy an arbitrary image from an arbitrary registry.
+
+set -Eeuo pipefail
+
+APP_DIR="${METACLAUDE_APP_DIR:-/opt/metaclaude}"
+RELEASES="$APP_DIR/releases"
+CURRENT="$RELEASES/current"
+PREVIOUS="$RELEASES/previous"
+LOCK="$RELEASES/.lock"
+
+# A stolen deploy key must not be able to point this host at someone else's
+# image — so the allow-list is the exact repository, not merely the registry.
+# `ghcr.io/` alone would let anyone with the key deploy any public GHCR image,
+# which on a host whose deploy account is in the docker group is a root shell.
+# install-app.sh writes the real value into $APP_DIR/deploy.conf.
+ALLOWED_IMAGE_PREFIX="${ALLOWED_IMAGE_PREFIX:-ghcr.io/jgouviergmail/metaclaude}"
+
+# How long the container gets to report healthy before it is judged a failure.
+HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-180}"
+
+# shellcheck source=/dev/null
+[ -f "$APP_DIR/deploy.conf" ] && . "$APP_DIR/deploy.conf"
+
+log()  { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+die()  { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
+
+cd "$APP_DIR" 2>/dev/null || die "no $APP_DIR on this host"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Parse what CI asked for
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Interactive use (an admin debugging) passes arguments; ssh passes the command
+# in the environment. Never eval either.
+REQUEST="${SSH_ORIGINAL_COMMAND:-$*}"
+[ -n "$REQUEST" ] || die "no command. Try: deploy <image> | rollback | status | health"
+
+# The whole request is matched against one grammar, before any splitting.
+#
+# Splitting first and looking only at the fields it cares about would mean
+# `deploy <image> | sh` and `deploy <image>` + a second line both quietly become
+# a plain deploy, with the tail dropped. Nothing would execute — this script
+# never evaluates its input — but a forced command that silently discards the
+# part of a request it does not understand is one refactor away from doing so.
+# Refusing outright is the same three lines and does not decay.
+#
+# `[[ =~ ]]` is anchored and, unlike a `case` glob, will not match across a
+# newline: a multi-line request fails here rather than being truncated.
+if [[ ! "$REQUEST" =~ ^(deploy[[:space:]]+[A-Za-z0-9._/:@-]+|rollback|status|health)$ ]]; then
+  die "refusing $(printf '%q' "$REQUEST") — expected: deploy <image> | rollback | status | health"
+fi
+
+read -r ACTION ARGUMENT _ <<<"$REQUEST"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+compose() { docker compose --project-directory "$APP_DIR" "$@"; }
+
+container_id() { compose ps -q app 2>/dev/null | head -1; }
+
+# The container declares its own healthcheck, so this reads Docker's verdict
+# rather than inventing a second, disagreeing one.
+wait_until_healthy() {
+  local deadline=$(( SECONDS + HEALTH_TIMEOUT_SECONDS )) id status
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    id="$(container_id)"
+    if [ -n "$id" ]; then
+      status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || echo unknown)"
+      case "$status" in
+        healthy|running) log "container is $status"; return 0 ;;
+        unhealthy)      log "container reports unhealthy"; return 1 ;;
+      esac
+    fi
+    sleep 3
+  done
+  log "gave up after ${HEALTH_TIMEOUT_SECONDS}s"
+  return 1
+}
+
+# Docker's healthcheck runs inside the container, so it proves the process is
+# up but not that the proxy in front of it is routing. This asks from outside.
+proxy_answers() {
+  local code
+  code="$(curl -sS -o /dev/null -w '%{http_code}' -k --max-time 10 https://127.0.0.1/api/health 2>/dev/null || echo 000)"
+  [ "$code" = "200" ]
+}
+
+record() {
+  install -d -m 0750 "$RELEASES"
+  [ -f "$CURRENT" ] && cp "$CURRENT" "$PREVIOUS"
+  printf '%s\n' "$1" > "$CURRENT"
+}
+
+bring_up() {
+  local image="$1"
+  # The shell environment wins over .env, so the image is chosen without
+  # rewriting a file the operator also edits by hand.
+  METACLAUDE_IMAGE="$image" compose up -d --remove-orphans
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Read-only commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+# compose.yml and the Caddyfile live on the server, not in the image — an image
+# that supplied its own compose file could ask for a host mount and escape the
+# very confinement that file exists to impose. The cost is that they can drift
+# from the repository, so every run prints what it is actually using and CI
+# compares. Changing them is an admin action: deploy/install-app.sh.
+print_infra_digests() {
+  for file in compose.yml docker/Caddyfile; do
+    if [ -f "$APP_DIR/$file" ]; then
+      printf '%s-sha256: %s\n' "$(basename "$file")" "$(sha256sum "$APP_DIR/$file" | cut -c1-16)"
+    else
+      printf '%s-sha256: MISSING\n' "$(basename "$file")"
+    fi
+  done
+}
+
+if [ "$ACTION" = "status" ]; then
+  printf 'current:  %s\n' "$( [ -f "$CURRENT" ] && cat "$CURRENT" || echo '(none recorded)')"
+  printf 'previous: %s\n' "$( [ -f "$PREVIOUS" ] && cat "$PREVIOUS" || echo '(none recorded)')"
+  print_infra_digests
+  echo
+  compose ps
+  exit 0
+fi
+
+if [ "$ACTION" = "health" ]; then
+  curl -sS -k --max-time 10 https://127.0.0.1/api/health || die "the health endpoint did not answer"
+  echo
+  exit 0
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy and rollback
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Two deploys at once would race on the same containers and leave the recorded
+# image disagreeing with the running one. flock makes the second wait.
+exec 9>"$LOCK"
+flock -w 600 9 || die "another deployment is in progress and did not finish within 10 minutes"
+
+if [ "$ACTION" = "rollback" ]; then
+  [ -f "$PREVIOUS" ] || die "no previous release recorded; nothing to roll back to"
+  TARGET="$(cat "$PREVIOUS")"
+  log "rolling back to $TARGET"
+else
+  TARGET="$ARGUMENT"
+  [ -n "$TARGET" ] || die "deploy needs an image reference"
+
+  # Strict allow-list. Registry, path, and either a tag or a digest — nothing
+  # that could be read as a flag, a path traversal or a second command.
+  case "$TARGET" in
+    "$ALLOWED_IMAGE_PREFIX"*) ;;
+    *) die "refusing '$TARGET': images must start with $ALLOWED_IMAGE_PREFIX" ;;
+  esac
+  if ! printf '%s' "$TARGET" | grep -Eq '^[a-z0-9._/-]+(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$'; then
+    die "refusing '$TARGET': not a well-formed image reference"
+  fi
+  log "deploying $TARGET"
+fi
+
+PRIOR="$( [ -f "$CURRENT" ] && cat "$CURRENT" || echo '')"
+
+# Pull before switching anything, so a registry outage or a bad tag fails while
+# the current version is still serving.
+log "pulling"
+docker pull --quiet "$TARGET" >/dev/null || die "could not pull $TARGET — nothing was changed"
+
+record "$TARGET"
+
+log "starting"
+if ! bring_up "$TARGET"; then
+  log "compose refused to start the new image"
+  if [ -n "$PRIOR" ]; then
+    log "restoring $PRIOR"
+    printf '%s\n' "$PRIOR" > "$CURRENT"
+    bring_up "$PRIOR" || true
+  fi
+  die "deployment failed at startup"
+fi
+
+if wait_until_healthy && proxy_answers; then
+  log "healthy, and answering through the proxy"
+  print_infra_digests
+  docker image prune -f --filter 'until=168h' >/dev/null 2>&1 || true
+  log "deployed $TARGET"
+  exit 0
+fi
+
+# ── Automatic rollback ───────────────────────────────────────────────────────
+# A deployment that is not serving is not a deployment. Going back is always
+# safer than leaving a half-broken version up while someone reads the logs.
+log "the new image is not serving"
+
+if [ -z "$PRIOR" ] || [ "$PRIOR" = "$TARGET" ]; then
+  compose logs --tail 60 app 2>&1 || true
+  die "no earlier image to fall back to — the service is DOWN and needs attention"
+fi
+
+log "rolling back to $PRIOR"
+printf '%s\n' "$PRIOR" > "$CURRENT"
+if bring_up "$PRIOR" && wait_until_healthy; then
+  compose logs --tail 60 app 2>&1 || true
+  die "deployment of $TARGET failed; rolled back to $PRIOR, which is healthy"
+fi
+
+compose logs --tail 60 app 2>&1 || true
+die "deployment of $TARGET failed AND the rollback to $PRIOR did not come up — the service is DOWN"

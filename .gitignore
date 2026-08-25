@@ -19,6 +19,12 @@ workspaces/
 *.sqlite
 
 # Secrets
+# Certificates and keys mounted into the proxy, never committed.
+docker/certs/*
+!docker/certs/.gitkeep
+*.pem
+*.key
+!apps/**/*.key
 .env
 .env.local
 .env.*.local

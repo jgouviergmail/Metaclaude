@@ -1,31 +1,75 @@
 # Caddy — TLS termination and the only public entry point.
 #
-# With METACLAUDE_DOMAIN unset it defaults to `localhost`, and Caddy issues a
-# local self-signed certificate. That means a fresh `docker compose up` serves
-# HTTPS immediately, with no DNS and no public address — and the app's Secure
-# cookies work from the very first request.
+# ── Why TLS is not optional here ──────────────────────────────────────────────
 #
-# Set METACLAUDE_DOMAIN to a real hostname that resolves to this machine and
-# Caddy obtains a Let's Encrypt certificate automatically.
-
+# Metaclaude sets a Secure session cookie and installs a service worker. Both
+# require a *secure context*: over plain HTTP the browser refuses to store the
+# cookie and refuses to register the worker, so the app does not merely become
+# less safe — it stops working. There is no "just use HTTP for now" mode.
+#
+# ── Choosing how the certificate is obtained ──────────────────────────────────
+#
+# Two variables, and nothing else changes between deployments:
+#
+#   METACLAUDE_SITE   the address browsers use — an IP, or a hostname
+#   METACLAUDE_TLS    how the certificate is obtained
+#
+# The three values METACLAUDE_TLS takes:
+#
+#   internal
+#       Caddy runs its own certificate authority and signs for METACLAUDE_SITE,
+#       an IP address included. Nothing external is involved and nothing needs
+#       to resolve. The cost: the CA is unknown to your devices until you
+#       install it once each — until then every visit shows a warning, and iOS
+#       in particular will not treat the origin as secure, so the PWA will not
+#       install. Extract it with:
+#
+#           docker compose exec proxy \
+#             cat /data/caddy/pki/authorities/local/root.crt > metaclaude-ca.crt
+#
+#       This is the default because it is the only option that works with
+#       nothing but an IP address and no third party.
+#
+#   <your-email@example.com>
+#       Public ACME (Let's Encrypt) using that address for expiry notices.
+#       Requires METACLAUDE_SITE to be something the CA will issue for and can
+#       reach on port 80 or 443. Certificates for bare IP addresses are a recent
+#       and still-restricted capability — check it works before relying on it.
+#       No warning, nothing to install on any device.
+#
+#   /path/to/cert.pem /path/to/key.pem
+#       A certificate obtained elsewhere. This is the Tailscale route: run
+#       `tailscale cert <machine>.<tailnet>.ts.net`, mount the pair in, and set
+#       METACLAUDE_SITE to that name. You get a publicly-trusted certificate
+#       without owning a domain, and the server needs no open ports at all.
+#
+# See docs/DEPLOYMENT.md for which to pick.
 {
-	email {$METACLAUDE_TLS_EMAIL}
-	# Never advertise the server software to the internet.
-	servers {
-		trusted_proxies static private_ranges
-	}
+	# `internal` is not an email address, so this is only consulted in ACME mode.
+	# Caddy ignores it otherwise.
+	email {$METACLAUDE_TLS_EMAIL:internal}
+
+	# Deliberately absent: `trusted_proxies`. Caddy is the edge here — there is
+	# nothing in front of it — so it must not honour an X-Forwarded-For header a
+	# client made up. Caddy's default is to trust none, which is correct; naming
+	# ranges here would only create a way to lie about the client address, and
+	# that address is what the login lockout counts against.
 }
 
-{$METACLAUDE_DOMAIN} {
+{$METACLAUDE_SITE:localhost} {
+	tls {$METACLAUDE_TLS:internal}
+
 	encode zstd gzip
 
 	header {
-		# HSTS. Two years, subdomains included.
+		# Two years, subdomains included. A browser only records this over a
+		# connection it already trusts, so under `tls internal` it takes effect
+		# once the CA is installed and is inert before that.
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
-		# This is a private tool; nothing here should ever be indexed.
+		# A private tool. Nothing here should ever be indexed.
 		X-Robots-Tag "noindex, nofollow, noarchive"
 		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
 		-Server
