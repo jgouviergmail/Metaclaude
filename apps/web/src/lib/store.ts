@@ -103,9 +103,31 @@ interface SessionState {
   setConnection: (state: ConnectionState) => void;
 }
 
+const TERMINAL_RUN_STATUSES: ReadonlySet<Run['status']> = new Set([
+  'succeeded',
+  'failed',
+  'interrupted',
+]);
+
 /** True while at least one run in the session is still occupying the agent. */
 function anyRunActive(runs: Run[]): boolean {
   return runs.some((run) => run.status === 'running' || run.status === 'waiting_approval');
+}
+
+/**
+ * A run's status only ever moves forward.
+ *
+ * Frames reach the client from two sources that can interleave: the socket
+ * (including a window replayed after a reconnect) and the HTTP refetch that
+ * follows one. Both are correct at the moment they were produced, but a
+ * replayed `running` frame arriving after a refetch has already reported
+ * `succeeded` would drag the UI backwards and leave the Stop button on a
+ * finished run. Making the transition monotonic removes the race outright
+ * rather than relying on the refetch losing it.
+ */
+function isRegression(existing: Run | undefined, incoming: Run): boolean {
+  if (!existing) return false;
+  return TERMINAL_RUN_STATUSES.has(existing.status) && !TERMINAL_RUN_STATUSES.has(incoming.status);
 }
 
 /** True when a frame's topic addresses the session currently loaded. */
@@ -189,6 +211,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     set((state) => {
       if (state.sessionId !== run.sessionId) return state;
       const index = state.runs.findIndex((existing) => existing.id === run.id);
+      if (isRegression(state.runs[index], run)) return state;
+
       const runs =
         index >= 0 ? state.runs.map((r, i) => (i === index ? run : r)) : [...state.runs, run];
       // Derived from the whole set, not from this frame: frames can arrive out

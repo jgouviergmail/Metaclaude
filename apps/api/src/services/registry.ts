@@ -209,10 +209,15 @@ export class Registry {
     );
 
     for (const row of rows) {
-      const legacy = parseJson<Record<string, string>>(row.headers, {});
-      const names = Object.keys(legacy);
-      for (const name of names) {
-        this.vault.set(`mcp:${row.id}`, headerSlot(name), legacy[name] as string);
+      const legacy = parseJson<Record<string, unknown>>(row.headers, {});
+      // A hand-edited or corrupted column must not stop the process booting, so
+      // anything that is not a string header value is dropped rather than
+      // handed to the sealer.
+      const names: string[] = [];
+      for (const [name, value] of Object.entries(legacy)) {
+        if (typeof value !== 'string' || value.length === 0) continue;
+        this.vault.set(`mcp:${row.id}`, headerSlot(name), value);
+        names.push(name);
       }
       clear.run(JSON.stringify(names), row.id);
     }
