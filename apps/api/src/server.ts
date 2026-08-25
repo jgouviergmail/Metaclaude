@@ -16,7 +16,7 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
-import Fastify from 'fastify';
+import Fastify, { LogController, type FastifyRequest } from 'fastify';
 import type { AppContext } from './context.js';
 import type { App } from './http/types.js';
 import { authenticate, isPublicPath, requestIp, sendError, verifyCsrf } from './http/guards.js';
@@ -47,6 +47,23 @@ function setCacheControl(target: unknown, value: string): void {
 }
 
 export async function buildServer(context: AppContext): Promise<App> {
+  const isProduction = context.config.env === 'production';
+
+  /**
+   * Per-request logging policy.
+   *
+   * The container healthcheck polls `/api/health` every 30 seconds; logging it
+   * would bury everything else. In production the rest of the per-request noise
+   * is dropped too — the audit log is the record that matters, and errors are
+   * logged explicitly by the error handler.
+   */
+  class MetaclaudeLogController extends LogController {
+    override isLogDisabled(request: FastifyRequest): boolean {
+      if (request.url === '/api/health') return true;
+      return isProduction;
+    }
+  }
+
   const app = Fastify({
     loggerInstance: context.log,
     trustProxy: context.config.trustProxy,
@@ -54,7 +71,8 @@ export async function buildServer(context: AppContext): Promise<App> {
     bodyLimit: 8 * 1024 * 1024,
     // Reject a request whose id header we did not generate.
     genReqId: () => globalThis.crypto.randomUUID(),
-    disableRequestLogging: context.config.env === 'production',
+    // Fastify expects an instance here, not the class.
+    logController: new MetaclaudeLogController(),
   });
 
   /* ------------------------------ Security ------------------------------ */
