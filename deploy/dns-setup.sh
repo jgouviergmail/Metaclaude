@@ -104,16 +104,27 @@ printf '\n'
 [ -n "$CF_TOKEN" ] || die "no token entered"
 info "received ${#CF_TOKEN} characters"
 
+codes() { printf '%s' "$1" | jget "
+for e in d.get('errors', []) or []: print('       %s  %s' % (e.get('code'), e.get('message')))
+"; }
+
+# Deliberately not fatal.
+#
+# /user/tokens/verify is a courtesy endpoint, and failing it does not mean the
+# token is useless: an account-owned token verifies under /accounts/<id>/tokens
+# instead, and a legacy Global API Key does not use bearer auth at all. Killing
+# the run here refused tokens that could have done the job perfectly well.
+#
+# The honest test is the operation actually needed — reading the zone — so that
+# is what decides.
 VERIFY="$(cf GET /user/tokens/verify)"
-case "$(printf '%s' "$VERIFY" | jget "print(d.get('success'))")" in
-  True) info "the token is valid and active" ;;
-  *)
-    printf '%s\n' "$(printf '%s' "$VERIFY" | jget "
-for e in d.get('errors', []) or []: print('   ', e.get('code'), e.get('message'))
-")" >&2
-    die "Cloudflare rejected the token"
-    ;;
-esac
+if [ "$(printf '%s' "$VERIFY" | jget "print(d.get('success'))")" = "True" ]; then
+  info "the token verifies"
+else
+  warn "the token could not verify itself:"
+  codes "$VERIFY" >&2
+  note "not necessarily fatal — what counts is whether it can read the zone."
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 step "2/5  The zone"
@@ -122,6 +133,23 @@ step "2/5  The zone"
 # Matched by longest suffix rather than by stripping the first label, so a name
 # several levels deep lands in the right zone.
 ZONES="$(cf GET '/zones?per_page=50')"
+if [ "$(printf '%s' "$ZONES" | jget "print(d.get('success'))")" != "True" ]; then
+  warn "the token cannot list zones:"
+  codes "$ZONES" >&2
+  die "Cloudflare refused. What the codes above usually mean:
+
+       1000  the token string is not recognised. Re-copy it — a truncated paste
+             looks exactly like this. It reported ${#CF_TOKEN} characters; a
+             Cloudflare API token is normally around 40.
+       6003  wrong kind of credential. This needs an API *Token*
+             (My Profile -> API Tokens -> Create Token), not the Global API Key,
+             which uses a different authentication scheme entirely.
+       9109  the token is real but lacks Zone:Read on this zone. Edit it and add
+             Zone -> Zone -> Read, plus Zone -> DNS -> Edit for the record.
+       Nothing at all above: the request never reached Cloudflare — check the
+             machine's outbound network."
+fi
+
 read -r ZONE_ID ZONE_NAME <<EOF
 $(printf '%s' "$ZONES" | jget "
 fqdn = '$FQDN'
