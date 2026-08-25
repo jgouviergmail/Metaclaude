@@ -86,10 +86,10 @@ export function App() {
 
       switch (frame.type) {
         case 'transcript':
-          session.applyEvent(frame.event);
+          session.applyEvent(frame.topic, frame.event);
           break;
         case 'delta':
-          session.applyDelta(frame.eventId, frame.channel, frame.text);
+          session.applyDelta(frame.topic, frame.eventId, frame.channel, frame.text);
           break;
         case 'run':
           session.applyRun(frame.run);

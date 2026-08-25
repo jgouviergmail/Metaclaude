@@ -84,12 +84,20 @@ export class EventBus {
     if (buffer.length > REPLAY_BUFFER_SIZE) buffer.splice(0, buffer.length - REPLAY_BUFFER_SIZE);
   }
 
-  /** Frames published to `topic` after `afterSeq`, newest last. */
-  replay(topic: Topic, afterSeq: number): ServerFrame[] {
+  /**
+   * Frames published to `topic` after `afterSeq`, newest last.
+   *
+   * Each entry keeps its sequence number: a replayed frame has to advance the
+   * client's cursor exactly as a live one does, or the next reconnect would ask
+   * for — and be sent — the same window again.
+   */
+  replay(topic: Topic, afterSeq: number): { seq: number; frame: ServerFrame }[] {
     const buffer = this.buffers.get(topic);
     if (!buffer) return [];
     const cutoff = Date.now() - REPLAY_MAX_AGE_MS;
-    return buffer.filter((entry) => entry.seq > afterSeq && entry.at >= cutoff).map((e) => e.frame);
+    return buffer
+      .filter((entry) => entry.seq > afterSeq && entry.at >= cutoff)
+      .map((entry) => ({ seq: entry.seq, frame: entry.frame }));
   }
 
   get currentSeq(): number {

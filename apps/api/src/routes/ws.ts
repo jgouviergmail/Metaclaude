@@ -14,6 +14,7 @@ import {
   CLOSE_CODES,
   APP_VERSION,
   SESSION_COOKIE,
+  toWireFrame,
   type ServerFrame,
   type Topic,
 } from '@metaclaude/shared';
@@ -44,11 +45,16 @@ export function registerWebSocket(app: App, context: AppContext): void {
     let handshaken = false;
     let alive = true;
 
-    const send = (frame: ServerFrame): void => {
+    /**
+     * @param seq Bus sequence for a published frame. The client records the
+     *            highest one it sees and replays from there after a reconnect;
+     *            connection-local frames (`ready`, `pong`, …) have none.
+     */
+    const send = (frame: ServerFrame, seq?: number): void => {
       // readyState 1 === OPEN. Writing to a closing socket throws.
       if (socket.readyState !== 1) return;
       try {
-        socket.send(JSON.stringify(frame));
+        socket.send(JSON.stringify(toWireFrame(frame, seq)));
       } catch {
         // The socket died between the check and the write; cleanup will follow.
       }
@@ -89,8 +95,29 @@ export function registerWebSocket(app: App, context: AppContext): void {
 
     /* ---------------------------- Subscriptions ---------------------------- */
 
-    const subscribe = (topics: Topic[]): Topic[] => {
+    /**
+     * Subscribe, and replay the gap.
+     *
+     * `since` is the highest sequence the client has already applied. Replaying
+     * from there is the whole point of the bus's ring buffer: without it a
+     * reconnect silently loses every frame published while the socket was down
+     * — a finished run still showing as running, a transcript missing its tail.
+     *
+     * The replay is emitted *before* the listener is attached, and this whole
+     * loop is synchronous, so nothing can be published into the gap: the client
+     * sees the buffered frames and then the live ones, in publication order.
+     * Frames older than the buffer window are simply absent — the client
+     * refetches on reconnect anyway, so an overrun degrades to the previous
+     * behaviour rather than to a wrong ordering.
+     */
+    const subscribe = (topics: Topic[], since?: string): { accepted: Topic[]; replayed: number } => {
       const accepted: Topic[] = [];
+      let replayed = 0;
+
+      const cursor = since === undefined ? null : Number(since);
+      const afterSeq =
+        cursor !== null && Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : null;
+
       for (const topic of topics) {
         if (subscriptions.has(topic)) {
           accepted.push(topic);
@@ -99,11 +126,18 @@ export function registerWebSocket(app: App, context: AppContext): void {
         // A cap on topics per socket: each one holds a listener and a buffer.
         if (subscriptions.size >= 64) break;
 
-        const unsubscribe = context.bus.subscribe(topic, (frame) => send(frame));
+        if (afterSeq !== null) {
+          for (const missed of context.bus.replay(topic, afterSeq)) {
+            send(missed.frame, missed.seq);
+            replayed += 1;
+          }
+        }
+
+        const unsubscribe = context.bus.subscribe(topic, (frame, seq) => send(frame, seq));
         subscriptions.set(topic, unsubscribe);
         accepted.push(topic);
       }
-      return accepted;
+      return { accepted, replayed };
     };
 
     const unsubscribe = (topics: Topic[]): void => {
@@ -164,8 +198,8 @@ export function registerWebSocket(app: App, context: AppContext): void {
         }
 
         case 'subscribe': {
-          const accepted = subscribe(frame.data.topics);
-          send({ type: 'subscribed', topics: accepted });
+          const { accepted, replayed } = subscribe(frame.data.topics, frame.data.since);
+          send({ type: 'subscribed', topics: accepted, replayed });
           break;
         }
 

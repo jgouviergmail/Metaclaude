@@ -162,28 +162,79 @@ function resolveValue(
 /**
  * Next fire time strictly after `from`.
  *
- * Iterates minute by minute, bounded to four years so an impossible expression
- * such as `0 0 30 2 *` (30 February) terminates with `null` instead of looping.
- * Minute granularity keeps the implementation obviously correct, and at ~2.1M
- * iterations worst case it still completes in well under a second.
+ * Walks day by day and, on each matching date, builds the wall-clock times the
+ * schedule asks for and returns the first that is still ahead. Bounded to four
+ * years so an impossible expression such as `0 0 30 2 *` (30 February)
+ * terminates with `null` instead of looping.
+ *
+ * ### Why it is written from local fields rather than by stepping minutes
+ *
+ * Stepping a `Date` minute by minute means stepping *wall-clock* minutes, and
+ * across a daylight-saving change wall-clock minutes and real minutes are not
+ * the same thing. The failure is silent and one-sided:
+ *
+ * - **Spring forward.** Local 02:00–02:59 does not exist. A stepping cursor
+ *   goes 01:59 → 03:00 and never visits those minutes, so `30 2 * * *` simply
+ *   does not fire that day. In a zone whose transition is at midnight
+ *   (America/Santiago), that silently costs `@daily` a whole day.
+ * - **Fall back.** Local 02:00–02:59 happens twice. A cursor built from local
+ *   fields jumps the repeat, which is the behaviour we want — an automation
+ *   must not run twice because a clock moved.
+ *
+ * Constructing the candidate from local fields gets both right for free,
+ * because that is exactly what the language guarantees: for a time that does
+ * not exist, `new Date(y, m, d, h, mi)` normalises onto the first instant that
+ * does (Vixie cron's behaviour — run it at the new local time); for a time that
+ * happens twice, it resolves to the first occurrence, and the second is never
+ * offered.
+ *
+ * It is also much cheaper: days × matching (hour, minute) pairs rather than
+ * ~2.1M minute steps in the worst case.
  */
 export function nextFireTime(schedule: CronSchedule, from: number = Date.now()): number | null {
-  const cursor = new Date(from);
-  cursor.setSeconds(0, 0);
-  cursor.setMinutes(cursor.getMinutes() + 1);
-
   const limit = from + 4 * 366 * 86_400_000;
 
-  while (cursor.getTime() <= limit) {
-    if (matches(schedule, cursor)) return cursor.getTime();
+  const hours = [...schedule.hours].sort((a, b) => a - b);
+  const minutes = [...schedule.minutes].sort((a, b) => a - b);
 
-    // Skip a whole day when the date cannot match, rather than 1440 minutes.
-    if (!matchesDate(schedule, cursor)) {
-      cursor.setDate(cursor.getDate() + 1);
-      cursor.setHours(0, 0, 0, 0);
-      continue;
+  const day = new Date(from);
+  day.setHours(0, 0, 0, 0);
+
+  while (day.getTime() <= limit) {
+    if (matchesDate(schedule, day)) {
+      const year = day.getFullYear();
+      const month = day.getMonth();
+      const date = day.getDate();
+
+      const candidates: number[] = [];
+      for (const hour of hours) {
+        for (const minute of minutes) {
+          const candidate = new Date(year, month, date, hour, minute, 0, 0);
+          // A skipped local time normalises forward; keep it only while it is
+          // still the same day, so a gap at the very end of a day does not
+          // silently produce a firing on the next one.
+          if (
+            candidate.getFullYear() === year &&
+            candidate.getMonth() === month &&
+            candidate.getDate() === date
+          ) {
+            candidates.push(candidate.getTime());
+          }
+        }
+      }
+
+      // Normalisation can reorder (02:30 becomes 03:30 while 03:00 stays put)
+      // and can collide (02:00 and 03:00 both becoming 03:00). Sorting fixes
+      // the order; the strict `>` comparison, here and on the caller's next
+      // call, collapses the collision to a single firing.
+      candidates.sort((a, b) => a - b);
+      for (const candidate of candidates) {
+        if (candidate > from) return candidate;
+      }
     }
-    cursor.setMinutes(cursor.getMinutes() + 1);
+
+    day.setDate(day.getDate() + 1);
+    day.setHours(0, 0, 0, 0);
   }
   return null;
 }
@@ -199,14 +250,6 @@ function matchesDate(schedule: CronSchedule, date: Date): boolean {
   return schedule.bothDayFieldsRestricted
     ? dayOfMonthMatches || dayOfWeekMatches
     : dayOfMonthMatches && dayOfWeekMatches;
-}
-
-function matches(schedule: CronSchedule, date: Date): boolean {
-  return (
-    schedule.minutes.has(date.getMinutes()) &&
-    schedule.hours.has(date.getHours()) &&
-    matchesDate(schedule, date)
-  );
 }
 
 /** Validate an expression without keeping the result. */

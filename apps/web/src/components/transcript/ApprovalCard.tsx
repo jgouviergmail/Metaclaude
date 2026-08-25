@@ -12,7 +12,7 @@
  */
 
 import { AlertTriangle, Check, Clock, ShieldQuestion, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest } from '@metaclaude/shared';
 import { Badge, Button, Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
@@ -56,23 +56,47 @@ export function ApprovalCard({
     onDecide(approved, remember && request.risk !== 'high');
   };
 
-  // Enter/Escape as accelerators, but only Escape maps to the destructive-safe
-  // side; approving always needs a deliberate click or ⌘Enter.
+  /*
+   * Keyboard accelerators, scoped to this card.
+   *
+   * They were on `window`, which made them global in the worst way: every
+   * mounted card installed its own listener, so one ⌘Enter approved *all*
+   * pending prompts at once, and Escape — the key that closes a menu or a
+   * modal — denied all of them. Worse, ⌘Enter is how the composer sends a
+   * message, so typing a prompt while an approval was pending silently
+   * authorised the tool.
+   *
+   * Handling the event on the card means it only fires when focus is inside
+   * this card, which is also what makes the shortcut legible: you act on the
+   * thing you are looking at.
+   */
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Move focus here when the prompt appears, so the accelerators are reachable
+  // without a click — but never steal it from someone mid-sentence.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (submitting) return;
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        decide(false);
-      } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        decide(true);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitting, remember]);
+    const active = document.activeElement;
+    const isEditing =
+      active instanceof HTMLElement &&
+      (active.isContentEditable ||
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA' ||
+        active.tagName === 'SELECT');
+    if (!isEditing) cardRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (submitting) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      decide(false);
+    } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+      decide(true);
+    }
+  };
 
   const risk = RISK_COPY[request.risk];
   const command = extractCommand(request.input);
@@ -89,6 +113,10 @@ export function ApprovalCard({
       )}
       role="alertdialog"
       aria-labelledby={`approval-${request.id}-title`}
+      aria-describedby={`approval-${request.id}-action`}
+      ref={cardRef}
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
     >
       <div className="flex items-start gap-3 px-4 pt-3.5">
         <span
@@ -132,7 +160,10 @@ export function ApprovalCard({
       </div>
 
       {/* The literal action. This is the part that must be trustworthy. */}
-      <div className="mx-4 mt-3 overflow-hidden rounded-lg border border-line bg-surface">
+      <div
+        id={`approval-${request.id}-action`}
+        className="mx-4 mt-3 overflow-hidden rounded-lg border border-line bg-surface"
+      >
         {command ? (
           <pre className="max-h-52 overflow-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink">
             {command}

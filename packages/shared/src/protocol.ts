@@ -45,7 +45,19 @@ export type Topic = z.infer<typeof Topic>;
 export const ClientFrame = z.discriminatedUnion('type', [
   /** Sent first. Authentication itself rides on the session cookie. */
   z.object({ type: z.literal('hello'), csrfToken: z.string().min(1) }),
-  z.object({ type: z.literal('subscribe'), topics: z.array(Topic).max(64) }),
+  z.object({
+    type: z.literal('subscribe'),
+    topics: z.array(Topic).max(64),
+    /**
+     * Highest sequence number this client has already seen, from the `seq` on
+     * any earlier frame or the `resumeToken` of a previous `ready`.
+     *
+     * When present the server replays what it buffered for these topics after
+     * that point, which is what makes a brief disconnect invisible instead of
+     * silently dropping everything published while the socket was down.
+     */
+    since: z.string().max(32).optional(),
+  }),
   z.object({ type: z.literal('unsubscribe'), topics: z.array(Topic).max(64) }),
   z.object({ type: z.literal('ping'), t: Millis }),
   /** Respond to a pending tool-permission prompt. */
@@ -73,7 +85,12 @@ export const ServerFrame = z.discriminatedUnion('type', [
     resumeToken: z.string(),
   }),
   z.object({ type: z.literal('pong'), t: Millis }),
-  z.object({ type: z.literal('subscribed'), topics: z.array(Topic) }),
+  z.object({
+    type: z.literal('subscribed'),
+    topics: z.array(Topic),
+    /** How many buffered frames were replayed in answer to `since`. */
+    replayed: z.number().int().default(0),
+  }),
   z.object({ type: z.literal('error'), code: z.string(), message: z.string() }),
 
   z.object({ type: z.literal('transcript'), topic: Topic, event: TranscriptEvent }),
@@ -120,6 +137,45 @@ export const ServerFrame = z.discriminatedUnion('type', [
   }),
 ]);
 export type ServerFrame = z.infer<typeof ServerFrame>;
+
+/* -------------------------------------------------------------------------- */
+/* Wire envelope                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What actually goes on the wire: a frame plus the bus sequence number it was
+ * published at.
+ *
+ * The sequence lives beside the frame rather than inside the union so that all
+ * fourteen variants do not each have to carry it, and so a frame stays
+ * comparable to the value the bus published. The client keeps the highest `seq`
+ * it has seen and hands it back as `since` when it re-subscribes, which is what
+ * lets the server replay the gap after a reconnect.
+ *
+ * Frames that are per-connection rather than published (`ready`, `pong`,
+ * `subscribed`, `error`) carry no sequence.
+ */
+export function toWireFrame(frame: ServerFrame, seq?: number): unknown {
+  return seq === undefined ? frame : { ...frame, seq };
+}
+
+export interface WireFrame {
+  frame: ServerFrame;
+  /** `null` for a frame that was not published through the bus. */
+  seq: number | null;
+}
+
+/** Validate an incoming wire message. Returns `null` if it is not a valid frame. */
+export function parseWireFrame(raw: unknown): WireFrame | null {
+  const parsed = ServerFrame.safeParse(raw);
+  if (!parsed.success) return null;
+
+  const seq = (raw as { seq?: unknown }).seq;
+  return {
+    frame: parsed.data,
+    seq: typeof seq === 'number' && Number.isSafeInteger(seq) ? seq : null,
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                     */

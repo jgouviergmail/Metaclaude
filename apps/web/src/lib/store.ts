@@ -16,9 +16,11 @@ import type {
   ApprovalRequest,
   Run,
   Session,
+  Topic,
   TranscriptEvent,
   User,
 } from '@metaclaude/shared';
+import { sessionTopic } from '@metaclaude/shared';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ConnectionState } from './socket';
@@ -78,13 +80,37 @@ interface SessionState {
     isRunning: boolean;
   }) => void;
   clear: () => void;
-  applyEvent: (event: TranscriptEvent) => void;
-  applyDelta: (eventId: string, channel: StreamingBlock['channel'], text: string) => void;
+  /**
+   * The `topic` argument on the transcript actions is the session guard.
+   *
+   * A `TranscriptEvent` carries no session id — only a run id — so without the
+   * frame's topic there is nothing to check it against, and an event belonging
+   * to another session (a workspace-topic frame, or a session topic still
+   * attached mid-navigation) would be appended straight into whatever
+   * transcript happens to be open.
+   */
+  applyEvent: (topic: Topic, event: TranscriptEvent) => void;
+  applyDelta: (
+    topic: Topic,
+    eventId: string,
+    channel: StreamingBlock['channel'],
+    text: string,
+  ) => void;
   applyRun: (run: Run) => void;
   applySession: (session: Session) => void;
   addApproval: (approval: ApprovalRequest) => void;
   resolveApproval: (approvalId: string) => void;
   setConnection: (state: ConnectionState) => void;
+}
+
+/** True while at least one run in the session is still occupying the agent. */
+function anyRunActive(runs: Run[]): boolean {
+  return runs.some((run) => run.status === 'running' || run.status === 'waiting_approval');
+}
+
+/** True when a frame's topic addresses the session currently loaded. */
+function isOwnTopic(sessionId: string | null, topic: Topic): boolean {
+  return sessionId !== null && topic === sessionTopic(sessionId);
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -119,8 +145,10 @@ export const useSessionStore = create<SessionState>((set) => ({
       isRunning: false,
     }),
 
-  applyEvent: (event) =>
+  applyEvent: (topic, event) =>
     set((state) => {
+      if (!isOwnTopic(state.sessionId, topic)) return state;
+
       // The authoritative event supersedes whatever was streamed under its id.
       const streaming = state.streaming.has(event.id)
         ? new Map([...state.streaming].filter(([id]) => id !== event.id))
@@ -133,15 +161,20 @@ export const useSessionStore = create<SessionState>((set) => ({
           : [...state.events, event];
 
       // A run's terminal event clears any orphaned streaming buffers: without
-      // this a delta whose block never completed would linger forever.
+      // this a delta whose block never completed would linger forever. Whether
+      // the session is still busy is read from the runs, not assumed from this
+      // event — a replayed result for an earlier run must not blank the badge
+      // while a later one is live.
       if (event.kind === 'result') {
-        return { events, streaming: new Map(), isRunning: false };
+        return { events, streaming: new Map(), isRunning: anyRunActive(state.runs) };
       }
       return { events, streaming };
     }),
 
-  applyDelta: (eventId, channel, text) =>
+  applyDelta: (topic, eventId, channel, text) =>
     set((state) => {
+      if (!isOwnTopic(state.sessionId, topic)) return state;
+
       const streaming = new Map(state.streaming);
       const existing = streaming.get(eventId);
       streaming.set(eventId, {
@@ -158,7 +191,10 @@ export const useSessionStore = create<SessionState>((set) => ({
       const index = state.runs.findIndex((existing) => existing.id === run.id);
       const runs =
         index >= 0 ? state.runs.map((r, i) => (i === index ? run : r)) : [...state.runs, run];
-      return { runs, isRunning: run.status === 'running' || run.status === 'waiting_approval' };
+      // Derived from the whole set, not from this frame: frames can arrive out
+      // of order (a reconnect replays a window of them), and taking the last
+      // one at face value paints a live session as idle.
+      return { runs, isRunning: anyRunActive(runs) };
     }),
 
   applySession: (session) =>

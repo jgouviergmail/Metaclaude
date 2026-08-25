@@ -12,8 +12,9 @@
 
 import {
   CLOSE_CODES,
-  ServerFrame,
+  parseWireFrame,
   type ClientFrame,
+  type ServerFrame,
   type Topic,
 } from '@metaclaude/shared';
 import { readCsrfToken } from './api';
@@ -35,6 +36,17 @@ export class SocketClient {
 
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Highest bus sequence this client has applied.
+   *
+   * Sent back as `since` when re-subscribing so the server can replay what was
+   * published while the socket was down. Without it a reconnect silently loses
+   * those frames — a finished run still painted as running, a transcript
+   * missing its tail — and the ring buffer the server keeps for exactly this
+   * purpose goes unused.
+   */
+  private cursor: number | null = null;
 
   /** topic → number of components currently interested in it. */
   private readonly topicRefs = new Map<Topic, number>();
@@ -81,22 +93,28 @@ export class SocketClient {
         return;
       }
 
-      const frame = ServerFrame.safeParse(parsed);
-      if (!frame.success) return;
+      const wire = parseWireFrame(parsed);
+      if (!wire) return;
 
-      if (frame.data.type === 'ready') {
+      if (wire.seq !== null && (this.cursor === null || wire.seq > this.cursor)) {
+        this.cursor = wire.seq;
+      }
+
+      if (wire.frame.type === 'ready') {
         this.attempts = 0;
         this.setState('open');
         // Re-assert every subscription: after a reconnect the server knows
-        // nothing about what this client was watching.
-        const topics = [...this.topicRefs.keys()];
-        if (topics.length > 0) this.send({ type: 'subscribe', topics });
+        // nothing about what this client was watching. On a *first* connection
+        // there is nothing to replay, so the server's own cursor is adopted
+        // rather than replaying the last minute of unrelated activity.
+        if (this.cursor === null) this.cursor = Number(wire.frame.resumeToken) || 0;
+        this.resubscribeAll();
         this.startPing();
       }
 
       for (const handler of this.frameHandlers) {
         try {
-          handler(frame.data);
+          handler(wire.frame);
         } catch {
           // A broken consumer must not stall the socket.
         }
@@ -149,6 +167,16 @@ export class SocketClient {
     }, delay);
   }
 
+  private resubscribeAll(): void {
+    const topics = [...this.topicRefs.keys()];
+    if (topics.length === 0) return;
+    this.send({
+      type: 'subscribe',
+      topics,
+      ...(this.cursor !== null ? { since: String(this.cursor) } : {}),
+    });
+  }
+
   private startPing(): void {
     this.stopPing();
     this.pingTimer = setInterval(() => {
@@ -178,7 +206,11 @@ export class SocketClient {
   subscribe(topic: Topic): () => void {
     const count = this.topicRefs.get(topic) ?? 0;
     this.topicRefs.set(topic, count + 1);
-    if (count === 0) this.send({ type: 'subscribe', topics: [topic] });
+    if (count === 0) {
+      // No `since` here: this is a *new* interest, not a resumption, so the
+      // caller is about to fetch the topic's current state over HTTP anyway.
+      this.send({ type: 'subscribe', topics: [topic] });
+    }
 
     return () => {
       const current = this.topicRefs.get(topic) ?? 0;
@@ -226,6 +258,7 @@ export class SocketClient {
   /** Close permanently. Used on sign-out. */
   dispose(): void {
     this.disposed = true;
+    this.cursor = null;
     this.stopPing();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;

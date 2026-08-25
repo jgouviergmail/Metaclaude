@@ -257,23 +257,40 @@ export class Scheduler {
     const workspace = this.deps.workspaces.get(automation.workspaceId);
     if (!workspace) throw new SchedulerError('The automation’s workspace no longer exists.', 404);
 
-    const sessionId = this.resolveSession(automation, workspace.id);
-
     // Skipping rather than queueing: a slow automation firing every minute
     // would otherwise build an unbounded backlog.
-    if (this.deps.kernel.hasActiveRunForSession(sessionId)) {
+    //
+    // The check is against the session the *last* firing used, and it happens
+    // before a new one is created. Checking the resolved session was a no-op
+    // for a one-shot automation: that path mints a fresh session per firing, so
+    // the thing being asked "are you busy?" had by construction never run
+    // anything — and the backlog this guard exists to prevent built up anyway,
+    // one abandoned session at a time.
+    if (automation.sessionId && this.deps.kernel.hasActiveRunForSession(automation.sessionId)) {
       throw new SchedulerError('The previous run of this automation is still in flight.', 409);
     }
+
+    const sessionId = this.resolveSession(automation, workspace.id);
 
     const run = await this.deps.kernel.submit({
       sessionId,
       prompt: automation.prompt,
       triggeredBy: automation.continuous ? 'loop' : triggeredBy,
+      // Only what the operator actually pinned.
+      //
+      // Sending the whole policy sent `model: 'default'` too, and `'default'`
+      // is a *value*: the kernel reads any defined `overrides.model` as an
+      // explicit choice and stops consulting the learner. Automations are the
+      // runs that repeat most, so that quietly excluded exactly the workload
+      // where learning pays off, forever. `permissionMode` is passed as-is
+      // because `'default'` there names a real mode rather than "unset".
       overrides: {
-        model: automation.policy.model,
-        effort: automation.policy.effort,
+        ...(automation.policy.model !== 'default' ? { model: automation.policy.model } : {}),
+        ...(automation.policy.effort !== null ? { effort: automation.policy.effort } : {}),
         permissionMode: automation.policy.permissionMode,
-        agentName: automation.policy.agentName,
+        ...(automation.policy.agentName !== null
+          ? { agentName: automation.policy.agentName }
+          : {}),
       },
     });
 

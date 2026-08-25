@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { CronSchedule } from './cron.js';
 import { CronError, describeCron, isValidCron, nextFireTime, parseCron } from './cron.js';
 
@@ -419,22 +419,94 @@ describe('nextFireTime — termination', () => {
     expect(next('0 0 29 2 *', at(2024, 0, 1, 0, 0))).toBe(at(2024, 1, 29, 0, 0));
   });
 
-  /*
-   * DST observations (documented, not asserted — the suite runs under whatever
-   * `TZ` the host provides, and these are not regressions this change should
-   * gate on). Verified by driving `nextFireTime` with `process.env.TZ` set:
-   *
-   *  1. A daily entry whose wall-clock time falls inside a spring-forward gap
-   *     is skipped entirely for that day. In America/New_York, `30 2 * * *`
-   *     goes straight from 2024-03-09 02:30 to 2024-03-11 02:30 — nothing on
-   *     the 10th. Vixie cron runs such an entry once at the new local time.
-   *  2. The same happens to midnight entries where midnight itself does not
-   *     exist: in America/Santiago, `0 0 * * *` (i.e. `@daily`) skips
-   *     2022-09-11 completely, so a daily automation silently misses a day.
-   *  3. The fall-back direction is well behaved: a repeated local hour does
-   *     *not* produce a duplicate firing, because each call must return a time
-   *     strictly greater than `from`.
-   */
+});
+
+/* -------------------------------------------------------------------------- */
+/* Daylight saving                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `Date`'s local-time methods read `process.env.TZ` at construction, so these
+ * drive `nextFireTime` under an explicit zone rather than the host's. Local
+ * wall-clock times are compared as strings, because the whole point is *which
+ * clock reading* the automation fires at.
+ */
+describe('nextFireTime — daylight saving', () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    process.env.TZ = originalTz;
+  });
+
+  /** Successive fire times, rendered as local `YYYY-MM-DD HH:MM`. */
+  function fireTimes(expression: string, tz: string, startLocal: number[], count: number): string[] {
+    process.env.TZ = tz;
+    const schedule = parseCron(expression);
+    const [y, mo, d, h, mi] = startLocal as [number, number, number, number, number];
+    let cursor = new Date(y, mo, d, h, mi).getTime();
+
+    const out: string[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const next = nextFireTime(schedule, cursor);
+      if (next === null) break;
+      const at = new Date(next);
+      out.push(
+        `${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())} ` +
+          `${p2(at.getHours())}:${p2(at.getMinutes())}`,
+      );
+      cursor = next;
+    }
+    return out;
+  }
+
+  const p2 = (n: number): string => String(n).padStart(2, '0');
+
+  it('fires a spring-forward entry at the new local time instead of skipping the day', () => {
+    // 2026-03-29, Europe/Paris: 02:00 → 03:00, so local 02:30 does not exist.
+    // Stepping wall-clock minutes walks straight past it and the day is lost.
+    expect(fireTimes('30 2 * * *', 'Europe/Paris', [2026, 2, 28, 12, 0], 3)).toEqual([
+      '2026-03-29 03:30',
+      '2026-03-30 02:30',
+      '2026-03-31 02:30',
+    ]);
+  });
+
+  it('does not lose a day when midnight itself does not exist', () => {
+    // America/Santiago moves 00:00 → 01:00 on 2022-09-11, so `@daily` has no
+    // midnight to fire at. It must still run that day.
+    expect(fireTimes('@daily', 'America/Santiago', [2022, 8, 10, 12, 0], 3)).toEqual([
+      '2022-09-11 01:00',
+      '2022-09-12 00:00',
+      '2022-09-13 00:00',
+    ]);
+  });
+
+  it('fires a fall-back entry exactly once, not twice', () => {
+    // 2026-10-25, Europe/Paris: 03:00 → 02:00, so local 02:30 happens twice.
+    // An automation must not run again because a clock moved backwards.
+    expect(fireTimes('30 2 * * *', 'Europe/Paris', [2026, 9, 24, 12, 0], 3)).toEqual([
+      '2026-10-25 02:30',
+      '2026-10-26 02:30',
+      '2026-10-27 02:30',
+    ]);
+  });
+
+  it('collapses two entries that the gap maps onto the same instant', () => {
+    // `0 2,3 * * *`: 02:00 does not exist on the transition day and normalises
+    // onto 03:00, which is also scheduled. One firing, not two.
+    expect(fireTimes('0 2,3 * * *', 'Europe/Paris', [2026, 2, 28, 23, 30], 3)).toEqual([
+      '2026-03-29 03:00',
+      '2026-03-30 02:00',
+      '2026-03-30 03:00',
+    ]);
+  });
+
+  it('is unaffected in a zone without daylight saving', () => {
+    expect(fireTimes('30 2 * * *', 'UTC', [2026, 2, 28, 12, 0], 3)).toEqual([
+      '2026-03-29 02:30',
+      '2026-03-30 02:30',
+      '2026-03-31 02:30',
+    ]);
+  });
 });
 
 /* -------------------------------------------------------------------------- */

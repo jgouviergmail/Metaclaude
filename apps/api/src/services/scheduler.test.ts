@@ -454,6 +454,53 @@ describe('fire', () => {
     expect(scheduler.get(automation.id)!.runCount).toBe(1);
   });
 
+  it('skips a one-shot automation too, and does not mint a session to do it', async () => {
+    // A one-shot automation gets a fresh session per firing, so asking the
+    // *resolved* session whether it is busy always answered "no" — the guard
+    // never fired, the backlog it exists to prevent built up, and every skipped
+    // firing left an abandoned session behind.
+    const automation = make({ trigger: { type: 'manual' }, continuous: false });
+    await scheduler.fire(automation.id);
+    const sessionsAfterFirst = sessionCount();
+    kernel.submit.mockClear();
+    kernel.hasActiveRunForSession.mockReturnValue(true);
+
+    await expect(scheduler.fire(automation.id)).rejects.toThrow(SchedulerError);
+
+    expect(kernel.submit).not.toHaveBeenCalled();
+    expect(sessionCount()).toBe(sessionsAfterFirst);
+    expect(scheduler.get(automation.id)!.runCount).toBe(1);
+  });
+
+  it('leaves the learner in charge when the policy names no model', async () => {
+    // `model: 'default'` means "let Metaclaude choose". Forwarding it as an
+    // override made the kernel treat it as an explicit choice and stop
+    // consulting the bandit — for the runs that repeat most often, forever.
+    const automation = make({ trigger: { type: 'manual' } });
+    await scheduler.fire(automation.id);
+
+    const overrides = kernel.submit.mock.calls[0]![0].overrides as Record<string, unknown>;
+    expect(overrides).not.toHaveProperty('model');
+    expect(overrides).not.toHaveProperty('effort');
+    // `default` names a real permission mode, so that one is always sent.
+    expect(overrides.permissionMode).toBe('default');
+  });
+
+  it('forwards a model the operator did pin', async () => {
+    const automation = make({
+      trigger: { type: 'manual' },
+      policy: { model: 'opus', effort: 'high', permissionMode: 'plan', agentName: 'reviewer' },
+    });
+    await scheduler.fire(automation.id);
+
+    expect(kernel.submit.mock.calls[0]![0].overrides).toEqual({
+      model: 'opus',
+      effort: 'high',
+      permissionMode: 'plan',
+      agentName: 'reviewer',
+    });
+  });
+
   it('rejects an unknown automation and an automation whose workspace vanished', async () => {
     await expect(scheduler.fire('aut_nope')).rejects.toThrow(SchedulerError);
     await scheduler.fire('aut_nope').catch((error: SchedulerError) => {
@@ -559,6 +606,10 @@ describe('tick', () => {
 
   it('moves the schedule forward on a 409 conflict without logging it as a failure', async () => {
     const automation = make({ trigger: { type: 'cron', expression: '*/5 * * * *' }, continuous: true });
+    // A previous firing is the precondition for the conflict: it is that
+    // session the guard asks about.
+    await scheduler.fire(automation.id);
+    kernel.submit.mockClear();
     db.prepare('UPDATE automations SET next_run_at = ? WHERE id = ?').run(
       at(2024, 0, 15, 9, 0),
       automation.id,
@@ -566,6 +617,7 @@ describe('tick', () => {
     kernel.hasActiveRunForSession.mockReturnValue(true);
 
     expect(await scheduler.tick(at(2024, 0, 15, 9, 0))).toBe(0);
+    expect(kernel.submit).not.toHaveBeenCalled();
     expect(scheduler.get(automation.id)!.nextRunAt).toBe(at(2024, 0, 15, 9, 5));
     expect(logged.filter((entry) => entry.level === 'warn')).toHaveLength(0);
   });

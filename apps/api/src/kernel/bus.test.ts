@@ -13,6 +13,11 @@ function delta(text: string, topic: Topic = TOPIC): ServerFrame {
   return { type: 'delta', topic, runId: 'run_1', eventId: 'ev_1', channel: 'assistant_text', text };
 }
 
+/** Titles of replayed notification frames, in order. */
+function titles(entries: { frame: ServerFrame }[]): string[] {
+  return entries.map((entry) => (entry.frame as { title: string }).title);
+}
+
 /** The replay buffers are private; the only way to assert on sweeping. */
 function buffers(bus: EventBus): Map<Topic, unknown[]> {
   return (bus as unknown as { buffers: Map<Topic, unknown[]> }).buffers;
@@ -157,16 +162,13 @@ describe('replay', () => {
     bus.publish(TOPIC, notification('two'));
     bus.publish(TOPIC, notification('three'));
 
-    expect(bus.replay(TOPIC, 0).map((f) => (f as { title: string }).title)).toEqual([
-      'one',
-      'two',
-      'three',
-    ]);
-    expect(bus.replay(TOPIC, first).map((f) => (f as { title: string }).title)).toEqual([
-      'two',
-      'three',
-    ]);
+    expect(titles(bus.replay(TOPIC, 0))).toEqual(['one', 'two', 'three']);
+    expect(titles(bus.replay(TOPIC, first))).toEqual(['two', 'three']);
     expect(bus.replay(TOPIC, bus.currentSeq)).toEqual([]);
+
+    // Each entry carries the sequence it was published at, so a replayed frame
+    // advances the client's cursor exactly as a live one does.
+    expect(bus.replay(TOPIC, 0).map((entry) => entry.seq)).toEqual([1, 2, 3]);
   });
 
   it('returns an empty array for a topic that never saw a frame', () => {
@@ -183,7 +185,7 @@ describe('replay', () => {
 
     const replayed = bus.replay(TOPIC, 0);
     expect(replayed).toHaveLength(2);
-    expect(replayed.every((frame) => frame.type !== 'delta')).toBe(true);
+    expect(replayed.every((entry) => entry.frame.type !== 'delta')).toBe(true);
     // Deltas still consume sequence numbers and still reach live listeners.
     expect(bus.currentSeq).toBe(4);
   });
@@ -203,8 +205,9 @@ describe('replay', () => {
 
     const replayed = bus.replay(TOPIC, 0);
     expect(replayed).toHaveLength(256);
-    expect((replayed[0] as { title: string }).title).toBe('n44');
-    expect((replayed.at(-1) as { title: string }).title).toBe('n299');
+    expect(titles(replayed)).toEqual(
+      Array.from({ length: 256 }, (_, i) => `n${i + 44}`),
+    );
   });
 
   it('does not replay frames older than the replay window', () => {
@@ -218,7 +221,7 @@ describe('replay', () => {
 
     const replayed = bus.replay(TOPIC, 0);
     expect(replayed).toHaveLength(1);
-    expect((replayed[0] as { title: string }).title).toBe('fresh');
+    expect(titles(replayed)).toEqual(['fresh']);
   });
 });
 
@@ -261,7 +264,7 @@ describe('sweep', () => {
 
     bus.sweep();
     expect(buffers(bus).has(OTHER)).toBe(true);
-    expect(bus.replay(OTHER, 0).map((f) => (f as { title: string }).title)).toEqual(['new']);
+    expect(titles(bus.replay(OTHER, 0))).toEqual(['new']);
   });
 
   it('is safe to call on an empty bus', () => {

@@ -8,7 +8,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Files, GitBranch, Plus, Sparkles, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -41,7 +41,18 @@ export function SessionPage() {
   const [panel, setPanel] = useState<SidePanel>('none');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const store = useSessionStore();
+  // Selected field by field rather than `useSessionStore()`, which subscribes to
+  // the whole store: streaming deltas land many times a second, and taking the
+  // whole store would re-render this page — and everything under it — on each
+  // one, including the file tree and the git panel that never read the store.
+  const storeSession = useSessionStore((state) => state.session);
+  const events = useSessionStore((state) => state.events);
+  const runs = useSessionStore((state) => state.runs);
+  const streaming = useSessionStore((state) => state.streaming);
+  const approvals = useSessionStore((state) => state.approvals);
+  const isRunning = useSessionStore((state) => state.isRunning);
+  const connection = useSessionStore((state) => state.connection);
+  const loadSession = useSessionStore((state) => state.load);
 
   /* ------------------------------- Data ---------------------------------- */
 
@@ -55,14 +66,16 @@ export function SessionPage() {
     queryKey: ['session', sessionId],
     queryFn: () => api.session(sessionId),
     enabled: Boolean(sessionId),
-    // The socket keeps this fresh; refetching would fight the live state.
+    // The socket keeps this fresh while it is connected, so polling would only
+    // fight the live state. Reconnection is handled explicitly below.
     staleTime: Infinity,
   });
 
-  // Hydrate the live store whenever a different session is loaded.
+  // Hydrate the live store whenever a different session is loaded, or the query
+  // refetches after a reconnect.
   useEffect(() => {
     if (!sessionQuery.data) return;
-    store.load({
+    loadSession({
       session: sessionQuery.data.session,
       events: sessionQuery.data.events,
       runs: sessionQuery.data.runs,
@@ -71,6 +84,27 @@ export function SessionPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionQuery.data?.session.id, sessionQuery.dataUpdatedAt]);
+
+  /*
+   * Resync after the socket comes back.
+   *
+   * `staleTime: Infinity` with nothing to invalidate it means a disconnect
+   * longer than the server's replay window leaves this page showing whatever it
+   * had when the socket died — a run stuck at "running", a transcript missing
+   * its tail — until the user navigates away and back. The server replays a
+   * short gap; anything longer needs a refetch, and reconnecting is the signal
+   * for it.
+   */
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    if (connection !== 'open') return;
+    // The first `open` is the initial connection, which the query already
+    // covers; every later one is a reconnection and needs the refetch.
+    if (wasConnected.current) {
+      void queryClient.invalidateQueries({ queryKey: ['session', sessionId] });
+    }
+    wasConnected.current = true;
+  }, [connection, sessionId, queryClient]);
 
   useEffect(() => {
     if (workspaceId) setLastWorkspace(workspaceId);
@@ -88,7 +122,7 @@ export function SessionPage() {
   /* ------------------------------ Composer -------------------------------- */
 
   const workspace = workspaceQuery.data?.workspace;
-  const session = store.session ?? sessionQuery.data?.session;
+  const session = storeSession ?? sessionQuery.data?.session;
 
   const [composer, setComposer] = useState<ComposerValue>({
     model: 'default',
@@ -257,11 +291,11 @@ export function SessionPage() {
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <MessageStream
-            events={store.events}
-            runs={store.runs}
-            streaming={store.streaming}
-            approvals={store.approvals}
-            isRunning={store.isRunning || submitRun.isPending}
+            events={events}
+            runs={runs}
+            streaming={streaming}
+            approvals={approvals}
+            isRunning={isRunning || submitRun.isPending}
             onRate={(runId, rating) => rateRun.mutate({ runId, rating })}
             onDecideApproval={(approvalId, approved, remember) =>
               socket.approve(approvalId, approved, remember)
@@ -291,7 +325,7 @@ export function SessionPage() {
               socket.interrupt(sessionId);
               void api.interrupt(sessionId).catch(() => undefined);
             }}
-            isRunning={store.isRunning}
+            isRunning={isRunning}
             disabled={submitRun.isPending}
             allowBypass={workspace.settings.defaultPermissionMode === 'bypassPermissions'}
           />
