@@ -42,6 +42,7 @@ ADMIN_KEY=""
 DEPLOY_KEY=""
 ASSUME_YES="no"
 SKIP_FIREWALL="no"
+HAS_IPV6="unknown"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Output
@@ -508,17 +509,70 @@ else
   } >> "$AFTER_RULES"
   info "wrote DOCKER-USER filtering to $AFTER_RULES ($MODE mode)"
 
-  # IPv6 keeps an entirely separate ruleset. Half-configured is worse than
-  # either extreme: v4 looks locked down while v6 is wide open.
+  # ── IPv6 ──────────────────────────────────────────────────────────────────
+  #
+  # ufw, iptables and Docker keep entirely separate v4 and v6 rulesets, and a
+  # host with a global v6 address is reachable over it whether or not anyone
+  # thought about it. An impeccable v4 firewall beside an unmanaged v6 one is
+  # the worst of the three states, because it reads as "firewalled".
+  #
+  # So v6 is configured symmetrically rather than warned about.
   if [ -f /proc/net/if_inet6 ] && ip -6 addr show scope global 2>/dev/null | grep -q inet6; then
-    warn "this host has a global IPv6 address."
-    warn "Docker's IPv6 rules are separate and this script does not manage them."
-    warn "Either disable IPv6 on the box, or mirror the DOCKER-USER block into"
-    warn "/etc/ufw/after6.rules. Verify from outside with: nmap -6 -Pn -p- <addr>"
+    HAS_IPV6="yes"
+    info "global IPv6 detected: $(ip -6 addr show scope global | awk '/inet6/{print $2; exit}')"
+
+    # ufw ships with IPv6 on by default on current Debian/Ubuntu, but an image
+    # that has been through a hosting panel often does not.
+    if grep -q '^IPV6=no' /etc/default/ufw 2>/dev/null; then
+      sed -i 's/^IPV6=no/IPV6=yes/' /etc/default/ufw
+      info "enabled IPv6 in /etc/default/ufw"
+    fi
+
+    AFTER6_RULES="/etc/ufw/after6.rules"
+    if grep -q 'METACLAUDE-DOCKER-BEGIN' "$AFTER6_RULES" 2>/dev/null; then
+      sed -i '/# METACLAUDE-DOCKER-BEGIN/,/# METACLAUDE-DOCKER-END/d' "$AFTER6_RULES"
+    fi
+    {
+      printf '\n# METACLAUDE-DOCKER-BEGIN\n'
+      printf '# The v6 twin of the block in after.rules. Docker only populates\n'
+      printf '# these chains when ip6tables is enabled, but the rules must exist\n'
+      printf '# first: adding them after a container is already published is a\n'
+      printf '# window, not a fix.\n'
+      printf '*filter\n'
+      printf ':DOCKER-USER - [0:0]\n\n'
+      printf -- '-A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN\n'
+      printf -- '-A DOCKER-USER -m conntrack --ctstate INVALID -j DROP\n\n'
+      printf '# Link-local and unique-local traffic.\n'
+      printf -- '-A DOCKER-USER -s fe80::/10 -j RETURN\n'
+      printf -- '-A DOCKER-USER -s fc00::/7  -j RETURN\n\n'
+      if [ "$MODE" = "public" ]; then
+        printf '# The only container ports the internet may open a connection to.\n'
+        printf -- '-A DOCKER-USER -i %s -p tcp -m conntrack --ctorigdstport 443 --ctstate NEW -j RETURN\n' "$EXT_IF"
+        printf -- '-A DOCKER-USER -i %s -p udp -m conntrack --ctorigdstport 443 --ctstate NEW -j RETURN\n' "$EXT_IF"
+        printf -- '-A DOCKER-USER -i %s -p tcp -m conntrack --ctorigdstport 80  --ctstate NEW -j RETURN\n' "$EXT_IF"
+      else
+        printf '# vpn mode: nothing reachable from the public interface.\n'
+      fi
+      printf -- '-A DOCKER-USER -i %s -j DROP\n\n' "$EXT_IF"
+      printf -- '-A DOCKER-USER -j RETURN\n'
+      printf 'COMMIT\n'
+      printf '# METACLAUDE-DOCKER-END\n'
+    } >> "$AFTER6_RULES"
+    info "wrote the matching DOCKER-USER block to $AFTER6_RULES"
+  else
+    HAS_IPV6="no"
+    info "no global IPv6 address on this host"
   fi
 
   ufw --force reset >/dev/null 2>&1 || true
   ufw default deny incoming >/dev/null
+  # Outgoing stays open, deliberately and permanently. Metaclaude exists to call
+  # out: the Claude API, MCP servers, webhooks, git remotes, package registries
+  # the agent installs from. Egress filtering here would not be hardening, it
+  # would be breaking the product — and it would not contain a compromised agent
+  # anyway, since anything that can reach the Claude API can tunnel over it.
+  # The controls that do bear weight are the approval flow and the container
+  # confinement in compose.yml, not a port list.
   ufw default allow outgoing >/dev/null
 
   # SSH first, always. Enabling ufw with no SSH rule is the fastest way to lose
@@ -527,10 +581,12 @@ else
   info "allowed $SSH_PORT/tcp (ssh)"
 
   if [ "$MODE" = "public" ]; then
-    ufw allow 80/tcp  comment 'http (redirect + ACME)' >/dev/null
+    # These cover v4 and v6 together: ufw applies a rule with no address family
+    # to both, which is what we want — asymmetry here is how a v6 hole opens.
+    ufw allow 80/tcp  comment 'http (redirect + ACME http-01)' >/dev/null
     ufw allow 443/tcp comment 'https' >/dev/null
     ufw allow 443/udp comment 'https/3 (quic)' >/dev/null
-    info "allowed 80/tcp, 443/tcp, 443/udp"
+    info "allowed 80/tcp, 443/tcp, 443/udp (v4 and v6)"
   else
     ufw allow in on "$VPN_INTERFACE" comment 'vpn' >/dev/null
     info "allowed everything arriving on $VPN_INTERFACE; nothing else is public"
@@ -692,11 +748,27 @@ info "applied"
 
 step "Result"
 
+# What is listening is the ground truth; the firewall is only intent.
 printf '\n%sListening on this host:%s\n' "$BOLD" "$OFF"
 ss -tlnp 2>/dev/null | awk 'NR==1 || /LISTEN/' | sed 's/^/    /'
 
 printf '\n%sFirewall:%s\n' "$BOLD" "$OFF"
 ufw status verbose 2>/dev/null | sed 's/^/    /' || echo "    (not managed)"
+
+printf '\n%sIPv6:%s\n' "$BOLD" "$OFF"
+case "$HAS_IPV6" in
+  yes)
+    printf '    managed — ufw covers v6 and after6.rules mirrors the v4 filtering\n'
+    printf '    listening on v6 right now:\n'
+    ss -tlnp 2>/dev/null | awk '/LISTEN/ && ($4 ~ /\[/ || $4 ~ /::/)' | sed 's/^/      /' \
+      || printf '      (nothing)\n'
+    printf '\n'
+    printf '    %sVerify this from another machine, not from here:%s\n' "$YELLOW" "$OFF"
+    printf '      nmap -6 -Pn -p- <your-ipv6>\n'
+    ;;
+  no)      printf '    no global IPv6 on this host; nothing to manage\n' ;;
+  unknown) printf '    not examined (--skip-firewall)\n' ;;
+esac
 
 cat <<DONE
 
