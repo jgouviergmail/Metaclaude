@@ -188,23 +188,73 @@ else
   MASTER_KEY="$(openssl rand -hex 32)"
 fi
 
+# Reads a value back out of .env, undoing exactly what env_quote did to it.
+#
+# Re-running this script is the normal way to finish a deploy that stopped, and
+# it used to demand every answer again — including a hundred-character token,
+# retyped on a console whose keyboard layout does not match the operator's. The
+# values are already on disk. Asking for them a second time is not a safeguard,
+# it is an obstacle, and it is where people give up.
+#
+# Unescape in the reverse order to env_quote: dollars, then quotes, then
+# backslashes. Any other order corrupts a value containing more than one of them.
+get_env() {
+  local raw
+  raw="$(sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | head -1)"
+  case "$raw" in
+    '"'*'"')
+      raw="${raw#\"}"; raw="${raw%\"}"
+      raw="${raw//\$\$/\$}"; raw="${raw//\\\"/\"}"; raw="${raw//\\\\/\\}" ;;
+  esac
+  printf '%s' "$raw"
+}
+
+OLD_TOKEN="$(get_env CLAUDE_CODE_OAUTH_TOKEN)"
+OLD_USER="$(get_env METACLAUDE_BOOTSTRAP_USER)"
+OLD_PASS="$(get_env METACLAUDE_BOOTSTRAP_PASSWORD)"
+
 printf '\n'
-printf '  %sThe Claude token.%s Run `claude setup-token` on a machine where you are\n' "$BOLD" "$OFF"
-printf '  signed in to Claude Code, and paste the result. This is what bills the\n'
-printf '  agent against your Pro/Max subscription instead of per-token API usage.\n'
-printf '  Leave it empty to fill in later; agent runs will fail until you do.\n\n'
-read -r -p "  CLAUDE_CODE_OAUTH_TOKEN: " CLAUDE_TOKEN
+if [ -n "$OLD_TOKEN" ]; then
+  printf '  %sThe Claude token%s is already set (%s characters). Press Enter to keep it,\n' \
+    "$BOLD" "$OFF" "${#OLD_TOKEN}"
+  printf '  or paste a new one to replace it.\n\n'
+  read -r -p "  CLAUDE_CODE_OAUTH_TOKEN [keep]: " CLAUDE_TOKEN
+  CLAUDE_TOKEN="${CLAUDE_TOKEN:-$OLD_TOKEN}"
+else
+  printf '  %sThe Claude token.%s Run `claude setup-token` on a machine where you are\n' "$BOLD" "$OFF"
+  printf '  signed in to Claude Code, and paste the result. This is what bills the\n'
+  printf '  agent against your Pro/Max subscription instead of per-token API usage.\n'
+  printf '  Leave it empty to fill in later; agent runs will fail until you do.\n\n'
+  read -r -p "  CLAUDE_CODE_OAUTH_TOKEN: " CLAUDE_TOKEN
+fi
 
 printf '\n  %sThe owner account%s created on first boot.\n\n' "$BOLD" "$OFF"
-read -r -p "  username [owner]: " OWNER_USER
-OWNER_USER="${OWNER_USER:-owner}"
+read -r -p "  username [${OLD_USER:-owner}]: " OWNER_USER
+OWNER_USER="${OWNER_USER:-${OLD_USER:-owner}}"
 
-while :; do
+# Only the account's first creation needs a password typed. Once one is stored,
+# an empty answer keeps it — the account already exists in the database anyway,
+# and this variable no longer changes it.
+if [ -n "$OLD_PASS" ]; then
+  read -r -s -p "  password (Enter to keep the current one): " OWNER_PASS; printf '\n'
+  if [ -z "$OWNER_PASS" ]; then
+    OWNER_PASS="$OLD_PASS"
+    info "keeping the password already configured"
+  fi
+fi
+
+# Every failing path clears OWNER_PASS, because the loop's condition is what
+# decides whether to ask again: leaving a rejected value in place would exit the
+# loop with the very password that was just refused.
+while [ -z "${OWNER_PASS:-}" ]; do
   read -r -s -p "  password (12+ chars): " OWNER_PASS; printf '\n'
-  [ "${#OWNER_PASS}" -ge 12 ] || { warn "at least 12 characters"; continue; }
+  if [ "${#OWNER_PASS}" -lt 12 ]; then
+    warn "at least 12 characters"; OWNER_PASS=""; continue
+  fi
   read -r -s -p "  again: " OWNER_PASS2; printf '\n'
-  [ "$OWNER_PASS" = "$OWNER_PASS2" ] && break
-  warn "they do not match"
+  if [ "$OWNER_PASS" != "$OWNER_PASS2" ]; then
+    warn "they do not match"; OWNER_PASS=""; continue
+  fi
 done
 
 set_env CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_TOKEN"

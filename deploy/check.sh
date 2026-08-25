@@ -367,6 +367,32 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "The smoke test deploys something a server would recognise"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The proxy healthcheck dials https://127.0.0.1/ and busybox wget puts that
+# literal into SNI. With the smoke job's site *also* named 127.0.0.1 the two
+# matched by coincidence, so every run was green while a real deployment — where
+# the site is an address or a name of its own — could not complete a single
+# handshake and never went healthy.
+#
+# The guard is the inequality itself: the moment the smoke site equals the probe
+# address, the job stops testing the thing it exists to test.
+SMOKE_SITE="$(grep -oE "^[[:space:]]*echo 'METACLAUDE_SITE=[^']+'" "$REPO_ROOT/.github/workflows/ci.yml" \
+              | head -1 | sed "s/.*METACLAUDE_SITE=//; s/'$//")"
+if [ -z "$SMOKE_SITE" ]; then
+  bad "reading METACLAUDE_SITE out of the smoke job" "the line moved; this check needs updating"
+elif [ "$SMOKE_SITE" = "127.0.0.1" ] || [ "$SMOKE_SITE" = "localhost" ]; then
+  bad "the smoke job names the site '$SMOKE_SITE'" \
+      "that is the address its own healthcheck probes, so an SNI mismatch cannot be caught"
+elif ! grep -q 'fallback_sni' "$REPO_ROOT/docker/Caddyfile"; then
+  bad "docker/Caddyfile sets no fallback_sni" \
+      "a client naming an unmatched SNI gets alert 80 — the healthcheck is such a client"
+else
+  ok "smoke site '$SMOKE_SITE' differs from the probe address, and fallback_sni covers the gap"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "A deploy never stops to ask for a credential"
 # ─────────────────────────────────────────────────────────────────────────────
 

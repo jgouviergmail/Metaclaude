@@ -193,9 +193,17 @@ services:
     # a real handshake closes it, so the probe speaks TLS; --no-check-certificate
     # because under `internal` the CA is Caddy's own and the question here is
     # readiness, not trust.
+    #
+    # The Host header is set, and the body is checked, on purpose. Probing
+    # https://127.0.0.1/ without them reaches no site block at all — Caddy
+    # answers an unmatched route with an empty 200, wget exits 0, and the
+    # container reports healthy without a single byte having come from the app.
     healthcheck:
       test:
-        ['CMD', 'wget', '-q', '--no-check-certificate', '-O', '/dev/null', 'https://127.0.0.1/api/health']
+        - CMD-SHELL
+        - >-
+          wget -q --no-check-certificate -O - --header "Host: $$METACLAUDE_SITE"
+          https://127.0.0.1/api/health | grep -q '"status":"ok"'
       interval: 5s
       timeout: 5s
       retries: 12

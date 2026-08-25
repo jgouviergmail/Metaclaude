@@ -51,6 +51,23 @@
 	# Inert where a hostname is used, because browsers always send SNI for a name.
 	default_sni {$METACLAUDE_SITE:localhost}
 
+	# And which certificate to serve when the client sends an SNI that matches
+	# nothing. `default_sni` does not cover this: it applies only to an *empty*
+	# SNI, so a client that names something unknown still gets alert 80 and no
+	# log line.
+	#
+	# The container's own healthcheck is such a client. It dials
+	# https://127.0.0.1/, and busybox wget puts that literal into SNI rather
+	# than omitting it the way curl and browsers do. Against a site named
+	# anything other than 127.0.0.1 the handshake died, the proxy never went
+	# healthy, and `up --wait` failed after two minutes against a Caddy that had
+	# already logged "certificate obtained successfully".
+	#
+	# CI missed it for one reason: the smoke job set METACLAUDE_SITE=127.0.0.1,
+	# so the probe's SNI happened to equal the site name. The site name is now
+	# deliberately different there, which is what makes this line testable.
+	fallback_sni {$METACLAUDE_SITE:localhost}
+
 	# Deliberately absent: `trusted_proxies`. Caddy is the edge here — there is
 	# nothing in front of it — so it must not honour an X-Forwarded-For header a
 	# client made up. Caddy's default is to trust none, which is correct; naming
