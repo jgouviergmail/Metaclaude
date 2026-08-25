@@ -1,0 +1,225 @@
+# Continuous integration.
+#
+# Four jobs, in the order a failure is cheapest to discover:
+#
+#   verify   typecheck, unit tests, build          ~2 min
+#   live     the real server, booted and driven     ~1 min   (needs `verify`'s build)
+#   browser  the real PWA in a real Chromium       ~3 min
+#   image    the production image, built and pushed ~5 min
+#
+# `live` and `browser` run the same scripts an operator runs by hand
+# (`check:e2e`, `check:browser`), minus the parts that need Claude credentials —
+# those are skipped explicitly and counted, never silently dropped.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# One CI run per ref. A newer push supersedes an older one still in flight,
+# except on the default branch where every commit's verdict is worth keeping.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  # Matches `engines.node` in package.json. pnpm's version comes from the
+  # `packageManager` field, which pnpm/action-setup reads on its own.
+  NODE_VERSION: '22'
+
+jobs:
+  verify:
+    name: Typecheck, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # `--frozen-lockfile` is the point: it fails when package.json and the
+      # lockfile disagree, which is exactly the drift the Dockerfile would hit
+      # later with a much longer feedback loop.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The other packages import its build output, so this cannot be folded
+      # into `pnpm build` — that would typecheck against a stale dist.
+      - name: Build shared contracts
+        run: pnpm --filter @metaclaude/shared build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and integration tests
+        run: pnpm test:run
+
+      - name: Build
+        run: pnpm build
+
+      # Handed to the jobs below so they do not each rebuild it.
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            packages/shared/dist
+            apps/api/dist
+            apps/web/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  live:
+    name: Live server check
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+
+      # Boots the real server against a throwaway data directory: the guards,
+      # the migrations, the static handler and the CSP, not a test double.
+      - name: End-to-end check
+        env:
+          METACLAUDE_E2E_NO_AGENT: '1'
+        run: pnpm --filter @metaclaude/api check:e2e
+
+  browser:
+    name: Browser check
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+
+      - name: Install Chromium
+        run: pnpm --filter @metaclaude/api exec playwright install --with-deps chromium
+
+      # Serves the production build through the API's own static handler, so a
+      # CSP violation or a broken tap target fails here rather than on a phone.
+      - name: Browser check
+        env:
+          METACLAUDE_E2E_NO_AGENT: '1'
+        run: pnpm --filter @metaclaude/api check:browser
+
+  image:
+    name: Container image
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      # Both required by attest-build-provenance.
+      id-token: write
+      attestations: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR rejects an uppercase path, and this repository is `Metaclaude`.
+      - name: Resolve the image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # A pull request from a fork has no write token, so it builds without
+      # pushing — which still catches a broken Dockerfile.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false # attested explicitly below instead
+
+      # Records, verifiably, that this image came from this workflow and this
+      # commit — so a deploy can check it was not built somewhere else.
+      - name: Attest provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.name.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # A single required check to protect the branch with, so the rule does not
+  # need editing every time a job is added or renamed.
+  ci:
+    name: CI
+    if: always()
+    needs: [verify, live, browser, image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verdict
+        run: |
+          echo "verify=${{ needs.verify.result }}"
+          echo "live=${{ needs.live.result }}"
+          echo "browser=${{ needs.browser.result }}"
+          echo "image=${{ needs.image.result }}"
+          # `contains` rather than `!= success` so a skipped job (a fork PR)
+          # does not fail the gate, but a cancelled or failed one does.
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "::error::at least one job did not pass"
+            exit 1
+          fi

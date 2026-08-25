@@ -17,7 +17,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
-import { PASSWORD, REPO_ROOT, Results, startServer, until, USERNAME } from './harness.mjs';
+import { AGENT_CHECKS_ENABLED, PASSWORD, REPO_ROOT, Results, startServer, USERNAME } from './harness.mjs';
 
 const WEB_DIST = join(REPO_ROOT, 'apps', 'web', 'dist');
 if (!existsSync(join(WEB_DIST, 'index.html'))) {
@@ -199,29 +199,42 @@ results.section('a real run, driven from the UI');
   const composer = page.locator('textarea').first();
   results.check('the composer is present', (await composer.count()) === 1);
 
-  await composer.fill('Reply with exactly the word NAVIGATEUR-OK and nothing else.');
-  await composer.press('Meta+Enter');
+  if (AGENT_CHECKS_ENABLED) {
+    await composer.fill('Reply with exactly the word NAVIGATEUR-OK and nothing else.');
+    await composer.press('Meta+Enter');
 
-  const appeared = await page
-    .waitForFunction(() => document.body.innerText.includes('NAVIGATEUR-OK'), { timeout: 180_000 })
-    .then(() => true)
-    .catch(() => false);
-  results.check('the agent reply appears in the transcript', appeared);
+    const appeared = await page
+      .waitForFunction(() => document.body.innerText.includes('NAVIGATEUR-OK'), { timeout: 180_000 })
+      .then(() => true)
+      .catch(() => false);
+    results.check('the agent reply appears in the transcript', appeared);
 
-  // The reply streams before the run terminates — reflexion and the bandit
-  // update after the last token — so wait for the state, not a fixed delay.
-  const settled = await page
-    .waitForFunction(
-      () =>
-        [...document.querySelectorAll('button, [role="button"]')].every(
-          (el) => !/^stop$/i.test(el.textContent.trim()),
-        ),
-      { timeout: 60_000 },
-    )
-    .then(() => true)
-    .catch(() => false);
-  results.check('the run reaches a terminal state and the Stop control goes away', settled);
-  results.check('the run logs nothing', problems.length === 0, problems.slice(0, 3).join(' | '));
+    // The reply streams before the run terminates — reflexion and the bandit
+    // update after the last token — so wait for the state, not a fixed delay.
+    const settled = await page
+      .waitForFunction(
+        () =>
+          [...document.querySelectorAll('button, [role="button"]')].every(
+            (el) => !/^stop$/i.test(el.textContent.trim()),
+          ),
+        { timeout: 60_000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    results.check('the run reaches a terminal state and the Stop control goes away', settled);
+  } else {
+    results.skip('a live agent run from the UI', 'no Claude credentials (METACLAUDE_E2E_NO_AGENT)');
+    // Typing still has to work, so at least prove the composer accepts input
+    // and offers a usable Send control.
+    await composer.fill('a prompt that is never sent');
+    const sendable = await page.evaluate(() =>
+      [...document.querySelectorAll('button')].some(
+        (el) => el.getAttribute('aria-label') === 'Send' && !el.disabled,
+      ),
+    );
+    results.check('the composer accepts input and offers Send', sendable);
+  }
+  results.check('the session view logs nothing', problems.length === 0, problems.slice(0, 3).join(' | '));
 
   await page.close();
 }

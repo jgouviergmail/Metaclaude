@@ -15,7 +15,7 @@
 import WebSocket from 'ws';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { Client, PASSWORD, Results, startServer, until } from './harness.mjs';
+import { AGENT_CHECKS_ENABLED, Client, PASSWORD, Results, startServer, until } from './harness.mjs';
 
 const results = new Results();
 const server = await startServer();
@@ -229,33 +229,50 @@ let sessionId;
   first.socket.send(JSON.stringify({ type: 'subscribe', topics: [topic] }));
   await until(() => first.seen.find((entry) => entry.frame.type === 'subscribed'), { what: 'subscribed' });
 
-  console.log('  …  running a real agent through the Claude CLI');
-  const started = Date.now();
-  const submitted = await api.call(`/api/sessions/${sessionId}/runs`, {
-    method: 'POST',
-    body: { prompt: 'Reply with exactly the word MARQUEUR-E2E and nothing else.' },
-  });
-  results.check('the run is accepted', submitted.status === 202, submitted.text.slice(0, 200));
+  if (AGENT_CHECKS_ENABLED) {
+    console.log('  …  running a real agent through the Claude CLI');
+    const started = Date.now();
+    const submitted = await api.call(`/api/sessions/${sessionId}/runs`, {
+      method: 'POST',
+      body: { prompt: 'Reply with exactly the word MARQUEUR-E2E and nothing else.' },
+    });
+    results.check('the run is accepted', submitted.status === 202, submitted.text.slice(0, 200));
 
-  const finished = await until(
-    () =>
-      first.seen
-        .filter((entry) => entry.frame.type === 'run')
-        .map((entry) => entry.frame.run)
-        .find((run) => ['succeeded', 'failed', 'interrupted'].includes(run.status)),
-    { timeoutMs: 240_000, everyMs: 200, what: 'the run to finish' },
-  ).catch(() => null);
+    const finished = await until(
+      () =>
+        first.seen
+          .filter((entry) => entry.frame.type === 'run')
+          .map((entry) => entry.frame.run)
+          .find((run) => ['succeeded', 'failed', 'interrupted'].includes(run.status)),
+      { timeoutMs: 240_000, everyMs: 200, what: 'the run to finish' },
+    ).catch(() => null);
 
-  results.check(
-    `the run reaches a terminal state (${finished?.status ?? 'none'}, ${Math.round((Date.now() - started) / 1000)}s)`,
-    finished !== null && finished.status !== 'failed',
-    finished?.error ?? '',
-  );
+    results.check(
+      `the run reaches a terminal state (${finished?.status ?? 'none'}, ${Math.round((Date.now() - started) / 1000)}s)`,
+      finished !== null && finished.status !== 'failed',
+      finished?.error ?? '',
+    );
 
-  const transcripts = first.seen.filter((entry) => entry.frame.type === 'transcript');
-  results.check('transcript frames arrive over the socket', transcripts.length > 0);
-  results.check('text streams as deltas', first.seen.some((entry) => entry.frame.type === 'delta'));
-  results.check('every published frame carries a sequence', transcripts.every((entry) => entry.seq !== null));
+    const transcripts = first.seen.filter((entry) => entry.frame.type === 'transcript');
+    results.check('transcript frames arrive over the socket', transcripts.length > 0);
+    results.check('text streams as deltas', first.seen.some((entry) => entry.frame.type === 'delta'));
+    results.check('every published frame carries a sequence', transcripts.every((entry) => entry.seq !== null));
+  } else {
+    results.skip('a live agent run', 'no Claude credentials (METACLAUDE_E2E_NO_AGENT)');
+    // The resume check below needs a cursor, so give it something real to
+    // resume from. This exercises the same code path the run would have.
+    context.bus.publish(topic, {
+      type: 'notification',
+      topic,
+      level: 'info',
+      title: 'before-the-drop',
+      message: 'x',
+      href: null,
+    });
+    await until(() => first.seen.some((entry) => entry.frame.type === 'notification'), {
+      what: 'the seed frame',
+    });
+  }
 
   const cursor = Math.max(...first.seen.filter((entry) => entry.seq !== null).map((entry) => entry.seq));
   first.socket.close();
@@ -285,20 +302,25 @@ let sessionId;
   second.socket.close();
 
   const fetched = await api.call(`/api/sessions/${sessionId}`);
-  results.check('the reply is persisted', JSON.stringify(fetched.body.events).includes('MARQUEUR-E2E'));
+  if (AGENT_CHECKS_ENABLED) {
+    results.check('the reply is persisted', JSON.stringify(fetched.body.events).includes('MARQUEUR-E2E'));
+  }
   results.check('the session is no longer running', fetched.body.isRunning === false);
 }
 
 results.section('learning');
 {
   const run = (await api.call(`/api/runs?workspaceId=${workspaceId}`)).body.runs[0];
-  results.check('the run was recorded', Boolean(run));
-
-  if (run) {
-    results.check(
-      'a run can be rated',
-      (await api.call(`/api/runs/${run.id}/rate`, { method: 'POST', body: { rating: 1 } })).status === 200,
-    );
+  if (AGENT_CHECKS_ENABLED) {
+    results.check('the run was recorded', Boolean(run));
+    if (run) {
+      results.check(
+        'a run can be rated',
+        (await api.call(`/api/runs/${run.id}/rate`, { method: 'POST', body: { rating: 1 } })).status === 200,
+      );
+    }
+  } else {
+    results.skip('run recording and rating', 'no run was performed');
   }
 
   const memory = await api.call('/api/memory', {

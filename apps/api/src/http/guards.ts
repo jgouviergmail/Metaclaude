@@ -79,9 +79,18 @@ export function verifyCsrf(context: AppContext, request: FastifyRequest): void {
   if (origin) {
     const allowed = context.config.allowedOrigins;
     const host = request.headers.host;
+
+    // The scheme is part of the origin, so a deployment that terminates TLS
+    // must not accept the `http://` twin of its own host. Otherwise a page an
+    // active network attacker injects on plain HTTP — nothing is served there,
+    // but nothing authenticates it either — passes as same-origin.
+    //
+    // `http://` stays acceptable only where the deployment genuinely runs
+    // without TLS, which is the same condition that already relaxes the Secure
+    // cookie flag: local development.
+    const schemes = context.config.secureCookies ? ['https'] : ['https', 'http'];
     const sameOrigin =
-      host !== undefined &&
-      (origin === `https://${host}` || origin === `http://${host}`);
+      host !== undefined && schemes.some((scheme) => origin === `${scheme}://${host}`);
 
     if (!sameOrigin && !allowed.includes(origin)) {
       throw new HttpError(403, 'Cross-origin request rejected.', 'bad_origin');

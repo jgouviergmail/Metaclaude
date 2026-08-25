@@ -23,6 +23,7 @@ export const PASSWORD = 'a-long-enough-passphrase-9';
 export class Results {
   passed = 0;
   failed = 0;
+  skipped = 0;
 
   check(label, ok, detail = '') {
     if (ok) {
@@ -35,15 +36,38 @@ export class Results {
     return Boolean(ok);
   }
 
+  /**
+   * Record something deliberately not run.
+   *
+   * Counted and printed rather than silently omitted: a suite that quietly
+   * shrinks reads as a passing suite, which is how a check stops being run for
+   * a year without anyone noticing.
+   */
+  skip(label, why) {
+    this.skipped += 1;
+    console.log(`  skip ${label} — ${why}`);
+  }
+
   section(title) {
     console.log(`\n=== ${title} ===`);
   }
 
   finish() {
-    console.log(`\n${this.passed} passed, ${this.failed} failed`);
+    const tail = this.skipped > 0 ? `, ${this.skipped} skipped` : '';
+    console.log(`\n${this.passed} passed, ${this.failed} failed${tail}`);
     return this.failed === 0 ? 0 : 1;
   }
 }
+
+/**
+ * Whether the checks that need a live agent should run.
+ *
+ * CI has no Claude credentials, so it runs everything else. This is explicit
+ * rather than inferred from a missing token: an accidentally-unset token on a
+ * developer's machine should fail loudly, not silently halve the suite.
+ */
+export const AGENT_CHECKS_ENABLED =
+  process.env.METACLAUDE_E2E_NO_AGENT !== '1' && !process.argv.includes('--no-agent');
 
 /**
  * Boot a server on an ephemeral port with an owner account already created.
