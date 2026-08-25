@@ -37,13 +37,25 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   success: 'bg-success text-white hover:brightness-110 active:scale-[0.98]',
 };
 
+/**
+ * On a coarse pointer the smallest sizes get a hit area larger than their box.
+ *
+ * A 24–28px icon button is right for a dense desktop row and too small for a
+ * thumb, and growing the box would loosen every row it appears in. An invisible
+ * inset pseudo-element takes the press instead: the button still measures
+ * 28×28, but 44×44 of screen responds to it. Applied only under
+ * `pointer-coarse`, so a mouse keeps the precise target.
+ */
+const TOUCH_TARGET =
+  "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']";
+
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  xs: 'h-6 px-2 text-[11px] gap-1 rounded-md',
+  xs: `h-6 px-2 text-[11px] gap-1 rounded-md ${TOUCH_TARGET}`,
   sm: 'h-8 px-3 text-[13px] gap-1.5 rounded-lg',
   md: 'h-9 px-4 text-sm gap-2 rounded-lg',
   lg: 'h-11 px-6 text-[15px] gap-2 rounded-xl',
   icon: 'h-9 w-9 rounded-lg',
-  'icon-sm': 'h-7 w-7 rounded-md',
+  'icon-sm': `h-7 w-7 rounded-md ${TOUCH_TARGET}`,
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

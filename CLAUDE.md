@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 427 tests, ~6s
+pnpm test:run                            # 741 tests, ~7s
 ```
 
 Run one package: `pnpm --filter @metaclaude/api <script>`.
@@ -66,3 +66,10 @@ arguments or `vi.useFakeTimers` — never `sleep`. Pass a seeded PRNG to
 Note that `hashPassword` costs ~100 ms (scrypt N=2¹⁶); keep the call count low.
 
 Tests must not spawn the Claude CLI or hit the network.
+
+The two checks that *do* need a live agent live in `apps/api/scripts/` and are
+run by hand (`check:e2e`, `check:browser`). They boot the real server against a
+throwaway data directory, so they exercise the deployed code path rather than a
+test double — the guards, the migrations, the static handler and the CSP. Add to
+them when a change is only observable end to end: a socket that reconnects, a
+tap target, a CSP violation.

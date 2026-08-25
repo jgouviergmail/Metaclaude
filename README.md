@@ -198,9 +198,17 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 427 tests
+pnpm test:run    # 741 unit + integration tests, ~7s
 pnpm typecheck
 pnpm build
+```
+
+Two further checks run against a real server and a real agent, so they need an
+authenticated Claude CLI and are kept out of `pnpm test`:
+
+```bash
+pnpm --filter @metaclaude/api check:e2e      # HTTP + WebSocket, incl. a live run
+pnpm build && pnpm --filter @metaclaude/api check:browser   # the PWA in Chromium
 ```
 
 **Stack:** Node 22 · Fastify 5 · SQLite (WAL) · TypeScript 5.9 · React 19 ·
