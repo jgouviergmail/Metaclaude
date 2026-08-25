@@ -22,22 +22,12 @@
     <!-- A private tool should never appear in a search index. -->
     <meta name="robots" content="noindex, nofollow" />
 
-    <script>
-      // Apply the stored theme before first paint so there is no flash of the
-      // wrong colour scheme on load.
-      (function () {
-        try {
-          var stored = localStorage.getItem('metaclaude.theme');
-          var dark =
-            stored === 'dark' ||
-            (stored !== 'light' &&
-              window.matchMedia('(prefers-color-scheme: dark)').matches);
-          document.documentElement.classList.toggle('dark', dark);
-        } catch (e) {
-          /* Private mode or blocked storage: fall back to the dark default. */
-        }
-      })();
-    </script>
+    <!--
+      Applies the stored theme before first paint, avoiding a flash of the wrong
+      colour scheme. An external file rather than an inline script, because the
+      app's CSP is `script-src 'self'`.
+    -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

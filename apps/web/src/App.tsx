@@ -6,6 +6,7 @@
  * difference between a chat window and an OS.
  */
 
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -33,6 +34,7 @@ import { WorkspacesPage } from '@/pages/WorkspacesPage';
 
 export function App() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { status, setUser } = useAuthStore();
   const addNotification = useNotificationStore((state) => state.add);
   const applyTheme = useUiStore((state) => state.theme);
@@ -94,6 +96,12 @@ export function App() {
           break;
         case 'session':
           session.applySession(frame.session);
+          // The sidebar renders from the workspace query, not the live store,
+          // so a session renamed by its first prompt would stay "New session"
+          // there until something else refetched.
+          void queryClient.invalidateQueries({
+            queryKey: ['workspace', frame.session.workspaceId],
+          });
           break;
         case 'approval_request':
           session.addApproval(frame.request);
