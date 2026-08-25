@@ -215,6 +215,41 @@ else
   skip "secret round-trip" "needs docker compose to resolve the .env"
 fi
 
+# Re-running bootstrap.sh is the normal way to finish a deploy that stopped
+# halfway. It must therefore never be the way to destroy one: a freshly minted
+# METACLAUDE_MASTER_KEY written over the old one orphans every stored MCP
+# credential, and nothing fails — the server starts and reports healthy.
+#
+# Driven rather than grepped, using the line bootstrap.sh actually ships, so
+# this fails if the extraction stops recognising what set_env writes.
+printf 'ENV_FILE="$1"\n' > "$WORK/mk.sh"
+sed -n '/^MASTER_KEY="\$(sed -n/,/head -1)"$/p' "$REPO_ROOT/deploy/bootstrap.sh" >> "$WORK/mk.sh"
+printf 'printf %%s "$MASTER_KEY"\n' >> "$WORK/mk.sh"
+if ! grep -q '^MASTER_KEY=' "$WORK/mk.sh"; then
+  bad "extracting the master-key reader from bootstrap.sh" "the line moved; this check needs updating"
+else
+  KEY_A="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  reuse_fail=""
+  # An existing key is found whether set_env quoted it or a human did not.
+  for form in "METACLAUDE_MASTER_KEY=\"$KEY_A\"" "METACLAUDE_MASTER_KEY=$KEY_A"; do
+    printf '%s\n' "$form" > "$WORK/mk.env"
+    got="$(bash "$WORK/mk.sh" "$WORK/mk.env")"
+    [ "$got" = "$KEY_A" ] || reuse_fail="$reuse_fail [kept:$form]"
+  done
+  # An absent, empty or malformed one is not mistaken for a key to keep.
+  for form in "METACLAUDE_MASTER_KEY=" "METACLAUDE_MASTER_KEY=\"\"" "METACLAUDE_MASTER_KEY=\"nope\"" ""; do
+    printf '%s\n' "$form" > "$WORK/mk.env"
+    got="$(bash "$WORK/mk.sh" "$WORK/mk.env")"
+    [ -z "$got" ] || reuse_fail="$reuse_fail [invented:$form]"
+  done
+  if [ -z "$reuse_fail" ]; then
+    ok "re-running bootstrap keeps the existing METACLAUDE_MASTER_KEY"
+  else
+    bad "the master key is not preserved across a re-run:$reuse_fail" \
+        "every stored MCP credential would decrypt to nothing, silently"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 section "Pinned upstream versions exist"
 # ─────────────────────────────────────────────────────────────────────────────

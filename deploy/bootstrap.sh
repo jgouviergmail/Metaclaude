@@ -171,7 +171,22 @@ set_env() {
 
 # Anything that can be generated, is. A prompt is reserved for what only the
 # operator knows.
-MASTER_KEY="$(openssl rand -hex 32)"
+#
+# Except this one, which is generated exactly once. Minting a fresh key on a
+# re-run and writing it over the old one is silent, total data loss: every
+# stored MCP credential was encrypted under the previous key, and nothing
+# fails — the server starts, reports healthy, and the secrets are simply gone.
+# A re-run is the normal way to fix a half-finished deploy, so it must not be
+# the way to destroy one.
+MASTER_KEY="$(sed -n 's/^METACLAUDE_MASTER_KEY="\{0,1\}\([0-9a-fA-F]\{64\}\)"\{0,1\}$/\1/p' \
+  "$ENV_FILE" 2>/dev/null | head -1)"
+if [ -n "$MASTER_KEY" ]; then
+  MASTER_KEY_REUSED="yes"
+  info "keeping the encryption key already in $ENV_FILE"
+else
+  MASTER_KEY_REUSED="no"
+  MASTER_KEY="$(openssl rand -hex 32)"
+fi
 
 printf '\n'
 printf '  %sThe Claude token.%s Run `claude setup-token` on a machine where you are\n' "$BOLD" "$OFF"
@@ -432,6 +447,11 @@ cat <<DONE
   ${ENV_FILE}, on the same disk as the database it protects. Restoring a backup
   without it does not fail loudly — the server starts, reports healthy, and the
   credentials are simply gone.
+
+  $([ "$MASTER_KEY_REUSED" = yes ] \
+    && echo "This is the key that was already there, not a new one: re-running this
+  script never replaces it." \
+    || echo "Generated just now, on this run.")
 
   ${BOLD}Then, from your laptop:${OFF}
 
