@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1096 tests, ~15s
+pnpm test:run                            # 1100 tests, ~15s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -56,6 +56,16 @@ restates the code is noise; one that records a decision or a trap is not.
   chains onto the wrong predecessor and reports tampering on an intact log.
 - **`Omit` does not distribute over a union.** `apps/api/src/kernel/repositories.ts`
   defines `DistributiveOmit` for transcript events; use it rather than `Omit`.
+- **`git config --local --list` is not what git obeys.** For a *specific* scope
+  git defaults `--includes` to off, so an `include.path` directive hides keys
+  from the listing that every other invocation honours — and `$GIT_DIR/config.worktree`
+  (via `extensions.worktreeConfig`) is the `--worktree` scope, not `--local`.
+  `assertNoExecutableConfig` in `services/git.ts` therefore lists *without* a
+  scope, relying on `GIT_CONFIG_NOSYSTEM` and `GIT_CONFIG_GLOBAL=/dev/null` to
+  bound it. It must also pass `pinConfig: false`: `GIT_SAFE_CONFIG`'s `-c`
+  overrides land in git's `command` scope, and an unscoped listing that includes
+  them hands the guard five keys off its own deny list, refusing every
+  repository including empty ones.
 - **MCP secrets are merged, not replaced.** The API never returns secret values,
   so an edit form cannot round-trip them. Replacing the set means renaming a
   server destroys its credentials.

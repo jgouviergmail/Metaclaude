@@ -120,9 +120,25 @@ const GIT_SAFE_CONFIG = [
 ] as const;
 
 export class GitService {
-  /** Raw invocation. Used by the guard itself, which cannot go through `run`. */
-  private async exec(cwd: string, args: string[], timeoutMs: number): Promise<string> {
-    const { stdout } = await execFileAsync('git', ['--no-pager', ...GIT_SAFE_CONFIG, ...args], {
+  /**
+   * Raw invocation. Used by the guard itself, which cannot go through `run`.
+   *
+   * `pinConfig: false` drops `GIT_SAFE_CONFIG`, and exactly one caller wants
+   * that: the guard, whose job is to report what the *repository* declares.
+   * Those pins are `-c` arguments, which land in git's `command` scope — so a
+   * listing that includes them reports the service's own defences back to the
+   * guard, five of which match the deny list. It would then refuse every
+   * repository on earth, including empty ones. Reading config invokes no
+   * driver, so there is nothing for the pins to protect here anyway.
+   */
+  private async exec(
+    cwd: string,
+    args: string[],
+    timeoutMs: number,
+    options: { pinConfig?: boolean } = {},
+  ): Promise<string> {
+    const pins = options.pinConfig === false ? [] : GIT_SAFE_CONFIG;
+    const { stdout } = await execFileAsync('git', ['--no-pager', ...pins, ...args], {
       cwd,
       timeout: timeoutMs,
       maxBuffer: 16 * 1024 * 1024,
@@ -142,7 +158,25 @@ export class GitService {
   private async assertNoExecutableConfig(cwd: string): Promise<void> {
     let raw: string;
     try {
-      raw = await this.exec(cwd, ['config', '--local', '--list', '--null'], 5000);
+      // No scope flag, and that is the fix rather than an oversight.
+      //
+      // This asked for `--local`, which reads exactly `.git/config` and nothing
+      // else. Two things git honours are not in that scope:
+      //
+      //   * `include.path` — for a *specific* scope git defaults `--includes`
+      //     to off, so a repository could keep the payload in any file it liked
+      //     and pull it in with one innocuous `[include]` stanza. The listing
+      //     came back clean while `git add` ran the filter.
+      //   * `$GIT_DIR/config.worktree`, enabled by `extensions.worktreeConfig`,
+      //     which is the `--worktree` scope, not `--local`.
+      //
+      // Without a scope, git reports what it will actually obey — includes
+      // expanded, worktree config included — and `gitEnv()` has already
+      // neutralised the two scopes that would otherwise widen this: system via
+      // `GIT_CONFIG_NOSYSTEM`, user via `GIT_CONFIG_GLOBAL=/dev/null`. If those
+      // were ever dropped, this would start reporting the operator's own global
+      // config and refuse to run, which is the safe direction to fail in.
+      raw = await this.exec(cwd, ['config', '--list', '--null'], 5000, { pinConfig: false });
     } catch {
       // No repository, or no local config to read. Nothing to refuse.
       return;

@@ -118,6 +118,82 @@ describe('a repository cannot turn a file write into a command', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
+  it('sees a driver reached through an include.path directive', async () => {
+    // The guard listed the config with `git config --local --list`, and for a
+    // *specific scope* git defaults `--includes` to off. So a repository could
+    // put the payload in any file it liked and pull it in with one innocuous
+    // `[include]` stanza: the guard's listing came back empty while every other
+    // git invocation in this service honoured the filter and ran it.
+    //
+    // Verified end to end before this was written — under the service's own
+    // environment, `git add` executed the command and the guard saw nothing.
+    const script = join(dir, 'payload.sh');
+    await writeFile(script, `#!/bin/sh\necho owned > ${marker}\ncat\n`);
+    await chmod(script, 0o755);
+    await writeFile(join(dir, '.gitattributes'), '* filter=pwn\n');
+
+    await writeFile(join(dir, '.git', 'hidden.cfg'), `[filter "pwn"]\n\tclean = ${script}\n`);
+    await raw(['config', '--local', 'include.path', 'hidden.cfg']);
+    await writeFile(join(dir, 'f.txt'), 'changed\n');
+
+    await expect(git.stage(dir, ['f.txt'])).rejects.toThrow(/would execute as a command/i);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('sees a driver in the worktree config, which --local also omits', async () => {
+    // The second scope `--local` does not report. `extensions.worktreeConfig`
+    // makes git read $GIT_DIR/config.worktree as well, and that file is not
+    // part of the local scope — so it evaded the guard by a different route
+    // than include.path and had to be closed by the same change.
+    const script = join(dir, 'payload.sh');
+    await writeFile(script, `#!/bin/sh\necho owned > ${marker}\ncat\n`);
+    await chmod(script, 0o755);
+    await writeFile(join(dir, '.gitattributes'), '* filter=pwn\n');
+
+    await raw(['config', '--local', 'extensions.worktreeConfig', 'true']);
+    await writeFile(join(dir, '.git', 'config.worktree'), `[filter "pwn"]\n\tclean = ${script}\n`);
+    await writeFile(join(dir, 'f.txt'), 'changed\n');
+
+    await expect(git.stage(dir, ['f.txt'])).rejects.toThrow(/would execute as a command/i);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('still refuses when the include is itself nested one level deeper', async () => {
+    // Includes chain. A guard that expanded only the first level would be a
+    // smaller version of the same hole.
+    const script = join(dir, 'payload.sh');
+    await writeFile(script, `#!/bin/sh\necho owned > ${marker}\ncat\n`);
+    await chmod(script, 0o755);
+    await writeFile(join(dir, '.gitattributes'), '* filter=pwn\n');
+
+    await writeFile(join(dir, '.git', 'inner.cfg'), `[filter "pwn"]\n\tclean = ${script}\n`);
+    await writeFile(join(dir, '.git', 'outer.cfg'), '[include]\n\tpath = inner.cfg\n');
+    await raw(['config', '--local', 'include.path', 'outer.cfg']);
+
+    await expect(git.status(dir)).rejects.toThrow(/would execute as a command/i);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('does not mistake the service’s own safety pins for the repository’s config', async () => {
+    // Every invocation carries `-c core.fsmonitor=false`, `-c core.editor=true`
+    // and eight more, to out-pin anything a repository sets. Those land in
+    // git's `command` scope, so a config listing that includes them hands the
+    // guard five keys off its own deny list — and it then refuses every
+    // repository on earth, empty ones included.
+    //
+    // This is not hypothetical: widening the listing to catch `include.path`
+    // did exactly that, and the case below is what caught it. The guard reads
+    // with the pins dropped, because reading config invokes no driver and its
+    // question is what the *repository* declares.
+    const status = await git.status(dir);
+
+    expect(status.isRepo).toBe(true);
+    for (const pinned of ['core.fsmonitor', 'core.editor', 'core.hooksPath', 'credential.helper']) {
+      await expect(git.status(dir)).resolves.toBeTruthy();
+      expect(JSON.stringify(status)).not.toContain(pinned);
+    }
+  });
+
   it('leaves an ordinary repository working', async () => {
     await writeFile(join(dir, 'f.txt'), 'changed\n');
     const status = await git.status(dir);
