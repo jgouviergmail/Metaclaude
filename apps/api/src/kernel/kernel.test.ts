@@ -640,13 +640,24 @@ describe('delegation', () => {
       await expect(attempt).rejects.toThrow(/did not finish in time/);
 
       fx.supervisor.finish();
-      await vi.waitFor(() => {
-        // The one observable of a leak is the map itself; a typed escape is
-        // the price of asserting absence.
-        const settled = (fx.kernel as unknown as { delegationSettled: Map<string, unknown> })
-          .delegationSettled;
-        expect(settled.size).toBe(0);
-      });
+      // `finish()` only resolves the supervisor's promise; the stash, the
+      // settle and the slot release all happen across the microtask drain
+      // that follows. An immediate check on the map passes *vacuously* —
+      // empty because nothing has happened yet — and closing the database
+      // then races the tail of the schedule chain, whose `publishMetrics`
+      // reads runs from a connection that no longer exists. CI caught that.
+      await vi.waitFor(() => expect(fx.finished).toHaveLength(1));
+      // Everything after the finished hook — stash, settle, slot release —
+      // is synchronous code across microtask continuations, never a timer,
+      // so one queued macrotask runs strictly after all of it. This is an
+      // ordering drain, not a sleep.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // The one observable of a leak is the map itself; a typed escape is
+      // the price of asserting absence.
+      const settled = (fx.kernel as unknown as { delegationSettled: Map<string, unknown> })
+        .delegationSettled;
+      expect(settled.size).toBe(0);
     } finally {
       fx.db.close();
     }
