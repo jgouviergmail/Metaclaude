@@ -210,6 +210,21 @@ export class WorkspaceRepo {
     return this.get(id);
   }
 
+  /**
+   * Move a workspace's recorded directory.
+   *
+   * Deliberately outside `update()`, which is the patch the API exposes: `path`
+   * is derived from the slug and the configured root, and no request may set
+   * it. The one caller is `relocateWorkspaces`, at boot, when the root itself
+   * has moved under a database that already has rows.
+   *
+   * `updated_at` is left alone on purpose — it orders the workspace list, and a
+   * migration nobody asked for must not reshuffle the sidebar.
+   */
+  relocate(id: string, path: string): boolean {
+    return this.db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(path, id).changes > 0;
+  }
+
   /** Removes the row and, by cascade, every session, run and transcript event. */
   delete(id: string): boolean {
     return this.db.prepare('DELETE FROM workspaces WHERE id = ?').run(id).changes > 0;

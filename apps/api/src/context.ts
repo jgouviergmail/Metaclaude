@@ -36,7 +36,7 @@ import { FileService } from './services/files.js';
 import { GitService } from './services/git.js';
 import { Registry } from './services/registry.js';
 import { Scheduler } from './services/scheduler.js';
-import { WorkspaceService } from './services/workspaces.js';
+import { relocateWorkspaces, WorkspaceService } from './services/workspaces.js';
 
 export interface AppContext {
   config: Config;
@@ -145,6 +145,27 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     log.warn(
       { runs: orphanedRuns, sessions: orphanedSessions, toolCalls: orphanedToolCalls },
       'recovered state left behind by an unclean shutdown',
+    );
+  }
+
+  // A workspace records where its directory is, and the root that answer was
+  // derived from is configuration. Move the root — as the shipped layout did,
+  // once — and every row names an address the volume no longer mounts.
+  const relocation = relocateWorkspaces(workspaceRepo, config.workspacesDir);
+  for (const move of relocation.moved) {
+    const level = move.present ? 'info' : 'warn';
+    log[level](
+      { workspace: move.slug, from: move.from, to: move.to },
+      move.present
+        ? 'workspaces root moved — re-pointed this workspace at its directory'
+        : 'workspaces root moved — re-pointed this workspace, but nothing is at the new path',
+    );
+  }
+  for (const stranded of relocation.skipped) {
+    log.warn(
+      { workspace: stranded.slug, path: stranded.path },
+      'this workspace sits outside the workspaces root and its directory is not named after its ' +
+        'slug, so it cannot be re-pointed automatically',
     );
   }
 

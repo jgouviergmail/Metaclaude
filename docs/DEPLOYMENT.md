@@ -467,6 +467,49 @@ The Claude CLI version is pinned in the Dockerfile (`CLAUDE_CLI_VERSION`).
 Bumping it is a deliberate, reviewable change: an upstream CLI update should not
 silently alter how your agent behaves.
 
+### Upgrading past the workspaces-directory move
+
+The workspaces root moved once, from `/var/lib/metaclaude/workspaces` to
+`/srv/metaclaude/workspaces`. It had to: the data directory holds the database
+and `master.key`, so every workspace used to sit one `..` from the key, and any
+check phrased as "is this under the data directory?" was true for every
+legitimate workspace path. The server now **refuses to start** when the two
+directories contain one another, rather than warning.
+
+If you deployed before that change, the upgrade is still a restart, not a
+rebuild — but two things have to line up.
+
+**The `.env` must not pin the old path.** If yours sets
+`METACLAUDE_WORKSPACES_DIR` to anything under `METACLAUDE_DATA_DIR`, the
+container exits at boot with the configuration error naming both values. Delete
+the line and let the image's default apply, or set a sibling directory:
+
+```bash
+grep -n 'METACLAUDE_WORKSPACES_DIR\|METACLAUDE_DATA_DIR' /opt/metaclaude/.env
+```
+
+**The files come across on their own; the rows are repaired at boot.** The named
+volume is unchanged — only the path it is mounted at moved — so nothing is
+copied and nothing is lost. What does not move by itself is the `path` column:
+it is written once, when the workspace is created, as
+`<workspaces root>/<slug>`. On the first boot after the move, the server
+re-points every workspace whose directory is named after its slug and logs one
+line each:
+
+```bash
+docker compose logs app | grep 'workspaces root moved'
+```
+
+`re-pointed this workspace at its directory` is the expected line. A line
+saying *nothing is at the new path* means the row was repaired but its files
+were not in the volume — look for them before creating anything with the same
+name. A workspace whose directory was placed by hand, under a name that is not
+its slug, is reported and left alone: there is nothing to derive its new
+location from, so it is yours to move and re-create.
+
+Nothing here is retroactive. A deployment that has never seen the old layout
+logs none of these lines.
+
 ---
 
 ## Two things to be clear-eyed about

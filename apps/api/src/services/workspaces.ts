@@ -9,7 +9,7 @@
 import { execFile } from 'node:child_process';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { CreateWorkspaceRequest, Workspace, WorkspaceSettings } from '@metaclaude/shared';
 import { WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
@@ -52,6 +52,59 @@ export class WorkspaceServiceError extends Error {
     super(message);
     this.name = 'WorkspaceServiceError';
   }
+}
+
+export interface WorkspaceRelocation {
+  moved: { slug: string; from: string; to: string; present: boolean }[];
+  skipped: { slug: string; path: string }[];
+}
+
+/**
+ * Re-point workspace rows after the workspaces root has moved.
+ *
+ * `path` is written once, at creation, as `resolve(workspacesRoot, slug)`, and
+ * nothing updates it afterwards. Change `METACLAUDE_WORKSPACES_DIR` on a
+ * deployment that already has workspaces and every row keeps naming the old
+ * address: the files are still in the volume, but `isInside(workspacesRoot, …)`
+ * is false for all of them, so connecting a repository is refused, purging is
+ * refused, and the agent is handed a `cwd` that does not exist. Nothing throws
+ * — it just stops working, which reads as data loss.
+ *
+ * The shipped layout moved exactly once, from `/var/lib/metaclaude/workspaces`
+ * to `/srv/metaclaude/workspaces` (the data directory may no longer contain the
+ * agent's directories), and the named volume followed the mount while the rows
+ * did not. This is what makes that upgrade a restart rather than a rebuild.
+ *
+ * Only rows this code could have written are touched: the directory's name must
+ * equal the slug, which is what `create()` guarantees and what makes the new
+ * path derivable rather than guessed. Slugs are unique, so two rows can never
+ * be relocated onto one directory.
+ */
+export function relocateWorkspaces(
+  repo: WorkspaceRepo,
+  workspacesRoot: string,
+): WorkspaceRelocation {
+  const root = resolve(workspacesRoot);
+  const report: WorkspaceRelocation = { moved: [], skipped: [] };
+
+  for (const workspace of repo.list(true)) {
+    if (isInside(root, workspace.path)) continue;
+
+    if (basename(workspace.path) !== workspace.slug) {
+      report.skipped.push({ slug: workspace.slug, path: workspace.path });
+      continue;
+    }
+
+    const to = resolve(root, workspace.slug);
+    repo.relocate(workspace.id, to);
+    // A missing target is still worth relocating onto: the old path is
+    // unusable either way, and this at least puts the row somewhere the
+    // service will accept. `present` is what tells the operator the files did
+    // not come across.
+    report.moved.push({ slug: workspace.slug, from: workspace.path, to, present: existsSync(to) });
+  }
+
+  return report;
 }
 
 export interface WorkspaceServiceDeps {

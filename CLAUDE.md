@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1162 tests, ~17s
+pnpm test:run                            # 1221 tests, ~20s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -134,6 +134,14 @@ restates the code is noise; one that records a decision or a trap is not.
   test used a sibling layout. They are now `/var/lib/metaclaude` and
   `/srv/metaclaude/workspaces`. Any new containment rule still needs a case in
   `security/directories.test.ts` under the layout that actually ships.
+- **A derived value that is *stored* stops being derived the moment its input
+  changes.** `workspaces.path` is `resolve(workspacesRoot, slug)` at creation
+  and nothing updates it, so moving the root left every row naming an address
+  the volume no longer mounts — with no crash, because each guard just answers
+  "outside the root" and refuses. The failure reads as data loss while the files
+  sit untouched in the volume. `relocateWorkspaces` runs at boot and re-points
+  rows whose directory is named after their slug; anything else it reports and
+  leaves alone, because there is nothing to derive the new location from.
 - **A ratchet that greps text cannot tell code from prose.** Writing
   `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
   raw-palette ratchet. Say `bg-gray-<n>`.
