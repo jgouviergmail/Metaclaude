@@ -33,6 +33,7 @@ import {
   type ClaudeUsage,
   type DoctorReport,
   type Marketplace,
+  type UpdateCheck,
   type MarketplaceCatalogue,
   type MarketplaceInput,
   type LoginResponse,
@@ -289,6 +290,10 @@ export const api = {
 
   /** Every self-check the system knows how to run, in one report. Owner-only. */
   doctor: () => request<DoctorReport>('/api/system/doctor'),
+
+  /** Is a newer release published? Informational only — deploys stay tag-driven. */
+  updateCheck: (refresh = false) =>
+    request<UpdateCheck | { disabled: true }>(`/api/system/update-check${qs({ refresh })}`),
 
   /**
    * The CLI's own transcript store for a workspace's directory — including

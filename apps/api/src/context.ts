@@ -38,6 +38,7 @@ import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
+import { UpdateChecker } from './services/update-check.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
@@ -62,6 +63,8 @@ export interface AppContext {
   claudeSessions: ClaudeSessions;
   marketplaces: MarketplacesService;
   doctor: Doctor;
+  /** Null when METACLAUDE_UPDATE_REPO is set empty. */
+  updateChecker: UpdateChecker | null;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -370,6 +373,20 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     queuedRuns: () => kernel.queuedCount,
   });
 
+  const updateChecker = config.updateRepo
+    ? new UpdateChecker({
+        repo: config.updateRepo,
+        fetchText: async (url) => {
+          const response = await fetch(url, {
+            signal: AbortSignal.timeout(10_000),
+            headers: { accept: 'application/vnd.github+json' },
+          });
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return response.text();
+        },
+      })
+    : null;
+
   const context: AppContext = {
     config,
     log,
@@ -385,6 +402,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeSessions,
     marketplaces,
     doctor,
+    updateChecker,
     workspaceRepo,
     sessionRepo,
     runRepo,

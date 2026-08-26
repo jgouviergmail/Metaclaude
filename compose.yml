@@ -44,6 +44,7 @@ services:
       # is not silently discarded by the deployment that reads that file.
       METACLAUDE_EMBEDDING_MODEL: ${METACLAUDE_EMBEDDING_MODEL:-Xenova/all-MiniLM-L6-v2}
       METACLAUDE_ALLOW_BYPASS_PERMISSIONS: ${METACLAUDE_ALLOW_BYPASS_PERMISSIONS:-}
+      METACLAUDE_UPDATE_REPO: ${METACLAUDE_UPDATE_REPO:-jgouviergmail/Metaclaude}
 
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

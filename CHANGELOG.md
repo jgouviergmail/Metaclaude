@@ -13,6 +13,13 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **A guarded update check.** Settings → System → Updates compares the
+  running version against the latest published release and answers with one
+  of three honest states: an update exists, up to date, or "cannot tell"
+  when the latest tag is not a version — because "no update" and "I don't
+  know" are different answers. Informational by design; applying an update
+  stays the tag-driven, health-gated, self-rolling-back deploy pipeline.
+  `METACLAUDE_UPDATE_REPO` points it elsewhere or, set empty, disables it.
 - **The doctor.** One button under Settings → System runs every self-check
   the system knows how to make — database integrity, the audit chain, the
   secrets vault, disk space on both volumes, the Claude CLI and its

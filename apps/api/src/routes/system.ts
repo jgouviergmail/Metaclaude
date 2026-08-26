@@ -172,4 +172,18 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
     requireOwner(request);
     return reply.send(await context.doctor.run());
   });
+
+  /**
+   * The informational half of guarded self-update: is a newer release
+   * published? Applying one stays the tag-driven, health-gated deploy
+   * pipeline — no route can trigger it.
+   */
+  app.get('/api/system/update-check', async (request, reply) => {
+    requireOwner(request);
+    if (!context.updateChecker) {
+      return reply.send({ disabled: true });
+    }
+    const query = request.query as { refresh?: string };
+    return reply.send(await context.updateChecker.check({ force: query.refresh === 'true' }));
+  });
 }

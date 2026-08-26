@@ -1058,6 +1058,24 @@ export const DoctorReport = z.object({
 });
 export type DoctorReport = z.infer<typeof DoctorReport>;
 
+/**
+ * The update check's answer — the informational half of guarded self-update.
+ *
+ * A type rather than a schema, deliberately: the server produces it and
+ * nothing validates it at an edge, and every Zod declaration in this package
+ * ships in the web entry chunk (see the bitten-before note in CLAUDE.md).
+ * Promote it to a schema only when something starts parsing it.
+ */
+export interface UpdateCheck {
+  current: string;
+  latest: string | null;
+  /** Null when either version does not parse — "cannot tell", not "no". */
+  updateAvailable: boolean | null;
+  releaseUrl: string | null;
+  error: string | null;
+  checkedAt: number;
+}
+
 export const ClaudeUsage = z.object({
   /** 'pro', 'max', … — null for API-key or third-party-provider sessions. */
   subscriptionType: z.string().nullable(),

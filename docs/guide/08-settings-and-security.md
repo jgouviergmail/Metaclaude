@@ -25,6 +25,22 @@ and where the credential came from.
 Light, dark, or follow the system. The whole interface is built on one token
 set, so both themes are first-class — including the charts.
 
+## System, doctor and updates
+
+The System tab shows the server's vitals — version, uptime, memory, disk, and
+the Claude CLI's state. For the owner, two more cards:
+
+**Doctor** runs every self-check the system knows in one pass — database
+integrity, the audit chain, the secrets vault, disk space on both volumes,
+the CLI and its credential, and any automation the failure guard switched
+off. Each check answers with a verdict and its evidence, and nothing is
+changed by running it.
+
+**Updates** compares this version against the latest published release
+(`METACLAUDE_UPDATE_REPO`; set it empty to disable the check). It is
+informational by design: applying an update stays the tag-driven,
+health-gated deploy pipeline, and no button here can trigger one.
+
 ## What protects you (the short version)
 
 - **TLS is mandatory** — the app refuses to be less than a secure context.

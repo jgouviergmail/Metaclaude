@@ -66,6 +66,9 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Override the CLI binary path (the SDK resolves it automatically by default). */
   METACLAUDE_CLAUDE_BIN: z.string().optional(),
+  // Where the update check looks for published releases. The public
+  // repository by default; empty disables the check.
+  METACLAUDE_UPDATE_REPO: z.string().default('jgouviergmail/Metaclaude'),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
@@ -100,6 +103,8 @@ export interface Config {
   uploadsDir: string;
   /** Where installed Agent Plugins live, one directory per plugin. */
   pluginsDir: string;
+  /** GitHub owner/repo the update check asks; null when disabled. */
+  updateRepo: string | null;
 }
 
 /**
@@ -244,6 +249,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       authMode: oauthToken ? 'subscription' : apiKey ? 'api_key' : 'none',
     },
     logLevel: env.LOG_LEVEL,
+    updateRepo: env.METACLAUDE_UPDATE_REPO.trim() === '' ? null : env.METACLAUDE_UPDATE_REPO.trim(),
     databasePath: resolve(dataDir, 'metaclaude.db'),
     artifactsDir,
     uploadsDir,

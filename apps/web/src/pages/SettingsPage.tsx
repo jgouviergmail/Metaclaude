@@ -96,6 +96,7 @@ export function SettingsPage() {
             <Tabs.Content value="system" className="space-y-4">
               <SystemCard />
               {user?.role === 'owner' ? <DoctorCard /> : null}
+              {user?.role === 'owner' ? <UpdateCard /> : null}
             </Tabs.Content>
 
             {user?.role === 'owner' ? (
@@ -676,6 +677,74 @@ function DoctorCard() {
           <p className="text-[12.5px] text-muted">The examination could not run.</p>
         ) : (
           <p className="text-[12.5px] text-subtle">Not run yet.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Informational on purpose: this card can say a release exists, and nothing
+ * more. Applying it stays the tag-driven, health-gated deploy pipeline —
+ * exactly the guarded path docs/ROADMAP.md commits self-modification to.
+ */
+function UpdateCard() {
+  const updateQuery = useQuery({
+    queryKey: ['update-check'],
+    queryFn: () => api.updateCheck(),
+    enabled: false,
+  });
+  const result = updateQuery.data;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Updates"
+        description="Compares this version against the latest published release. Applying one stays the deploy pipeline's job."
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={updateQuery.isFetching}
+            onClick={() => void updateQuery.refetch()}
+          >
+            Check
+          </Button>
+        }
+      />
+      <div className="px-4 pb-4 text-[12.5px]">
+        {!result ? (
+          <p className="text-subtle">Not checked yet.</p>
+        ) : 'disabled' in result ? (
+          <p className="text-muted">The update check is switched off for this deployment.</p>
+        ) : result.error ? (
+          <p className="text-muted">
+            No release visible: <span className="font-mono">{result.error}</span>
+          </p>
+        ) : result.updateAvailable === true ? (
+          <p className="text-ink">
+            <Badge tone="warning" className="mr-2">
+              update
+            </Badge>
+            {result.latest} is published; this server runs {result.current}.{' '}
+            {result.releaseUrl ? (
+              <a
+                className="text-accent underline"
+                href={result.releaseUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Release notes
+              </a>
+            ) : null}
+          </p>
+        ) : result.updateAvailable === false ? (
+          <p className="text-muted">Up to date — {result.current} is the latest release.</p>
+        ) : (
+          <p className="text-muted">
+            The latest tag ({result.latest ?? 'none'}) is not a version, so no comparison is
+            possible.
+          </p>
         )}
       </div>
     </Card>
