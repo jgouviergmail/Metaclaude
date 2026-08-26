@@ -28,6 +28,12 @@ explains it, which is worth keeping whether or not a linter ever reads it.
 `--update` records improvements but **refuses to loosen a ceiling** — loosening
 one is a hand edit, and the commit must say why.
 
+**Every push to main bumps the version.** `node deploy/bump.mjs patch|minor`
+moves APP_VERSION, the four package.json files and CHANGELOG.md together, and
+refuses while `[Unreleased]` is empty — write the changelog entry first. CI's
+version-guard job rejects a main push whose version did not increase, and
+tags `v<version>` once the push is green.
+
 Run one package: `pnpm --filter @metaclaude/api <script>`.
 
 Local dev needs the API and web on separate ports; Vite proxies `/api` to

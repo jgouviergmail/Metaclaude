@@ -35,6 +35,7 @@ const AUTO: PickerOption = {
 
 /** Used when the CLI cannot be reached, or answered with nothing. */
 const FALLBACK_MODELS: PickerOption[] = [
+  { value: 'fable', label: 'Fable', hint: 'The Claude 5 flagship — above Opus, priced to match' },
   { value: 'opus', label: 'Opus', hint: 'Deepest reasoning, highest cost' },
   { value: 'sonnet', label: 'Sonnet', hint: 'Balanced — the everyday choice' },
   { value: 'haiku', label: 'Haiku', hint: 'Fastest and cheapest, for simple tasks' },

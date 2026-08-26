@@ -36,6 +36,35 @@ env:
   NODE_VERSION: '22'
 
 jobs:
+  # Every push to main increments the version — the rule the operator asked
+  # for, enforced rather than remembered. The comparison itself lives in
+  # deploy/version-guard.sh so check.sh can prove it rejects an equal or
+  # lower version; this job only fetches the two versions to compare.
+  version-guard:
+    name: Version increments
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: The pushed version is strictly greater than the previous one
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          new="$(grep -oE "APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'" packages/shared/src/constants.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+          [ -n "$new" ] || { echo "::error::constants.ts no longer declares APP_VERSION"; exit 1; }
+          # A newly created branch has no "before" to compare against.
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "first push of this ref — nothing to compare against"; exit 0
+          fi
+          # An unfetchable "before" means main's history was rewritten, which
+          # is its own emergency — fail loudly rather than shrug.
+          git fetch --depth=1 origin "$BEFORE" \
+            || { echo "::error::cannot fetch $BEFORE — was main force-pushed?"; exit 1; }
+          old="$(git show "$BEFORE:packages/shared/src/constants.ts" | grep -oE "APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+          [ -n "$old" ] || { echo "::error::could not read the previous APP_VERSION"; exit 1; }
+          ./deploy/version-guard.sh "$old" "$new"
+
   verify:
     name: Typecheck, tests, build
     runs-on: ubuntu-latest
@@ -348,7 +377,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [verify, live, browser, image, smoke, deploy-scripts, ratchets]
+    needs: [version-guard, verify, live, browser, image, smoke, deploy-scripts, ratchets]
     runs-on: ubuntu-latest
     steps:
       - name: Verdict
@@ -365,3 +394,37 @@ jobs:
             echo "::error::at least one job did not pass"
             exit 1
           fi
+
+  # Every green push to main leaves a release point: the version the push
+  # declared becomes tag v<version>. The tag is bookkeeping the update check
+  # reads and the operator deploys from; it is created with GITHUB_TOKEN, whose
+  # pushes deliberately do not trigger the tag-driven Deploy workflow — so
+  # deploying stays an explicit act unless the repository variable
+  # METACLAUDE_AUTO_DEPLOY is set to "true", in which case the deploy workflow
+  # is dispatched directly for this exact commit.
+  release-tag:
+    name: Tag the version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create v<version> if it does not exist
+        run: |
+          version="$(grep -oE "APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'" packages/shared/src/constants.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+          [ -n "$version" ] || { echo "::error::could not read APP_VERSION"; exit 1; }
+          if [ -n "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then
+            echo "tag v$version already exists — a re-run, not a release"; exit 0
+          fi
+          git tag "v$version" "$GITHUB_SHA"
+          git push origin "refs/tags/v$version"
+          echo "tagged v$version at $GITHUB_SHA"
+      - name: Dispatch the deploy (only when METACLAUDE_AUTO_DEPLOY=true)
+        if: vars.METACLAUDE_AUTO_DEPLOY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref "$GITHUB_REF_NAME" -f action=deploy -f ref="$GITHUB_SHA"

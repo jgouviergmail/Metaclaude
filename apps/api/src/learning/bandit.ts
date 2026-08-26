@@ -47,8 +47,15 @@ interface ArmRow {
  * The arms we consider.
  *
  * Deliberately small: a bandit with forty arms and a handful of runs per week
- * never converges. These five span the useful trade-off frontier — cheap and
- * fast, balanced, and deep reasoning — and the operator can always override.
+ * never converges. These span the useful trade-off frontier — cheap and fast,
+ * balanced, deep reasoning, and the flagship tier — and the operator can
+ * always override. The fable arms exist because a frontier frozen at the
+ * previous generation makes the newest model structurally unreachable under
+ * Auto, however the runs score; the reward prices cost in, so an arm that is
+ * not worth its money loses on evidence instead of by omission. On a
+ * subscription without fable the CLI refuses visibly (the refusal is narrated
+ * and the served-model chip shows what ran instead), the reward drops, and
+ * the bandit routes around it.
  */
 export const DEFAULT_ARMS: readonly Arm[] = [
   { model: 'haiku', effort: null },
@@ -56,6 +63,8 @@ export const DEFAULT_ARMS: readonly Arm[] = [
   { model: 'sonnet', effort: 'high' },
   { model: 'opus', effort: 'medium' },
   { model: 'opus', effort: 'high' },
+  { model: 'fable', effort: 'high' },
+  { model: 'fable', effort: 'xhigh' },
 ];
 
 function toArm(row: ArmRow): PolicyArm {

@@ -336,9 +336,21 @@ whatever answers on that address.
 
 ### Deploying, and going back
 
+Every push to main bumps the version (`node deploy/bump.mjs patch|minor` —
+CI's version-guard refuses the push otherwise) and, once the push is green,
+CI tags it `v<version>`. Those tags are created with the workflow token, whose
+pushes deliberately do not trigger the tag-driven deploy — so deploying stays
+an explicit act:
+
 ```bash
-git tag v1.2.3 && git push origin v1.2.3     # deploy
+# Actions → Deploy → Run workflow → ref: v1.2.3, action: deploy
+# or, from a machine with push access, a hand-pushed tag still deploys directly:
+git tag v1.2.3 && git push origin v1.2.3
 ```
+
+Set the repository variable `METACLAUDE_AUTO_DEPLOY` to `true` and every green
+push to main dispatches the deploy itself — the health gate and automatic
+rollback below still apply to each one.
 
 Actions → Deploy → Run workflow also offers `rollback` and `status`.
 
@@ -496,7 +508,8 @@ and it logs rather than refusing to start.
 ```bash
 git pull
 sudo ./deploy/install-app.sh    # only if compose.yml or the Caddyfile changed
-git tag v1.2.4 && git push origin v1.2.4
+# then deploy the version CI already tagged:
+# Actions → Deploy → Run workflow → ref: v<version>, action: deploy
 ```
 
 Migrations run automatically at boot, inside a transaction, recorded in

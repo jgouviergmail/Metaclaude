@@ -260,6 +260,20 @@ describe('PolicyLearner', () => {
     db.close();
   });
 
+  it('explores the current flagship generation — fable, up to very high effort', () => {
+    // "Quand tout était en auto: toujours pas de fable ni ultra." Under Auto
+    // the learner only ever proposes what DEFAULT_ARMS names, so a frontier
+    // frozen at the previous generation means the operator's best model is
+    // structurally unreachable however the runs score. The reward already
+    // prices cost in, so an arm that is not worth its money loses on evidence
+    // rather than by omission — and ensureArms reconciles by membership, so
+    // existing deployments grow these arms on their next selection.
+    const key = (arm: Arm): string => `${String(arm.model)} ${arm.effort ?? ''}`;
+    const arms = new Set(DEFAULT_ARMS.map(key));
+    expect(arms).toContain('fable high');
+    expect(arms).toContain('fable xhigh');
+  });
+
   it('declines to act before it has enough evidence', () => {
     expect(learner.select(null, CATEGORY)).toBeNull();
     // Even so, it has seeded the default arms with a uniform prior.
@@ -383,6 +397,8 @@ describe('PolicyLearner', () => {
       ['sonnet|low', 0.3],
       ['sonnet|high', 0.5],
       ['opus|medium', 0.7],
+      ['fable|xhigh', 0.8],
+      ['fable|high', 0.9],
       ['opus|high', 0.95],
     ]);
     for (let i = 0; i < 20; i += 1) {
@@ -400,6 +416,8 @@ describe('PolicyLearner', () => {
     const arms = learner.list(null, CATEGORY);
     expect(arms.map((a) => `${a.model}|${a.effort}`)).toEqual([
       'opus|high',
+      'fable|high',
+      'fable|xhigh',
       'opus|medium',
       'sonnet|high',
       'sonnet|low',

@@ -1137,6 +1137,34 @@ else
   bad "CHANGELOG.md has no entry for $app_version" "the in-app What's new would not know what is new"
 fi
 
+# The version is declared in five places — APP_VERSION plus four package.json
+# files — and deploy/bump.mjs moves them together. Drift means a hand edit
+# missed some of them, and whichever one a given surface reads would then lie.
+if [ -n "$app_version" ]; then
+  drifted=""
+  for pkg in package.json apps/api/package.json apps/web/package.json packages/shared/package.json; do
+    pkg_version="$(grep -oE '"version":[[:space:]]*"[^"]+"' "$REPO_ROOT/$pkg" | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+    [ "$pkg_version" = "$app_version" ] || drifted="$drifted $pkg=$pkg_version"
+  done
+  if [ -z "$drifted" ]; then
+    ok "all four package.json files agree with APP_VERSION ($app_version)"
+  else
+    bad "package.json versions drifted from APP_VERSION $app_version:$drifted" "run node deploy/bump.mjs, or align them by hand"
+  fi
+fi
+
+# The CI version-guard job delegates its comparison to version-guard.sh.
+# Prove the guard can actually fail — a check that only ever passes proves
+# nothing (see the uninstall-rehearsal lesson).
+if "$REPO_ROOT/deploy/version-guard.sh" 1.2.3 1.2.4 >/dev/null 2>&1 \
+  && "$REPO_ROOT/deploy/version-guard.sh" 0.9.9 0.10.0 >/dev/null 2>&1 \
+  && ! "$REPO_ROOT/deploy/version-guard.sh" 1.2.3 1.2.3 >/dev/null 2>&1 \
+  && ! "$REPO_ROOT/deploy/version-guard.sh" 1.3.0 1.2.9 >/dev/null 2>&1; then
+  ok "version-guard.sh accepts increases (incl. 0.9.9→0.10.0) and rejects equal/lower"
+else
+  bad "version-guard.sh comparison is wrong" "the CI guard would wave through a version that did not increase"
+fi
+
 # The user guide names environment variables; a renamed variable must take its
 # documentation with it. Scoped to docs/guide/ — the trap list in CLAUDE.md
 # legitimately discusses names that no longer exist.

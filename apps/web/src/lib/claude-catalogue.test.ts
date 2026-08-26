@@ -53,6 +53,16 @@ describe('modelOptions', () => {
     expect(modelOptions(catalogue([])).length).toBeGreaterThan(1);
   });
 
+  it('offers the current flagship in the fallback list', () => {
+    // "Toujours pas de fable" — when the CLI cannot enumerate models, the
+    // fallback is all the operator sees, and a list frozen at the previous
+    // generation quietly hides the newest tier from them. The CLI accepts the
+    // `fable` alias (and degrades with a visible refusal message when the
+    // subscription lacks it), so offering it costs nothing and hiding it
+    // costs the operator the best model they pay for.
+    expect(modelOptions(undefined).map((option) => option.value)).toContain('fable');
+  });
+
   it('always offers Auto first', () => {
     // `default` is Metaclaude's own choice — the bandit picks from what it has
     // learned — so the CLI does not know about it and never will.
