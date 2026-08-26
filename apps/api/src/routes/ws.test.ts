@@ -17,6 +17,7 @@ import {
   CSRF_COOKIE,
   SESSION_COOKIE,
   parseWireFrame,
+  SYSTEM_TOPIC,
   sessionTopic,
   type ServerFrame,
   type Topic,
@@ -343,6 +344,95 @@ describe('reconnect replay', () => {
 
     expect(subscribed.replayed).toBe(1);
     expect(client.received.some((entry) => entry.frame.type === 'delta')).toBe(false);
+    client.close();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Revocation                                                                  */
+/* -------------------------------------------------------------------------- */
+
+describe('a revoked session loses its socket', () => {
+  /**
+   * The socket authenticated once, at the upgrade, and never again.
+   *
+   * So "log out", "revoke my other sessions" and a password change all left an
+   * already-open socket fully privileged: still receiving every transcript, and
+   * still able to approve the tool calls the agent asks about. Those controls
+   * exist for exactly one situation — "someone else may have my session" — and
+   * that is the situation in which they did the least.
+   *
+   * Its own session is used rather than a second one, because revoking the
+   * connection you are holding is the strongest version of the property and the
+   * cheapest to arrange.
+   */
+  async function loginSeparately(): Promise<{ cookie: string; csrf: string }> {
+    const response = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
+    });
+    const setCookies = response.headers.getSetCookie();
+    const csrf = setCookies.find((c) => c.startsWith(`${CSRF_COOKIE}=`));
+    return {
+      cookie: setCookies.map((c) => c.split(';')[0]).join('; '),
+      csrf: decodeURIComponent(csrf!.split(';')[0]!.split('=')[1]!),
+    };
+  }
+
+  it('closes the socket once the session behind it is revoked', async () => {
+    const { cookie, csrf } = await loginSeparately();
+    const client = await TestClient.connect({ cookie });
+    client.send({ type: 'hello', csrfToken: csrf });
+    await client.waitFor('ready');
+
+    // Log that session out through the ordinary route the UI uses.
+    const out = await fetch(`${baseUrl}/api/auth/logout`, {
+      method: 'POST',
+      headers: { cookie, 'x-metaclaude-csrf': csrf },
+    });
+    expect(out.status).toBe(200);
+
+    // A frame from a session that no longer exists must not be served.
+    client.send({ type: 'ping', t: 1 });
+    expect(await client.waitForClose(3000)).toBe(CLOSE_CODES.UNAUTHORIZED);
+  });
+
+  it('stops delivering published frames to a revoked session', async () => {
+    // The confidentiality half. Even a silent client — one that sends nothing
+    // after being revoked — must stop receiving the transcript.
+    const { cookie, csrf } = await loginSeparately();
+    const client = await TestClient.connect({ cookie });
+    client.send({ type: 'hello', csrfToken: csrf });
+    await client.waitFor('ready');
+    client.send({ type: 'subscribe', topics: [SYSTEM_TOPIC] });
+    await client.waitFor('subscribed');
+
+    await fetch(`${baseUrl}/api/auth/logout`, {
+      method: 'POST',
+      headers: { cookie, 'x-metaclaude-csrf': csrf },
+    });
+    // Up to the revalidation interval, not the ping heartbeat: a listening
+    // client sends nothing to be checked, so the timer is what cuts it off.
+    await client.waitForClose(9000);
+
+    context.bus.publish(SYSTEM_TOPIC, notice(SYSTEM_TOPIC, 'after-revocation'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(client.titles()).not.toContain('after-revocation');
+  });
+
+  it('leaves a live session connected', async () => {
+    // The other half of the rule: revalidating must not start dropping sockets
+    // whose session is perfectly good.
+    const { cookie, csrf } = await loginSeparately();
+    const client = await TestClient.connect({ cookie });
+    client.send({ type: 'hello', csrfToken: csrf });
+    await client.waitFor('ready');
+
+    client.send({ type: 'ping', t: 7 });
+    await client.waitFor('pong');
+    expect(client.closeCode).toBeNull();
     client.close();
   });
 });

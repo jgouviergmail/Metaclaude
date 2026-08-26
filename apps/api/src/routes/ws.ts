@@ -28,6 +28,21 @@ const frameBucket = new TokenBucket(120, 20);
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 /** Liveness probe interval; a socket that misses two is dropped. */
 const HEARTBEAT_INTERVAL_MS = 30_000;
+/**
+ * How often an open socket re-checks that its session still exists.
+ *
+ * Separate from the heartbeat, and shorter, because they answer different
+ * questions. The heartbeat asks whether the peer is still there; this asks
+ * whether it is still allowed to be. A client that goes quiet after being
+ * revoked sends no frame to check against, so without this the server would
+ * keep pushing transcripts at it until the next ping — and "revoke my other
+ * sessions" is pressed precisely when half a minute of continued delivery is
+ * the thing being prevented.
+ *
+ * Two indexed selects per socket per interval, with `authenticate` throttling
+ * its own write to once a minute. On a personal deployment that is nothing.
+ */
+const REVALIDATE_INTERVAL_MS = 5_000;
 
 export function registerWebSocket(app: App, context: AppContext): void {
   app.get('/api/ws', { websocket: true }, (socket: WebSocket, request) => {
@@ -44,6 +59,37 @@ export function registerWebSocket(app: App, context: AppContext): void {
     const subscriptions = new Map<Topic, () => void>();
     let handshaken = false;
     let alive = true;
+
+    /**
+     * The session as it stands *now*, re-read rather than remembered.
+     *
+     * The upgrade above authenticates once, and a socket then lives for hours.
+     * Holding that first answer meant "log out", "revoke my other sessions" and
+     * a password change all left an already-open connection fully privileged —
+     * still receiving every transcript, and still able to approve the tool calls
+     * the agent asks about. Those controls exist for one situation, "someone
+     * else may have my session", and that is the situation in which they did the
+     * least.
+     *
+     * `authenticate` re-reads the row and honours `revoked_at` and both expiry
+     * windows, so calling it again is the revocation check. It is two indexed
+     * selects and throttles its own write to once a minute, which is why this is
+     * affordable on every inbound frame as well as on the heartbeat.
+     *
+     * Refreshing rather than merely checking also means a role change takes
+     * effect on the open socket: demote someone to `viewer` and the guards below
+     * start refusing them, instead of waiting for a reconnect.
+     */
+    let current = session;
+    const stillAuthorised = (): boolean => {
+      const fresh = token ? context.auth.authenticate(token) : null;
+      if (!fresh) {
+        fail(CLOSE_CODES.UNAUTHORIZED, 'Session ended');
+        return false;
+      }
+      current = fresh;
+      return true;
+    };
 
     /**
      * @param seq Bus sequence for a published frame. The client records the
@@ -88,6 +134,14 @@ export function registerWebSocket(app: App, context: AppContext): void {
       }
     }, HEARTBEAT_INTERVAL_MS);
     heartbeat.unref?.();
+
+    // The confidentiality half of revocation: a silent client is cut off on
+    // this timer rather than on its next frame, because a revoked client that
+    // only listens has no next frame.
+    const revalidation = setInterval(() => {
+      stillAuthorised();
+    }, REVALIDATE_INTERVAL_MS);
+    revalidation.unref?.();
 
     socket.on('pong', () => {
       alive = true;
@@ -180,9 +234,15 @@ export function registerWebSocket(app: App, context: AppContext): void {
         return;
       }
 
+      // And every frame requires a session that still exists. Checked here
+      // rather than per case so a new frame type cannot be added without it,
+      // and before the switch so a revoked client is answered by a close rather
+      // than by whatever it asked for.
+      if (!stillAuthorised()) return;
+
       switch (frame.data.type) {
         case 'hello': {
-          if (!context.auth.verifyCsrf(session.sessionId, frame.data.csrfToken)) {
+          if (!context.auth.verifyCsrf(current.sessionId, frame.data.csrfToken)) {
             fail(CLOSE_CODES.UNAUTHORIZED, 'Invalid CSRF token');
             return;
           }
@@ -213,7 +273,7 @@ export function registerWebSocket(app: App, context: AppContext): void {
 
         case 'approval': {
           // Viewers may watch, but only operators may decide.
-          if (session.user.role === 'viewer') {
+          if (current.user.role === 'viewer') {
             send({ type: 'error', code: 'forbidden', message: 'Viewers cannot approve tools.' });
             break;
           }
@@ -226,7 +286,7 @@ export function registerWebSocket(app: App, context: AppContext): void {
           );
           if (resolved) {
             context.audit.record({
-              actor: session.user.username,
+              actor: current.user.username,
               action: decision.approved ? 'approval.allow' : 'approval.deny',
               target: decision.approvalId,
               ipAddress: clientAddress,
@@ -243,7 +303,7 @@ export function registerWebSocket(app: App, context: AppContext): void {
         }
 
         case 'interrupt': {
-          if (session.user.role === 'viewer') {
+          if (current.user.role === 'viewer') {
             send({ type: 'error', code: 'forbidden', message: 'Viewers cannot interrupt runs.' });
             break;
           }
@@ -258,6 +318,7 @@ export function registerWebSocket(app: App, context: AppContext): void {
     const cleanup = (): void => {
       clearTimeout(handshakeTimer);
       clearInterval(heartbeat);
+      clearInterval(revalidation);
       for (const unsub of subscriptions.values()) unsub();
       subscriptions.clear();
     };
