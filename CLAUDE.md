@@ -155,6 +155,13 @@ restates the code is noise; one that records a decision or a trap is not.
   of a 3647 ceiling with one live process. `init: true` on the proxy; the app
   image already ships tini. `check.sh` asserts every service with a healthcheck
   has one or the other.
+- **A check that cannot tell "the guard held" from "the script never ran" proves
+  nothing.** The uninstall rehearsal asserted three promises; on CI the script
+  refused at its own root check, and two assertions *passed on the inert
+  outcome* — the volume survived because nothing touched it. Same family as the
+  edge-schema trap: the test must first establish that the thing under test
+  actually executed. The rehearsal now escalates via sudo or emits an explicit
+  skip naming what was missing.
 - **A ratchet that greps text cannot tell code from prose.** Writing
   `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
   raw-palette ratchet. Say `bg-gray-<n>`.
