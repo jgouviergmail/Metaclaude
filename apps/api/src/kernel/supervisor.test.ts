@@ -128,6 +128,12 @@ interface FakeQuery {
   mcp_: Array<Record<string, unknown>>;
   /** Make `supportedCommands` throw, the way an older CLI would. */
   failCommands: boolean;
+  /**
+   * When true, `interrupt()` only records the call — it does not end the turn
+   * with an error result. That is what a CLI which honours the stop by simply
+   * wrapping up looks like, and it is the case the supervisor got wrong.
+   */
+  interruptEndsCleanly: boolean;
   /** Let a test decide when the run finishes. */
   finish: (result?: Record<string, unknown>) => void;
   emit: (message: Record<string, unknown>) => void;
@@ -155,6 +161,7 @@ function fakeQuery() {
     agents_: [{ name: 'explorer', description: 'Reads widely' }],
     mcp_: [],
     failCommands: false,
+    interruptEndsCleanly: false,
     finish: () => {},
     emit: () => {},
   };
@@ -224,6 +231,7 @@ function fakeQuery() {
     return Object.assign(generator, {
       interrupt: async () => {
         control.interrupted += 1;
+        if (control.interruptEndsCleanly) return undefined;
         control.finish({
           type: 'result',
           subtype: 'error_during_execution',
@@ -991,5 +999,58 @@ describe('a run says when it is waiting for a person', () => {
 
     control.finish();
     await run;
+  });
+});
+
+describe('a run the operator stopped is never recorded as a success', () => {
+  it('reports interrupted even when the CLI ends its stream cleanly', async () => {
+    // `status` starts as 'succeeded' and only moves when a result arrives
+    // carrying an error, or when the iterator throws. A CLI that honours
+    // `interrupt()` by simply ending the turn — no error, no throw — therefore
+    // left the run recorded as a success.
+    //
+    // That is not only a wrong badge in the UI. `computeReward` feeds the
+    // bandit from the run's status, so stopping a run yourself taught the
+    // learner that the model and effort it had chosen were good ones.
+    const { query, control } = fakeQuery();
+    // The CLI wraps up quietly instead of erroring — the well-behaved case.
+    control.interruptEndsCleanly = true;
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+
+    // Ask for the stop, then have the CLI finish *successfully* — which is
+    // exactly what a well-behaved one does when told to wrap up.
+    const stopping = supervisor.interrupt('run_1');
+    control.finish({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'stopped cleanly',
+      duration_ms: 1,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: {},
+      session_id: 'sdk-session',
+    });
+    await stopping;
+
+    const outcome = await run;
+    expect(outcome.status).toBe('interrupted');
+  });
+
+  it('still reports a genuine success as a success', () => {
+    // The other half: this must not turn every run into an interruption.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    return vi
+      .waitFor(() => expect(control.received.length).toBe(1))
+      .then(async () => {
+        control.finish();
+        expect((await run).status).toBe('succeeded');
+      });
   });
 });

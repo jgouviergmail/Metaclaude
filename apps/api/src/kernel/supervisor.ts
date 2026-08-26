@@ -564,6 +564,20 @@ export class AgentSupervisor {
       state.finalise();
     }
 
+    // A stop the operator asked for is an interruption, however politely the
+    // CLI ended.
+    //
+    // `status` starts as `succeeded` and only moves when a result arrives
+    // carrying an error or the iterator throws. A CLI that honours `interrupt()`
+    // by simply wrapping up the turn — no error, no throw — left the run
+    // recorded as a success. That is not just a wrong badge: `computeReward`
+    // scores the run from its status, so stopping a run yourself taught the
+    // bandit that the model and effort it had chosen were good ones.
+    if (entry.interruptRequested && status === 'succeeded') {
+      status = 'interrupted';
+      error = error ?? 'The run was stopped.';
+    }
+
     // The SDK reports API duration; wall-clock is what the operator experiences.
     usage.durationMs = Date.now() - startedAt;
 
