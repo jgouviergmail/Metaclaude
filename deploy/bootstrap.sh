@@ -272,12 +272,19 @@ set_env METACLAUDE_SITE "$SITE"
 # signs with its own CA and every device has to be taught to trust it.
 #
 # Detected rather than asked, because the answer is already in --site.
+HOST_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 || true)"
+
 if printf '%s' "$SITE" | grep -qE '^[0-9]+(\.[0-9]+){3}$|:'; then
   set_env METACLAUDE_TLS_MODE "internal"
   # Chrome refuses QUIC against a locally-signed certificate, so under
   # `internal` advertising h3 only buys a declined handshake and an open UDP
   # port.
   set_env METACLAUDE_PROTOCOLS "h1 h2"
+  # The site *is* the address, so there is no second one to keep alive. The
+  # alternate block stays on its inert, unresolvable default — it must not be
+  # `localhost`, which would collide with the site's own default.
+  set_env METACLAUDE_ALT_SITE "alt.metaclaude.invalid"
+  set_env METACLAUDE_SNI_DEFAULT "$SITE"
   info "TLS: internal (a bare address has no other option) — install the CA on each device"
 else
   [ -n "$TLS_EMAIL" ] || die "--site $SITE is a hostname, so ACME needs --email for expiry notices"
@@ -288,6 +295,20 @@ else
   set_env METACLAUDE_PROTOCOLS "h1 h2 h3"
   info "TLS: Let's Encrypt for $SITE — nothing to install on any device"
   info "     the name must already resolve to this server, and 80/443 must be reachable"
+
+  # Keep the address working too. Until the domain existed, the IP was the only
+  # way in; moving the certificate to the name without this turns every
+  # bookmark, every saved PWA and the emergency route into a handshake failure —
+  # which is exactly what happened, and it is not a trade the operator agreed to.
+  if [ -n "$HOST_IP" ]; then
+    set_env METACLAUDE_ALT_SITE "$HOST_IP"
+    set_env METACLAUDE_SNI_DEFAULT "$HOST_IP"
+    info "     https://$HOST_IP keeps working under the internal CA"
+  else
+    set_env METACLAUDE_ALT_SITE "alt.metaclaude.invalid"
+    set_env METACLAUDE_SNI_DEFAULT "$SITE"
+    warn "could not detect this host's IPv4; only $SITE will be reachable"
+  fi
 fi
 
 # Sized from this host rather than left at the conservative default. The default

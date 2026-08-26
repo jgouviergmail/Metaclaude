@@ -48,8 +48,13 @@
 	# Naming the site closes it: the emitted policy then matches `sni: ["", …]`,
 	# and the empty string is precisely the no-SNI case.
 	#
-	# Inert where a hostname is used, because browsers always send SNI for a name.
-	default_sni {$METACLAUDE_SITE:localhost}
+	# Its own variable rather than METACLAUDE_SITE, because the two answer
+	# different questions. METACLAUDE_SITE is the address the owner types; this
+	# is the address a client that sent no SNI must have dialled — and a client
+	# sends no SNI precisely when it dialled an IP. Once a domain is in play the
+	# two diverge: the site is the name, and the no-SNI client is on the address.
+	# bootstrap.sh sets this to the host's own IP in both cases.
+	default_sni {$METACLAUDE_SNI_DEFAULT:localhost}
 
 	# And which certificate to serve when the client sends an SNI that matches
 	# nothing. `default_sni` does not cover this: it applies only to an *empty*
@@ -66,7 +71,7 @@
 	# CI missed it for one reason: the smoke job set METACLAUDE_SITE=127.0.0.1,
 	# so the probe's SNI happened to equal the site name. The site name is now
 	# deliberately different there, which is what makes this line testable.
-	fallback_sni {$METACLAUDE_SITE:localhost}
+	fallback_sni {$METACLAUDE_SNI_DEFAULT:localhost}
 
 	# Deliberately absent: `trusted_proxies`. Caddy is the edge here — there is
 	# nothing in front of it — so it must not honour an X-Forwarded-For header a
@@ -85,13 +90,22 @@
 	}
 }
 
-{$METACLAUDE_SITE:localhost} {
-	# Mounted by compose from docker/tls/<METACLAUDE_TLS_MODE>.caddy.
-	# A snippet rather than `tls {$VAR}` because the ACME-on-IP mode needs a
-	# block — `profile shortlived` is a subdirective of `issuer acme` — and
-	# the Caddyfile has no conditionals.
-	import /etc/caddy/tls.caddy
-
+# Everything a site serves, minus its certificate. Two blocks import this: the
+# address the owner types, and an optional second one.
+#
+# Why a second address at all. A deployment starts life reachable at a bare IP,
+# under Caddy's own CA. The day a domain is pointed at it, switching
+# METACLAUDE_SITE to the name moves the certificate — and the IP that was the
+# only way in until that morning starts failing the handshake, because
+# fallback_sni now hands it a certificate for the name. Losing the address you
+# have been using as the price of gaining a name is a bad trade, and it is the
+# one an operator makes without being warned.
+#
+# So METACLAUDE_ALT_SITE keeps the old address working under the internal CA
+# while the name gets a publicly trusted certificate. It defaults to `localhost`,
+# which is inert: the block always parses, and an unset variable adds nothing
+# reachable from outside.
+(site) {
 	encode zstd gzip
 
 	header {
@@ -133,4 +147,20 @@
 		format json
 		level INFO
 	}
+}
+
+{$METACLAUDE_SITE:localhost} {
+	# Mounted by compose from docker/tls/<METACLAUDE_TLS_MODE>.caddy.
+	# A snippet rather than `tls {$VAR}` because the ACME-on-IP mode needs a
+	# block — `profile shortlived` is a subdirective of `issuer acme` — and
+	# the Caddyfile has no conditionals.
+	import /etc/caddy/tls.caddy
+	import site
+}
+
+{$METACLAUDE_ALT_SITE:alt.metaclaude.invalid} {
+	# Always the internal CA. This address exists precisely for the cases ACME
+	# cannot serve — a bare IP, or a name that no longer resolves here.
+	tls internal
+	import site
 }

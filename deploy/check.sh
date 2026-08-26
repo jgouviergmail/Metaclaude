@@ -367,6 +367,31 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Two site blocks never claim the same address"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Caddy refuses an entire Caddyfile that defines one address twice —
+# "ambiguous site definition" — so a collision between the two site blocks'
+# *defaults* is not a warning, it is a stack that does not start on a stock
+# .env. Caught exactly once, by adapting the file with everything unset.
+#
+# Static rather than adapting, because CI has no caddy binary. The property is
+# simple enough to assert directly: whatever the defaults are, they must differ.
+site_default() {
+  grep -oE "^\{\\\$${1}:[^}]+\} \{" "$REPO_ROOT/docker/Caddyfile" | head -1 | sed "s/^{\\\$${1}://; s/} {$//"
+}
+PRIMARY="$(site_default METACLAUDE_SITE)"
+ALTERNATE="$(site_default METACLAUDE_ALT_SITE)"
+if [ -z "$PRIMARY" ] || [ -z "$ALTERNATE" ]; then
+  bad "reading the site block defaults out of docker/Caddyfile" "the blocks moved; this check needs updating"
+elif [ "$PRIMARY" = "$ALTERNATE" ]; then
+  bad "both site blocks default to '$PRIMARY'" \
+      "Caddy refuses the whole file with 'ambiguous site definition' — nothing starts"
+else
+  ok "site defaults differ: '$PRIMARY' and '$ALTERNATE'"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "The smoke test deploys something a server would recognise"
 # ─────────────────────────────────────────────────────────────────────────────
 
