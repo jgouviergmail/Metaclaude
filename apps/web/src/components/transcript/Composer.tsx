@@ -17,33 +17,17 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   PERMISSION_MODE_INFO,
+  type ClaudeCatalogue,
   type EffortLevel,
   type PermissionMode,
 } from '@metaclaude/shared';
 import { Button, Tooltip } from '@/components/ui/primitives';
+import { effortOptions, modelOptions } from '@/lib/claude-catalogue';
 import { cn, isModifier } from '@/lib/utils';
 import { Menu, MenuItem } from '@/components/ui/Menu';
-
-/** Model choices offered in the picker. `default` defers to the learner. */
-const MODELS: Array<{ value: string; label: string; hint: string }> = [
-  { value: 'default', label: 'Auto', hint: 'Let Metaclaude choose from what it has learned' },
-  { value: 'opus', label: 'Opus', hint: 'Deepest reasoning, highest cost' },
-  { value: 'sonnet', label: 'Sonnet', hint: 'Balanced — the everyday choice' },
-  { value: 'haiku', label: 'Haiku', hint: 'Fastest and cheapest, for simple tasks' },
-  { value: 'opusplan', label: 'Opus plan', hint: 'Opus to plan, Sonnet to execute' },
-];
-
-const EFFORTS: Array<{ value: EffortLevel | null; label: string }> = [
-  { value: null, label: 'Auto' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'xhigh', label: 'Very high' },
-  { value: 'max', label: 'Maximum' },
-];
 
 const MODES: PermissionMode[] = ['plan', 'default', 'acceptEdits', 'auto', 'dontAsk'];
 
@@ -61,6 +45,7 @@ export function Composer({
   isRunning,
   disabled,
   allowBypass,
+  catalogue,
   placeholder = 'Ask Metaclaude to do something…',
 }: {
   value: ComposerValue;
@@ -70,6 +55,8 @@ export function Composer({
   isRunning: boolean;
   disabled?: boolean;
   allowBypass?: boolean;
+  /** What the CLI offers here. Absent until it answers, and after it fails. */
+  catalogue?: ClaudeCatalogue;
   placeholder?: string;
 }) {
   const [text, setText] = useState('');
@@ -106,8 +93,21 @@ export function Composer({
   };
 
   const modes = allowBypass ? [...MODES, 'bypassPermissions' as PermissionMode] : MODES;
-  const activeModel = MODELS.find((m) => m.value === value.model) ?? MODELS[0];
-  const activeEffort = EFFORTS.find((e) => e.value === value.effort) ?? EFFORTS[0];
+
+  // Built from what the CLI reports rather than from a list written when this
+  // component was. `catalogue` is optional throughout: a composer that cannot
+  // offer a model is a session nobody can start, so a CLI that could not be
+  // reached costs the extra detail and nothing else.
+  const models = useMemo(() => modelOptions(catalogue), [catalogue]);
+  const efforts = useMemo(() => effortOptions(catalogue, value.model), [catalogue, value.model]);
+
+  const activeModel =
+    models.find((m) => m.value === value.model) ??
+    // A model the catalogue has not enumerated is still a valid choice — an
+    // operator can name a dated id. Showing it is better than silently
+    // displaying someone else's label.
+    (value.model === 'default' ? models[0] : { value: value.model, label: value.model, hint: '' });
+  const activeEffort = efforts.find((e) => e.value === value.effort) ?? efforts[0];
   const activeMode = PERMISSION_MODE_INFO[value.permissionMode];
 
   return (
@@ -150,7 +150,7 @@ export function Composer({
                 </button>
               }
             >
-              {MODELS.map((model) => (
+              {models.map((model) => (
                 <MenuItem
                   key={model.value}
                   selected={model.value === value.model}
@@ -175,7 +175,7 @@ export function Composer({
                 </button>
               }
             >
-              {EFFORTS.map((effort) => (
+              {efforts.map((effort) => (
                 <MenuItem
                   key={effort.label}
                   selected={effort.value === value.effort}

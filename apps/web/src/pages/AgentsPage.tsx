@@ -16,6 +16,7 @@ import {
   Filter,
   Plug,
   Plus,
+  Wand2,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -25,6 +26,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { AgentDefinitionRecord, McpServerRecord, SkillDefinition } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel';
 import { CheckboxField, Switch } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -41,7 +43,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
 
-type TabKey = 'skills' | 'agents' | 'mcp';
+type TabKey = 'skills' | 'agents' | 'mcp' | 'claude';
 
 const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
 const AGENT_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -138,6 +140,10 @@ export function AgentsPage() {
                 { value: 'skills', label: 'Skills', icon: <Sparkles className="size-4" /> },
                 { value: 'agents', label: 'Subagents', icon: <Bot className="size-4" /> },
                 { value: 'mcp', label: 'MCP servers', icon: <Plug className="size-4" /> },
+                // What the CLI itself offers, as opposed to what Metaclaude
+                // defines. Same conceptual space, so it belongs beside them
+                // rather than on a page of its own.
+                { value: 'claude', label: 'From Claude', icon: <Wand2 className="size-4" /> },
               ] as const
             ).map((entry) => (
               <Tabs.Trigger
@@ -166,6 +172,10 @@ export function AgentsPage() {
 
             <Tabs.Content value="mcp" className="focus-visible:outline-none">
               <McpTab workspaceId={workspaceId} onChanged={() => invalidate('mcp-servers')} />
+            </Tabs.Content>
+
+            <Tabs.Content value="claude" className="focus-visible:outline-none">
+              <ClaudeTab workspaceId={workspaceId} />
             </Tabs.Content>
           </div>
         </Tabs.Root>
@@ -1396,3 +1406,54 @@ function messageFor(error: unknown, fallback: string): string {
 }
 
 export { AgentsPage as default };
+
+/* -------------------------------------------------------------------------- */
+/* From Claude                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What the CLI reports, as opposed to what Metaclaude defines.
+ *
+ * Read on demand rather than with the rest of the page: it spawns a CLI
+ * subprocess, so paying for it when the operator is on the Skills tab would tax
+ * every visit for a panel most of them are not looking at.
+ */
+function ClaudeTab({ workspaceId }: { workspaceId: string | undefined }) {
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const query = useQuery({
+    queryKey: ['claude-catalogue', workspaceId ?? null],
+    queryFn: () => api.claudeCatalogue(workspaceId ? { workspaceId } : {}),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+
+  const refresh = async (): Promise<void> => {
+    setRefreshing(true);
+    try {
+      // `refresh` skips the server's cache, which is the whole point: the
+      // operator has just changed an MCP server's command and wants to know
+      // whether it worked, not what it looked like a minute ago.
+      const fresh = await api.claudeCatalogue({
+        ...(workspaceId ? { workspaceId } : {}),
+        refresh: true,
+      });
+      queryClient.setQueryData(['claude-catalogue', workspaceId ?? null], fresh);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : 'Could not read what Claude offers.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  return (
+    <ClaudeCataloguePanel
+      catalogue={query.data}
+      // `isLoading` is first-fetch only, so a refresh replaces the numbers
+      // without blanking the panel the operator is reading.
+      loading={query.isLoading || refreshing}
+      onRefresh={() => void refresh()}
+    />
+  );
+}

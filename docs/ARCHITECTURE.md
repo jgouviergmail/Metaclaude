@@ -115,6 +115,39 @@ A crash leaves runs marked `running` and sessions marked busy. Both repositories
 expose `recoverOrphaned()`, called once at boot, which marks them interrupted.
 History stays truthful and the UI does not show a phantom live run.
 
+### What Claude offers, asked rather than assumed
+Metaclaude used to describe Claude's capabilities from lists written when the
+pages were built: three model names and their prices in the composer, and no way
+at all to see whether a configured MCP server had actually connected. A mistyped
+server command was indistinguishable from an agent choosing not to use its tools.
+
+`AgentSupervisor.catalogue(workspacePath)` asks the CLI instead — models with
+their effort levels, slash commands, subagents, MCP runtime status with the
+error text, and which account is signed in. It is asked *in the workspace
+directory*, because that is what the answer depends on: skills, subagents and
+MCP servers are all discovered relative to `cwd`.
+
+Each question is asked independently and a failure costs only its own answer; an
+older CLI supports some of these control requests and not others, and losing the
+whole catalogue to one missing method is the wrong trade. What failed is
+reported by name in `unavailable`, because an empty list means something
+different depending on whether the question failed or the answer was genuinely
+empty — and only one of those is worth telling the operator about.
+
+Reading it spawns a subprocess, so `services/claude-catalogue.ts` caches it for
+a minute per workspace and, more importantly, collapses concurrent callers onto
+one read: without that, three panels mounting together are three CLI processes
+for one answer. `refresh=true` skips the cache, for the operator who has just
+fixed a server's command and wants to know whether it worked. The catalogue is
+also on the client's never-poll list — on the default 30-second interval every
+open tab would start a CLI twice a minute.
+
+The composer's pickers are built from it and degrade to a static list, because
+a composer that cannot offer a model is a session nobody can start. The effort
+picker now offers only the levels the chosen model actually supports; it used to
+offer all six for every model, so choosing one the model does not take was a run
+that silently ignored the setting.
+
 ### What the CLI says about itself
 The SDK's message union has around forty members. The supervisor translates
 five of them into transcript events; the rest used to reach `default: return {}`

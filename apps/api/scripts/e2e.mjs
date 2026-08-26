@@ -400,6 +400,46 @@ results.section('rewind');
   }
 }
 
+/**
+ * Claude's own catalogue.
+ *
+ * Reading it spawns a CLI session, so the substance needs an agent. The shape
+ * does not: a caller naming a workspace that does not exist, and the cache
+ * serving a second request without a second subprocess, are both checkable
+ * against the real server either way.
+ */
+results.section("claude's catalogue");
+{
+  results.check(
+    'an unknown workspace is a 404, not an empty catalogue',
+    (await api.call('/api/claude/catalogue?workspaceId=ws_missing')).status === 404,
+  );
+
+  if (AGENT_CHECKS_ENABLED) {
+    const first = await api.call(`/api/claude/catalogue?workspaceId=${workspaceId}`);
+    results.check('the catalogue reads', first.status === 200, first.text.slice(0, 200));
+    results.check('it reports models', Array.isArray(first.body.models));
+    results.check(
+      'it says what it could not answer',
+      Array.isArray(first.body.unavailable),
+      JSON.stringify(first.body.unavailable),
+    );
+
+    const second = await api.call(`/api/claude/catalogue?workspaceId=${workspaceId}`);
+    results.check(
+      'a second read is served from the cache',
+      second.body.fetchedAt === first.body.fetchedAt,
+    );
+    results.check(
+      'and refresh=true bypasses it',
+      (await api.call(`/api/claude/catalogue?workspaceId=${workspaceId}&refresh=true`)).body
+        .fetchedAt !== first.body.fetchedAt,
+    );
+  } else {
+    results.skip("reading Claude's catalogue", 'needs a live CLI');
+  }
+}
+
 results.section('automations');
 {
   const created = await api.call('/api/automations', {

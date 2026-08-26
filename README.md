@@ -166,6 +166,14 @@ CLI's own dry run, not an estimate — before anything is written.
 Skills (written to `.claude/skills/` before each run so the CLI discovers them),
 custom subagents, and MCP servers with credentials held in an AES-256-GCM vault.
 
+### What Claude itself offers
+A **From Claude** tab shows what the CLI reports for a workspace rather than
+what Metaclaude assumes: the models this subscription grants and which of them
+take an effort level, the slash commands and subagents available here, which
+account is signed in, and — the part nothing else could tell you — whether each
+configured MCP server actually connected, with the error text when it did not.
+The composer's model and effort pickers are built from the same answer.
+
 ### Plugins
 Full support for **Agent Plugins 1.0.0**, the vendor-neutral package format —
 one directory holding a `plugin.json`, a `skills/` tree and an `mcp.json`, which

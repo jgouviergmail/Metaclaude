@@ -12,13 +12,19 @@ import './styles/index.css';
  * Query keys that must never refetch on a timer.
  *
  * Everything else on this screen is a view of server state, and a view should
- * catch up on its own. A file is not: its query result seeds an editor the
- * operator may be typing into, and a background refetch that replaces the
- * buffer would delete their work with no undo and no warning. The search
- * queries are keyed by what is being typed, so polling them re-runs a query the
- * user has already moved past.
+ * catch up on its own. Three kinds of query are not.
+ *
+ * A file's query result seeds an editor the operator may be typing into, and a
+ * background refetch that replaced the buffer would delete their work with no
+ * undo and no warning. The search queries are keyed by what is being typed, so
+ * polling them re-runs a query the user has already moved past.
+ *
+ * The Claude catalogue is different again: reading it spawns a CLI subprocess.
+ * On the default interval every open tab would start one twice a minute, for an
+ * answer that changes when the operator changes it — which is what the explicit
+ * Refresh button is for.
  */
-const NEVER_POLL = new Set(['file', 'file-search', 'memory-search']);
+const NEVER_POLL = new Set(['file', 'file-search', 'memory-search', 'claude-catalogue']);
 
 const queryClient = new QueryClient({
   defaultOptions: {

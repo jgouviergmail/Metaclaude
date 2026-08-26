@@ -819,6 +819,99 @@ export const ClaudeCredentialStatus = z.object({
 });
 export type ClaudeCredentialStatus = z.infer<typeof ClaudeCredentialStatus>;
 
+/* -------------------------------------------------------------------------- */
+/* What Claude itself offers                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The catalogue the CLI reports for a workspace.
+ *
+ * Metaclaude used to describe Claude's capabilities from a hard-coded list
+ * written when the page was built — three model names and their prices. The CLI
+ * knows the real answer, and it changes without a Metaclaude release: which
+ * models the subscription grants, which of them take an effort level, which
+ * slash commands and subagents exist here, and whether each MCP server actually
+ * connected.
+ *
+ * Everything is optional-with-a-default rather than required, because an older
+ * CLI answers some of these and not others, and one missing control method must
+ * not cost the operator the whole catalogue.
+ */
+export const ClaudeModelInfo = z.object({
+  value: z.string(),
+  displayName: z.string(),
+  description: z.string().default(''),
+  /** Present when the alias resolves to a dated model id. */
+  resolvedModel: z.string().nullable().default(null),
+  supportsEffort: z.boolean().default(false),
+  supportedEffortLevels: z.array(EffortLevel).default([]),
+  supportsAdaptiveThinking: z.boolean().default(false),
+});
+export type ClaudeModelInfo = z.infer<typeof ClaudeModelInfo>;
+
+export const ClaudeCommandInfo = z.object({
+  name: z.string(),
+  description: z.string().default(''),
+  argumentHint: z.string().default(''),
+  aliases: z.array(z.string()).default([]),
+});
+export type ClaudeCommandInfo = z.infer<typeof ClaudeCommandInfo>;
+
+export const ClaudeAgentInfo = z.object({
+  name: z.string(),
+  description: z.string().default(''),
+  model: z.string().nullable().default(null),
+});
+export type ClaudeAgentInfo = z.infer<typeof ClaudeAgentInfo>;
+
+export const ClaudeMcpTool = z.object({
+  name: z.string(),
+  description: z.string().default(''),
+  /** The server's own advertised safety hints. Displayed, never enforced. */
+  readOnly: z.boolean().nullable().default(null),
+  destructive: z.boolean().nullable().default(null),
+});
+export type ClaudeMcpTool = z.infer<typeof ClaudeMcpTool>;
+
+export const ClaudeMcpServerStatus = z.object({
+  name: z.string(),
+  status: z.enum(['connected', 'failed', 'needs-auth', 'pending', 'disabled', 'unknown']),
+  error: z.string().nullable().default(null),
+  serverName: z.string().nullable().default(null),
+  serverVersion: z.string().nullable().default(null),
+  scope: z.string().nullable().default(null),
+  tools: z.array(ClaudeMcpTool).default([]),
+});
+export type ClaudeMcpServerStatus = z.infer<typeof ClaudeMcpServerStatus>;
+
+export const ClaudeAccountInfo = z.object({
+  /** Never shown in full; the API returns only what the operator already knows. */
+  email: z.string().nullable().default(null),
+  organization: z.string().nullable().default(null),
+  subscriptionType: z.string().nullable().default(null),
+  apiProvider: z.string().nullable().default(null),
+});
+export type ClaudeAccountInfo = z.infer<typeof ClaudeAccountInfo>;
+
+export const ClaudeCatalogue = z.object({
+  models: z.array(ClaudeModelInfo).default([]),
+  commands: z.array(ClaudeCommandInfo).default([]),
+  agents: z.array(ClaudeAgentInfo).default([]),
+  mcpServers: z.array(ClaudeMcpServerStatus).default([]),
+  account: ClaudeAccountInfo.nullable().default(null),
+  /**
+   * What the CLI could not answer, by name.
+   *
+   * Reported rather than swallowed: an empty model list means something very
+   * different depending on whether the question failed or the answer was empty,
+   * and only one of those is worth telling the operator about.
+   */
+  unavailable: z.array(z.string()).default([]),
+  /** When this was read from the CLI. The UI says how stale it is. */
+  fetchedAt: Millis,
+});
+export type ClaudeCatalogue = z.infer<typeof ClaudeCatalogue>;
+
 export const AuditEntry = z.object({
   id: z.string(),
   at: Millis,

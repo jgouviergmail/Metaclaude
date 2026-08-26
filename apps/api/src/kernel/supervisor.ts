@@ -22,6 +22,7 @@ import {
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
+  ClaudeCatalogue,
   RewindResult,
   RunPolicy,
   RunUsage,
@@ -562,81 +563,217 @@ export class AgentSupervisor {
     workspacePath: string;
     dryRun: boolean;
   }): Promise<RewindResult> {
-    const stream = new PromptStream();
-    // This session's own kill switch.
-    //
-    // Closing the input asks the subprocess to exit; it does not compel it, and
-    // the first version of this awaited the message stream ending as proof. It
-    // hung — a CLI that keeps its stream open past the last input turns "undo
-    // my run" into a request that never answers. Aborting is teardown that does
-    // not depend on the CLI agreeing to it.
-    const controller = new AbortController();
-    const refuse = (message: string): RewindResult => ({
-      canRewind: false,
-      error: message,
-      filesChanged: [],
-      insertions: 0,
-      deletions: 0,
-      skippedLinks: 0,
-      applied: false,
-    });
-
     try {
-      const handle = (this.deps.query ?? sdkQuery)({
-        prompt: stream,
-        options: {
+      return await this.probe(
+        {
           cwd: params.workspacePath,
           resume: params.claudeSessionId,
           enableFileCheckpointing: true,
-          abortController: controller,
-          env: this.deps.env,
-          ...(this.deps.claudeBinPath ? { pathToClaudeCodeExecutable: this.deps.claudeBinPath } : {}),
         },
-      });
-
-      // Drained rather than ignored. The control channel is pumped by consuming
-      // the message stream, so a rewind issued against an un-iterated handle
-      // waits on a reply that is sitting unread. Nothing here is a transcript
-      // event — this session exists to carry one request — so the messages are
-      // discarded, and the loop ends on the close-then-abort below.
-      const drained = (async () => {
-        try {
-          for await (const _ of handle) void _;
-        } catch (error) {
-          this.deps.log('debug', 'rewind session ended', {
-            message: (error as Error).message,
-          });
-        }
-      })();
-
-      try {
-        const result = await handle.rewindFiles(params.rewindPoint, { dryRun: params.dryRun });
-        return {
-          canRewind: result.canRewind,
-          error: result.error ?? null,
-          filesChanged: result.filesChanged ?? [],
-          insertions: result.insertions ?? 0,
-          deletions: result.deletions ?? 0,
-          // Only a real rewind can report this; the SDK never sets it on a
-          // preview, and inventing a zero there would read as "nothing was
-          // skipped" for a question that was not asked.
-          skippedLinks: params.dryRun ? 0 : (result.skippedLinks ?? 0),
-          applied: !params.dryRun && result.canRewind,
-        };
-      } finally {
-        // Close first so a CLI that exits cleanly does; abort so one that does
-        // not still goes. Awaiting the drain after both keeps the subprocess
-        // from outliving the request that spawned it.
-        stream.close();
-        controller.abort();
-        await drained;
-      }
+        async (handle) => {
+          const result = await handle.rewindFiles(params.rewindPoint, { dryRun: params.dryRun });
+          return {
+            canRewind: result.canRewind,
+            error: result.error ?? null,
+            filesChanged: result.filesChanged ?? [],
+            insertions: result.insertions ?? 0,
+            deletions: result.deletions ?? 0,
+            // Only a real rewind can report this; the SDK never sets it on a
+            // preview, and inventing a zero there would read as "nothing was
+            // skipped" for a question that was not asked.
+            skippedLinks: params.dryRun ? 0 : (result.skippedLinks ?? 0),
+            applied: !params.dryRun && result.canRewind,
+          };
+        },
+      );
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
       this.deps.log('warn', 'rewind failed', { message });
-      return refuse(message);
+      return {
+        canRewind: false,
+        error: message,
+        filesChanged: [],
+        insertions: 0,
+        deletions: 0,
+        skippedLinks: 0,
+        applied: false,
+      };
     }
   }
+
+  /**
+   * What this CLI offers in this workspace.
+   *
+   * Metaclaude used to describe Claude's capabilities from a list written when
+   * the page was built — three model names and their prices. The CLI knows the
+   * real answer, and it changes without a Metaclaude release: which models the
+   * subscription grants and which take an effort level, which slash commands
+   * and subagents exist here, and — the one nothing else could tell an operator
+   * — whether each configured MCP server actually connected.
+   *
+   * Asked in the workspace directory, because that is what the answer depends
+   * on: skills, subagents and MCP servers are all discovered relative to `cwd`.
+   *
+   * Every question is asked independently and a failure costs only its own
+   * answer. An older CLI supports some of these control requests and not
+   * others, and losing the whole catalogue to one missing method is the wrong
+   * trade. What failed is reported by name rather than swallowed, because an
+   * empty list means something different depending on which it was.
+   */
+  async catalogue(workspacePath: string): Promise<ClaudeCatalogue> {
+    const unavailable: string[] = [];
+    const empty: ClaudeCatalogue = {
+      models: [],
+      commands: [],
+      agents: [],
+      mcpServers: [],
+      account: null,
+      unavailable,
+      fetchedAt: Date.now(),
+    };
+
+    /** Ask one question; on failure record its name and carry on. */
+    const ask = async <T>(name: string, read: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await read();
+      } catch (error) {
+        unavailable.push(name);
+        this.deps.log('debug', `the CLI could not answer "${name}"`, {
+          message: (error as Error).message,
+        });
+        return null;
+      }
+    };
+
+    try {
+      return await this.probe({ cwd: workspacePath }, async (handle) => {
+        // Concurrent: these are independent control requests on one channel,
+        // and asking in series would multiply the round trips by five for no
+        // benefit.
+        const [models, commands, agents, mcpServers, account] = await Promise.all([
+          ask('models', () => handle.supportedModels()),
+          ask('commands', () => handle.supportedCommands()),
+          ask('agents', () => handle.supportedAgents()),
+          ask('mcpServers', () => handle.mcpServerStatus()),
+          ask('account', () => handle.accountInfo()),
+        ]);
+
+        return {
+          models: (models ?? []).map((model) => ({
+            value: model.value,
+            displayName: model.displayName,
+            description: model.description ?? '',
+            resolvedModel: model.resolvedModel ?? null,
+            supportsEffort: model.supportsEffort ?? false,
+            supportedEffortLevels: (model.supportedEffortLevels ?? []) as ClaudeCatalogue['models'][number]['supportedEffortLevels'],
+            supportsAdaptiveThinking: model.supportsAdaptiveThinking ?? false,
+          })),
+          commands: (commands ?? []).map((command) => ({
+            name: command.name,
+            description: command.description ?? '',
+            argumentHint: command.argumentHint ?? '',
+            aliases: command.aliases ?? [],
+          })),
+          agents: (agents ?? []).map((agent) => ({
+            name: agent.name,
+            description: agent.description ?? '',
+            model: agent.model ?? null,
+          })),
+          mcpServers: (mcpServers ?? []).map((server) => ({
+            name: server.name,
+            status: server.status ?? 'unknown',
+            error: server.error ?? null,
+            serverName: server.serverInfo?.name ?? null,
+            serverVersion: server.serverInfo?.version ?? null,
+            scope: server.scope ?? null,
+            tools: (server.tools ?? []).map((tool) => ({
+              name: tool.name,
+              description: tool.description ?? '',
+              readOnly: tool.annotations?.readOnly ?? null,
+              destructive: tool.annotations?.destructive ?? null,
+            })),
+          })),
+          // Narrowed on purpose. The account also carries the token source and
+          // the API-key source, which describe how the credential was obtained
+          // rather than which account it is — nothing an operator can act on,
+          // and both are closer to the secret than to a fact about it.
+          account: account
+            ? {
+                email: account.email ?? null,
+                organization: account.organization ?? null,
+                subscriptionType: account.subscriptionType ?? null,
+                apiProvider: account.apiProvider ?? null,
+              }
+            : null,
+          unavailable,
+          fetchedAt: Date.now(),
+        };
+      });
+    } catch (caught) {
+      // The session itself could not be opened — no CLI on PATH, no
+      // credentials. Reached from a page load, so an empty catalogue is a
+      // missing panel and a rejection is a broken screen.
+      this.deps.log('warn', 'could not read the CLI catalogue', {
+        message: (caught as Error).message,
+      });
+      unavailable.push('session');
+      return empty;
+    }
+  }
+
+  /**
+   * Open a short-lived session, ask it something, and make sure it goes away.
+   *
+   * Shared by `rewind` and `catalogue`, which have the same awkward shape: the
+   * SDK's control methods live on a `Query` handle, every one of them is
+   * documented "only supported when streaming input is used", and both of these
+   * questions are asked when no run is in flight.
+   *
+   * Two details are not obvious and both are load-bearing. The message stream
+   * has to be *drained*, because that is what pumps the control channel — a
+   * request issued against an un-iterated handle waits forever on a reply
+   * nobody is reading. And the session has to be aborted, not merely closed:
+   * closing the input asks the subprocess to exit, and the first version of
+   * this awaited the message stream ending as proof it had. It hung.
+   */
+  private async probe<T>(
+    options: Pick<Options, 'cwd' | 'resume' | 'enableFileCheckpointing'>,
+    ask: (handle: Query) => Promise<T>,
+  ): Promise<T> {
+    const stream = new PromptStream();
+    const controller = new AbortController();
+
+    const handle = (this.deps.query ?? sdkQuery)({
+      prompt: stream,
+      options: {
+        ...options,
+        abortController: controller,
+        env: this.deps.env,
+        ...(this.deps.claudeBinPath ? { pathToClaudeCodeExecutable: this.deps.claudeBinPath } : {}),
+      },
+    });
+
+    const drained = (async () => {
+      try {
+        for await (const message of handle) void message;
+      } catch (error) {
+        // Ends on the abort below; that is the expected way out, not a fault.
+        this.deps.log('debug', 'probe session ended', { message: (error as Error).message });
+      }
+    })();
+
+    try {
+      return await ask(handle);
+    } finally {
+      // Close first so a CLI that exits cleanly does; abort so one that does
+      // not still goes. Awaiting the drain after both keeps the subprocess from
+      // outliving the request that spawned it.
+      stream.close();
+      controller.abort();
+      await drained;
+    }
+  }
+
 }
 
 /* -------------------------------------------------------------------------- */

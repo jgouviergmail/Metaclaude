@@ -80,6 +80,22 @@ export function SessionPage() {
     enabled: Boolean(workspaceId),
   });
 
+  /**
+   * What the CLI offers in this workspace.
+   *
+   * Feeds the composer's model and effort pickers, which used to be a list
+   * written when the component was. Failure is not retried and not surfaced:
+   * the pickers fall back to a static list, so the cost of the CLI being
+   * unreachable is the extra detail, never a composer nobody can use.
+   */
+  const catalogueQuery = useQuery({
+    queryKey: ['claude-catalogue', workspaceId],
+    queryFn: () => api.claudeCatalogue({ workspaceId }),
+    enabled: Boolean(workspaceId),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+
   const sessionQuery = useQuery({
     queryKey: ['session', sessionId],
     queryFn: () => api.session(sessionId),
@@ -340,6 +356,7 @@ export function SessionPage() {
             value={composer}
             onChange={setComposer}
             onSubmit={(prompt) => submitRun.mutate(prompt)}
+            {...(catalogueQuery.data ? { catalogue: catalogueQuery.data } : {})}
             onInterrupt={() => {
               socket.interrupt(sessionId);
               void api.interrupt(sessionId).catch(() => undefined);

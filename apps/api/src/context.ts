@@ -29,6 +29,7 @@ import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
+import { CatalogueCache } from './services/claude-catalogue.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
@@ -48,6 +49,7 @@ export interface AppContext {
   vault: Vault;
   claudeCredentials: ClaudeCredentials;
   plugins: PluginRegistry;
+  claudeCatalogue: CatalogueCache;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -214,6 +216,12 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     log: kernelLog,
   });
 
+  // What the CLI itself offers, per workspace. Behind a short-lived cache
+  // because each read spawns a subprocess and a dashboard's panels ask together.
+  const claudeCatalogue = new CatalogueCache({
+    read: (workspacePath) => supervisor.catalogue(workspacePath),
+  });
+
   // Declared before the kernel because the kernel's completion hook feeds it.
   let schedulerRef: Scheduler | null = null;
 
@@ -268,6 +276,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     vault,
     claudeCredentials,
     plugins,
+    claudeCatalogue,
     workspaceRepo,
     sessionRepo,
     runRepo,

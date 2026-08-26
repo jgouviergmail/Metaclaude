@@ -1,0 +1,131 @@
+/**
+ * Turning the CLI's catalogue into the composer's pickers.
+ *
+ * The model list was hard-coded in the component — three names and their prices,
+ * written when the page was built. The CLI knows which models this subscription
+ * actually grants and which of them take an effort level, and that changes
+ * without a Metaclaude release.
+ *
+ * The pickers are the last thing that may break, though: a composer that cannot
+ * offer a model is a session nobody can start. So the properties worth pinning
+ * are the degradations — no catalogue, an empty catalogue, a model the CLI has
+ * never heard of because the operator typed it.
+ */
+
+import { describe, expect, it } from 'vitest';
+import type { ClaudeCatalogue } from '@metaclaude/shared';
+import { effortOptions, modelOptions } from './claude-catalogue';
+
+const catalogue = (models: ClaudeCatalogue['models']): ClaudeCatalogue => ({
+  models,
+  commands: [],
+  agents: [],
+  mcpServers: [],
+  account: null,
+  unavailable: [],
+  fetchedAt: 0,
+});
+
+const model = (over: Partial<ClaudeCatalogue['models'][number]>): ClaudeCatalogue['models'][number] => ({
+  value: 'sonnet',
+  displayName: 'Sonnet',
+  description: 'Balanced',
+  resolvedModel: null,
+  supportsEffort: false,
+  supportedEffortLevels: [],
+  supportsAdaptiveThinking: false,
+  ...over,
+});
+
+describe('modelOptions', () => {
+  it('falls back to a usable list when there is no catalogue', () => {
+    // The composer must never be unusable because a subprocess could not be
+    // spawned. This is the offline and no-CLI case.
+    const options = modelOptions(undefined);
+
+    expect(options.length).toBeGreaterThan(1);
+    expect(options.map((option) => option.value)).toContain('sonnet');
+  });
+
+  it('falls back when the CLI answered with nothing', () => {
+    // An empty catalogue and a missing one are the same to the operator: they
+    // still need to pick a model.
+    expect(modelOptions(catalogue([])).length).toBeGreaterThan(1);
+  });
+
+  it('always offers Auto first', () => {
+    // `default` is Metaclaude's own choice — the bandit picks from what it has
+    // learned — so the CLI does not know about it and never will.
+    const options = modelOptions(catalogue([model({ value: 'opus', displayName: 'Opus' })]));
+
+    expect(options[0]?.value).toBe('default');
+    expect(options[0]?.label).toBe('Auto');
+  });
+
+  it('uses the CLI’s own names and descriptions', () => {
+    const options = modelOptions(
+      catalogue([model({ value: 'opus', displayName: 'Opus 5', description: 'Deepest reasoning' })]),
+    );
+
+    expect(options[1]).toMatchObject({ value: 'opus', label: 'Opus 5', hint: 'Deepest reasoning' });
+  });
+
+  it('never offers the same model twice', () => {
+    // `default` is in the fallback list too; a CLI that also reports it would
+    // otherwise produce two entries that look identical and behave the same.
+    const options = modelOptions(catalogue([model({ value: 'default', displayName: 'Default' })]));
+
+    expect(options.filter((option) => option.value === 'default')).toHaveLength(1);
+  });
+});
+
+describe('effortOptions', () => {
+  it('offers only what the chosen model supports', () => {
+    // The picker used to offer all six levels for every model, so choosing one
+    // the model does not take was a run that silently ignored the setting.
+    const options = effortOptions(
+      catalogue([model({ value: 'opus', supportsEffort: true, supportedEffortLevels: ['low', 'high'] })]),
+      'opus',
+    );
+
+    expect(options.map((option) => option.value)).toEqual([null, 'low', 'high']);
+  });
+
+  it('offers only Auto for a model that takes no effort level', () => {
+    const options = effortOptions(
+      catalogue([model({ value: 'haiku', supportsEffort: false, supportedEffortLevels: [] })]),
+      'haiku',
+    );
+
+    expect(options.map((option) => option.value)).toEqual([null]);
+  });
+
+  it('offers everything when the model is unknown to the CLI', () => {
+    // An operator can type a model id the CLI has not enumerated. Narrowing the
+    // effort list on a guess would remove a choice that may well be valid.
+    const options = effortOptions(catalogue([model({ value: 'opus' })]), 'some-dated-model-id');
+
+    expect(options.length).toBeGreaterThan(3);
+  });
+
+  it('offers everything when there is no catalogue at all', () => {
+    expect(effortOptions(undefined, 'opus').length).toBeGreaterThan(3);
+  });
+
+  it('offers everything under Auto, because the model is not yet decided', () => {
+    // Under `default` the learner picks the model at submit time, so no effort
+    // level can be ruled out here.
+    const options = effortOptions(
+      catalogue([model({ value: 'opus', supportsEffort: true, supportedEffortLevels: ['low'] })]),
+      'default',
+    );
+
+    expect(options.length).toBeGreaterThan(3);
+  });
+
+  it('always lets the operator defer', () => {
+    for (const value of ['opus', 'default', 'unknown']) {
+      expect(effortOptions(undefined, value)[0]?.value).toBeNull();
+    }
+  });
+});

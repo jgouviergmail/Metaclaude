@@ -26,6 +26,7 @@ import {
   type MemoryKind,
   type MemorySearchResult,
   type PolicyArm,
+  type ClaudeCatalogue,
   type RewindResult,
   type Run,
   type Session,
@@ -270,6 +271,15 @@ export const api = {
 
   rateRun: (id: string, rating: number) =>
     request<{ run: Run }>(`/api/runs/${id}/rate`, { method: 'POST', body: { rating } }),
+
+  /**
+   * What the CLI itself offers here: models, commands, subagents, MCP status.
+   *
+   * `refresh` skips the server's cache — for the operator who has just fixed an
+   * MCP server's command and wants to know whether it worked.
+   */
+  claudeCatalogue: (params: { workspaceId?: string; refresh?: boolean } = {}) =>
+    request<ClaudeCatalogue>(`/api/claude/catalogue${qs(params)}`),
 
   /** Preview (`dryRun`) or perform the restore of a run's file changes. */
   rewindRun: (id: string, dryRun: boolean) =>

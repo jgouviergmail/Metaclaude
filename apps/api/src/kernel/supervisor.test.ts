@@ -101,6 +101,13 @@ interface FakeQuery {
   rewindResult: Record<string, unknown>;
   /** True once the supervisor tore this session down. */
   torndown: boolean;
+  /** Catalogue answers. Trailing underscore: `models` is already the setModel log. */
+  models_: Array<Record<string, unknown>>;
+  commands_: Array<Record<string, unknown>>;
+  agents_: Array<Record<string, unknown>>;
+  mcp_: Array<Record<string, unknown>>;
+  /** Make `supportedCommands` throw, the way an older CLI would. */
+  failCommands: boolean;
   /** Let a test decide when the run finishes. */
   finish: (result?: Record<string, unknown>) => void;
   emit: (message: Record<string, unknown>) => void;
@@ -123,6 +130,11 @@ function fakeQuery() {
     rewinds: [],
     rewindResult: { canRewind: true, filesChanged: ['src/a.ts'], insertions: 3, deletions: 7 },
     torndown: false,
+    models_: [{ value: 'sonnet', displayName: 'Sonnet', description: 'Balanced' }],
+    commands_: [{ name: 'review', description: 'Review the diff', argumentHint: '[path]' }],
+    agents_: [{ name: 'explorer', description: 'Reads widely' }],
+    mcp_: [],
+    failCommands: false,
     finish: () => {},
     emit: () => {},
   };
@@ -216,6 +228,14 @@ function fakeQuery() {
         control.rewinds.push({ userMessageId, dryRun: options?.dryRun });
         return control.rewindResult;
       },
+      supportedModels: async () => control.models_,
+      supportedCommands: async () => {
+        if (control.failCommands) throw new Error('unsupported control request');
+        return control.commands_;
+      },
+      supportedAgents: async () => control.agents_,
+      mcpServerStatus: async () => control.mcp_,
+      accountInfo: async () => ({ subscriptionType: 'max', organization: 'Personal' }),
     });
   };
 
@@ -735,5 +755,130 @@ describe('the transcript explains what the CLI was doing', () => {
     await run;
 
     expect(notes(callbacks)).toHaveLength(1);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* What Claude itself offers                                                   */
+/* -------------------------------------------------------------------------- */
+
+describe('reading the CLI’s own catalogue', () => {
+  const WORKSPACE = '/var/lib/metaclaude/workspaces/test';
+
+  it('asks in the workspace, because the answer is per-directory', async () => {
+    // Skills, subagents and MCP servers are discovered relative to `cwd`.
+    // Asking from anywhere else answers a different question.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.catalogue(WORKSPACE);
+
+    expect(control.opened[0]).toMatchObject({ cwd: WORKSPACE });
+  });
+
+  it('returns the models with their effort levels', async () => {
+    // The web app had three model names and their prices hard-coded, written
+    // when the page was built. Which models a subscription grants, and which
+    // take an effort level, changes without a Metaclaude release.
+    const { query, control } = fakeQuery();
+    control.models_ = [
+      {
+        value: 'opus',
+        displayName: 'Opus',
+        description: 'Deepest reasoning',
+        resolvedModel: 'claude-opus-5',
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'high'],
+      },
+    ];
+    const supervisor = makeSupervisor(query);
+
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+
+    expect(catalogue.models).toHaveLength(1);
+    expect(catalogue.models[0]?.supportedEffortLevels).toEqual(['low', 'high']);
+    expect(catalogue.models[0]?.resolvedModel).toBe('claude-opus-5');
+  });
+
+  it('reports MCP servers with their runtime status and error', async () => {
+    // Metaclaude could configure an MCP server and never say whether it
+    // actually connected — so a mistyped command looked like a server the
+    // agent was ignoring.
+    const { query, control } = fakeQuery();
+    control.mcp_ = [
+      { name: 'github', status: 'failed', error: 'spawn npx ENOENT', tools: [] },
+      {
+        name: 'fs',
+        status: 'connected',
+        serverInfo: { name: 'filesystem', version: '1.2.0' },
+        tools: [{ name: 'read', description: 'Read a file', annotations: { readOnly: true } }],
+      },
+    ];
+    const supervisor = makeSupervisor(query);
+
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+
+    expect(catalogue.mcpServers[0]).toMatchObject({ name: 'github', status: 'failed' });
+    expect(catalogue.mcpServers[0]?.error).toBe('spawn npx ENOENT');
+    expect(catalogue.mcpServers[1]?.serverVersion).toBe('1.2.0');
+    expect(catalogue.mcpServers[1]?.tools[0]?.readOnly).toBe(true);
+  });
+
+  it('keeps what it could read when one question fails', async () => {
+    // An older CLI answers some of these and not others. Losing the whole
+    // catalogue to one missing control method is the wrong trade.
+    const { query, control } = fakeQuery();
+    control.failCommands = true;
+    const supervisor = makeSupervisor(query);
+
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+
+    expect(catalogue.unavailable).toContain('commands');
+    expect(catalogue.models.length).toBeGreaterThan(0);
+  });
+
+  it('distinguishes "the question failed" from "the answer was empty"', async () => {
+    // An empty model list means something very different in each case, and
+    // only one of them is worth telling the operator about.
+    const { query, control } = fakeQuery();
+    control.models_ = [];
+    const supervisor = makeSupervisor(query);
+
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+
+    expect(catalogue.models).toEqual([]);
+    expect(catalogue.unavailable).not.toContain('models');
+  });
+
+  it('tears the probe session down like the rewind one does', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.catalogue(WORKSPACE);
+
+    expect(control.torndown).toBe(true);
+  });
+
+  it('answers with an empty catalogue rather than throwing', async () => {
+    // Reached from a page load. A rejection here is a broken screen, not a
+    // missing panel.
+    const supervisor = makeSupervisor(() => {
+      throw new Error('spawn claude ENOENT');
+    });
+
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+
+    expect(catalogue.models).toEqual([]);
+    expect(catalogue.unavailable).toContain('session');
+  });
+
+  it('stamps when it was read', async () => {
+    const { query } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const before = Date.now();
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+
+    expect(catalogue.fetchedAt).toBeGreaterThanOrEqual(before);
   });
 });

@@ -292,6 +292,38 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     });
     return reply.status(202).send({ runId });
   });
+  /* -------------------------- Claude's own catalogue --------------------- */
+
+  /**
+   * What this CLI offers in one workspace: models, slash commands, subagents,
+   * and — the part nothing else could tell an operator — whether each
+   * configured MCP server actually connected.
+   *
+   * Operator-level, not owner-only: it reads capability, changes nothing, and
+   * it is what the composer's model picker is built from.
+   *
+   * `refresh=true` skips the cache. The case it exists for is an operator who
+   * has just fixed an MCP server's command and wants to know whether it worked;
+   * making them wait out a TTL to find out is the wrong answer.
+   */
+  app.get('/api/claude/catalogue', async (request, reply) => {
+    requireOperator(request);
+    const query = request.query as { workspaceId?: string; refresh?: string };
+
+    const workspace = query.workspaceId ? context.workspaceRepo.get(query.workspaceId) : null;
+    if (query.workspaceId && !workspace) throw new HttpError(404, 'Workspace not found.');
+
+    // With no workspace named, ask from the data directory. The answer is then
+    // what the CLI offers everywhere — models and built-in commands — without
+    // any workspace's own skills or servers, which is exactly what a caller
+    // that named no workspace is asking for.
+    const path = workspace?.path ?? context.config.dataDir;
+
+    return reply.send(
+      await context.claudeCatalogue.get(path, { force: query.refresh === 'true' }),
+    );
+  });
+
   /* ------------------------------- Plugins ------------------------------- */
 
   /**
