@@ -106,6 +106,17 @@ review.
   running version has no changelog entry, when the guide names a setting that
   does not exist, or when any documented log line stops existing in the code.
 
+### Fixed
+
+- **The deployed Help screen was empty.** The user guide and this changelog
+  are bundled from outside `apps/web` (`docs/guide/*.md` and the root
+  `CHANGELOG.md`), and the image's build stage copied neither — a glob over
+  absent files matches nothing rather than failing, so production shipped
+  Help sections with no content while every check stayed green. The build
+  stage now copies both, and `vite.config.ts` refuses to build a tree where
+  the corpus is missing, so forgetting it fails the image build instead of
+  the reader.
+
 ## [0.1.0] — 2026-08-26
 
 The first version deployed to a real server, reachable at a real domain with a

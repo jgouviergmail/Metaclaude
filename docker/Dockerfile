@@ -59,6 +59,13 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/ packages/
 COPY apps/ apps/
+# The web build reaches outside apps/web: src/lib/help.ts bundles the user
+# guide and the changelog with `import.meta.glob`. Without these two lines the
+# glob matches nothing and the image ships a Help screen whose sections render
+# empty — vite.config.ts now refuses to build in that state, so forgetting
+# them fails here instead of in production.
+COPY docs/ docs/
+COPY CHANGELOG.md ./
 
 RUN pnpm --filter @metaclaude/shared build \
  && pnpm --filter @metaclaude/api build \

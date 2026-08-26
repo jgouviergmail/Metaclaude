@@ -1,9 +1,30 @@
+import { existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 // `vitest/config` re-exports Vite's `defineConfig` with the `test` key added;
 // importing it from 'vite' would reject the block below at type level.
 import { defineConfig } from 'vitest/config';
+
+// The Help screen bundles content from *outside* apps/web — docs/guide/*.md
+// and the root CHANGELOG.md, via `import.meta.glob` in src/lib/help.ts. A
+// build tree missing them still succeeds: the glob matches nothing and Help
+// ships with its sections rendered empty, which is exactly what the Docker
+// image did when its build stage copied only packages/ and apps/. A glob over
+// absent files cannot fail, so the refusal has to live here, where the build
+// can still say no.
+const guideDir = fileURLToPath(new URL('../../docs/guide', import.meta.url));
+const changelog = fileURLToPath(new URL('../../CHANGELOG.md', import.meta.url));
+const guideChapters = existsSync(guideDir)
+  ? readdirSync(guideDir).filter((name) => name.endsWith('.md')).length
+  : 0;
+if (guideChapters === 0 || !existsSync(changelog)) {
+  throw new Error(
+    'docs/guide/*.md and CHANGELOG.md must be present in the build tree — ' +
+      'the Help screen bundles them (src/lib/help.ts). If this is a container ' +
+      'build, the build context is missing them; see docker/Dockerfile.',
+  );
+}
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

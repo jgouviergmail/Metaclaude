@@ -165,6 +165,14 @@ restates the code is noise; one that records a decision or a trap is not.
 - **A ratchet that greps text cannot tell code from prose.** Writing
   `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
   raw-palette ratchet. Say `bg-gray-<n>`.
+- **`import.meta.glob` over absent files matches nothing rather than failing.**
+  The web bundle reaches *outside* `apps/web` — `docs/guide/*.md` and the root
+  `CHANGELOG.md` via `src/lib/help.ts` — and the Docker build stage copied only
+  `packages/` and `apps/`, so production served a Help screen whose sections
+  rendered empty while build, tests and every check stayed green. The
+  Dockerfile now copies both, and `apps/web/vite.config.ts` refuses to build a
+  tree missing the corpus. Anything new the bundle pulls from outside `apps/`
+  needs a line in both places.
 - **A read-then-decide-then-write on the user row is a race, not a check.**
   `login()` verifies the password with scrypt — ~100 ms — and everything after
   it decides against the row snapshot taken *before* that. Two concurrent
