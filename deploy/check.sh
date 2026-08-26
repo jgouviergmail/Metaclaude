@@ -8,8 +8,15 @@
 # lock the owner out of their own machine, and until now nothing verified them.
 # They are also the hardest to test, because what they do is provision a host —
 # so this checks the parts that can be checked off-box: that they parse, that
-# the linter is happy, that compose accepts the file under every TLS mode, and
-# that a secret containing awkward characters survives the trip into .env.
+# the linter is happy, that compose accepts the file under every TLS mode, that
+# a secret containing awkward characters survives the trip into .env and back
+# out of it on a re-run, and that the SSH forced command refuses everything it
+# is supposed to refuse.
+#
+# That last section actually *runs* bin/metaclaude-deploy. Every case it drives
+# exits before the script reaches docker, so it needs no daemon and no network —
+# and it is the difference between reading a grammar and agreeing it looks
+# strict, and watching it say no.
 #
 # What it deliberately does not check: anything requiring root, a firewall, or
 # a real host. That is deploy/verify.sh, run from a laptop against the server.
@@ -475,6 +482,196 @@ elif ! grep -q -- '--build)' "$REPO_ROOT/deploy/bootstrap.sh"; then
   bad "bootstrap.sh has no --build flag" "there would be no way to deploy an uncommitted change"
 else
   ok "bootstrap.sh falls back to building locally and never prompts for a token"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "The forced command refuses what it should"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Everything above this line reads the scripts. This *runs* one of them.
+#
+# `bin/metaclaude-deploy` is the whole of the server's attack surface for a
+# stolen CI key: it is an SSH forced command on an account in the docker group,
+# so anything it agrees to run, it runs as root. Reading it and agreeing that
+# the grammar looks strict is not the same as watching it say no.
+#
+# Only refusals are exercised. Every one of them exits before the script reaches
+# `docker`, so this needs no daemon, no image and no network — and a request it
+# wrongly accepts is caught by the absence of "refusing", not by waiting to see
+# what a pull does.
+
+DEPLOY_CMD="$REPO_ROOT/deploy/bin/metaclaude-deploy"
+FAKE_APP="$WORK/app"
+# `releases/` is what install-app.sh creates on a real host; the lock lives in
+# it and is taken before the request is validated.
+mkdir -p "$FAKE_APP/releases"
+
+# Judged against a documentation-only namespace, never a real one.
+TEST_PREFIX="ghcr.io/example/metaclaude"
+
+# Run the forced command with $1 as the request; echo whatever it said.
+try_request() {
+  METACLAUDE_APP_DIR="$FAKE_APP" \
+  ALLOWED_IMAGE_PREFIX="$TEST_PREFIX" \
+  SSH_ORIGINAL_COMMAND="$1" \
+    timeout 20 "$DEPLOY_CMD" 2>&1 || true
+}
+
+# `what` is the human name; `request` is fed in verbatim.
+refuses() {
+  local what="$1" request="$2" output
+  output="$(try_request "$request")"
+  case "$output" in
+    *refusing*|*"no command"*) ok "refuses $what" ;;
+    *) bad "accepts $what" "$(printf '%s' "$output" | head -1)" ;;
+  esac
+}
+
+# The other half, and it is not optional: a rule that refuses everything passes
+# every test above. These two must get *past* the allow-list — far enough to log
+# "deploying" — and then fail on the pull, which is where a host with no such
+# image is supposed to fail.
+accepts() {
+  local what="$1" request="$2" output
+  output="$(try_request "$request")"
+  case "$output" in
+    *deploying*) ok "still accepts $what" ;;
+    *) bad "no longer accepts $what" "$(printf '%s' "$output" | head -1)" ;;
+  esac
+}
+
+if [ ! -x "$DEPLOY_CMD" ]; then
+  skip "forced-command refusals" "deploy/bin/metaclaude-deploy is missing"
+else
+  refuses "an empty request"              ""
+  refuses "an unknown verb"               "destroy"
+  refuses "deploy with no image"          "deploy"
+  refuses "a trailing shell command"      "deploy $TEST_PREFIX:latest; id"
+  refuses "a pipeline"                    "deploy $TEST_PREFIX:latest | sh"
+  refuses "command substitution"          "deploy \$(id)"
+  refuses "a second line"                 "$(printf 'status\nrollback')"
+  refuses "arguments after a bare verb"   "status --now"
+  refuses "a leading flag as an image"    "deploy --privileged"
+  refuses "another owner's image"         "deploy ghcr.io/someone-else/metaclaude:latest"
+  refuses "a path traversal"              "deploy ../../etc/passwd"
+  refuses "an image with no tag"          "deploy $TEST_PREFIX"
+
+  # The one that matters most, and the reason this section exists. A bare
+  # prefix match accepts a *different repository* whose name merely starts with
+  # the allowed one — and on this host that is a root shell for whoever holds
+  # the deploy key. The separator has to be part of what is matched.
+  refuses "a repository that only shares the prefix" "deploy ${TEST_PREFIX}-evil:latest"
+  refuses "a prefix-sharing repo by digest" \
+    "deploy ${TEST_PREFIX}x@sha256:$(printf '0%.0s' $(seq 64))"
+
+  # A half-finished install is a real state: provisioning can die between
+  # creating the app directory and creating releases/. What the operator gets
+  # then should name the command that fixes it, not a redirection error about a
+  # lock file they have never heard of.
+  bare="$WORK/bare-app"
+  mkdir -p "$bare"
+  half="$(METACLAUDE_APP_DIR="$bare" ALLOWED_IMAGE_PREFIX="$TEST_PREFIX" \
+          SSH_ORIGINAL_COMMAND="status" timeout 20 "$DEPLOY_CMD" 2>&1 || true)"
+  case "$half" in
+    *install-app.sh*) ok "a half-installed host is told how to finish" ;;
+    *) bad "a half-installed host gets a confusing error" "$(printf '%s' "$half" | head -1)" ;;
+  esac
+
+  accepts "the allowed repository by tag" "deploy $TEST_PREFIX:sha-abc123"
+  accepts "the allowed repository by digest" \
+    "deploy $TEST_PREFIX@sha256:$(printf 'a%.0s' $(seq 64))"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "A re-run reads back exactly what it wrote"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The section above proves a secret reaches the *container* intact. This proves
+# it reaches the *next run of this script* intact, which is a different path and
+# was untested.
+#
+# Re-running bootstrap.sh is the documented way to finish a deploy that stopped
+# halfway, and it recovers the token, the owner name and the password from .env
+# with get_env so the operator does not have to retype a hundred-character
+# secret on a console. get_env has to undo env_quote exactly — dollars, then
+# quotes, then backslashes, and in that order. Get the order wrong and a token
+# containing two of them comes back subtly altered: the deploy still succeeds,
+# the container still starts, and every agent run fails to authenticate with
+# nothing anywhere saying why.
+
+if ! sed -n '/^env_quote() {/,/^}/p; /^set_env() {/,/^}/p; /^get_env() {/,/^}/p' \
+     "$REPO_ROOT/deploy/bootstrap.sh" > "$WORK/roundtrip.sh"; then
+  bad "extracting the .env helpers from bootstrap.sh" "could not read the script"
+elif [ "$(grep -c '^}' "$WORK/roundtrip.sh")" -ne 3 ]; then
+  bad "extracting env_quote/set_env/get_env" "the definitions moved; this check needs updating"
+else
+  (
+    # shellcheck source=/dev/null
+    . "$WORK/roundtrip.sh"
+    ENV_FILE="$WORK/roundtrip.env"
+    : > "$ENV_FILE"
+
+    # Every one of these has broken a naive quoter at some point.
+    mangled=""
+    n=0
+    while IFS= read -r secret; do
+      n=$((n+1))
+      set_env "V_$n" "$secret"
+      got="$(get_env "V_$n")"
+      [ "$got" = "$secret" ] || mangled="$mangled V_$n"
+    done <<'SECRETS'
+sk-ant-oat01-plain
+with spaces and	a tab
+double"quote
+single'quote
+back\slash
+dollar$VAR and ${BRACED}
+both\"backslash-and-quote
+$dollar-then\backslash"and-quote
+#hash-leading
+trailing-space 
+=equals=in=value=
+`backtick` $(command) ${sub}
+newline-safe--but-no-actual-newline
+100%percent
+a-very-long-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+SECRETS
+
+    if [ -n "$mangled" ]; then
+      printf 'MANGLED:%s\n' "$mangled" > "$WORK/roundtrip.result"
+    else
+      printf 'OK:%d\n' "$n" > "$WORK/roundtrip.result"
+    fi
+  )
+
+  result="$(cat "$WORK/roundtrip.result" 2>/dev/null || echo 'MANGLED: the subshell died')"
+  case "$result" in
+    OK:*) ok "${result#OK:} awkward secrets survive set_env -> get_env unchanged" ;;
+    *)    bad "a secret changed between set_env and get_env" "${result#MANGLED:}" ;;
+  esac
+
+  # And the reason the reuse matters at all: a value that round-trips must also
+  # not be re-quoted on the way back out. Writing a recovered value a second
+  # time has to be a fixed point, or every re-run adds another layer of escaping.
+  (
+    # shellcheck source=/dev/null
+    . "$WORK/roundtrip.sh"
+    ENV_FILE="$WORK/fixedpoint.env"
+    : > "$ENV_FILE"
+    original='$dollar-then\backslash"and-quote'
+    set_env FP "$original"
+    once="$(get_env FP)"
+    : > "$ENV_FILE"
+    set_env FP "$once"
+    twice="$(get_env FP)"
+    [ "$original" = "$twice" ] && echo OK > "$WORK/fixedpoint.result" \
+                               || echo BAD > "$WORK/fixedpoint.result"
+  )
+  if [ "$(cat "$WORK/fixedpoint.result" 2>/dev/null)" = "OK" ]; then
+    ok "writing a recovered secret back is a fixed point"
+  else
+    bad "re-running adds a layer of escaping to a recovered secret"
+  fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

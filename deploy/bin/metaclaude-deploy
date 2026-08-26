@@ -36,8 +36,15 @@ IMAGE_ENV="$RELEASES/.env.image"
 # image — so the allow-list is the exact repository, not merely the registry.
 # `ghcr.io/` alone would let anyone with the key deploy any public GHCR image,
 # which on a host whose deploy account is in the docker group is a root shell.
-# install-app.sh writes the real value into $APP_DIR/deploy.conf.
-ALLOWED_IMAGE_PREFIX="${ALLOWED_IMAGE_PREFIX:-ghcr.io/jgouviergmail/metaclaude}"
+#
+# Empty by default, and a deploy refuses while it is empty. There is no safe
+# fallback to hard-code here: a literal repository would name whichever account
+# this file was written for, so every other operator's server would ship with an
+# allow-list pointing at a namespace they do not control. install-app.sh derives
+# the real value from the checkout's own git remote and writes it into
+# $APP_DIR/deploy.conf, which is root-owned and only readable by the deploy
+# account — it must not be a file that account can edit.
+ALLOWED_IMAGE_PREFIX="${ALLOWED_IMAGE_PREFIX:-}"
 
 # How long the container gets to report healthy before it is judged a failure.
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-180}"
@@ -54,6 +61,15 @@ log()  { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die()  { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
 
 cd "$APP_DIR" 2>/dev/null || die "no $APP_DIR on this host"
+
+# The other half of "is this host set up". A half-finished install is a real
+# state to land in — provisioning can die between creating $APP_DIR and creating
+# releases/ — and every verb needs the same answer. Without this, `deploy` fails
+# as a bare redirection error naming a lock file nobody has heard of, and
+# `status` cheerfully reports "(none recorded)", which reads as a set-up host
+# that has simply never deployed.
+[ -d "$RELEASES" ] || die \
+  "$RELEASES is missing — this host is not fully set up; re-run deploy/install-app.sh"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Parse what CI asked for
@@ -196,9 +212,18 @@ else
 
   # Strict allow-list. Registry, path, and either a tag or a digest — nothing
   # that could be read as a flag, a path traversal or a second command.
+  #
+  # The separator is part of what is matched, and that is the whole point. A
+  # bare `"$ALLOWED_IMAGE_PREFIX"*` also accepts a *different repository* whose
+  # name merely begins with the allowed one — `…/metaclaude-evil:latest` sails
+  # through — which on a host whose deploy account is in the docker group is
+  # exactly the root shell this list exists to deny. Only `:tag` and `@digest`
+  # continue the same repository.
+  [ -n "$ALLOWED_IMAGE_PREFIX" ] || die \
+    "no ALLOWED_IMAGE_PREFIX configured — run deploy/install-app.sh, or set it in $APP_DIR/deploy.conf"
   case "$TARGET" in
-    "$ALLOWED_IMAGE_PREFIX"*) ;;
-    *) die "refusing '$TARGET': images must start with $ALLOWED_IMAGE_PREFIX" ;;
+    "$ALLOWED_IMAGE_PREFIX":*|"$ALLOWED_IMAGE_PREFIX"@*) ;;
+    *) die "refusing '$TARGET': images must be $ALLOWED_IMAGE_PREFIX with a :tag or @digest" ;;
   esac
   if ! printf '%s' "$TARGET" | grep -Eq '^[a-z0-9._/-]+(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$'; then
     die "refusing '$TARGET': not a well-formed image reference"

@@ -4,7 +4,8 @@
     "testFiles": 47,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
-    "initialJsGzipKb": 176
+    "initialJsGzipKb": 176,
+    "deployChecks": 55
   },
   "updated": "2026-08-26"
 }

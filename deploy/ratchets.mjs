@@ -74,6 +74,24 @@ function countTests() {
   return n;
 }
 
+/**
+ * Assertions in the deployment layer's own check.
+ *
+ * Counted separately from the unit tests because it protects something the unit
+ * tests cannot reach: `deploy/` is the only code here that can lock the owner
+ * out of their own machine, and it is exercised by `check.sh` rather than by
+ * Vitest. Without a floor of its own, a section could be deleted and the
+ * headline test count would not notice.
+ *
+ * Counts the calls, not the reported passes: this file must stay static, and a
+ * number that required running the checks would make `check.sh` recursive.
+ */
+function countDeployChecks() {
+  const body = read('deploy/check.sh');
+  // Definitions of ok()/bad()/skip() themselves are not assertions.
+  return (body.match(/^\s+(?:ok|bad|skip)\s+"/gm) ?? []).length;
+}
+
 /** Files carrying at least one test — a suite spread thin is a different risk. */
 function countTestFiles() {
   return tracked('*.test.ts').concat(tracked('*.test.tsx')).length;
@@ -142,6 +160,12 @@ function countUntestedCriticalModules() {
 const METRICS = [
   { key: 'tests', direction: 'up', label: 'test cases', measure: countTests },
   { key: 'testFiles', direction: 'up', label: 'files carrying tests', measure: countTestFiles },
+  {
+    key: 'deployChecks',
+    direction: 'up',
+    label: 'assertions in deploy/check.sh',
+    measure: countDeployChecks,
+  },
   { key: 'rawPaletteClasses', direction: 'down', label: 'raw Tailwind palette classes', measure: countRawPalette },
   {
     key: 'untestedCriticalModules',
