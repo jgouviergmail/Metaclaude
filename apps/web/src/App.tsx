@@ -104,6 +104,20 @@ export function App() {
           break;
         case 'run':
           session.applyRun(frame.run);
+          // A finished run is what moves every derived number: cost and usage
+          // on Analytics, the bandit's arms, whatever reflexion just wrote to
+          // Memory and Insights. None of those screens receives a frame of its
+          // own, so without this they would sit on stale figures until the next
+          // poll — the operator watches a run end and the dashboard disagrees.
+          if (
+            frame.run.status === 'succeeded' ||
+            frame.run.status === 'failed' ||
+            frame.run.status === 'interrupted'
+          ) {
+            for (const key of ['analytics', 'memory', 'insights', 'approvals'] as const) {
+              void queryClient.invalidateQueries({ queryKey: [key] });
+            }
+          }
           break;
         case 'session':
           session.applySession(frame.session);

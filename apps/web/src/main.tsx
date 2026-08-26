@@ -8,15 +8,34 @@ import { ApiError } from './lib/api';
 import { TooltipProvider } from './components/ui/primitives';
 import './styles/index.css';
 
+/**
+ * Query keys that must never refetch on a timer.
+ *
+ * Everything else on this screen is a view of server state, and a view should
+ * catch up on its own. A file is not: its query result seeds an editor the
+ * operator may be typing into, and a background refetch that replaces the
+ * buffer would delete their work with no undo and no warning. The search
+ * queries are keyed by what is being typed, so polling them re-runs a query the
+ * user has already moved past.
+ */
+const NEVER_POLL = new Set(['file', 'file-search', 'memory-search']);
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Live data arrives over the WebSocket, so polling would only duplicate
-      // work. Queries refetch on focus, which covers the case where the socket
-      // was down while the tab was in the background.
+      // Session transcripts and run state arrive on the WebSocket, and that
+      // remains the fast path. But most screens — analytics, memory, insights,
+      // automations, the audit log — are fed by no frame at all, so until now
+      // they only caught up when the window regained focus. On a tablet left
+      // open on the dashboard that is never, and the OS looked frozen.
+      //
+      // Polling is paused automatically while the tab is hidden, so this costs
+      // nothing when nobody is looking. Pages gate their skeletons on
+      // `isLoading`, which is true only for the first fetch, so a refresh
+      // arriving this way replaces the numbers without the screen flinching.
       staleTime: 15_000,
       refetchOnWindowFocus: true,
-      refetchInterval: false,
+      refetchInterval: (query) => (NEVER_POLL.has(String(query.queryKey?.[0] ?? '')) ? false : 30_000),
       retry: (failureCount, error) => {
         // Retrying an auth or permission failure never helps.
         if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
