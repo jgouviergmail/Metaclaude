@@ -313,6 +313,25 @@ jobs:
   # so a typo survives every other job. This checks what can be checked without
   # a host: they parse, they lint, compose accepts every TLS mode, and a secret
   # with awkward characters still arrives intact.
+  # Ratchets are checked where the build exists, so the bundle ceiling is
+  # measured rather than skipped. deploy/check.sh runs them too, but off-box it
+  # can only see the static half.
+  ratchets:
+    name: Ratchets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: No quality ratchet has regressed
+        run: node deploy/ratchets.mjs
+
   deploy-scripts:
     name: Deploy scripts
     runs-on: ubuntu-latest
@@ -329,7 +348,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [verify, live, browser, image, smoke, deploy-scripts]
+    needs: [verify, live, browser, image, smoke, deploy-scripts, ratchets]
     runs-on: ubuntu-latest
     steps:
       - name: Verdict

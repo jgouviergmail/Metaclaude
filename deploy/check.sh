@@ -367,6 +367,26 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Quality ratchets"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Tests prove the code works today. A ratchet is what stops tomorrow quietly
+# costing what today bought: a suite that shrinks, a bundle that creeps back,
+# a raw palette class that reappears and breaks the light theme for one
+# component. Every number here may only move in the improving direction.
+if command -v node >/dev/null 2>&1; then
+  if out="$(node "$REPO_ROOT/deploy/ratchets.mjs" 2>&1)"; then
+    printf '%s\n' "$out" | sed 's/^  /     /'
+    ok "no ratchet regressed"
+  else
+    bad "a quality ratchet regressed"
+    printf '%s\n' "$out" | sed 's/^/     /'
+  fi
+else
+  skip "quality ratchets" "node is not available"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "Two site blocks never claim the same address"
 # ─────────────────────────────────────────────────────────────────────────────
 
