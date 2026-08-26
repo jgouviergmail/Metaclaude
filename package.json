@@ -2,8 +2,9 @@
   "name": "metaclaude",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
-  "description": "Metaclaude — a private, self-hosted agentic OS built on the Claude CLI",
+  "description": "Metaclaude \u2014 a private, self-hosted agentic OS built on the Claude CLI",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22.11.0"
