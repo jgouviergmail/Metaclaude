@@ -60,7 +60,18 @@ services:
       - metaclaude-home:/home/metaclaude
 
     networks:
+      # `internal` reaches the proxy. `public` is what lets this container reach
+      # *out*, and without it nothing the product does actually works: the Claude
+      # CLI cannot call the Anthropic API, `git clone` cannot resolve a remote,
+      # and no HTTP MCP server is reachable. A Docker network declared
+      # `internal: true` has no route off the host at all, and `app` was on that
+      # one alone — so the stack came up, reported healthy, passed the deploy's
+      # health gate, and then failed every single run.
+      #
+      # This does not widen what can reach *in*. Inbound needs a published port,
+      # `app` publishes none, and the proxy stays the only route to it.
       - internal
+      - public
 
     # ── Hardening ─────────────────────────────────────────────────────────────
     # The agent executes model-authored commands. Everything below limits what

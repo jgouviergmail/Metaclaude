@@ -89,9 +89,16 @@ REQUEST="${SSH_ORIGINAL_COMMAND:-$*}"
 # part of a request it does not understand is one refactor away from doing so.
 # Refusing outright is the same three lines and does not decay.
 #
-# `[[ =~ ]]` is anchored and, unlike a `case` glob, will not match across a
-# newline: a multi-line request fails here rather than being truncated.
-if [[ ! "$REQUEST" =~ ^(deploy[[:space:]]+[A-Za-z0-9._/:@-]+|rollback|status|health)$ ]]; then
+# The separator is a literal space, not `[[:space:]]`.
+#
+# Bash's `=~` anchors to the whole string, so a request carrying a second
+# *command* on a second line has never matched. But `[[:space:]]` also matches a
+# newline, so `deploy\n<image>` did — harmlessly, since the image still had to
+# clear the allow-list below, but the comment here used to claim that no
+# multi-line request could match at all, and that was simply untrue. CI sends
+# one space; narrowing the class costs nothing and makes the grammar mean what
+# it says.
+if [[ ! "$REQUEST" =~ ^(deploy +[A-Za-z0-9._/:@-]+|rollback|status|health)$ ]]; then
   die "refusing $(printf '%q' "$REQUEST") — expected: deploy <image> | rollback | status | health"
 fi
 

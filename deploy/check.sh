@@ -550,6 +550,11 @@ else
   refuses "a pipeline"                    "deploy $TEST_PREFIX:latest | sh"
   refuses "command substitution"          "deploy \$(id)"
   refuses "a second line"                 "$(printf 'status\nrollback')"
+  # `[[:space:]]` matched a newline too, so `deploy\n<image>` used to be a
+  # legal request. Never exploitable — the image still faced the allow-list —
+  # but the grammar now means what its comment says.
+  refuses "a newline where the space should be" "$(printf 'deploy\n%s:latest' "$TEST_PREFIX")"
+  refuses "a tab where the space should be"     "$(printf 'deploy\t%s:latest' "$TEST_PREFIX")"
   refuses "arguments after a bare verb"   "status --now"
   refuses "a leading flag as an image"    "deploy --privileged"
   refuses "another owner's image"         "deploy ghcr.io/someone-else/metaclaude:latest"
@@ -672,6 +677,61 @@ SECRETS
   else
     bad "re-running adds a layer of escaping to a recovered secret"
   fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "The app can reach the internet, and still cannot be reached"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The failure this exists for is the quiet kind. `app` sat on `internal` alone,
+# and a Docker network declared `internal: true` has no route off the host — so
+# the Claude CLI could not call the Anthropic API, `git clone` could not resolve
+# a remote, and no HTTP MCP server was reachable. Nothing said so: the container
+# started, the health endpoint answered, `up --wait` was satisfied and the
+# deploy's health gate passed. Every run then failed.
+#
+# The other half is the property that made the isolation worth having, so both
+# are asserted together: egress must be possible, ingress must not.
+
+if docker compose version >/dev/null 2>&1; then
+  resolved="$(docker compose -f "$REPO_ROOT/compose.yml" --env-file /dev/null config 2>/dev/null || true)"
+  if [ -z "$resolved" ]; then
+    bad "resolving compose.yml" "docker compose config produced nothing"
+  else
+    # Networks the app joins, and which of those are internal-only.
+    app_block="$(printf '%s' "$resolved" | sed -n '/^  app:/,/^  [a-z]/p')"
+    app_networks="$(printf '%s' "$app_block" | sed -n '/^    networks:/,/^    [a-z]/p' \
+                     | sed -n 's/^      \([a-z_-]*\):.*/\1/p')"
+
+    if [ -z "$app_networks" ]; then
+      bad "the app joins no network at all"
+    else
+      routable=""
+      for net in $app_networks; do
+        # A network is egress-capable unless it is declared internal.
+        if ! printf '%s' "$resolved" \
+             | sed -n "/^  $net:/,/^  [a-z]/p" | grep -q 'internal: true'; then
+          routable="$routable $net"
+        fi
+      done
+      if [ -n "$routable" ]; then
+        ok "the app has a route out (via:$routable)"
+      else
+        bad "the app is on internal-only networks" \
+            "no agent run, git clone or HTTP MCP call can work; the stack still reports healthy"
+      fi
+    fi
+
+    # Egress must not have bought ingress. `app` publishes nothing; the proxy is
+    # the only way in, which is what the internal network was protecting.
+    if printf '%s' "$app_block" | grep -q '^    ports:'; then
+      bad "the app publishes a port" "it must only be reachable through the proxy"
+    else
+      ok "the app still publishes no port of its own"
+    fi
+  fi
+else
+  skip "app network topology" "docker compose not available"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
