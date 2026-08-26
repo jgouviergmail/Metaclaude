@@ -49,12 +49,28 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
 const TOUCH_TARGET =
   "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']";
 
+/**
+ * The same idea on one axis only.
+ *
+ * A labelled button is already wide enough for a thumb; it is the 32px height
+ * that falls short of 44. Growing it sideways as well would be worse than
+ * useless here: rows in this app go down to `gap-0.5`, so opposing hit areas
+ * would overlap and the button later in the DOM would quietly take presses
+ * meant for its neighbour. Vertical only reaches exactly 44px and cannot
+ * collide with anything beside it.
+ */
+const TOUCH_TARGET_Y =
+  "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 " +
+  "pointer-coarse:before:inset-x-0 pointer-coarse:before:content-['']";
+
 const BUTTON_SIZES: Record<ButtonSize, string> = {
   xs: `h-6 px-2 text-[11px] gap-1 rounded-md ${TOUCH_TARGET}`,
-  sm: 'h-8 px-3 text-[13px] gap-1.5 rounded-lg',
-  md: 'h-9 px-4 text-sm gap-2 rounded-lg',
+  // `sm` carries most of this interface — 77 call sites against one for `md` —
+  // so it is the size that decides whether the app is usable with a thumb.
+  sm: `h-8 px-3 text-[13px] gap-1.5 rounded-lg ${TOUCH_TARGET_Y}`,
+  md: `h-9 px-4 text-sm gap-2 rounded-lg ${TOUCH_TARGET_Y}`,
   lg: 'h-11 px-6 text-[15px] gap-2 rounded-xl',
-  icon: 'h-9 w-9 rounded-lg',
+  icon: `h-9 w-9 rounded-lg ${TOUCH_TARGET}`,
   'icon-sm': `h-7 w-7 rounded-md ${TOUCH_TARGET}`,
 };
 

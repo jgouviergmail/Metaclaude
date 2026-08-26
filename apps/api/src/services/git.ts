@@ -27,16 +27,68 @@ export class GitError extends Error {
   }
 }
 
-const GIT_ENV = {
-  GIT_TERMINAL_PROMPT: '0',
-  GIT_ASKPASS: 'echo',
-  // Colour codes and pager output would corrupt the parsers below.
-  GIT_PAGER: 'cat',
-  GIT_CONFIG_NOSYSTEM: '1',
-  // The container's own home directory is not the operator's; nothing there
-  // should influence how the agent's repositories are read.
-  GIT_CONFIG_GLOBAL: '/dev/null',
-} as const;
+/**
+ * The child's entire environment — a replacement, never a merge.
+ *
+ * `{ ...process.env }` used to be spread in here, which put
+ * `METACLAUDE_MASTER_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` and
+ * `METACLAUDE_BOOTSTRAP_PASSWORD` into the environment of a process that a
+ * repository can influence. Git executes several config values as commands, and
+ * a repository-local `.git/config` is outside the reach of
+ * `GIT_CONFIG_NOSYSTEM` and `GIT_CONFIG_GLOBAL` — so that spread turned "a
+ * repository was cloned" into "the master key is one `git add` away". The
+ * driver families are refused outright below; this list is what keeps the
+ * damage bounded if a mechanism is ever missed.
+ *
+ * The committer identity is here because git will not commit without one. The
+ * global config is /dev/null by design, so there is nowhere else for it to come
+ * from: with only `GIT_AUTHOR_*` set — which is all compose.yml provided — every
+ * commit failed with "Committer identity unknown", and the Git panel's commit
+ * button could not succeed in the shipped container.
+ */
+function gitEnv(): NodeJS.ProcessEnv {
+  const name = process.env.GIT_AUTHOR_NAME || 'Metaclaude';
+  const email = process.env.GIT_AUTHOR_EMAIL || 'metaclaude@localhost';
+  return {
+    PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+    // Not the operator's home, and not the container's either: nothing in a
+    // home directory should influence how the agent's repositories are read.
+    HOME: '/nonexistent',
+    // Deterministic parsing for the porcelain output the methods below read.
+    LANG: 'C',
+    LC_ALL: 'C',
+    TZ: process.env.TZ ?? 'UTC',
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: 'echo',
+    // Colour codes and pager output would corrupt the parsers below.
+    GIT_PAGER: 'cat',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_ATTR_NOSYSTEM: '1',
+    GIT_AUTHOR_NAME: name,
+    GIT_AUTHOR_EMAIL: email,
+    GIT_COMMITTER_NAME: name,
+    GIT_COMMITTER_EMAIL: email,
+  };
+}
+
+/**
+ * Config keys whose value git runs as a command.
+ *
+ * The previous defence pinned a handful of these on the command line, which
+ * works only for keys that are known and singular. It cannot work for the
+ * *driver* families — `filter.<name>.clean`, `diff.<name>.textconv`,
+ * `merge.<name>.driver` — because the name is chosen by the repository and `-c`
+ * has no wildcard. Reproduced against the exact argv this service built:
+ * `.gitattributes` assigning `filter=x` plus a `.git/config` defining
+ * `filter.x.clean` ran that command on `git add`, inside the API process.
+ *
+ * So the check is inverted. Rather than trying to out-pin a repository, refuse
+ * to run at all in a worktree whose local config names a command. Reading the
+ * config executes nothing, which is what makes the check safe to perform first.
+ */
+const EXECUTABLE_CONFIG_KEY =
+  /^(?:filter\..*\.(?:clean|smudge|process)|diff\..*\.(?:textconv|command)|diff\.external|merge\..*\.driver|core\.(?:fsmonitor|hooksPath|sshCommand|askPass|editor|pager|gitProxy|alternateRefsCommand)|credential\.(?:.*\.)?helper|uploadpack\.packObjectsHook|gpg\.(?:.*\.)?program|trailer\..*\.command|sequence\.editor|pager\..*|alias\..*|browser\..*\.cmd|man\..*\.cmd|guitool\..*\.cmd|instaweb\.httpd|ssh\.variant)$/i;
 
 /**
  * Config overrides applied to every invocation.
@@ -68,16 +120,54 @@ const GIT_SAFE_CONFIG = [
 ] as const;
 
 export class GitService {
+  /** Raw invocation. Used by the guard itself, which cannot go through `run`. */
+  private async exec(cwd: string, args: string[], timeoutMs: number): Promise<string> {
+    const { stdout } = await execFileAsync('git', ['--no-pager', ...GIT_SAFE_CONFIG, ...args], {
+      cwd,
+      timeout: timeoutMs,
+      maxBuffer: 16 * 1024 * 1024,
+      env: gitEnv(),
+    });
+    return stdout;
+  }
+
+  /**
+   * Refuse to touch a worktree whose local config names a command to run.
+   *
+   * `git config --list` parses; it does not invoke a single driver, so this is
+   * safe to run before anything else. NUL-delimited because a config value may
+   * contain newlines, and a value that spans lines is exactly what an attacker
+   * would reach for to hide a key from a line-oriented parser.
+   */
+  private async assertNoExecutableConfig(cwd: string): Promise<void> {
+    let raw: string;
+    try {
+      raw = await this.exec(cwd, ['config', '--local', '--list', '--null'], 5000);
+    } catch {
+      // No repository, or no local config to read. Nothing to refuse.
+      return;
+    }
+    const offending = raw
+      .split('\0')
+      .map((entry) => entry.split('\n', 1)[0] ?? '')
+      .filter((key) => key && EXECUTABLE_CONFIG_KEY.test(key));
+
+    if (offending.length > 0) {
+      const unique = [...new Set(offending)].slice(0, 5).join(', ');
+      throw new GitError(
+        `This repository's .git/config sets ${unique}, which git would execute as a command ` +
+          `in the server process. Git operations are disabled for this workspace until those ` +
+          `keys are removed. Nothing has been run.`,
+        422,
+      );
+    }
+  }
+
   /** Run a git command in `cwd`. Arguments are passed as an array, never a string. */
   private async run(cwd: string, args: string[], timeoutMs = 30_000): Promise<string> {
+    await this.assertNoExecutableConfig(cwd);
     try {
-      const { stdout } = await execFileAsync('git', ['--no-pager', ...GIT_SAFE_CONFIG, ...args], {
-        cwd,
-        timeout: timeoutMs,
-        maxBuffer: 16 * 1024 * 1024,
-        env: { ...process.env, ...GIT_ENV },
-      });
-      return stdout;
+      return await this.exec(cwd, args, timeoutMs);
     } catch (error) {
       const err = error as { stderr?: string; code?: number | string; message: string };
       throw new GitError((err.stderr || err.message).slice(0, 2000), 422);
@@ -85,8 +175,14 @@ export class GitService {
   }
 
   async isRepository(cwd: string): Promise<boolean> {
+    // Outside the catch. "This directory is not a repository" and "this
+    // repository is booby-trapped" are different answers, and swallowing the
+    // second into `false` would report a hostile worktree as an ordinary
+    // folder — the panel would show "not a repository" and the owner would
+    // never learn why.
+    await this.assertNoExecutableConfig(cwd);
     try {
-      const out = await this.run(cwd, ['rev-parse', '--is-inside-work-tree'], 5000);
+      const out = await this.exec(cwd, ['rev-parse', '--is-inside-work-tree'], 5000);
       return out.trim() === 'true';
     } catch {
       return false;
