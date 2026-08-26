@@ -86,7 +86,7 @@ RUN apt-get update \
 
 # The Claude CLI. Pinned so an upstream change cannot alter agent behaviour
 # without an explicit, reviewable image rebuild.
-ARG CLAUDE_CLI_VERSION=2.1.245
+ARG CLAUDE_CLI_VERSION=2.1.246
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION} \
  && npm cache clean --force \
  && claude --version

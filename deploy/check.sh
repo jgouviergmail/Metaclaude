@@ -38,14 +38,14 @@ bad()     { FAILED=$((FAILED+1)); printf '  %sFAIL%s %s%s\n' "$RED" "$OFF" "$1" 
 skip()    { SKIPPED=$((SKIPPED+1)); printf '  %sskip%s %s — %s\n' "$DIM" "$OFF" "$1" "$2"; }
 section() { printf '\n%s%s%s\n' "$BOLD" "$1" "$OFF"; }
 
-SCRIPTS=(
-  "$REPO_ROOT/deploy/bootstrap.sh"
-  "$REPO_ROOT/deploy/provision.sh"
-  "$REPO_ROOT/deploy/install-app.sh"
-  "$REPO_ROOT/deploy/verify.sh"
-  "$REPO_ROOT/deploy/check.sh"
-  "$REPO_ROOT/deploy/bin/metaclaude-deploy"
-)
+# Derived, not listed. The hand-written list had already quietly lost
+# dns-setup.sh, and uninstall.sh would have arrived unchecked the same way —
+# the exact drift the TLS-mode loop below was cured of.
+SCRIPTS=()
+while IFS= read -r script; do
+  SCRIPTS+=("$script")
+done < <(find "$REPO_ROOT/deploy" -maxdepth 2 -type f \( -name '*.sh' -o -path '*/bin/*' \) | sort)
+[ "${#SCRIPTS[@]}" -ge 6 ] || { echo "FATAL: found only ${#SCRIPTS[@]} deploy scripts — the glob broke"; exit 1; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -988,6 +988,53 @@ if command -v docker >/dev/null 2>&1; then
     || bad "the image env file was not created" "the guard did not run"
 else
   skip "status on a fresh host" "docker not available"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "Uninstalling keeps its promises"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Three promises, each load-bearing: without --purge-data the volumes survive;
+# the .env (holding the unregenerable master key) is copied OUT of the tree
+# before the tree is deleted; and --purge-data without --yes demands the exact
+# phrase, so a reflexive "y<enter>" cannot destroy the database. Rehearsed
+# against a real daemon rather than read, because the failure that matters is
+# a docker flag, not a typo.
+if docker info >/dev/null 2>&1; then
+  fake_app="$(mktemp -d)"
+  mkdir -p "$fake_app/releases"
+  printf 'METACLAUDE_MASTER_KEY=cafe\n' > "$fake_app/.env"
+  docker volume create mccheck_data >/dev/null
+
+  APP_DIR="$fake_app" COMPOSE_PROJECT=mccheck "$REPO_ROOT/deploy/uninstall.sh" --yes \
+    >/dev/null 2>&1 || true
+  if docker volume ls -q | grep -q '^mccheck_data$'; then
+    ok "without --purge-data, the volumes survive"
+  else
+    bad "uninstall deleted a volume it promised to keep" "mccheck_data is gone"
+  fi
+  if ls /root/metaclaude-env-*.bak >/dev/null 2>&1 || ! [ -w /root ]; then
+    ok "the .env is saved outside the deleted tree"
+  else
+    bad "the .env was not saved" "the master key would be lost with the tree"
+  fi
+  [ ! -d "$fake_app" ] && ok "the application directory is removed" \
+    || bad "the application directory survived" "$fake_app still exists"
+
+  mkdir -p "$fake_app"
+  if printf 'y\n' | APP_DIR="$fake_app" COMPOSE_PROJECT=mccheck \
+       "$REPO_ROOT/deploy/uninstall.sh" --purge-data >/dev/null 2>&1; then
+    bad "--purge-data accepted a bare \"y\"" "the confirmation phrase is not enforced"
+  else
+    docker volume ls -q | grep -q '^mccheck_data$' \
+      && ok "--purge-data without the exact phrase refuses, and destroys nothing" \
+      || bad "the refusal still deleted the volume" "guard ran too late"
+  fi
+
+  docker volume rm mccheck_data >/dev/null 2>&1 || true
+  rm -rf "$fake_app"; rm -f /root/metaclaude-env-*.bak 2>/dev/null || true
+else
+  skip "uninstall rehearsal" "docker not available"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

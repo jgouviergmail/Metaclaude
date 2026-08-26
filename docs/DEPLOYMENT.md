@@ -564,6 +564,86 @@ logs none of these lines.
 
 ---
 
+## Logs and diagnostics
+
+Everything the server has to say goes to one place: structured JSON on stdout,
+collected by Docker. There is no log file to find and no rotation to configure —
+Docker's own `local` driver handles retention.
+
+```bash
+cd /opt/metaclaude
+docker compose logs app --tail 100          # the application
+docker compose logs proxy --tail 100        # TLS, ACME, every HTTP request
+docker compose logs -f app                  # follow live
+```
+
+`LOG_LEVEL` in `.env` sets the verbosity (`info` by default; `debug` narrates
+every run's plumbing). It is read at boot, so changing it means
+`docker compose up -d` — not `restart`, which re-reads nothing.
+
+**The server checks itself at every boot** and says so in the log. Worth
+knowing, because each line is the only signal of a problem that is otherwise
+silent:
+
+| Boot line | What it means |
+| --- | --- |
+| `could not decrypt some entries` | The master key does not match the database. Stop and fix the key **before** saving any new secret. |
+| `recovered state left behind by an unclean shutdown` | Runs/tool calls left `running` by a crash were closed out. Informational. |
+| `workspaces root moved — …` | Workspace rows were re-pointed after a root move. See the table under Upgrading. |
+| `applied N database migration(s)` | Schema upgrades ran. Append-only, in a transaction. |
+
+Beyond the log, three surfaces answer questions from the outside in:
+
+- `GET /api/health` — liveness only, deliberately public and uninformative.
+- `GET /api/system` — versions, uptime, CLI status, disk. Any signed-in
+  account; never anonymous.
+- `GET /api/audit` and `/api/audit/verify` — the append-only audit log and its
+  hash-chain check: every login, run, permission decision and settings change,
+  and whether the chain is intact end to end.
+
+And two from outside the box entirely: `./deploy/verify.sh <ip> --ipv6 <addr>`
+from your laptop (firewall, TLS, headers — never run it on the server, where
+every answer is self-referential), and `./deploy/check.sh` from any checkout
+(the deploy tooling checking itself; CI runs it on every push).
+
+For the failure that *looks* like several of these at once — container
+unhealthy, `docker exec` failing, site fine — see the next section.
+
+---
+
+## Uninstalling
+
+```bash
+cd ~/Metaclaude
+sudo ./deploy/uninstall.sh                # stop and remove the app, KEEP all data
+sudo ./deploy/uninstall.sh --purge-data   # ...and delete the volumes, after a typed confirmation
+```
+
+Without `--purge-data` the named volumes survive — database, vault, workspaces,
+CLI transcripts — and a later reinstall resumes from them as if nothing
+happened. With it, they are gone; the script shows what exists and demands the
+exact phrase `delete my data` first, because a reflexive `y` must not be able
+to destroy a database.
+
+Either way, `.env` is first copied to a root-only file under `/root/`
+(`metaclaude-env-<timestamp>.bak`). It holds the master key, which is the one
+value that cannot be regenerated: restoring a database without it silently
+mints a new key and every stored MCP credential is quietly gone. Delete the
+backup yourself once you are sure.
+
+What the script deliberately leaves alone: everything `provision.sh` did to the
+*operating system* — the accounts, sshd, ufw, fail2ban, Docker. An uninstaller
+that edits the firewall and sshd on its way out can lock you out on its way
+out, and it has no dead man's switch to catch that. The safe way to undo
+provisioning is the one a script cannot offer: reinstall the OS image from your
+provider's console.
+
+`deploy/check.sh` rehearses the uninstaller's three promises against a real
+Docker daemon on every run — volumes kept without the flag, `.env` saved before
+the tree is deleted, the confirmation phrase enforced.
+
+---
+
 ## If the proxy reads `unhealthy` while the site works fine
 
 Look at the health log before anything else:

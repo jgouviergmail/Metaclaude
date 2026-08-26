@@ -67,7 +67,10 @@ through is how you obtain a certificate, because this app needs a *secure
 context* — a `Secure` cookie and a service worker — and over plain HTTP it does
 not degrade, it stops working. With no domain name there are three real answers
 and they trade off very differently; `deploy/provision.sh` and the CI/CD
-workflows cover the rest.
+workflows cover the rest. The same document covers the whole lifecycle:
+upgrading (a rebuild and `docker compose up -d`; migrations run themselves),
+logs and diagnostics, backups, and uninstalling (`deploy/uninstall.sh`, which
+keeps your data unless told twice not to).
 
 ---
 
