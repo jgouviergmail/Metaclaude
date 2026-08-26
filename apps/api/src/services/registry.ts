@@ -10,8 +10,8 @@
  *    is where the Claude CLI discovers them.
  */
 
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import type {
   AgentDefinitionRecord,
   McpServerRecord,
@@ -23,7 +23,9 @@ import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { parseJson, toBool, toInt } from '../db/index.js';
 import type { RuntimeContext } from '../kernel/kernel.js';
+import { isInside } from '../security/paths.js';
 import type { Vault } from '../security/vault.js';
+import type { PluginRuntime } from './plugin-registry.js';
 
 export class RegistryError extends Error {
   constructor(
@@ -184,6 +186,15 @@ export class Registry {
     private readonly db: Db,
     private readonly vault: Vault,
     private readonly log: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void,
+    /**
+     * Installed Agent Plugins, when the deployment has any.
+     *
+     * Optional so the Registry stays constructible on its own in tests and in
+     * any future caller. Plugins are another *source* feeding the two seams
+     * this class already owns — `resolve` and `materialiseSkills` — rather than
+     * a second mechanism beside them.
+     */
+    private readonly plugins?: { runtime(): PluginRuntime },
   ) {
     this.drainLegacyHeaders();
   }
@@ -313,9 +324,29 @@ export class Registry {
     await rm(root, { recursive: true, force: true });
 
     const skills = this.listSkills(workspace.id).filter((skill) => skill.enabled);
-    if (skills.length === 0) return 0;
+    const fromPlugins = this.plugins?.runtime().skills ?? [];
+    if (skills.length === 0 && fromPlugins.length === 0) return 0;
 
     await mkdir(root, { recursive: true });
+
+    // Plugins first, so a workspace skill of the same name overwrites one from
+    // a plugin. The operator's own definition is the more specific of the two
+    // and the only one they can edit.
+    //
+    // Copied whole rather than rewritten: a plugin skill may ship references
+    // and scripts beside its SKILL.md, and writing only the markdown would hand
+    // the agent instructions pointing at files that are not there.
+    for (const skill of fromPlugins) {
+      const from = dirname(skill.path);
+      const to = resolve(root, skill.name);
+      if (!isInside(root, to)) continue;
+      await cp(from, to, { recursive: true, dereference: false }).catch((error: Error) => {
+        this.log('warn', `could not materialise skill "${skill.name}" from plugin "${skill.pluginName}"`, {
+          message: error.message,
+        });
+      });
+    }
+
     for (const skill of skills) {
       const directory = resolve(root, skill.name);
       await mkdir(directory, { recursive: true });
@@ -328,7 +359,7 @@ export class Registry {
       ].join('\n');
       await writeFile(resolve(directory, 'SKILL.md'), frontmatter + skill.body, 'utf8');
     }
-    return skills.length;
+    return skills.length + fromPlugins.length;
   }
 
   /* ----------------------------- Agents -------------------------------- */
@@ -625,6 +656,12 @@ export class Registry {
         });
         this.setMcpStatus(server.id, 'failed', (error as Error).message);
       }
+    }
+
+    // Plugin servers are added after the workspace's own and are namespaced,
+    // so a plugin cannot shadow a server the operator configured themselves.
+    for (const [name, server] of Object.entries(this.plugins?.runtime().mcpServers ?? {})) {
+      mcpServers[name] = server;
     }
 
     const agents: RuntimeContext['agents'] = {};

@@ -1,0 +1,54 @@
+/**
+ * Rendering a component the way the application renders it.
+ *
+ * `main.tsx` establishes three providers around everything: React Query, the
+ * router, and the tooltip provider. A component that reaches for any of them
+ * throws when rendered bare — `Switch` does, through `Tooltip` — so a test that
+ * calls RTL's `render` directly is not testing the component, it is testing the
+ * component minus its context.
+ *
+ * Keeping the stack here rather than in each test file means the two stay in
+ * step: a provider added to `main.tsx` is added once here and every existing
+ * test keeps passing for the right reason.
+ *
+ * The query defaults deliberately differ from production in the two ways that
+ * make tests lie: retries turn a deliberate 500 into a slow pass, and the 30s
+ * poll leaves a timer running after the case ends.
+ */
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, type RenderOptions, type RenderResult } from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
+import { TooltipProvider } from '@/components/ui/primitives';
+
+export interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
+  /** Initial history entries, for a component that reads the route. */
+  route?: string;
+  /** Supply your own client to seed the cache or assert on it afterwards. */
+  queryClient?: QueryClient;
+}
+
+export function createTestQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchInterval: false, refetchOnWindowFocus: false, staleTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+}
+
+export function renderWithProviders(
+  ui: ReactElement,
+  { route = '/', queryClient = createTestQueryClient(), ...options }: RenderWithProvidersOptions = {},
+): RenderResult & { queryClient: QueryClient } {
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[route]}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+
+  return { ...render(ui, { wrapper: Wrapper, ...options }), queryClient };
+}

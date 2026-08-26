@@ -370,4 +370,35 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE mcp_servers ADD COLUMN header_keys TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 5,
+    name: 'agent_plugins',
+    sql: /* sql */ `
+      -- Installed Agent Plugins (the 1.0.0 standard).
+      --
+      -- The manifest is stored whole rather than shredded into columns. The
+      -- specification permits an \`extensions\` object whose contents a client
+      -- must not validate, and future versions will add fields; a schema that
+      -- projected today's ten fields would quietly discard both. What is
+      -- promoted to a column is only what the application queries or sorts on.
+      --
+      -- \`root\` is the directory on disk. It is derived from the plugin name
+      -- and is UNIQUE because two plugins of the same name would otherwise
+      -- overwrite each other's files.
+      CREATE TABLE plugins (
+        id            TEXT PRIMARY KEY,
+        name          TEXT NOT NULL UNIQUE,
+        version       TEXT,
+        description   TEXT,
+        source        TEXT NOT NULL,
+        root          TEXT NOT NULL UNIQUE,
+        manifest      TEXT NOT NULL,
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        installed_at  INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+      );
+
+      CREATE INDEX plugins_enabled ON plugins(enabled);
+    `,
+  },
 ];

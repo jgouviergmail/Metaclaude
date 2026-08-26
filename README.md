@@ -160,6 +160,15 @@ staging, diffs and commits.
 Skills (written to `.claude/skills/` before each run so the CLI discovers them),
 custom subagents, and MCP servers with credentials held in an AES-256-GCM vault.
 
+### Plugins
+Full support for **Agent Plugins 1.0.0**, the vendor-neutral package format —
+one directory holding a `plugin.json`, a `skills/` tree and an `mcp.json`, which
+installs as a unit and contributes both to every workspace. Install by path;
+the directory is copied rather than linked, so the source can be deleted
+afterwards. Per the specification a broken component never stops the rest
+loading, so the Plugins screen shows warnings *beside* a working plugin rather
+than replacing it with an error.
+
 ---
 
 ## Security

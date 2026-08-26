@@ -25,6 +25,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { AgentDefinitionRecord, McpServerRecord, SkillDefinition } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { CheckboxField, Switch } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
@@ -36,7 +37,6 @@ import {
   Label,
   Skeleton,
   Textarea,
-  Tooltip,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
@@ -293,7 +293,7 @@ function SkillsTab({
                 </div>
 
                 <div className="flex items-center gap-2 sm:shrink-0">
-                  <Toggle
+                  <Switch
                     checked={skill.enabled}
                     onChange={() => toggle.mutate(skill)}
                     label={`${skill.enabled ? 'Disable' : 'Enable'} skill ${skill.name}`}
@@ -463,7 +463,7 @@ function SkillEditor({
           />
         </Label>
 
-        <CheckboxRow
+        <CheckboxField
           checked={value.enabled}
           onChange={(enabled) => setValue({ ...value, enabled })}
           label="Enabled"
@@ -617,7 +617,7 @@ function AgentsTab({
                 </div>
 
                 <div className="flex items-center gap-2 sm:shrink-0">
-                  <Toggle
+                  <Switch
                     checked={agent.enabled}
                     onChange={() => toggle.mutate(agent)}
                     label={`${agent.enabled ? 'Disable' : 'Enable'} subagent ${agent.name}`}
@@ -813,7 +813,7 @@ function AgentEditor({
           />
         </Label>
 
-        <CheckboxRow
+        <CheckboxField
           checked={value.enabled}
           onChange={(enabled) => setValue({ ...value, enabled })}
           label="Enabled"
@@ -986,7 +986,7 @@ function McpTab({
                       write endpoint replaces the whole secret set, so flipping
                       the switch opens the editor rather than silently dropping
                       this server's credentials. */}
-                  <Toggle
+                  <Switch
                     checked={server.enabled}
                     onChange={() =>
                       setEditing({
@@ -1246,7 +1246,7 @@ function McpEditor({
           />
         </div>
 
-        <CheckboxRow
+        <CheckboxField
           checked={value.enabled}
           onChange={(enabled) => setValue({ ...value, enabled })}
           label="Enabled"
@@ -1283,69 +1283,6 @@ function ListSkeleton() {
         <Skeleton key={index} className="h-24 rounded-xl" />
       ))}
     </div>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-  tooltip,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-  tooltip?: string;
-}) {
-  return (
-    <Tooltip content={tooltip ?? label}>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={onChange}
-        className={cn(
-          'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-          checked ? 'bg-accent' : 'bg-line-strong',
-        )}
-      >
-        <span
-          className={cn(
-            'absolute top-0.5 size-4 rounded-full transition-[left]',
-            checked ? 'left-[1.125rem] bg-accent-ink' : 'left-0.5 bg-surface',
-          )}
-          aria-hidden
-        />
-      </button>
-    </Tooltip>
-  );
-}
-
-function CheckboxRow({
-  checked,
-  onChange,
-  label,
-  hint,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <label className="flex items-start gap-2.5 text-[13px] text-ink">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="mt-0.5 size-4 accent-[var(--mc-accent)]"
-      />
-      <span>
-        {label}
-        <span className="mt-0.5 block text-xs text-muted">{hint}</span>
-      </span>
-    </label>
   );
 }
 

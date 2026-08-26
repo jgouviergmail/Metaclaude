@@ -5,8 +5,9 @@
 import type { App } from '../http/types.js';
 import { AutomationTrigger, EffortLevel, McpTransport, ModelSelector, PermissionMode } from '@metaclaude/shared';
 import { z } from 'zod';
+import { InstallPluginRequest } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
-import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
 
 export function registerRegistryRoutes(app: App, context: AppContext): void {
   /**
@@ -291,4 +292,66 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     });
     return reply.status(202).send({ runId });
   });
+  /* ------------------------------- Plugins ------------------------------- */
+
+  /**
+   * Agent Plugins 1.0.0 — the vendor-neutral package format.
+   *
+   * Owner-only throughout. Installing a plugin adds skills the agent will
+   * follow and MCP servers this server will run as subprocesses; that is the
+   * same authority as editing the workspace's own configuration, and it is not
+   * an operator-level action.
+   */
+  app.get('/api/plugins', async (request, reply) => {
+    requireOwner(request);
+    return reply.send(await context.plugins.list());
+  });
+
+  app.post('/api/plugins', async (request, reply) => {
+    const user = requireOwner(request);
+    const input = InstallPluginRequest.parse(request.body);
+    const record = await context.plugins.install(input.source);
+    context.audit.record({
+      actor: user.username,
+      action: 'plugin.install',
+      target: record.name,
+      outcome: 'success',
+      ipAddress: requestIp(context, request),
+      detail: input.source,
+    });
+    return reply.status(201).send(record);
+  });
+
+  app.patch<{ Params: { id: string } }>('/api/plugins/:id', async (request, reply) => {
+    const user = requireOwner(request);
+    const body = z.object({ enabled: z.boolean() }).parse(request.body);
+    if (!context.plugins.setEnabled(request.params.id, body.enabled)) {
+      throw new HttpError(404, 'That plugin is not installed.');
+    }
+    context.audit.record({
+      actor: user.username,
+      action: body.enabled ? 'plugin.enable' : 'plugin.disable',
+      target: request.params.id,
+      outcome: 'success',
+      ipAddress: requestIp(context, request),
+    });
+    const record = context.plugins.get(request.params.id);
+    return reply.send(record);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/plugins/:id', async (request, reply) => {
+    const user = requireOwner(request);
+    if (!(await context.plugins.remove(request.params.id))) {
+      throw new HttpError(404, 'That plugin is not installed.');
+    }
+    context.audit.record({
+      actor: user.username,
+      action: 'plugin.remove',
+      target: request.params.id,
+      outcome: 'success',
+      ipAddress: requestIp(context, request),
+    });
+    return reply.status(204).send();
+  });
+
 }

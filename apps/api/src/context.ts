@@ -29,6 +29,7 @@ import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
+import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
 import { GitService } from './services/git.js';
@@ -46,6 +47,7 @@ export interface AppContext {
   audit: AuditLog;
   vault: Vault;
   claudeCredentials: ClaudeCredentials;
+  plugins: PluginRegistry;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -178,7 +180,22 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     log: kernelLog,
   });
 
-  const registry = new Registry(db, vault, (level, message, data) => log[level](data ?? {}, message));
+  // Plugins are read from disk once at boot; `refresh()` re-reads them after
+  // any change. `runtime()` is then synchronous, which matters because it is on
+  // the path of every run.
+  const plugins = new PluginRegistry({
+    db,
+    pluginsDir: config.pluginsDir,
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+  await plugins.refresh();
+
+  const registry = new Registry(
+    db,
+    vault,
+    (level, message, data) => log[level](data ?? {}, message),
+    plugins,
+  );
 
   // Declared before the kernel and resolved lazily by the supervisor, since the
   // two reference each other.
@@ -250,6 +267,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     audit,
     vault,
     claudeCredentials,
+    plugins,
     workspaceRepo,
     sessionRepo,
     runRepo,

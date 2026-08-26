@@ -97,6 +97,8 @@ export interface Config {
   databasePath: string;
   artifactsDir: string;
   uploadsDir: string;
+  /** Where installed Agent Plugins live, one directory per plugin. */
+  pluginsDir: string;
 }
 
 /**
@@ -161,8 +163,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   }
   const artifactsDir = resolve(dataDir, 'artifacts');
   const uploadsDir = resolve(dataDir, 'uploads');
+  const pluginsDir = resolve(dataDir, 'plugins');
   mkdirSync(artifactsDir, { recursive: true });
   mkdirSync(uploadsDir, { recursive: true });
+  mkdirSync(pluginsDir, { recursive: true });
 
   const oauthToken = env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || null;
   const apiKey = env.ANTHROPIC_API_KEY?.trim() || null;
@@ -213,5 +217,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     databasePath: resolve(dataDir, 'metaclaude.db'),
     artifactsDir,
     uploadsDir,
+    pluginsDir,
   };
 }

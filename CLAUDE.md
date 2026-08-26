@@ -10,9 +10,14 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 793 tests, ~8s
+pnpm test:run                            # 890 tests, ~11s
 ./deploy/check.sh                        # the deploy scripts, off-box
+node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
+
+`deploy/ratchets.json` holds numbers that may only move the improving way.
+`--update` records improvements but **refuses to loosen a ceiling** — loosening
+one is a hand edit, and the commit must say why.
 
 Run one package: `pnpm --filter @metaclaude/api <script>`.
 
@@ -56,6 +61,14 @@ restates the code is noise; one that records a decision or a trap is not.
   server destroys its credentials.
 - **CSP is `script-src 'self'`.** No inline scripts in `index.html`; put them in
   `apps/web/public/` and reference by path.
+- **`aria-describedby` does not take text *out* of the accessible name.** The
+  name of a labelled control is its `<label>`'s text content, so a hint nested
+  inside the label is announced as part of the name however it is described.
+  Move it out of the label — `components/ui/controls.tsx` does.
+- **Naming a Vite manual chunk pulls it into the entry's graph.** `index.html`
+  then emits `<link rel="modulepreload">` for it, which is the opposite of
+  deferring it. Let the dynamic `import()` boundaries derive the chunks; see the
+  comment in `apps/web/vite.config.ts`.
 
 ## Testing
 
@@ -67,6 +80,14 @@ arguments or `vi.useFakeTimers` — never `sleep`. Pass a seeded PRNG to
 Note that `hashPassword` costs ~100 ms (scrypt N=2¹⁶); keep the call count low.
 
 Tests must not spawn the Claude CLI or hit the network.
+
+**Component tests** (`apps/web`, `*.test.tsx`) render through
+`renderWithProviders` from `@/test/render`, never RTL's bare `render`: the app
+wraps everything in React Query, the router and `TooltipProvider`, and a
+component that reaches for one of them throws when rendered bare. Add a provider
+to `main.tsx` and you add it there too. `src/test/setup.ts` registers RTL's
+`cleanup` — without it a second `render` stacks in the same document and the
+failure surfaces as "found multiple elements" on an unrelated query.
 
 The two checks that *do* need a live agent live in `apps/api/scripts/` and are
 run by hand (`check:e2e`, `check:browser`). They boot the real server against a

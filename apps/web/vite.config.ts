@@ -56,5 +56,6 @@ export default defineConfig({
     // needs a DOM, not a string-comparison stand-in.
     environment: 'happy-dom',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    setupFiles: ['./src/test/setup.ts'],
   },
 });

@@ -14,6 +14,7 @@ import {
   type AuditEntry,
   type ClaudeCredentialStatus,
   type ConnectRepositoryResult,
+  type PluginRecord,
   type Automation,
   type AutomationTrigger,
   type CreateMemoryRequest,
@@ -463,6 +464,15 @@ export const api = {
       method: 'POST',
       body: { gitUrl },
     }),
+
+  plugins: {
+    list: () => request<PluginRecord[]>('/api/plugins'),
+    install: (source: string) =>
+      request<PluginRecord>('/api/plugins', { method: 'POST', body: { source } }),
+    setEnabled: (id: string, enabled: boolean) =>
+      request<PluginRecord>(`/api/plugins/${id}`, { method: 'PATCH', body: { enabled } }),
+    remove: (id: string) => request<void>(`/api/plugins/${id}`, { method: 'DELETE' }),
+  },
 
   claudeCredential: {
     get: () => request<ClaudeCredentialStatus>('/api/claude/credential'),

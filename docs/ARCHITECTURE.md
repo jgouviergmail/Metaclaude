@@ -236,6 +236,56 @@ The test suite includes a real symlink escape against a real temporary directory
 
 ---
 
+## Plugins
+
+Metaclaude implements **Agent Plugins 1.0.0**, the vendor-neutral package format
+published by Amazon, Cursor, Microsoft, OpenAI and Vercel. A plugin is one
+directory: a `plugin.json` manifest, immediate subdirectories of `skills/` each
+holding a `SKILL.md`, and an optional `mcp.json`.
+
+The specification is enforced rather than assumed. `services/plugins.ts` reads a
+single plugin and holds it to the spec — `skills/` is searched one level deep
+and no deeper, `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are expanded in a server's
+args, env and cwd, unknown top-level fields are reported but not fatal, and
+`extensions` is passed through unvalidated because the spec says a client must
+not interpret it. Each component is loaded in isolation: a malformed skill
+produces a warning attached to the plugin, never a failed install.
+
+`services/plugin-registry.ts` owns the installed set. Three decisions are
+load-bearing:
+
+- **Copied, not referenced.** The source is usually a clone the operator will
+  delete, and a plugin that stops working when a temporary directory is cleaned
+  was never installed. The copy is also what makes `PLUGIN_ROOT` a path this
+  server controls.
+- **Data is a sibling of the code.** `<name>.data` sits next to `<name>/`, so
+  replacing the code wholesale does not take the plugin's state with it.
+- **The manifest is stored whole.** A row projecting today's ten columns would
+  discard both `extensions` and whatever 1.1 adds.
+
+Two containment rules, because a plugin is third-party code:
+
+1. The declared paths are checked against the plugin root through `realpath`,
+   as the spec requires.
+2. Symlinks are judged **on the way in**. `cp` preserves them, so a link
+   pointing outside the source becomes an ordinary path inside the installed
+   plugin — and skill directories are later copied wholesale into a workspace
+   the agent can read. Installing a plugin would otherwise be an arbitrary-file
+   read for whoever wrote it. Links that stay inside are kept: sharing one file
+   between two skills is legitimate, so the rule is "no symlinks that leave",
+   not "no symlinks".
+
+Name collisions are resolved deterministically and *reported*: the first plugin
+by name order keeps a contested skill, and the loser is named in the warnings —
+a plugin that appears installed and silently does nothing is the worst outcome
+available. MCP servers avoid the question entirely by being namespaced
+`<plugin>__<server>` before they reach a run.
+
+Workspace-level skills and MCP servers are merged over plugin ones, so a
+workspace can always override what a plugin provides.
+
+---
+
 ## Frontend
 
 **Server state** lives in TanStack Query. **Live state** — the transcript on

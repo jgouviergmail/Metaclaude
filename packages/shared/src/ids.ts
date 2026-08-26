@@ -28,6 +28,7 @@ export const ID_PREFIXES = {
   audit: 'aud',
   insight: 'ins',
   policyArm: 'pol',
+  plugin: 'plg',
   exemplar: 'exm',
 } as const;
 

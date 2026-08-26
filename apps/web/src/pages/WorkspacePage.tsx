@@ -18,6 +18,7 @@ import {
 } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { SessionList } from '@/components/workspace/SessionList';
+import { CheckboxField } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
 import {
@@ -446,25 +447,25 @@ function WorkspaceSettingsModal({
         <fieldset className="space-y-3">
           <legend className="text-[13px] font-semibold text-ink">Learning</legend>
 
-          <Toggle
+          <CheckboxField
             checked={draft.memoryEnabled}
             onChange={(value) => update('memoryEnabled', value)}
             label="Recall long-term memory"
             hint="Inject what Metaclaude learned in earlier sessions into each run's context."
           />
-          <Toggle
+          <CheckboxField
             checked={draft.autoPolicyEnabled}
             onChange={(value) => update('autoPolicyEnabled', value)}
             label="Choose the model automatically"
             hint="Pick model and effort from what has performed best on similar tasks here."
           />
-          <Toggle
+          <CheckboxField
             checked={draft.reflexionEnabled}
             onChange={(value) => update('reflexionEnabled', value)}
             label="Reflect after each run"
             hint="Run a small, tool-less pass that extracts durable lessons from what happened."
           />
-          <Toggle
+          <CheckboxField
             checked={draft.checkpointing}
             onChange={(value) => update('checkpointing', value)}
             label="File checkpointing"
@@ -524,29 +525,3 @@ function WorkspaceSettingsModal({
   );
 }
 
-function Toggle({
-  checked,
-  onChange,
-  label,
-  hint,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-start gap-3">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)]"
-      />
-      <span className="min-w-0">
-        <span className="block text-[13px] font-medium text-ink">{label}</span>
-        <span className="block text-[12px] leading-relaxed text-muted">{hint}</span>
-      </span>
-    </label>
-  );
-}

@@ -12,6 +12,7 @@
  */
 
 import {
+  Plug,
   Activity,
   Bot,
   Brain,
@@ -45,6 +46,7 @@ const NAV: NavEntry[] = [
   { to: '/memory', label: 'Memory', icon: <Brain />, primary: true },
   { to: '/automations', label: 'Automations', icon: <Timer />, primary: true },
   { to: '/agents', label: 'Agents & skills', icon: <Bot /> },
+  { to: '/plugins', label: 'Plugins', icon: <Plug /> },
   { to: '/analytics', label: 'Analytics', icon: <Activity /> },
   { to: '/settings', label: 'Settings', icon: <Settings />, primary: true },
 ];
