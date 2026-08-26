@@ -550,6 +550,25 @@ export class AgentSupervisor {
           status = entry.interruptRequested ? 'interrupted' : 'failed';
           if (entry.interruptRequested) error = 'The run was stopped.';
         }
+        // The turn is over, so the run is over.
+        //
+        // This loop used to wait for the generator to end by itself, which is
+        // what a *string* prompt does: the CLI answers and exits. Streaming
+        // input does not work that way — the session stays open for the next
+        // user message, so the generator waits for input while the loop waits
+        // for the generator. Every run hung: the answer arrived, the tools ran,
+        // and the badge said `Working` until the 45-minute timeout marked it
+        // interrupted. Closing the stream first lets the CLI wrap up; breaking
+        // means a CLI that lingers cannot hold the run open anyway.
+        //
+        // Steering is untouched — that happens *during* the turn, before the
+        // result. A follow-up afterwards opens a new run which resumes the same
+        // CLI session, so the thread continues with an honest status and its
+        // cost attributed to the right run.
+        if (captured.finished) {
+          stream.close();
+          break;
+        }
       }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
@@ -843,6 +862,15 @@ interface Captured {
   usage?: RunUsage;
   error?: string;
   rewindPoint?: string;
+  /**
+   * The turn is over — a `result` arrived.
+   *
+   * `Query` is an AsyncGenerator, and under streaming input the CLI does not
+   * end it when a turn finishes: it waits for the next user message. So the
+   * loop cannot wait for the generator to end on its own, and this is what
+   * tells it the run is done.
+   */
+  finished?: boolean;
 }
 
 /**
@@ -1174,13 +1202,14 @@ export class StreamState {
     // worked, and fed the error string to reflexion as a lesson.
     if (message.subtype === 'success' && !message.is_error) {
       if (message.result.trim()) this.finalText = message.result;
-      return { usage, claudeSessionId: message.session_id };
+      return { usage, claudeSessionId: message.session_id, finished: true };
     }
 
     return {
       usage,
       claudeSessionId: message.session_id,
       error: describeResultError(message),
+      finished: true,
     };
   }
 

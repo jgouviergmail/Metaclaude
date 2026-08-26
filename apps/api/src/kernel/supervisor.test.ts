@@ -122,6 +122,8 @@ interface FakeQuery {
   rewindResult: Record<string, unknown>;
   /** True once the supervisor tore this session down. */
   torndown: boolean;
+  /** True once the supervisor's input iterable ended — the real end-of-session. */
+  inputEnded: boolean;
   /** Catalogue answers. Trailing underscore: `models` is already the setModel log. */
   models_: Array<Record<string, unknown>>;
   commands_: Array<Record<string, unknown>>;
@@ -157,6 +159,7 @@ function fakeQuery() {
     rewinds: [],
     rewindResult: { canRewind: true, filesChanged: ['src/a.ts'], insertions: 3, deletions: 7 },
     torndown: false,
+    inputEnded: false,
     models_: [{ value: 'sonnet', displayName: 'Sonnet', description: 'Balanced' }],
     commands_: [{ name: 'review', description: 'Review the diff', argumentHint: '[path]' }],
     agents_: [{ name: 'explorer', description: 'Reads widely' }],
@@ -176,6 +179,15 @@ function fakeQuery() {
     pushed.push(message);
     wake?.();
   };
+  // Emits the turn's result — and deliberately does *not* end the generator.
+  //
+  // This used to set `done`, and that one line was the whole reason a run that
+  // never completes in production completed in every test. `Query` is an
+  // AsyncGenerator, and under streaming input the CLI does not close it when a
+  // turn ends: it waits for the next user message. The stream ends when the
+  // *input* ends. A fake that returns on `result` is a fake that answers a
+  // question the real SDK is never asked, and it certified a supervisor that
+  // hung forever on the happy path.
   control.finish = (result) => {
     pushed.push(
       result ?? {
@@ -190,7 +202,6 @@ function fakeQuery() {
         session_id: 'sdk-session',
       },
     );
-    done = true;
     wake?.();
   };
 
@@ -205,14 +216,21 @@ function fakeQuery() {
       control.torndown = true;
       wake?.();
     });
-    // Drain whatever the supervisor gives us, so queued turns are observable.
+    // Drain whatever the supervisor gives us, so queued turns are observable —
+    // and note when that input ends, because *that* is what ends the session.
     void (async () => {
       const prompt = params.prompt as AsyncIterable<unknown> | string;
       if (typeof prompt === 'string') {
         control.received.push(prompt);
+        control.inputEnded = true;
+        done = true;
+        wake?.();
         return;
       }
       for await (const message of prompt) control.received.push(message);
+      control.inputEnded = true;
+      done = true;
+      wake?.();
     })();
 
     const generator = (async function* () {
@@ -318,6 +336,76 @@ describe('the prompt reaches the CLI as streaming input', () => {
     const outcome = await run;
     expect(outcome.status).toBe('succeeded');
     expect(outcome.claudeSessionId).toBe('sdk-session');
+  });
+});
+
+describe('a turn that produces a result ends the run', () => {
+  /**
+   * The bug this pins down shipped and reached a real deployment: the answer
+   * arrived, the tools ran, the file was written — and the badge said
+   * `Working` until the 45-minute timeout marked the run interrupted.
+   *
+   * `Query` is an AsyncGenerator. Under a *string* prompt the CLI answers and
+   * exits, so `for await` ends on its own; under streaming input the session
+   * stays open for the next user message. So the loop waited for the generator
+   * while the generator waited for input, and nothing closed the input.
+   *
+   * Every test here passed anyway, because the fake ended its generator on
+   * `finish()` — a double more helpful than the thing it doubles. It no longer
+   * does, which is what makes this case meaningful.
+   */
+  it('resolves as soon as the result arrives, rather than waiting for the CLI to exit', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+
+    control.finish();
+
+    // Raced rather than awaited: an unfixed supervisor never settles this
+    // promise, and a bare `await` would surface as a whole-file timeout naming
+    // no case at all.
+    const outcome = await Promise.race([
+      run,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('the run never ended after its result — its input stream was left open')),
+          2_000,
+        ),
+      ),
+    ]);
+
+    expect(outcome.status).toBe('succeeded');
+  });
+
+  it('closes the input stream, so the CLI subprocess can exit', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+    await run;
+
+    // The fake's drain loop only ends when the iterable ends, so this is the
+    // input side actually being closed rather than a flag being set.
+    expect(control.inputEnded).toBe(true);
+  });
+
+  it('refuses a follow-up once the turn is over', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+    await run;
+
+    // Not a regression in steering: that happens during the turn. Afterwards
+    // the run is finished, and saying so is what sends the operator's next
+    // message to a new run resuming the same CLI session.
+    await expect(supervisor.send('run_1', 'et maintenant ?')).resolves.toBe(false);
   });
 });
 
