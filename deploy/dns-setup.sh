@@ -3,7 +3,7 @@
 # Point a name at this server, in Cloudflare, without editing anything already
 # there.
 #
-#     ./deploy/dns-setup.sh --fqdn myclaude.jeyswork.com
+#     ./deploy/dns-setup.sh --fqdn agent.example.com
 #
 # Asks for a Cloudflare API token, finds the zone, shows what already exists for
 # that name, and creates the record only if nothing does. It never updates and
@@ -42,7 +42,7 @@ usage() {
   cat <<'USAGE'
 Usage: ./deploy/dns-setup.sh --fqdn NAME [options]
 
-  --fqdn NAME     The full name to create, e.g. myclaude.jeyswork.com
+  --fqdn NAME     The full name to create, e.g. agent.example.com
   --ip ADDR       IPv4 to point at. Default: this machine's public address.
   --ipv6 ADDR     Also create an AAAA record. Optional.
   -h, --help

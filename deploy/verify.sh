@@ -6,7 +6,7 @@
 # tools on the box agree with themselves, and a firewall that believes it is
 # closed is not evidence that it is. Only a probe from somewhere else settles it.
 #
-#     ./deploy/verify.sh 2.28.17.123 --ipv6 2a01:4f8:c015:ab4c::1
+#     ./deploy/verify.sh 203.0.113.10 --ipv6 2001:db8::1
 #
 # Exit code is non-zero if anything that should be shut is open, or anything
 # that should answer does not.
