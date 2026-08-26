@@ -104,7 +104,9 @@ Every one of those steps is inspectable and resettable from the UI. A
 self-modifying system you cannot read is not one you should trust.
 
 Full detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** ·
-**[docs/LEARNING.md](docs/LEARNING.md)** · **[docs/SECURITY.md](docs/SECURITY.md)**
+**[docs/LEARNING.md](docs/LEARNING.md)** · **[docs/SECURITY.md](docs/SECURITY.md)** ·
+where it is going: **[docs/ROADMAP.md](docs/ROADMAP.md)** ·
+what changed: **[CHANGELOG.md](CHANGELOG.md)**
 
 ---
 
