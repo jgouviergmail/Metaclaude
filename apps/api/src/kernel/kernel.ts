@@ -66,7 +66,7 @@ export interface SubmitOptions {
   prompt: string;
   triggeredBy?: Run['triggeredBy'];
   /** Explicit overrides; when absent the workspace default or the bandit decides. */
-  overrides?: Partial<Pick<RunPolicy, 'model' | 'effort' | 'permissionMode' | 'agentName'>>;
+  overrides?: Partial<Pick<RunPolicy, 'model' | 'effort' | 'permissionMode' | 'agentName' | 'ultracode'>>;
 }
 
 export interface KernelDeps {
@@ -235,6 +235,7 @@ export class Kernel {
       thinking: settings.thinking,
       thinkingBudgetTokens: settings.thinkingBudgetTokens,
       agentName: session.agentName,
+      ultracode: false,
       source: 'workspace',
     };
 
@@ -257,6 +258,10 @@ export class Kernel {
     }
     if (overrides?.permissionMode !== undefined) base.permissionMode = overrides.permissionMode;
     if (overrides?.agentName !== undefined) base.agentName = overrides.agentName;
+    // Never learned, never a workspace default: orchestration multiplies cost,
+    // so it exists only as a per-message choice. The bandit cannot pick it and
+    // a stored setting cannot leave it quietly on.
+    if (overrides?.ultracode !== undefined) base.ultracode = overrides.ultracode;
 
     return base;
   }

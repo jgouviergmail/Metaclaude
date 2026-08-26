@@ -227,6 +227,26 @@ describe('admission', () => {
     expect(fixture.sessions.get(session.id)?.title).toBe('Fix the parser bug');
   });
 
+  it('carries an explicit ultracode ask through to the run, and never invents one', async () => {
+    // The whole chain is what matters: the field exists on the contract, the
+    // route forwards it, and this proves the kernel writes it onto the policy
+    // the supervisor will read. Off by default because orchestration multiplies
+    // cost — only a per-message choice may turn it on.
+    const session = fixture.newSession();
+
+    const plain = await fixture.kernel.submit({ sessionId: session.id, prompt: 'estimate this' });
+    await settled(fixture, plain.id);
+    expect(fixture.runs.get(plain.id)?.policy.ultracode).toBe(false);
+
+    const orchestrated = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'audit the whole codebase',
+      overrides: { ultracode: true },
+    });
+    await settled(fixture, orchestrated.id);
+    expect(fixture.runs.get(orchestrated.id)?.policy.ultracode).toBe(true);
+  });
+
   it('refuses an empty prompt', async () => {
     const session = fixture.newSession();
 

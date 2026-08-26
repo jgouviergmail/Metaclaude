@@ -163,16 +163,20 @@ export function SessionPage() {
     model: 'default',
     effort: null,
     permissionMode: 'default',
+    ultracode: false,
   });
 
   // Seed the composer from the session's own settings once it loads.
   useEffect(() => {
     if (!session) return;
-    setComposer({
+    setComposer((current) => ({
       model: String(session.model),
       effort: (session.effort as EffortLevel | null) ?? null,
       permissionMode: session.permissionMode as PermissionMode,
-    });
+      // Per-message, never persisted on the session: reseeding must not
+      // silently switch orchestration on or off under the operator.
+      ultracode: current.ultracode,
+    }));
   }, [session?.id]);
 
   /* ------------------------------ Mutations ------------------------------- */
@@ -184,6 +188,7 @@ export function SessionPage() {
         model: composer.model,
         effort: composer.effort,
         permissionMode: composer.permissionMode,
+        ultracode: composer.ultracode,
       }),
     onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : 'Could not start the run.');

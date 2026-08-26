@@ -235,6 +235,9 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     effort: EffortLevel.nullable().optional(),
     permissionMode: PermissionMode.optional(),
     agentName: z.string().max(64).nullable().optional(),
+    // Per-message only, never on CreateSession: orchestration multiplies cost,
+    // so nothing stored may leave it quietly on for the next prompt.
+    ultracode: z.boolean().optional(),
   });
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/runs', async (request, reply) => {
@@ -265,6 +268,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
             ? { permissionMode: parsed.data.permissionMode }
             : {}),
           ...(parsed.data.agentName !== undefined ? { agentName: parsed.data.agentName } : {}),
+          ...(parsed.data.ultracode !== undefined ? { ultracode: parsed.data.ultracode } : {}),
         },
       });
 

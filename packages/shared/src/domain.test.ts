@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { LoginRequest, RewindRequest, WorkspaceSettings } from './domain.js';
+import { LoginRequest, RewindRequest, RunPolicy, WorkspaceSettings } from './domain.js';
 
 const base = { username: 'owner', password: 'a-long-enough-password' };
 
@@ -83,5 +83,26 @@ describe('WorkspaceSettings defaults', () => {
 
   it('rejects a permission mode outside the known set', () => {
     expect(WorkspaceSettings.safeParse({ defaultPermissionMode: 'yolo' }).success).toBe(false);
+  });
+});
+
+describe('RunPolicy — ultracode', () => {
+  const base = {
+    model: 'opus',
+    effort: 'xhigh',
+    permissionMode: 'default',
+    thinking: 'adaptive',
+    thinkingBudgetTokens: null,
+    agentName: null,
+    source: 'explicit',
+  };
+
+  it('defaults to off, so every policy written before the field existed still parses', () => {
+    const parsed = RunPolicy.parse(base);
+    expect(parsed.ultracode).toBe(false);
+  });
+
+  it('round-trips an explicit true', () => {
+    expect(RunPolicy.parse({ ...base, ultracode: true }).ultracode).toBe(true);
   });
 });

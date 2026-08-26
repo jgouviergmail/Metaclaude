@@ -62,6 +62,7 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
       thinking: 'adaptive',
       thinkingBudgetTokens: null,
       agentName: null,
+      ultracode: false,
       source: 'explicit',
     },
     resumeSessionId: null,
@@ -1263,5 +1264,23 @@ describe('buildOptions', () => {
 
     const options = supervisor.buildOptions(reckless);
     expect(options.permissionMode).toBe('default');
+  });
+});
+
+describe('buildOptions — ultracode', () => {
+  it('passes the setting to the CLI when the policy asks for it', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const request = makeRequest();
+    request.policy = { ...request.policy, ultracode: true };
+
+    expect(supervisor.buildOptions(request).settings).toEqual({ ultracode: true });
+  });
+
+  it('sends no settings payload at all otherwise', () => {
+    // Absence, not `{ ultracode: false }`: an explicit false would still be a
+    // settings payload for the CLI to merge, and the pre-ultracode behaviour
+    // must stay byte-identical for every run that never asked.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest()).settings).toBeUndefined();
   });
 });

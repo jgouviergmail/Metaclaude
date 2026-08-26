@@ -290,6 +290,14 @@ export const RunPolicy = z.object({
   thinking: ThinkingMode,
   thinkingBudgetTokens: z.number().int().nullable(),
   agentName: z.string().nullable(),
+  /**
+   * Standing multi-agent orchestration for this run (the CLI's "ultracode"):
+   * xhigh effort plus fan-out workflows by default. Costs tokens accordingly,
+   * and needs an xhigh-capable model — the CLI falls back gracefully on one
+   * that is not. Defaulted so every policy stored before the field existed
+   * still parses.
+   */
+  ultracode: z.boolean().default(false),
   /** Where this policy came from — user choice, workspace default, or the bandit. */
   source: z.enum(['explicit', 'workspace', 'learned']),
 });

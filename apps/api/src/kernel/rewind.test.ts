@@ -24,6 +24,7 @@ const run: Run = {
     thinking: 'disabled',
     thinkingBudgetTokens: null,
     agentName: null,
+    ultracode: false,
     source: 'explicit',
   },
   usage: {

@@ -92,3 +92,28 @@ export function effortOptions(
   const supported = new Set<EffortLevel>(known.supportedEffortLevels);
   return [DEFER, ...EFFORT_LABELS.filter((effort) => supported.has(effort.value))];
 }
+
+/**
+ * Whether the composer should offer ultracode for this model.
+ *
+ * Ultracode is the CLI's standing multi-agent orchestration and needs an
+ * xhigh-capable model. Three stances, one per kind of answer:
+ *
+ *   - the CLI named the model        → trust its supportedEffortLevels;
+ *   - the operator typed an id the catalogue has not enumerated → allow, the
+ *     same stance as effortOptions: withdrawing a capability on a guess takes
+ *     away a setting that is very likely valid, and the CLI degrades
+ *     gracefully on one that is not;
+ *   - Auto                           → withhold. The learner picks the model at
+ *     submit time and may pick one that cannot orchestrate; a toggle that only
+ *     sometimes means anything teaches people to ignore it.
+ */
+export function supportsUltracode(
+  catalogue: ClaudeCatalogue | undefined,
+  model: string,
+): boolean {
+  if (model === AUTO.value) return false;
+  const known = catalogue?.models.find((entry) => entry.value === model);
+  if (!known) return true;
+  return known.supportedEffortLevels.includes('xhigh');
+}

@@ -94,6 +94,7 @@ const DEFAULT_POLICY: RunPolicy = {
   thinking: 'adaptive',
   thinkingBudgetTokens: null,
   agentName: null,
+  ultracode: false,
   source: 'workspace',
 };
 

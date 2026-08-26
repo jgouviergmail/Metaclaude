@@ -114,7 +114,9 @@ Full detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** ·
 Streaming token-by-token output, collapsible reasoning blocks, compact tool-call
 cards that expand on demand, live plan checklists, inline diffs, and per-run
 cost and token accounting. Model, effort and permission mode are per-message
-controls, not buried settings.
+controls, not buried settings — and so is **Ultracode**, the CLI's standing
+multi-agent orchestration: one toggle fans the message out across sub-agents at
+maximum effort, offered only when the chosen model can actually do it.
 
 ### Permissions
 Every tool call that writes, deletes, runs a command or reaches the network can

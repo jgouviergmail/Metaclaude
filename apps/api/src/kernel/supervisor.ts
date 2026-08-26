@@ -277,6 +277,15 @@ export class AgentSupervisor {
       agentProgressSummaries: true,
       env: this.deps.env,
 
+      // Ultracode: the CLI's standing multi-agent orchestration — xhigh effort
+      // plus dynamic workflows by default. Session-scoped in the CLI, so it is
+      // handed over at open time rather than through a mid-turn control
+      // request, which could land after the turn it was meant to shape. Absent
+      // rather than `{ ultracode: false }` when off: an explicit false is
+      // still a settings payload for the CLI to merge, and every run that
+      // never asked must stay byte-identical to before the field existed.
+      ...(policy.ultracode ? { settings: { ultracode: true } } : {}),
+
       // `project` is required for the CLI to discover `CLAUDE.md` and the
       // workspace's `.claude/skills/` — both of which Metaclaude actively
       // writes and advertises. `user` and `local` are excluded: they would read

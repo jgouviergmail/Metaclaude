@@ -54,6 +54,7 @@ function run(id: string, status: Run['status'], sessionId = SESSION_ID): Run {
       thinking: 'adaptive',
       thinkingBudgetTokens: null,
       agentName: null,
+      ultracode: false,
       source: 'workspace',
     },
     usage: {

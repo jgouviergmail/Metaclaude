@@ -256,6 +256,7 @@ export const api = {
       effort?: string | null;
       permissionMode?: string;
       agentName?: string | null;
+      ultracode?: boolean;
     },
   ) => request<{ run: Run }>(`/api/sessions/${sessionId}/runs`, { method: 'POST', body }),
 

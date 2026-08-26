@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ClaudeCatalogue } from '@metaclaude/shared';
-import { effortOptions, modelOptions } from './claude-catalogue';
+import { effortOptions, modelOptions, supportsUltracode } from './claude-catalogue';
 
 const catalogue = (models: ClaudeCatalogue['models']): ClaudeCatalogue => ({
   models,
@@ -127,5 +127,35 @@ describe('effortOptions', () => {
     for (const value of ['opus', 'default', 'unknown']) {
       expect(effortOptions(undefined, value)[0]?.value).toBeNull();
     }
+  });
+});
+
+describe('supportsUltracode', () => {
+  it('offers it for a model the CLI marks xhigh-capable', () => {
+    const cat = catalogue([
+      model({ value: 'opus', supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] }),
+    ]);
+    expect(supportsUltracode(cat, 'opus')).toBe(true);
+  });
+
+  it('withholds it from a model that cannot reach xhigh', () => {
+    const cat = catalogue([
+      model({ value: 'haiku', supportsEffort: false, supportedEffortLevels: [] }),
+    ]);
+    expect(supportsUltracode(cat, 'haiku')).toBe(false);
+  });
+
+  it('withholds it under Auto, where the learner may pick an incapable model', () => {
+    const cat = catalogue([
+      model({ value: 'opus', supportsEffort: true, supportedEffortLevels: ['xhigh'] }),
+    ]);
+    expect(supportsUltracode(cat, 'default')).toBe(false);
+  });
+
+  it('allows a typed model id the catalogue has not enumerated', () => {
+    // Same stance as effortOptions: withdrawing a capability on a guess takes
+    // away settings that are very likely valid; the CLI degrades gracefully.
+    expect(supportsUltracode(catalogue([]), 'claude-fable-5')).toBe(true);
+    expect(supportsUltracode(undefined, 'claude-fable-5')).toBe(true);
   });
 });

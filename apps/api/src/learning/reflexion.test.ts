@@ -35,6 +35,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
       thinking: 'adaptive',
       thinkingBudgetTokens: null,
       agentName: null,
+      ultracode: false,
       source: 'workspace',
     },
     usage: {

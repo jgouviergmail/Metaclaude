@@ -12,6 +12,7 @@ import {
   ChevronDown,
   CornerDownLeft,
   Gauge,
+  Network,
   Shield,
   Square,
   Wand2,
@@ -25,7 +26,7 @@ import {
   type PermissionMode,
 } from '@metaclaude/shared';
 import { Button, Tooltip } from '@/components/ui/primitives';
-import { effortOptions, modelOptions } from '@/lib/claude-catalogue';
+import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
 import { cn, isModifier } from '@/lib/utils';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 
@@ -35,6 +36,8 @@ export interface ComposerValue {
   model: string;
   effort: EffortLevel | null;
   permissionMode: PermissionMode;
+  /** Standing multi-agent orchestration for this message. See supportsUltracode. */
+  ultracode: boolean;
 }
 
 export function Composer({
@@ -100,6 +103,7 @@ export function Composer({
   // reached costs the extra detail and nothing else.
   const models = useMemo(() => modelOptions(catalogue), [catalogue]);
   const efforts = useMemo(() => effortOptions(catalogue, value.model), [catalogue, value.model]);
+  const offerUltracode = supportsUltracode(catalogue, value.model);
 
   const activeModel =
     models.find((m) => m.value === value.model) ??
@@ -219,6 +223,26 @@ export function Composer({
               ))}
             </Menu>
 
+            {/* Ultracode --------------------------------------------------- */}
+            {offerUltracode ? (
+              <Tooltip content="Fan the work out across sub-agents that explore, verify and contradict each other. Maximum effort — and token spend to match.">
+                <button
+                  type="button"
+                  aria-pressed={value.ultracode}
+                  onClick={() => onChange({ ...value, ultracode: !value.ultracode })}
+                  className={cn(
+                    'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium',
+                    value.ultracode
+                      ? 'bg-accent-soft text-accent'
+                      : 'text-muted hover:bg-raised hover:text-ink',
+                  )}
+                >
+                  <Network className="size-3.5" aria-hidden />
+                  Ultracode
+                </button>
+              </Tooltip>
+            ) : null}
+
             <div className="ml-auto flex items-center gap-2">
               {isRunning ? (
                 <Button variant="danger" size="sm" onClick={onInterrupt}>
@@ -243,6 +267,13 @@ export function Composer({
           </div>
         </div>
 
+        {value.ultracode && offerUltracode ? (
+          <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-accent">
+            <Network className="size-3" aria-hidden />
+            Ultracode: this message fans out across sub-agents at maximum effort. Expect
+            multi-agent token spend.
+          </p>
+        ) : null}
         {value.permissionMode === 'bypassPermissions' ? (
           <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-danger">
             <Zap className="size-3" aria-hidden />
