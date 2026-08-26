@@ -89,6 +89,8 @@ export interface KernelDeps {
   contextProvider: ContextProvider;
   supervisor: AgentSupervisor;
   maxConcurrentRuns: number;
+  /** How long a delegation waits for its run. Injectable so tests need not. */
+  delegationTimeoutMs?: number;
   /**
    * Called once per run, after it reaches a terminal state and its usage has
    * been recorded. A direct hook rather than an event-bus subscription: run
@@ -167,6 +169,12 @@ export class Kernel {
     string,
     { run: Run; finalText: string; ready: boolean }
   >();
+  /**
+   * Delegations whose waiter gave up (timeout). Their stash arrives later and
+   * nobody will ever consume it, so settlement discards it — without this,
+   * every timed-out delegation leaked one entry for the life of the process.
+   */
+  private readonly delegationAbandoned = new Set<string>();
 
   private shuttingDown = false;
 
@@ -303,7 +311,10 @@ export class Kernel {
       triggeredBy: 'delegation',
     });
 
-    const settled = await this.waitForDelegation(run.id, DELEGATION_TIMEOUT_MS);
+    const settled = await this.waitForDelegation(
+      run.id,
+      this.deps.delegationTimeoutMs ?? DELEGATION_TIMEOUT_MS,
+    );
     return {
       runId: settled.run.id,
       sessionId: session.id,
@@ -326,6 +337,7 @@ export class Kernel {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.delegationWaiters.delete(runId);
+        this.delegationAbandoned.add(runId);
         reject(new Error('The delegated run did not finish in time.'));
       }, timeoutMs);
       timer.unref?.();
@@ -484,6 +496,11 @@ export class Kernel {
   /** Resolve a delegation's waiter, or mark its stash consumable. */
   private settleDelegation(run: Run): void {
     if (run.triggeredBy !== 'delegation') return;
+
+    if (this.delegationAbandoned.delete(run.id)) {
+      this.delegationSettled.delete(run.id);
+      return;
+    }
 
     let settled = this.delegationSettled.get(run.id);
     if (!settled) {

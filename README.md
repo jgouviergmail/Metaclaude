@@ -254,7 +254,7 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 1355 unit + integration tests, ~20s
+pnpm test:run    # 1356 unit + integration tests, ~20s
 pnpm typecheck
 pnpm build
 ```

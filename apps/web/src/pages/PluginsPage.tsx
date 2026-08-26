@@ -149,16 +149,18 @@ export function PluginsPage() {
         }
       />
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <Store className="size-4 text-muted" aria-hidden />
-            Marketplaces
-          </h2>
-          <Button variant="secondary" size="sm" onClick={() => setAddingMarketplace(true)}>
-            <Plus className="size-4" aria-hidden />
-            Add marketplace
-          </Button>
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-6">
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                <Store className="size-4 text-muted" aria-hidden />
+                Marketplaces
+              </h2>
+              <Button variant="secondary" size="sm" onClick={() => setAddingMarketplace(true)}>
+                <Plus className="size-4" aria-hidden />
+                Add marketplace
+              </Button>
         </div>
         <p className="text-[12.5px] leading-relaxed text-muted">
           The CLI fetches these sources itself and installs from them at the start of a run.
@@ -284,6 +286,9 @@ export function PluginsPage() {
           ))}
         </div>
       )}
+
+        </div>
+      </div>
 
       <Modal
         open={installing}

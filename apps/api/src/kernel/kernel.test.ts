@@ -96,7 +96,7 @@ function fakeSupervisor() {
   return supervisor;
 }
 
-function setup(options: { maxConcurrentRuns?: number; settings?: Partial<WorkspaceSettings> } = {}) {
+function setup(options: { maxConcurrentRuns?: number; settings?: Partial<WorkspaceSettings>; delegationTimeoutMs?: number } = {}) {
   const db = openDatabase({ path: ':memory:' });
   migrate(db);
 
@@ -150,6 +150,9 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     contextProvider: contextProvider as never,
     supervisor: supervisor as never,
     maxConcurrentRuns: options.maxConcurrentRuns ?? 2,
+    ...(options.delegationTimeoutMs !== undefined
+      ? { delegationTimeoutMs: options.delegationTimeoutMs }
+      : {}),
     onRunFinished: (run) => finished.push(run),
     log: () => {},
   });
@@ -613,6 +616,40 @@ describe('delegation', () => {
         prompt: 'hello?',
       }),
     ).rejects.toThrow(/no workspace/i);
+  });
+
+  it('discards the stash of a delegation whose waiter timed out — no leak', async () => {
+    // The waiter gives up, the run finishes later, and nobody will ever
+    // consume the stashed outcome. Settlement must drop it, or every
+    // timed-out delegation grows the map for the life of the process.
+    const fx = setup({ delegationTimeoutMs: 30 });
+    try {
+      fx.workspaces.create({
+        name: 'docs', slug: 'docs', description: '',
+        path: '/tmp/metaclaude-docs', color: '#6366f1', icon: 'folder',
+        settings: WorkspaceSettingsSchema.parse({}),
+      });
+      fx.supervisor.hold();
+
+      const attempt = fx.kernel.delegate({
+        fromWorkspaceId: fx.workspace.id,
+        fromTriggeredBy: 'user',
+        target: 'docs',
+        prompt: 'slow question',
+      });
+      await expect(attempt).rejects.toThrow(/did not finish in time/);
+
+      fx.supervisor.finish();
+      await vi.waitFor(() => {
+        // The one observable of a leak is the map itself; a typed escape is
+        // the price of asserting absence.
+        const settled = (fx.kernel as unknown as { delegationSettled: Map<string, unknown> })
+          .delegationSettled;
+        expect(settled.size).toBe(0);
+      });
+    } finally {
+      fx.db.close();
+    }
   });
 
   it('refuses a delegated run delegating again — depth is one, so no loops', async () => {

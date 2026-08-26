@@ -10,6 +10,7 @@ import type { AppContext } from '../context.js';
 import {
   assertPermissionModeAllowed,
   HttpError,
+  mustGetWorkspace,
   requestIp,
   requireOperator,
   requireOwner,
@@ -307,14 +308,13 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     requireOperator(request);
     const query = request.query as { workspaceId?: string; refresh?: string };
 
-    const workspace = query.workspaceId ? context.workspaceRepo.get(query.workspaceId) : null;
-    if (query.workspaceId && !workspace) throw new HttpError(404, 'Workspace not found.');
-
     // With no workspace named, ask from the data directory. The answer is then
     // what the CLI offers everywhere — models and built-in commands — without
     // any workspace's own skills or servers, which is exactly what a caller
     // that named no workspace is asking for.
-    const path = workspace?.path ?? context.config.dataDir;
+    const path = query.workspaceId
+      ? mustGetWorkspace(context, query.workspaceId).path
+      : context.config.dataDir;
 
     return reply.send(
       await context.claudeCatalogue.get(path, { force: query.refresh === 'true' }),
@@ -331,10 +331,9 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     requireOperator(request);
     const query = request.query as { workspaceId?: string; refresh?: string };
 
-    const workspace = query.workspaceId ? context.workspaceRepo.get(query.workspaceId) : null;
-    if (query.workspaceId && !workspace) throw new HttpError(404, 'Workspace not found.');
-
-    const path = workspace?.path ?? context.config.dataDir;
+    const path = query.workspaceId
+      ? mustGetWorkspace(context, query.workspaceId).path
+      : context.config.dataDir;
     return reply.send(await context.claudeUsage.get(path, { force: query.refresh === 'true' }));
   });
 

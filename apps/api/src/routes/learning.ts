@@ -10,7 +10,7 @@ import type { App } from '../http/types.js';
 import { CreateMemoryRequest, MemoryKind } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import { HttpError, mustGetWorkspace, requestIp, requireOperator } from '../http/guards.js';
 import { spreadInt } from '../http/query.js';
 import { listInsights, setInsightStatus } from '../learning/reflexion.js';
 
@@ -225,9 +225,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
     '/api/workspaces/:id/synthesise-skill',
     async (request, reply) => {
       const actor = requireOperator(request);
-      if (!context.workspaceRepo.get(request.params.id)) {
-        throw new HttpError(404, 'Workspace not found.');
-      }
+      mustGetWorkspace(context, request.params.id);
 
       const insight = await context.synthesizer.synthesise(request.params.id);
       context.audit.record({
