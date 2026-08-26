@@ -186,9 +186,16 @@ validation could see it; the same is true of the agent's own workspace, which is
 why this is a property of directory grants rather than a gap in the check.
 `security/directories.test.ts` asserts that limit explicitly rather than
 implying a defence that does not exist. Grant a directory only if you would be
-content for the agent to reach anything reachable *from* it, and note that the
-shipped image places the workspaces root inside the data directory — so on that
-layout the containing directory holds `master.key` and the database.
+content for the agent to reach anything reachable *from* it.
+
+What bounds the damage is that the two roots are separate.
+`METACLAUDE_DATA_DIR` (`/var/lib/metaclaude`) holds the database, the sealed
+vault and `master.key`; `METACLAUDE_WORKSPACES_DIR` (`/srv/metaclaude/workspaces`)
+is where the agent runs. **Neither may contain the other, and the server refuses
+to start if they do.** The image shipped them nested — every workspace one `..`
+from the key — which is what made a symlink inside a workspace worth writing.
+Separated, a link the agent plants reaches other workspaces and whatever the
+container can already see, not the key.
 
 ---
 

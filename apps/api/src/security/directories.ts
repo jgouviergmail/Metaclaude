@@ -82,25 +82,31 @@ export function reviewAdditionalDirectories(
     //
     // The first half is conditional, and that is the whole subtlety: the
     // shipped image puts the workspaces root *inside* the data directory —
-    // METACLAUDE_DATA_DIR=/var/lib/metaclaude,
-    // METACLAUDE_WORKSPACES_DIR=/var/lib/metaclaude/workspaces — so every legal
-    // candidate is under `dataRoot` by construction. A blanket refusal
+    // The image used to ship METACLAUDE_DATA_DIR=/var/lib/metaclaude with
+    // METACLAUDE_WORKSPACES_DIR=/var/lib/metaclaude/workspaces, so every legal
+    // candidate was under `dataRoot` by construction. A blanket refusal
     // therefore rejected all of them and left the feature inert in the only
-    // configuration that actually ships, while every test here used a layout
+    // configuration that actually shipped, while every test here used a layout
     // where the two are siblings and never noticed.
     //
-    // Which exemption applies depends on which directory contains which, and
-    // both layouts are real:
+    // Which exemption applies depends on which directory contains which.
     //
-    //   data/workspaces   (shipped)  every legal candidate is under dataRoot,
+    //   siblings          (shipped)  neither contains the other, so being under
+    //                                dataRoot is disqualifying outright — this
+    //                                is the live branch
+    //   data/workspaces              every legal candidate is under dataRoot,
     //                                so only one *outside* workspacesRoot is
     //                                reaching for something it should not
-    //   workspaces/.data  (nested)   dataRoot is below workspacesRoot, so being
+    //   workspaces/.data             dataRoot is below workspacesRoot, so being
     //                                under dataRoot is disqualifying outright
     //
-    // Getting this backwards is how the shipped layout came to reject
-    // everything — and exempting the workspaces subtree unconditionally would
-    // hand out the vault under the nested one.
+    // `loadConfig` refuses to start on either nested layout, so in production
+    // only the first row is reachable; the other two are kept because this
+    // function takes a `DirectoryPolicy` rather than reading the config, and a
+    // caller that constructs one directly must still be answered correctly.
+    // Getting the second row backwards is how the previously-shipped layout
+    // came to reject everything, and exempting the workspaces subtree
+    // unconditionally would hand out the vault under the third.
     const workspacesUnderData = workspacesRoot !== dataRoot && isInside(dataRoot, workspacesRoot);
     const reachesData = workspacesUnderData
       ? isInside(dataRoot, target) && !isInside(workspacesRoot, target)

@@ -161,3 +161,71 @@ describe('master key', () => {
     expect(() => load({ METACLAUDE_MASTER_KEY: 'abcd' })).toThrow();
   });
 });
+
+describe('the data and workspaces directories must not overlap', () => {
+  /**
+   * They hold different things with different threat models: the database,
+   * the sealed vault and `master.key` on one side; directories the agent writes
+   * into while running model-authored commands on the other. Nested either way
+   * that separation is not real, and the image used to ship exactly that — so
+   * this is a configuration error rather than a runtime guard, because a layout
+   * that cannot be expressed cannot be got wrong.
+   */
+  const base = (over: Record<string, string>) =>
+    ({
+      NODE_ENV: 'test',
+      METACLAUDE_WEB_DIR: '/tmp/mc-web',
+      ...over,
+    }) as NodeJS.ProcessEnv;
+
+  it('refuses the workspaces directory nested inside the data directory', () => {
+    // The layout the image shipped, and the reason this check exists.
+    expect(() =>
+      loadConfig(
+        base({
+          METACLAUDE_DATA_DIR: '/var/lib/metaclaude',
+          METACLAUDE_WORKSPACES_DIR: '/var/lib/metaclaude/workspaces',
+        }),
+      ),
+    ).toThrow(/must not contain one another/);
+  });
+
+  it('refuses the data directory nested inside the workspaces directory', () => {
+    // Worse than the other way round: the vault inside a directory the agent
+    // writes to.
+    expect(() =>
+      loadConfig(
+        base({
+          METACLAUDE_DATA_DIR: '/srv/metaclaude/workspaces/.state',
+          METACLAUDE_WORKSPACES_DIR: '/srv/metaclaude/workspaces',
+        }),
+      ),
+    ).toThrow(/must not contain one another/);
+  });
+
+  it('refuses them being the same directory', () => {
+    expect(() =>
+      loadConfig(
+        base({
+          METACLAUDE_DATA_DIR: '/var/lib/metaclaude',
+          METACLAUDE_WORKSPACES_DIR: '/var/lib/metaclaude',
+        }),
+      ),
+    ).toThrow(/must not contain one another/);
+  });
+
+  it('accepts a shared parent, which is not containment', () => {
+    // `/var/lib/metaclaude` and `/var/lib/metaclaude-workspaces` are siblings
+    // despite one being a string prefix of the other — this is exactly the case
+    // `isInside` is written with `path.relative` to get right.
+    const dir = mkdtempSync(join(tmpdir(), 'mc-cfg-'));
+    const config = loadConfig(
+      base({
+        METACLAUDE_DATA_DIR: join(dir, 'metaclaude'),
+        METACLAUDE_WORKSPACES_DIR: join(dir, 'metaclaude-workspaces'),
+      }),
+    );
+    expect(config.workspacesDir).toBe(join(dir, 'metaclaude-workspaces'));
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

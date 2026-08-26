@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { z } from 'zod';
+import { isInside } from './security/paths.js';
 
 const Booleanish = z
   .string()
@@ -23,7 +24,7 @@ const EnvSchema = z.object({
   /** Root for all mutable state: database, artifacts, uploads, model cache. */
   METACLAUDE_DATA_DIR: z.string().default('/var/lib/metaclaude'),
   /** Root containing one directory per workspace. Every FS op is jailed here. */
-  METACLAUDE_WORKSPACES_DIR: z.string().default('/var/lib/metaclaude/workspaces'),
+  METACLAUDE_WORKSPACES_DIR: z.string().default('/srv/metaclaude/workspaces'),
   /** Directory holding the built web assets, served by the API in production. */
   METACLAUDE_WEB_DIR: z.string().default('/opt/metaclaude/web'),
 
@@ -157,6 +158,35 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     'METACLAUDE_WORKSPACES_DIR',
     env.METACLAUDE_WORKSPACES_DIR,
   );
+
+  // Neither directory may contain the other, and this refuses to start rather
+  // than warn.
+  //
+  // The two hold different things with different threat models. `dataDir` holds
+  // the database — session tokens, password hashes, the sealed vault — and
+  // `master.key` beside it. `workspacesDir` holds directories the *agent*
+  // writes into, running model-authored commands, and is what
+  // `additionalDirectories` can widen access to.
+  //
+  // Nested either way, that separation stops being real. The image used to ship
+  // `METACLAUDE_WORKSPACES_DIR` *inside* `METACLAUDE_DATA_DIR`, which meant
+  // every workspace sat one `..` from the master key: any check phrased as "is
+  // this under the data directory?" answered yes for every legitimate workspace
+  // path, and a symlink an agent planted inside its own workspace reached the
+  // key with no path check able to see it. The reverse nesting is worse still —
+  // the vault inside a directory the agent writes to.
+  //
+  // A layout that cannot be expressed cannot be got wrong, so this is a
+  // configuration error rather than a runtime guard.
+  if (isInside(dataDir, workspacesDir) || isInside(workspacesDir, dataDir)) {
+    throw new Error(
+      `METACLAUDE_DATA_DIR and METACLAUDE_WORKSPACES_DIR must not contain one another — ` +
+        `got data="${dataDir}" and workspaces="${workspacesDir}". The data directory holds the ` +
+        `database and master.key; the workspaces directory is where the agent runs. Nesting ` +
+        `them puts the key inside the agent's reach. Sensible defaults are ` +
+        `/var/lib/metaclaude and /srv/metaclaude/workspaces.`,
+    );
+  }
 
   for (const dir of [dataDir, workspacesDir]) {
     mkdirSync(dir, { recursive: true });

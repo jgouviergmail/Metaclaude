@@ -125,14 +125,15 @@ restates the code is noise; one that records a decision or a trap is not.
   nothing to fall back to and the handshake dies with `tlsv1 alert internal
   error` before a log line. `METACLAUDE_SNI_DEFAULT` therefore defaults to
   `METACLAUDE_SITE` rather than to a constant.
-- **The shipped image nests `workspacesDir` inside `dataDir`.**
-  `METACLAUDE_DATA_DIR=/var/lib/metaclaude` with
-  `METACLAUDE_WORKSPACES_DIR=/var/lib/metaclaude/workspaces`, so any check
-  phrased as "is this inside the data directory?" is true for every legitimate
-  workspace path. That is how `additionalDirectories` came to reject
-  everything in production while every test used a sibling layout. Any new
-  containment rule needs a case in `security/directories.test.ts` under the
-  layout that actually ships.
+- **`dataDir` and `workspacesDir` may not contain one another, and `loadConfig`
+  refuses to start if they do.** The image used to ship
+  `METACLAUDE_WORKSPACES_DIR` *inside* `METACLAUDE_DATA_DIR`, so every workspace
+  sat one `..` from `master.key` and any check phrased as "is this inside the
+  data directory?" was true for every legitimate workspace path — which is how
+  `additionalDirectories` came to reject everything in production while every
+  test used a sibling layout. They are now `/var/lib/metaclaude` and
+  `/srv/metaclaude/workspaces`. Any new containment rule still needs a case in
+  `security/directories.test.ts` under the layout that actually ships.
 - **A ratchet that greps text cannot tell code from prose.** Writing
   `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
   raw-palette ratchet. Say `bg-gray-<n>`.

@@ -892,6 +892,49 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "The agent's workspaces are not inside the data directory"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The data directory holds the database, the sealed vault and master.key. The
+# workspaces directory is where the agent runs model-authored commands, and is
+# what `additionalDirectories` can widen access to. The image shipped the second
+# *inside* the first, so every workspace sat one `..` from the key — and any
+# check phrased as "is this under the data directory?" was true for every
+# legitimate workspace path.
+#
+# `loadConfig` refuses to start on a nested layout, so this is really a check
+# that the shipped compose file can start at all. Asserted here too because a
+# mount point is easy to change without running anything.
+if docker compose version >/dev/null 2>&1; then
+  mounts="$(METACLAUDE_TLS_MODE=internal docker compose -f "$REPO_ROOT/compose.yml"               --env-file /dev/null config --format json 2>/dev/null             | python3 -c '
+import json, sys
+app = json.load(sys.stdin)["services"]["app"]
+for volume in app.get("volumes") or []:
+    if volume.get("type") == "volume":
+        print(volume["source"], volume["target"])
+' 2>/dev/null)"
+
+  data_target="$(printf '%s
+' "$mounts"  | awk '$1=="metaclaude-data"{print $2}')"
+  ws_target="$(printf '%s
+' "$mounts"    | awk '$1=="metaclaude-workspaces"{print $2}')"
+
+  if [ -z "$data_target" ] || [ -z "$ws_target" ]; then
+    bad "reading the app's volume mounts" "the volume names moved; this check needs updating"
+  # A trailing slash on each side so /var/lib/metaclaude-workspaces is not read
+  # as being inside /var/lib/metaclaude.
+  elif case "$ws_target/" in "$data_target"/*) true ;; *) false ;; esac; then
+    bad "the workspaces volume is mounted inside the data directory"         "$ws_target is under $data_target — the agent would run one .. from master.key"
+  elif case "$data_target/" in "$ws_target"/*) true ;; *) false ;; esac; then
+    bad "the data volume is mounted inside the workspaces directory"         "$data_target is under $ws_target — the vault would sit where the agent writes"
+  else
+    ok "data ($data_target) and workspaces ($ws_target) are separate roots"
+  fi
+else
+  skip "workspace/data separation" "docker compose not available"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "A host that has never CI-deployed can still be inspected"
 # ─────────────────────────────────────────────────────────────────────────────
 

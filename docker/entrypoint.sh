@@ -13,7 +13,7 @@ log() { printf '[entrypoint] %s\n' "$1" >&2; }
 # A read-only or wrongly-owned volume is the single most common deployment
 # mistake; catching it here beats a stack trace from the migration runner.
 for dir in "${METACLAUDE_DATA_DIR:-/var/lib/metaclaude}" \
-           "${METACLAUDE_WORKSPACES_DIR:-/var/lib/metaclaude/workspaces}"; do
+           "${METACLAUDE_WORKSPACES_DIR:-/srv/metaclaude/workspaces}"; do
   if ! mkdir -p "$dir" 2>/dev/null; then
     log "FATAL: cannot create $dir."
     log "The data volume is not writable by uid $(id -u). Check its ownership."

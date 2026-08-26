@@ -112,14 +112,22 @@ COPY --chown=metaclaude:metaclaude docker/entrypoint.sh /usr/local/bin/entrypoin
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # State lives on volumes, so these are mount points rather than image content.
-RUN mkdir -p /var/lib/metaclaude /var/lib/metaclaude/workspaces \
- && chown -R metaclaude:metaclaude /var/lib/metaclaude
+#
+# Two roots, and they are deliberately not nested. /var/lib holds application
+# state — the database, the sealed vault, master.key — and /srv holds the
+# directories the *agent* writes into while running model-authored commands.
+# The workspaces root used to sit inside the data directory, which put every
+# workspace one `..` from the key and made "is this under the data directory?"
+# true for every legitimate workspace path. `loadConfig` now refuses that
+# layout outright, so this is the shape the image has to ship.
+RUN mkdir -p /var/lib/metaclaude /srv/metaclaude/workspaces \
+ && chown -R metaclaude:metaclaude /var/lib/metaclaude /srv/metaclaude
 
 ENV NODE_ENV=production \
     METACLAUDE_HOST=0.0.0.0 \
     METACLAUDE_PORT=8787 \
     METACLAUDE_DATA_DIR=/var/lib/metaclaude \
-    METACLAUDE_WORKSPACES_DIR=/var/lib/metaclaude/workspaces \
+    METACLAUDE_WORKSPACES_DIR=/srv/metaclaude/workspaces \
     METACLAUDE_WEB_DIR=/opt/metaclaude/web \
     HOME=/home/metaclaude
 

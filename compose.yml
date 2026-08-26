@@ -54,9 +54,13 @@ services:
 
     volumes:
       - metaclaude-data:/var/lib/metaclaude
-      # Workspaces are separate so they can be backed up, or bind-mounted to a
-      # host directory, independently of the database.
-      - metaclaude-workspaces:/var/lib/metaclaude/workspaces
+      # Workspaces are a separate volume *and* a separate root, not a
+      # subdirectory of the data one. They hold what the agent writes while
+      # running model-authored commands; /var/lib/metaclaude holds the database,
+      # the sealed vault and master.key. Nested, that separation is not real —
+      # every workspace sat one `..` from the key — and `loadConfig` now refuses
+      # to start on a layout where either contains the other.
+      - metaclaude-workspaces:/srv/metaclaude/workspaces
       # The Claude CLI keeps its session transcripts under $HOME/.claude, and
       # Metaclaude resumes those sessions by id. On tmpfs they would vanish on
       # every restart and every existing conversation would start cold.

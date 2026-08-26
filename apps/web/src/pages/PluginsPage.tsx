@@ -209,7 +209,7 @@ export function PluginsPage() {
               id="plugin-source"
               autoComplete="off"
               spellCheck={false}
-              placeholder="/var/lib/metaclaude/workspaces/tools/my-plugin"
+              placeholder="/srv/metaclaude/workspaces/tools/my-plugin"
               value={source}
               onChange={(event) => setSource(event.target.value)}
               onKeyDown={(event) => {

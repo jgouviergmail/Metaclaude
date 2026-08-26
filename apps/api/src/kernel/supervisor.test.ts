@@ -24,7 +24,7 @@ const workspace: Workspace = {
   name: 'Test',
   slug: 'test',
   description: '',
-  path: '/var/lib/metaclaude/workspaces/test',
+  path: '/srv/metaclaude/workspaces/test',
   color: '#6366f1',
   icon: 'folder',
   archived: false,
@@ -278,7 +278,7 @@ function makeSupervisor(query: unknown, broker?: { request: () => Promise<unknow
     claudeBinPath: null,
     runTimeoutMs: 60_000,
     env: {},
-    directoryPolicy: { workspacesDir: '/var/lib/metaclaude/workspaces', dataDir: '/var/lib/metaclaude' },
+    directoryPolicy: { workspacesDir: '/srv/metaclaude/workspaces', dataDir: '/var/lib/metaclaude' },
     log: () => {},
     query: query as never,
   });
@@ -557,7 +557,7 @@ describe('rewinding a finished run', () => {
   const target = {
     claudeSessionId: 'sdk-session',
     rewindPoint: '11111111-1111-4111-8111-111111111111',
-    workspacePath: '/var/lib/metaclaude/workspaces/test',
+    workspacePath: '/srv/metaclaude/workspaces/test',
   };
 
   it('previews without touching the files', async () => {
@@ -595,7 +595,7 @@ describe('rewinding a finished run', () => {
     expect(control.opened).toHaveLength(1);
     expect(control.opened[0]).toMatchObject({
       resume: 'sdk-session',
-      cwd: '/var/lib/metaclaude/workspaces/test',
+      cwd: '/srv/metaclaude/workspaces/test',
       enableFileCheckpointing: true,
     });
   });
@@ -792,7 +792,7 @@ describe('the transcript explains what the CLI was doing', () => {
 /* -------------------------------------------------------------------------- */
 
 describe('reading the CLI’s own catalogue', () => {
-  const WORKSPACE = '/var/lib/metaclaude/workspaces/test';
+  const WORKSPACE = '/srv/metaclaude/workspaces/test';
 
   it('asks in the workspace, because the answer is per-directory', async () => {
     // Skills, subagents and MCP servers are discovered relative to `cwd`.
