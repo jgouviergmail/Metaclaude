@@ -30,7 +30,7 @@ already enforces the first two and the third is this file's reason to exist:
 
 ---
 
-## v0.2 — The system that documents itself
+## v0.2 — The system that documents itself · *shipped in 0.1.0/0.2.0*
 
 *The owner asked for online help, user documentation and a changelog, kept
 current by Metaclaude itself. This lot makes documentation a build output.*
@@ -52,7 +52,7 @@ current by Metaclaude itself. This lot makes documentation a build output.*
   exist in `.env.example`. Metaclaude's own release automation regenerates the
   derived pages and refuses to ship when prose and code disagree.
 
-## v0.3 — The ecosystem
+## v0.3 — The ecosystem · *largely shipped in 0.2.0*
 
 *Everything Claude ships, reachable from the interface; everything the owner
 already has, importable into it.*
@@ -80,7 +80,7 @@ already has, importable into it.*
   actual ceiling*, not a guess. One visual system, both themes, built on the
   product's tokens.
 
-## v0.4 — Guarded autonomy
+## v0.4 — Guarded autonomy · *doctor and update check shipped in 0.2.0*
 
 *Self-knowing, self-healing — with the third law doing the steering.*
 
@@ -100,7 +100,7 @@ already has, importable into it.*
   own architecture, cite its own traps (CLAUDE.md is written for exactly
   this), and draft its own fixes as branches CI will judge.
 
-## v0.5 — The multiplier
+## v0.5 — The multiplier · *brief and synthesis shipped in 0.2.0, delegation next; budget orchestration and the advisor remain*
 
 *The visionary lot — each item grounded in a surface that already exists.*
 
