@@ -158,6 +158,22 @@ services:
     environment:
       # The address browsers use: an IP, or a hostname. See docker/Caddyfile.
       METACLAUDE_SITE: ${METACLAUDE_SITE:-localhost}
+      # Which certificate to serve to a client that sent no SNI, or an SNI
+      # matching no site. Both are real: a browser reaching an IP sends none
+      # (RFC 6066 forbids IP literals there), and the container's own busybox
+      # healthcheck sends the literal `127.0.0.1`.
+      #
+      # It defaults to METACLAUDE_SITE rather than to a constant, and that is
+      # the whole point. `default_sni`/`fallback_sni` choose among the sites
+      # that are *configured*; naming one no site block declares leaves nothing
+      # to fall back to and the handshake dies with alert 80, before any log
+      # line. Deriving it from the site means an operator who sets only
+      # METACLAUDE_SITE — which is the documented minimum — cannot land there.
+      METACLAUDE_SNI_DEFAULT: ${METACLAUDE_SNI_DEFAULT:-${METACLAUDE_SITE:-localhost}}
+      # The second address, kept on the internal CA so that pointing a domain
+      # at the box does not cost the IP that was the only way in. Inert while
+      # unset: `alt.metaclaude.invalid` resolves nowhere.
+      METACLAUDE_ALT_SITE: ${METACLAUDE_ALT_SITE:-alt.metaclaude.invalid}
       METACLAUDE_TLS_EMAIL: ${METACLAUDE_TLS_EMAIL:-internal}
       # Only read by the acme-ip mode. Point it at the staging directory while
       # testing: production allows five certificates per identifier set per

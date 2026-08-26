@@ -445,6 +445,69 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Every variable the Caddyfile reads actually reaches the proxy"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The check above asserted that `fallback_sni` exists. It did — and it was
+# inert, because `METACLAUDE_SNI_DEFAULT` was never forwarded to the container.
+# Caddy reads `{$VAR}` from its own *process* environment; compose reads .env
+# for `${VAR}` interpolation of the compose file itself, which is a different
+# thing entirely. A variable documented in .env.example, written into .env by
+# bootstrap.sh, and named in the Caddyfile can still be, from Caddy's point of
+# view, unset — and it then silently takes the Caddyfile's own default.
+#
+# That cost a red CI and a proxy that never went healthy: the site was named,
+# the certificate was obtained, and every handshake died before a log line
+# because `fallback_sni` had quietly resolved to `localhost`.
+#
+# So the assertion is the general one rather than the two names that bit:
+# whatever the Caddyfile and the TLS snippets read, the proxy's environment
+# block must forward. A new `{$METACLAUDE_...}` fails here the day it is added.
+CADDY_FILES=("$REPO_ROOT/docker/Caddyfile" "$REPO_ROOT"/docker/tls/*.caddy)
+caddy_vars="$(grep -ohE '\{\$METACLAUDE_[A-Z0-9_]+' "${CADDY_FILES[@]}" 2>/dev/null \
+              | sed 's/^{\$//' | sort -u)"
+if [ -z "$caddy_vars" ]; then
+  bad "reading {\$METACLAUDE_*} out of docker/Caddyfile" "the syntax changed; this check needs updating"
+elif ! docker compose version >/dev/null 2>&1; then
+  skip "proxy environment forwarding" "docker compose not available"
+else
+  # The resolved config, so a variable forwarded through an anchor or an
+  # extension still counts. --env-file /dev/null keeps a developer's own .env
+  # out of it; every value then falls back to the compose file's default.
+  proxy_env="$(METACLAUDE_TLS_MODE=internal docker compose -f "$REPO_ROOT/compose.yml" \
+                 --env-file /dev/null config --format json 2>/dev/null \
+               | python3 -c 'import json,sys; print("\n".join((json.load(sys.stdin)["services"]["proxy"].get("environment") or {}).keys()))' 2>/dev/null)"
+  if [ -z "$proxy_env" ]; then
+    bad "resolving the proxy environment block" "docker compose config produced nothing"
+  else
+    missing=""
+    for var in $caddy_vars; do
+      printf '%s\n' "$proxy_env" | grep -qx "$var" || missing="$missing $var"
+    done
+    if [ -n "$missing" ]; then
+      bad "the proxy never receives:$missing" \
+          "Caddy falls back to the {\$VAR:default} written in the Caddyfile, silently"
+    else
+      ok "all $(printf '%s\n' "$caddy_vars" | wc -l | tr -d ' ') Caddyfile variables are forwarded to the proxy"
+    fi
+  fi
+fi
+
+# The forwarded value has to name a certificate that exists, too. `default_sni`
+# and `fallback_sni` select among the *configured* sites; naming one that no
+# site block declares is the same alert-80 failure with a different cause.
+SNI_DEFAULT_FALLBACK="$(grep -oE '^\s*default_sni \{\$METACLAUDE_SNI_DEFAULT:[^}]+\}' "$REPO_ROOT/docker/Caddyfile" \
+                        | head -1 | sed 's/.*METACLAUDE_SNI_DEFAULT://; s/}$//')"
+if [ -z "$SNI_DEFAULT_FALLBACK" ]; then
+  bad "reading the default_sni fallback out of docker/Caddyfile" "the line moved; this check needs updating"
+elif [ "$SNI_DEFAULT_FALLBACK" = "$PRIMARY" ] || [ "$SNI_DEFAULT_FALLBACK" = "$ALTERNATE" ]; then
+  ok "the SNI default falls back to '$SNI_DEFAULT_FALLBACK', which a site block declares"
+else
+  bad "the SNI default falls back to '$SNI_DEFAULT_FALLBACK'" \
+      "no site block serves that name, so there is no certificate to fall back to"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "A deploy never stops to ask for a credential"
 # ─────────────────────────────────────────────────────────────────────────────
 
