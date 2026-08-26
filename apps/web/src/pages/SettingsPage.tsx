@@ -681,16 +681,28 @@ function SystemCard() {
           </Row>
           <Row label="Version">{data.claudeCli.version ?? '—'}</Row>
           <Row label="Authentication">
-            {data.claudeCli.authMode === 'subscription' ? (
-              <Badge tone="success">subscription (Pro / Max)</Badge>
-            ) : data.claudeCli.authMode === 'api_key' ? (
-              <Badge tone="warning">API key (pay as you go)</Badge>
-            ) : (
-              <Badge tone="danger">none configured</Badge>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {data.claudeCli.authMode === 'subscription' ? (
+                <Badge tone="success">subscription (Pro / Max)</Badge>
+              ) : data.claudeCli.authMode === 'api_key' ? (
+                <Badge tone="warning">API key (pay as you go)</Badge>
+              ) : (
+                <Badge tone="danger">none configured</Badge>
+              )}
+              {data.claudeCli.authHint ? (
+                <code className="font-mono text-[12px] text-muted">{data.claudeCli.authHint}</code>
+              ) : null}
+              {data.claudeCli.authSource ? (
+                <span className="text-[12px] text-subtle">
+                  {data.claudeCli.authSource === 'stored' ? 'paired here' : 'from the environment'}
+                </span>
+              ) : null}
+            </div>
           </Row>
         </dl>
       </Card>
+
+      <ClaudeCredentialCard />
 
       <Card>
         <CardHeader title="Kernel" />
@@ -704,6 +716,134 @@ function SystemCard() {
         </dl>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Pairing the deployment with a Claude subscription, without a shell.
+ *
+ * The token used to live only in `.env`, which meant SSH, which meant this was
+ * unreachable from the tablet and the phone the OS is built to be used from —
+ * for the one setting the whole product depends on.
+ */
+function ClaudeCredentialCard() {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const status = useQuery({
+    queryKey: ['claude-credential'],
+    queryFn: () => api.claudeCredential.get(),
+  });
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['claude-credential'] });
+    void queryClient.invalidateQueries({ queryKey: ['system'] });
+  };
+
+  const save = useMutation({
+    mutationFn: (token: string) => api.claudeCredential.save(token),
+    onSuccess: (next) => {
+      setValue('');
+      refresh();
+      toast.success(
+        next.mode === 'subscription'
+          ? 'Paired with your Claude subscription.'
+          : 'API key saved — runs will be billed per token.',
+      );
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not save that credential.'),
+  });
+
+  const clear = useMutation({
+    mutationFn: () => api.claudeCredential.clear(),
+    onSuccess: () => {
+      refresh();
+      setConfirmClear(false);
+      toast.success('Credential removed.');
+    },
+  });
+
+  const paired = status.data?.source === 'stored';
+
+  return (
+    <Card>
+      <CardHeader
+        title="Claude credentials"
+        description="What every agent run authenticates with. Stored encrypted, never written to a file."
+      />
+      <div className="space-y-4 px-4 pb-4">
+        <div className="space-y-2">
+          <Label htmlFor="claude-token">Subscription token or API key</Label>
+          <Input
+            id="claude-token"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="sk-ant-oat01-…"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && value.trim()) save.mutate(value);
+            }}
+          />
+          <p className="text-[12px] text-muted">
+            A token beginning <code className="font-mono">sk-ant-oat</code> uses your Pro or Max
+            subscription. One beginning <code className="font-mono">sk-ant-api</code> bills per
+            token instead. Metaclaude tells them apart on its own.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!value.trim()}
+            loading={save.isPending}
+            onClick={() => save.mutate(value)}
+          >
+            {paired ? 'Replace' : 'Pair'}
+          </Button>
+          {paired ? (
+            <Button variant="ghost" size="sm" onClick={() => setConfirmClear(true)}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+
+        <details className="rounded-lg border border-line bg-sunken p-3">
+          <summary className="cursor-pointer text-[13px] font-medium text-ink">
+            Where do I get a token?
+          </summary>
+          <div className="mt-3 space-y-2 text-[13px] text-muted">
+            <p>
+              On any machine signed in to Claude Code, run{' '}
+              <code className="font-mono">claude setup-token</code> and paste what it prints.
+            </p>
+            <p>
+              No such machine? This server has the CLI. Over SSH, or from the provider&rsquo;s web
+              console:
+            </p>
+            <CopyableCode value="cd /opt/metaclaude && sudo docker compose exec app claude setup-token" />
+            <p>
+              It prints a URL — open it on this device, sign in, and paste the code back into that
+              terminal. The token it returns goes in the box above, once, and never again.
+            </p>
+          </div>
+        </details>
+      </div>
+
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="Remove the stored credential?"
+        description="Agent runs will fall back to whatever the server environment provides, and will fail if it provides nothing."
+        confirmLabel="Remove"
+        danger
+        onConfirm={() => clear.mutate()}
+      />
+    </Card>
   );
 }
 

@@ -28,6 +28,7 @@ import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
+import { ClaudeCredentials } from './services/claude-credentials.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
 import { GitService } from './services/git.js';
@@ -44,6 +45,7 @@ export interface AppContext {
   auth: AuthService;
   audit: AuditLog;
   vault: Vault;
+  claudeCredentials: ClaudeCredentials;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -151,6 +153,16 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const policy = new PolicyLearner(db);
 
   const claudeEnv = buildClaudeEnv(config);
+
+  // Owns the credential from here on. Constructing it rewrites `claudeEnv` in
+  // place from the vault, so a token paired from the interface on a previous
+  // boot is picked up before the supervisor ever reads the object.
+  const claudeCredentials = new ClaudeCredentials({
+    vault,
+    env: claudeEnv,
+    fromEnvironment: { oauthToken: config.claude.oauthToken, apiKey: config.claude.apiKey },
+    log: (level, message) => log[level](message),
+  });
   const kernelLog = (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => {
     log[level](data ?? {}, message);
   };
@@ -237,6 +249,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     auth,
     audit,
     vault,
+    claudeCredentials,
     workspaceRepo,
     sessionRepo,
     runRepo,

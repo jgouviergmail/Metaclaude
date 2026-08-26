@@ -719,6 +719,15 @@ export const SystemHealth = z.object({
     version: z.string().nullable(),
     authenticated: z.boolean(),
     authMode: z.enum(['subscription', 'api_key', 'none']),
+    /**
+     * Where the credential came from. `environment` means .env on the server;
+     * `stored` means the owner paired it from the interface and it is sealed in
+     * the vault. The distinction matters to the person deciding whether they
+     * still need a shell to change it.
+     */
+    authSource: z.enum(['stored', 'environment']).nullable(),
+    /** Last four characters. Enough to tell two credentials apart, never enough to use one. */
+    authHint: z.string().nullable(),
   }),
   activeRuns: z.number().int().nonnegative(),
   queuedRuns: z.number().int().nonnegative(),
@@ -728,6 +737,25 @@ export const SystemHealth = z.object({
   rssBytes: z.number().int().nonnegative(),
 });
 export type SystemHealth = z.infer<typeof SystemHealth>;
+
+/**
+ * Pairing the deployment with a Claude subscription, from the interface.
+ *
+ * A single field rather than a kind plus a value: the two credential shapes are
+ * distinguishable by prefix, and asking someone who has just pasted a token to
+ * also classify it is a question with a knowable answer.
+ */
+export const ClaudeCredentialInput = z.object({
+  value: z.string().min(1, 'Paste a token first.').max(4096),
+});
+export type ClaudeCredentialInput = z.infer<typeof ClaudeCredentialInput>;
+
+export const ClaudeCredentialStatus = z.object({
+  mode: z.enum(['subscription', 'api_key', 'none']),
+  source: z.enum(['stored', 'environment']).nullable(),
+  hint: z.string().nullable(),
+});
+export type ClaudeCredentialStatus = z.infer<typeof ClaudeCredentialStatus>;
 
 export const AuditEntry = z.object({
   id: z.string(),

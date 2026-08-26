@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { statfs } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import type { App } from '../http/types.js';
-import { APP_VERSION, type SystemHealth } from '@metaclaude/shared';
+import { APP_VERSION, ClaudeCredentialInput, type SystemHealth } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { requireOwner } from '../http/guards.js';
 import { queryIntOr, spreadInt, spreadTimestamp } from '../http/query.js';
@@ -42,6 +42,7 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
 
   app.get('/api/system', async (_request, reply) => {
     const version = await probeClaudeCli(context.config.claude.binPath);
+    const credential = context.claudeCredentials.status();
 
     let diskFreeBytes = 0;
     try {
@@ -57,8 +58,14 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       claudeCli: {
         available: version !== null,
         version,
-        authenticated: context.config.claude.authMode !== 'none',
-        authMode: context.config.claude.authMode,
+        // Asked of the credential service, not of the boot-time config: a
+        // credential paired from the interface since startup is the one that
+        // will actually be used, and reporting the stale config value would
+        // tell the owner their pairing had not worked.
+        authenticated: credential.mode !== 'none',
+        authMode: credential.mode,
+        authSource: credential.source,
+        authHint: credential.hint,
       },
       activeRuns: context.kernel.activeCount,
       queuedRuns: context.kernel.queuedCount,
@@ -68,6 +75,49 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       rssBytes: process.memoryUsage().rss,
     };
     return reply.send(health);
+  });
+
+  /* ------------------------- Claude credentials ------------------------- */
+
+  /**
+   * Pairing from the interface.
+   *
+   * Owner-only, and deliberately write-only: there is no route that returns the
+   * credential. The status carries a four-character hint, which is enough to
+   * confirm *which* token is in use and useless to anyone who intercepts it.
+   */
+  app.get('/api/claude/credential', async (request, reply) => {
+    requireOwner(request);
+    return reply.send(context.claudeCredentials.status());
+  });
+
+  app.put('/api/claude/credential', async (request, reply) => {
+    const user = requireOwner(request);
+    const input = ClaudeCredentialInput.parse(request.body);
+    const status = context.claudeCredentials.save(input.value);
+    context.audit.record({
+      actor: user.username,
+      action: 'claude.credential.set',
+      target: status.mode,
+      outcome: 'success',
+      ipAddress: request.ip,
+      // The value never reaches the audit log; the hint identifies it.
+      detail: status.hint ?? '',
+    });
+    return reply.send(status);
+  });
+
+  app.delete('/api/claude/credential', async (request, reply) => {
+    const user = requireOwner(request);
+    const status = context.claudeCredentials.clear();
+    context.audit.record({
+      actor: user.username,
+      action: 'claude.credential.clear',
+      target: status.mode,
+      outcome: 'success',
+      ipAddress: request.ip,
+    });
+    return reply.send(status);
   });
 
   /* ------------------------------ Analytics ----------------------------- */

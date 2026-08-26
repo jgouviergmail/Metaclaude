@@ -12,6 +12,7 @@ import {
   type AgentDefinitionRecord,
   type ApprovalRequest,
   type AuditEntry,
+  type ClaudeCredentialStatus,
   type Automation,
   type AutomationTrigger,
   type CreateMemoryRequest,
@@ -455,6 +456,17 @@ export const api = {
 
   /* ------------------------------ System ------------------------------ */
   system: () => request<SystemHealth>('/api/system'),
+
+  claudeCredential: {
+    get: () => request<ClaudeCredentialStatus>('/api/claude/credential'),
+    save: (value: string) =>
+      request<ClaudeCredentialStatus>('/api/claude/credential', {
+        method: 'PUT',
+        body: { value },
+      }),
+    clear: () =>
+      request<ClaudeCredentialStatus>('/api/claude/credential', { method: 'DELETE' }),
+  },
 
   analytics: (params: { workspaceId?: string; days?: number; granularity?: string } = {}) =>
     request<{
