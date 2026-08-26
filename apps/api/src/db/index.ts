@@ -88,6 +88,31 @@ export function migrate(db: Db, log?: (msg: string) => void): number {
     log?.(`applied migration ${migration.version}: ${migration.name}`);
     count += 1;
   }
+
+  // Refuse a database that a *newer* build has already migrated.
+  //
+  // The forward walk above simply skips versions it does not have, so an older
+  // image opened a forward-migrated database, found nothing to do, and served
+  // it — reading columns whose meaning had changed underneath it. The rollback
+  // path makes that reachable rather than theoretical: `metaclaude-deploy` runs
+  // `bring_up "$PRIOR"` with no schema consideration, and migration 4 drains
+  // `mcp_servers.headers` into the vault, so a pre-4 reader sends no
+  // Authorization header and every HTTP MCP server silently loses its auth.
+  //
+  // Failing here is the whole fix. The container never reports healthy,
+  // `bring_up` returns non-zero, and metaclaude-deploy already says the right
+  // thing — "the service is DOWN" — instead of quietly mis-serving.
+  const highest = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
+  const found = db
+    .prepare<[], { version: number }>('SELECT MAX(version) AS version FROM _migrations')
+    .get()?.version;
+  if (found !== undefined && found !== null && found > highest) {
+    throw new Error(
+      `This database was migrated to version ${found} by a newer build; this one knows ${highest}. ` +
+        'Roll forward to the image that wrote it, or restore a backup taken before the upgrade.',
+    );
+  }
+
   return count;
 }
 

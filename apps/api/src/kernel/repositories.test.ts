@@ -664,3 +664,72 @@ describe('TranscriptRepo', () => {
     expect(db.inTransaction).toBe(false);
   });
 });
+
+
+describe('transcript crash recovery', () => {
+  let session: Session;
+  let run: Run;
+
+  beforeEach(() => {
+    const workspace = makeWorkspace();
+    session = makeSession(workspace.id);
+    run = makeRun(session);
+  });
+
+  it('closes a tool call the crash left running, and leaves the rest alone', () => {
+    // A `tool_call` event is written the moment the block arrives, and only
+    // `StreamState.finalise()` closes it — in-process. `runRepo.recoverOrphaned`
+    // marks the run interrupted and `sessionRepo.recoverOrphaned` the session
+    // idle, but neither touches `transcript_events`, so reopening the session
+    // still showed a card spinning forever.
+    append(session.id, {
+      kind: 'tool_call',
+      id: newId('event'),
+      runId: run.id,
+      at: 1,
+      toolUseId: 'tu_open',
+      name: 'Bash',
+      input: { command: 'sleep 999' },
+      status: 'running',
+      result: null,
+      resultIsError: false,
+      durationMs: null,
+    });
+    append(session.id, {
+      kind: 'tool_call',
+      id: newId('event'),
+      runId: run.id,
+      at: 2,
+      toolUseId: 'tu_done',
+      name: 'Read',
+      input: { file_path: '/ws/a.ts' },
+      status: 'ok',
+      result: 'contents',
+      resultIsError: false,
+      durationMs: 4,
+    });
+    append(session.id, systemEvent(run.id, 3, 'unrelated'));
+
+    expect(transcript.recoverOrphaned()).toBe(1);
+
+    const events = transcript.bySession(session.id);
+    const open = events.find((e) => e.kind === 'tool_call' && e.toolUseId === 'tu_open');
+    const done = events.find((e) => e.kind === 'tool_call' && e.toolUseId === 'tu_done');
+
+    expect(open).toMatchObject({
+      status: 'error',
+      // Set deliberately: `learn()` and `rateRun` count `resultIsError`, so
+      // leaving it false would tell the learner the run went better than it did.
+      resultIsError: true,
+    });
+    expect((open as { result: string }).result).toMatch(/before this tool produced a result/);
+    // A completed call is untouched, and so is everything that is not a tool call.
+    expect(done).toMatchObject({ status: 'ok', resultIsError: false, result: 'contents' });
+    expect(events.filter((e) => e.kind === 'system')).toHaveLength(1);
+  });
+
+  it('is a no-op on a clean transcript', () => {
+    append(session.id, systemEvent(run.id, 1, 'nothing to repair'));
+    expect(transcript.recoverOrphaned()).toBe(0);
+  });
+});

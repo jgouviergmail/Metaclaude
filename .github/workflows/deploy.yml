@@ -49,6 +49,11 @@ concurrency:
 permissions:
   contents: read
   packages: read
+  # Reading the CI check run for the commit being deployed. Without it the only
+  # gate is "does an image exist", and CI publishes to GHCR from the `image`
+  # job — which needs only `verify` — so a commit whose `smoke`, `browser` or
+  # `deploy-scripts` job went red still has a pushed image.
+  checks: read
 
 jobs:
   deploy:
@@ -132,6 +137,33 @@ jobs:
             exit 1
           fi
           echo "found ${{ steps.image.outputs.ref }}"
+
+      # Existence is not a verdict. `image` in ci.yml needs only `verify`, so the
+      # push to GHCR happens once typecheck, tests and build are green — before
+      # `live`, `browser`, `smoke`, `ratchets` and `deploy-scripts` have said
+      # anything. A `v*` tag on a commit whose deployed-stack check failed would
+      # therefore sail through the step above, and this workflow's own header
+      # promises "an image that CI already built and tested".
+      #
+      # The `CI` aggregate job is the one that reflects all of them.
+      - name: Confirm CI passed for that commit
+        if: inputs.action != 'rollback' && inputs.action != 'status'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.image.outputs.sha }}
+        run: |
+          set -euo pipefail
+          conclusions="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs"             --jq '[.check_runs[] | select(.name == "CI") | .conclusion] | join(",")')"
+          case ",$conclusions," in
+            *,success,*)
+              echo "CI passed for $SHA" ;;
+            *)
+              echo "::error::CI did not pass for $SHA (CI check runs: ${conclusions:-none})"
+              echo "The image exists because ci.yml pushes it once the unit suite is green,"
+              echo "before the deployed-stack checks report. Deploying it anyway would ship"
+              echo "a commit CI marked red."
+              exit 1 ;;
+          esac
 
       # Pinned from a secret rather than disabled. `StrictHostKeyChecking=no`
       # would make this workflow deploy to whatever answers on that IP, which

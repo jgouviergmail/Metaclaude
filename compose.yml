@@ -207,8 +207,45 @@ services:
       - internal
       - public
 
+    # ── Hardening ─────────────────────────────────────────────────────────────
+    # Thinner than the app's, because the threat is different: this container
+    # runs Caddy, not model-authored commands. But it is the only one reachable
+    # from outside, so "the internet-facing service is the unconfined one" is a
+    # poor place to end up.
+    #
+    # `no-new-privileges` is also set daemon-wide by provision.sh; repeated here
+    # so the property does not depend on how the host was provisioned.
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # NET_BIND_SERVICE is genuinely required once ALL is dropped: the container
+    # binds 80 and 443 itself.
+    cap_add:
+      - NET_BIND_SERVICE
+    # The caddy image points XDG_CONFIG_HOME at /config and XDG_DATA_HOME at
+    # /data, both named volumes above, so the certificates and the config
+    # autosave land outside the rootfs.
+    #
+    # One thing does try to write to it: under `internal`, Caddy installs its
+    # own root into the *container's* Linux trust store and logs "certificate
+    # installed properly in linux trusts". That write now fails. It is
+    # inconsequential — nothing inside this container validates against that
+    # store, and the root that matters is the one operators export from /data —
+    # and Caddy treats it as best-effort, but it is why this line is worth
+    # checking against the smoke job rather than reasoning about: that job runs
+    # the real stack in `internal` mode, which is exactly this path.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m
+    deploy:
+      resources:
+        limits:
+          # Small on purpose. A TLS terminator for one site does not need more,
+          # and an unbounded proxy competing with the agent for the host's
+          # memory is the failure this prevents.
+          cpus: '${METACLAUDE_PROXY_CPU_LIMIT:-1}'
+          memory: ${METACLAUDE_PROXY_MEMORY_LIMIT:-256m}
 
     # Without this the proxy had no healthcheck at all, and `up --wait` treats a
     # merely-running container as ready. Caddy's own startup order is why that

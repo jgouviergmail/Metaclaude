@@ -97,6 +97,35 @@ describe('migrate', () => {
       expect(names.has(table)).toBe(true);
     }
   });
+
+  it('refuses a database migrated further than this build knows', () => {
+    // The rollback path makes this reachable rather than theoretical:
+    // `metaclaude-deploy` runs `bring_up "$PRIOR"` with no schema
+    // consideration, so a failed deploy puts the *previous* image in front of a
+    // forward-migrated database. Migration 4 is destructive to a pre-4 reader —
+    // it drains `mcp_servers.headers` into the vault — so that image sends no
+    // Authorization header and every HTTP MCP server silently loses its auth.
+    //
+    // Failing at boot is the fix: the container never reports healthy,
+    // `bring_up` returns non-zero, and metaclaude-deploy already prints the
+    // correct outcome — "the service is DOWN" — instead of quietly mis-serving.
+    migrate(db);
+    const ahead = MIGRATIONS[MIGRATIONS.length - 1]!.version + 1;
+    db.prepare('INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)').run(
+      ahead,
+      'from_a_future_build',
+      Date.now(),
+    );
+
+    expect(() => migrate(db)).toThrow(/newer/i);
+  });
+
+  it('is still idempotent at the current version', () => {
+    // The guard must not fire on the ordinary second boot.
+    migrate(db);
+    expect(migrate(db)).toBe(0);
+    expect(() => migrate(db)).not.toThrow();
+  });
 });
 
 describe('tx', () => {

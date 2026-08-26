@@ -564,6 +564,37 @@ export class TranscriptRepo {
    * insert so concurrent writers on the same run cannot collide on the unique
    * (run_id, seq) index.
    */
+  /**
+   * Close tool calls left `running` by a crash. Boot only.
+   *
+   * A `tool_call` event is written the moment the block arrives, with
+   * `status: 'running'`, and the only thing that closes it is `StreamState`'s
+   * `finalise()` — which runs in the supervisor's `finally`, in-process. An
+   * OOM-kill mid-`Bash` therefore leaves the row as it was: `recoverOrphaned`
+   * marks the run interrupted and the session idle, but reopening that session
+   * still shows a card spinning forever, because the UI renders
+   * `status: 'running'` as a spinner and nothing on disk ever says otherwise.
+   *
+   * `resultIsError` is set alongside the status because `learn()` and `rateRun`
+   * count it: leaving it `false` on a call that never returned would tell the
+   * learner the run went better than it did.
+   *
+   * Must run before the kernel accepts work, or it stamps live tool calls.
+   */
+  recoverOrphaned(): number {
+    return this.db
+      .prepare(
+        `UPDATE transcript_events
+            SET payload = json_set(
+                  payload,
+                  '$.status', 'error',
+                  '$.resultIsError', json('true'),
+                  '$.result', 'The run ended before this tool produced a result.')
+          WHERE kind = 'tool_call' AND json_extract(payload, '$.status') = 'running'`,
+      )
+      .run().changes;
+  }
+
   append(sessionId: string, event: PendingTranscriptEvent): TranscriptEvent {
     return tx(this.db, () => {
       const seq =

@@ -137,9 +137,13 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   // Anything left `running` belongs to a process that no longer exists.
   const orphanedRuns = runRepo.recoverOrphaned();
   const orphanedSessions = sessionRepo.recoverOrphaned();
-  if (orphanedRuns > 0 || orphanedSessions > 0) {
+  // And the transcript, which the other two do not touch: a tool call is
+  // written as `running` when it starts and closed only in-process, so a crash
+  // left a card spinning in the history forever.
+  const orphanedToolCalls = transcriptRepo.recoverOrphaned();
+  if (orphanedRuns > 0 || orphanedSessions > 0 || orphanedToolCalls > 0) {
     log.warn(
-      { runs: orphanedRuns, sessions: orphanedSessions },
+      { runs: orphanedRuns, sessions: orphanedSessions, toolCalls: orphanedToolCalls },
       'recovered state left behind by an unclean shutdown',
     );
   }
