@@ -500,12 +500,17 @@ line each:
 docker compose logs app | grep 'workspaces root moved'
 ```
 
-`re-pointed this workspace at its directory` is the expected line. A line
-saying *nothing is at the new path* means the row was repaired but its files
-were not in the volume — look for them before creating anything with the same
-name. A workspace whose directory was placed by hand, under a name that is not
-its slug, is reported and left alone: there is nothing to derive its new
-location from, so it is yours to move and re-create.
+All three outcomes share that prefix, so one grep shows every workspace:
+
+| The line says | What it means |
+| --- | --- |
+| `re-pointed this workspace at its directory` | The expected case. Row repaired, files present. |
+| `re-pointed this workspace, but nothing is at the new path` | Row repaired, but the directory is not in the volume. Go and find the files before creating anything under the same name. |
+| `cannot be re-pointed automatically` | A directory placed by hand under a name that is not the workspace's slug. Nothing can derive its new location, so it is left alone for you to move. |
+
+`deploy/check.sh` asserts that every phrase this document tells you to grep for
+is one the code still writes — the third case above used to lack the shared
+prefix, which made it unreachable through the command printed here.
 
 Nothing here is retroactive. A deployment that has never seen the old layout
 logs none of these lines.

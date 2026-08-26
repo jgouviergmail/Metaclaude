@@ -985,6 +985,71 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Every log line the documentation says to grep for is one the code writes"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# A runbook that says `docker compose logs app | grep '<phrase>'` is only useful
+# while the code still writes that phrase. Nothing links the two, and the
+# failure mode is silent in the worst way: the operator runs the command, sees
+# no output, and concludes all is well.
+#
+# It has already happened once. Three cases were documented for the workspace
+# relocation and only two shared the `workspaces root moved` prefix the
+# operator was told to grep for, so the third — a workspace that could *not* be
+# repaired — was unreachable through the documented command.
+#
+# The patterns are lifted out of the docs rather than listed here, so a new one
+# is covered the day it is written.
+patterns="$(python3 - "$REPO_ROOT" <<'PY'
+import pathlib, re, sys
+
+root = pathlib.Path(sys.argv[1])
+seen = []
+# `grep 'x'`, `grep -i 'x'`, `grep -E 'a|b'` — single-quoted only, which is how
+# every documented invocation is written. The flags are captured because they
+# decide what the pattern means: `|` is an alternation under -E and a literal
+# pipe character under the default BRE.
+call = re.compile(r"\bgrep\s+((?:-[A-Za-z]+\s+)*)'([^']+)'")
+for doc in sorted((root / "docs").glob("*.md")) + [root / "README.md"]:
+    if not doc.exists():
+        continue
+    for flags, pattern in call.findall(doc.read_text(encoding="utf-8")):
+        # A backslash means the author is writing a regex — `\|` for BRE
+        # alternation, most often. There is no literal to assert, and splitting
+        # it up would produce a fragment that happens to match something else.
+        if "\\" in pattern:
+            continue
+        extended = "E" in flags or "P" in flags
+        for alternative in pattern.split("|") if extended else [pattern]:
+            alternative = alternative.strip()
+            if alternative and not re.search(r"[\^$*+?\[\]()]", alternative):
+                seen.append(alternative)
+print("\n".join(dict.fromkeys(seen)))
+PY
+)"
+
+if [ -z "$patterns" ]; then
+  bad "extracting the documented grep patterns" "found none — the extractor is broken"
+else
+  missing=""
+  count=0
+  while IFS= read -r pattern; do
+    [ -n "$pattern" ] || continue
+    count=$((count + 1))
+    grep -rqF -- "$pattern" "$REPO_ROOT/apps/api/src" 2>/dev/null \
+      || missing="$missing
+    $pattern"
+  done <<EOF
+$patterns
+EOF
+  if [ -n "$missing" ]; then
+    bad "a documented grep pattern matches nothing in the source" "$missing"
+  else
+    ok "all $count documented log phrases still exist in apps/api/src"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 printf '\n%s%d passed, %d failed, %d skipped%s\n' "$BOLD" "$PASSED" "$FAILED" "$SKIPPED" "$OFF"
 [ "$FAILED" -eq 0 ] || exit 1

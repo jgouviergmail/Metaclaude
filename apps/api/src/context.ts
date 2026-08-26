@@ -162,10 +162,13 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     );
   }
   for (const stranded of relocation.skipped) {
+    // Same `workspaces root moved` prefix as the two above, deliberately: the
+    // operator is told to grep for one string, and a third case that the grep
+    // cannot match is a case they will never see.
     log.warn(
       { workspace: stranded.slug, path: stranded.path },
-      'this workspace sits outside the workspaces root and its directory is not named after its ' +
-        'slug, so it cannot be re-pointed automatically',
+      'workspaces root moved — this workspace cannot be re-pointed automatically: it sits ' +
+        'outside the root and its directory is not named after its slug',
     );
   }
 
