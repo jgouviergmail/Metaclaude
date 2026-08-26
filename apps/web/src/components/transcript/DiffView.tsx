@@ -150,7 +150,16 @@ const DiffRow = memo(function DiffRow({ line }: { line: DiffLine }) {
         {line.newLine ?? ''}
       </td>
       <td className="whitespace-pre px-3 align-top text-ink">
-        <span className="select-none text-subtle" aria-hidden>
+        {/*
+          Not `aria-hidden`. The row's only other add/remove signal is the
+          `diff-line-add` / `diff-line-remove` class pair, which is pure colour —
+          the table has no caption, no headers and no roles, and the line-number
+          columns are unlabelled — so hiding the sign leaves nothing textual to
+          distinguish an added line from a removed one in browse mode.
+          `select-none` is what keeps a copied diff free of the signs; the two
+          are independent.
+        */}
+        <span className="select-none text-subtle">
           {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
         </span>
         {line.text}

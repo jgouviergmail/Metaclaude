@@ -25,6 +25,7 @@ import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
+import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
 import { useAuthStore } from '@/lib/store';
 import { cn, formatCost, formatDuration, formatRelative, formatPercent } from '@/lib/utils';
@@ -151,7 +152,7 @@ export function DashboardPage() {
                       <Button
                         variant="ghost"
                         size="xs"
-                        onClick={() => socket.approve(approval.id, false)}
+                        onClick={() => void decideApproval(approval.id, false)}
                       >
                         Deny
                       </Button>

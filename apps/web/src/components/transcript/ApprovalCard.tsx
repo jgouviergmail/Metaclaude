@@ -34,7 +34,7 @@ export function ApprovalCard({
   onDecide,
 }: {
   request: ApprovalRequest;
-  onDecide: (approved: boolean, remember: boolean) => void;
+  onDecide: (approved: boolean, remember: boolean) => void | Promise<void>;
 }) {
   const [remember, setRemember] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -53,7 +53,13 @@ export function ApprovalCard({
 
   const decide = (approved: boolean): void => {
     setSubmitting(true);
-    onDecide(approved, remember && request.risk !== 'high');
+    // `submitting` disables both buttons and short-circuits the accelerators,
+    // and nothing else clears it — the card is expected to disappear when the
+    // server confirms. So a decision that never arrived has to say so, or the
+    // operator is left looking at a card they can no longer act on.
+    void Promise.resolve(onDecide(approved, remember && request.risk !== 'high')).catch(() => {
+      setSubmitting(false);
+    });
   };
 
   /*
@@ -72,18 +78,50 @@ export function ApprovalCard({
    */
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Move focus here when the prompt appears, so the accelerators are reachable
-  // without a click — but never steal it from someone mid-sentence.
-  useEffect(() => {
+  /*
+   * Whether this card may claim focus at all, decided once — during the first
+   * render, which is before React commits `autoFocus` and before any effect
+   * runs, so `document.activeElement` is still whatever held focus when the
+   * prompt arrived.
+   *
+   * Two things were wrong, and they share this one answer.
+   *
+   * `autoFocus` on Deny is committed during the mount commit, *before* passive
+   * effects; the effect below then ran and moved focus to the container, which
+   * handles no keys of its own. So "Deny holds initial focus, because a
+   * reflexive Enter should land on the safe choice" was quietly false — Enter
+   * did nothing, and a keyboard user had to Tab before anything was reachable.
+   *
+   * And several prompts can be pending at once: the broker keeps a map, the
+   * stream maps over an array. A second card arriving would take focus off the
+   * first — invisibly, since `preventScroll` means nothing moves on screen — so
+   * a ⌘Enter meant for the prompt being read approved a different one.
+   *
+   * Gating both on "is focus already somewhere it should not be taken from"
+   * settles it: the first prompt focuses Deny and keeps it, a later one leaves
+   * the operator where they are, and nobody is interrupted mid-sentence.
+   */
+  const [mayClaimFocus] = useState(() => {
+    if (typeof document === 'undefined') return true;
     const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) return true;
     const isEditing =
-      active instanceof HTMLElement &&
-      (active.isContentEditable ||
-        active.tagName === 'INPUT' ||
-        active.tagName === 'TEXTAREA' ||
-        active.tagName === 'SELECT');
-    if (!isEditing) cardRef.current?.focus({ preventScroll: true });
-  }, []);
+      active.isContentEditable ||
+      active.tagName === 'INPUT' ||
+      active.tagName === 'TEXTAREA' ||
+      active.tagName === 'SELECT';
+    return !isEditing && !active.closest('[role="alertdialog"]');
+  });
+
+  // The fallback for when `autoFocus` did not take — a background tab, a
+  // browser that declined it. Keydown reaches the handler either way, by
+  // bubbling up from whichever descendant holds focus.
+  useEffect(() => {
+    if (!mayClaimFocus) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('[role="alertdialog"]')) return;
+    cardRef.current?.focus({ preventScroll: true });
+  }, [mayClaimFocus]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (submitting) return;
@@ -192,8 +230,9 @@ export function ApprovalCard({
           onClick={() => decide(false)}
           disabled={submitting}
           // Deny holds initial focus: the safe choice should be the one a
-          // reflexive Enter press lands on.
-          autoFocus
+          // reflexive Enter press lands on. Withheld when another prompt or an
+          // input already has it — see `mayClaimFocus`.
+          autoFocus={mayClaimFocus}
         >
           <X className="size-4" aria-hidden />
           Deny

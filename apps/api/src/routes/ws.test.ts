@@ -436,3 +436,91 @@ describe('a revoked session loses its socket', () => {
     client.close();
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Roles                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * No test in this repository had ever created a second user, so every role
+ * guard was unverified end to end. `guards.test.ts` covers `requireRole` as a
+ * pure function, but the two checks below are inline `role === 'viewer'`
+ * branches in the frame handler that the guards module cannot reach even in
+ * principle — deleting either was invisible to the suite.
+ */
+describe('viewer role', () => {
+  const VIEWER = 'watcher';
+  const VIEWER_PASSWORD = 'a-long-enough-viewer-password';
+  let viewerCookie: string;
+  let viewerCsrf: string;
+
+  beforeAll(async () => {
+    await context.auth.createUser({
+      username: VIEWER,
+      password: VIEWER_PASSWORD,
+      role: 'viewer',
+    });
+    const response = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: VIEWER, password: VIEWER_PASSWORD }),
+    });
+    expect(response.status).toBe(200);
+    const setCookies = response.headers.getSetCookie();
+    viewerCookie = setCookies.map((cookie) => cookie.split(';')[0]).join('; ');
+    const csrf = setCookies.find((cookie) => cookie.startsWith(`${CSRF_COOKIE}=`));
+    viewerCsrf = decodeURIComponent(csrf!.split(';')[0]!.split('=')[1]!);
+  });
+
+  async function viewerClient(): Promise<TestClient> {
+    const client = await TestClient.connect({ cookie: viewerCookie });
+    client.send({ type: 'hello', csrfToken: viewerCsrf });
+    await client.waitFor('ready');
+    return client;
+  }
+
+  it('may connect and watch', async () => {
+    const client = await viewerClient();
+    client.send({ type: 'subscribe', topics: [SYSTEM_TOPIC] });
+    await client.waitFor('subscribed');
+    context.bus.publish(SYSTEM_TOPIC, notice(SYSTEM_TOPIC, 'viewer-can-watch'));
+    await client.waitFor('notification');
+    expect(client.titles()).toContain('viewer-can-watch');
+    client.close();
+  });
+
+  it('cannot decide an approval', async () => {
+    const client = await viewerClient();
+    client.send({
+      type: 'approval',
+      decision: { approvalId: 'apr_whatever', approved: true, remember: false },
+    });
+    const error = await client.waitFor('error');
+    expect(error.code).toBe('forbidden');
+    client.close();
+  });
+
+  it('cannot interrupt a run', async () => {
+    const client = await viewerClient();
+    client.send({ type: 'interrupt', sessionId: 'ses_whatever' });
+    const error = await client.waitFor('error');
+    expect(error.code).toBe('forbidden');
+    client.close();
+  });
+
+  it('is refused by the HTTP approval route too, before the approval is even looked up', async () => {
+    // The socket and the route must agree: a viewer who works out the REST
+    // shape must not get through the door the UI does not use.
+    const response = await fetch(`${baseUrl}/api/approvals/apr_whatever`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: viewerCookie,
+        'x-metaclaude-csrf': viewerCsrf,
+      },
+      body: JSON.stringify({ approved: true }),
+    });
+    // 403, not the 404 an operator would get for an unknown approval id.
+    expect(response.status).toBe(403);
+  });
+});

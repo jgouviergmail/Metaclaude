@@ -7,6 +7,7 @@
  * an authenticated socket even though `WebSocket` ignores CORS.
  */
 
+import { decideApproval } from '../http/approvals.js';
 import type { App } from '../http/types.js';
 import type { WebSocket } from 'ws';
 import {
@@ -278,21 +279,17 @@ export function registerWebSocket(app: App, context: AppContext): void {
             break;
           }
           const decision = frame.data.decision;
-          const resolved = context.kernel.broker.resolve(
-            decision.approvalId,
-            decision.approved,
-            decision.remember,
-            decision.reason,
+          const resolved = decideApproval(
+            context,
+            {
+              approvalId: decision.approvalId,
+              approved: decision.approved,
+              remember: decision.remember,
+              ...(decision.reason ? { reason: decision.reason } : {}),
+            },
+            { username: current.user.username, ipAddress: clientAddress, via: 'websocket' },
           );
-          if (resolved) {
-            context.audit.record({
-              actor: current.user.username,
-              action: decision.approved ? 'approval.allow' : 'approval.deny',
-              target: decision.approvalId,
-              ipAddress: clientAddress,
-              detail: 'via websocket',
-            });
-          } else {
+          if (!resolved) {
             send({
               type: 'error',
               code: 'stale_approval',

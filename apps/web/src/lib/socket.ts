@@ -189,12 +189,24 @@ export class SocketClient {
     this.pingTimer = null;
   }
 
-  private send(frame: ClientFrame): void {
-    if (this.socket?.readyState !== 1) return;
+  /**
+   * Write a frame, reporting whether it was actually handed to the socket.
+   *
+   * Callers that only ever fire-and-forget can ignore the result; a decision
+   * the operator made cannot. A frame issued while `readyState` is 0/2/3 — or
+   * while `socket` is still null — is discarded here with no queue and no
+   * throw, and this is a PWA that deliberately pauses reconnection while the
+   * tab is hidden (`visibilitychange` below), so "phone wakes, operator opens
+   * the app to answer a prompt, taps Allow" starts in exactly that window.
+   */
+  private send(frame: ClientFrame): boolean {
+    if (this.socket?.readyState !== 1) return false;
     try {
       this.socket.send(JSON.stringify(frame));
+      return true;
     } catch {
       // The socket closed between the check and the write.
+      return false;
     }
   }
 
@@ -234,8 +246,15 @@ export class SocketClient {
     return () => this.stateHandlers.delete(handler);
   }
 
-  approve(approvalId: string, approved: boolean, remember = false, reason?: string): void {
-    this.send({
+  /**
+   * Send a permission decision. Returns false when the socket could not carry
+   * it, which is the caller's cue to mirror the decision over HTTP.
+   *
+   * `true` is not delivery confirmation — the socket can still die in flight —
+   * but it distinguishes the common, cheap-to-detect failure from the rest.
+   */
+  approve(approvalId: string, approved: boolean, remember = false, reason?: string): boolean {
+    return this.send({
       type: 'approval',
       decision: { approvalId, approved, remember, ...(reason ? { reason } : {}) },
     });

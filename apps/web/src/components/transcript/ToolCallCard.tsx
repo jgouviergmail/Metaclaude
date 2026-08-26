@@ -118,9 +118,25 @@ export const ToolCallCard = memo(function ToolCallCard({
   call: ToolCall;
   defaultExpanded?: boolean;
 }) {
-  // Errors open by default: a failure the user has to click to see is a failure
-  // they will miss.
-  const [expanded, setExpanded] = useState(defaultExpanded || call.resultIsError);
+  /*
+   * Errors open by default: a failure the user has to click to see is a failure
+   * they will miss.
+   *
+   * This has to be derived rather than seeded, because a tool call is emitted
+   * twice under one event id — once as `running` when the `tool_use` block
+   * arrives, once again when the result comes back. The store maps the second
+   * into the same slot, and the stream keys on `event.id`, so React re-renders
+   * this component rather than remounting it. A `useState` initialiser runs on
+   * mount only, so `resultIsError` was read when it was still `false` and the
+   * card never opened — the failing command's output was behind a click, and
+   * toggling the "Expand tool calls" preference changed nothing already on
+   * screen for the same reason.
+   *
+   * `null` means "the operator has not said", so a deliberate collapse of a
+   * failed call still sticks.
+   */
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const expanded = userToggled ?? (defaultExpanded || call.resultIsError);
   const [copied, setCopied] = useState(false);
 
   const { label, detail } = summarise(call);
@@ -143,7 +159,7 @@ export const ToolCallCard = memo(function ToolCallCard({
     >
       <button
         type="button"
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => setUserToggled(!expanded)}
         className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-raised"
         aria-expanded={expanded}
       >

@@ -47,7 +47,11 @@ export function MessageStream({
   isRunning: boolean;
   onRate: (runId: string, rating: number) => void;
   onRewind: (runId: string) => void;
-  onDecideApproval: (approvalId: string, approved: boolean, remember: boolean) => void;
+  onDecideApproval: (
+    approvalId: string,
+    approved: boolean,
+    remember: boolean,
+  ) => void | Promise<void>;
   emptyHint?: React.ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);

@@ -16,6 +16,7 @@ import {
   type ClaudeCredentialStatus,
   type ConnectRepositoryResult,
   type PluginRecord,
+  type AuthSessionInfo,
   type Automation,
   type AutomationTrigger,
   type CreateMemoryRequest,
@@ -28,6 +29,7 @@ import {
   type MemorySearchResult,
   type PolicyArm,
   type ClaudeCatalogue,
+  type LoginResponse,
   type RewindResult,
   type Run,
   type Session,
@@ -36,6 +38,7 @@ import {
   type TranscriptEvent,
   type UsagePoint,
   type User,
+  type UserRole,
   type Workspace,
   type WorkspaceSettings,
 } from '@metaclaude/shared';
@@ -147,28 +150,14 @@ export const api = {
   bootstrapStatus: () => request<{ needsBootstrap: boolean }>('/api/auth/bootstrap-status'),
 
   login: (body: { username: string; password: string; totp?: string }) =>
-    request<
-      | { status: 'ok'; user: User; csrfToken: string }
-      | { status: 'totp_required' }
-    >('/api/auth/login', { method: 'POST', body }),
+    request<LoginResponse>('/api/auth/login', { method: 'POST', body }),
 
   logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
 
   me: (options?: { quiet?: boolean }) =>
     request<MeResponse>('/api/auth/me', { quiet: options?.quiet ?? false }),
 
-  authSessions: () =>
-    request<{
-      sessions: Array<{
-        id: string;
-        createdAt: number;
-        lastSeenAt: number;
-        expiresAt: number;
-        userAgent: string | null;
-        ipAddress: string | null;
-        current: boolean;
-      }>;
-    }>('/api/auth/sessions'),
+  authSessions: () => request<{ sessions: AuthSessionInfo[] }>('/api/auth/sessions'),
 
   revokeAuthSession: (id: string) =>
     request<{ ok: boolean }>(`/api/auth/sessions/${id}`, { method: 'DELETE' }),
@@ -196,7 +185,12 @@ export const api = {
     request<{ ok: boolean }>('/api/auth/totp/disable', { method: 'POST', body: { password } }),
 
   users: () => request<{ users: User[] }>('/api/users'),
-  createUser: (body: { username: string; password: string; role: string; displayName?: string }) =>
+  createUser: (body: {
+    username: string;
+    password: string;
+    role: UserRole;
+    displayName?: string;
+  }) =>
     request<{ user: User }>('/api/users', { method: 'POST', body }),
 
   /* ---------------------------- Workspaces ---------------------------- */

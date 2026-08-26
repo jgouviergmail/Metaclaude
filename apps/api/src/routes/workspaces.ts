@@ -17,6 +17,7 @@ import {
 } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import { decideApproval } from '../http/approvals.js';
 import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
 import { spreadInt, spreadTimestamp } from '../http/query.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
@@ -371,37 +372,17 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     const parsed = Decide.safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, 'Invalid decision.');
 
-    // Read the request *before* resolving it: the entry is removed on decision,
-    // and an audit line naming only an approval id that no longer exists cannot
-    // be reconstructed into what was actually authorised. The tool, its risk and
-    // the session are the parts worth keeping.
-    const pending = context.kernel.broker
-      .listPending()
-      .find((approval) => approval.id === request.params.id);
-
-    const resolved = context.kernel.broker.resolve(
-      request.params.id,
-      parsed.data.approved,
-      parsed.data.remember,
-      parsed.data.reason,
+    const resolved = decideApproval(
+      context,
+      {
+        approvalId: request.params.id,
+        approved: parsed.data.approved,
+        remember: parsed.data.remember,
+        ...(parsed.data.reason ? { reason: parsed.data.reason } : {}),
+      },
+      { username: actor.username, ipAddress: requestIp(context, request), via: 'http' },
     );
     if (!resolved) throw new HttpError(404, 'That approval is no longer pending.');
-
-    const detail = [
-      pending ? `${pending.toolName} (${pending.risk} risk)` : null,
-      pending?.summary ?? null,
-      parsed.data.remember ? 'remembered for the session' : null,
-    ]
-      .filter(Boolean)
-      .join(' — ');
-
-    context.audit.record({
-      actor: actor.username,
-      action: parsed.data.approved ? 'approval.allow' : 'approval.deny',
-      target: pending?.sessionId ?? request.params.id,
-      ipAddress: requestIp(context, request),
-      detail: detail.length > 0 ? detail : null,
-    });
     return reply.send({ ok: true });
   });
 }

@@ -13,12 +13,8 @@ import { z } from 'zod';
 /* Primitives                                                                  */
 /* -------------------------------------------------------------------------- */
 
-export const IsoDateTime = z.string().datetime({ offset: true });
-
 /** Unix epoch milliseconds. SQLite stores these as INTEGER. */
 export const Millis = z.number().int().nonnegative();
-
-export const NonEmptyString = z.string().min(1).max(10_000);
 
 /* -------------------------------------------------------------------------- */
 /* Models, effort, permissions                                                 */
@@ -488,7 +484,6 @@ export const TranscriptEvent = z.discriminatedUnion('kind', [
   }),
 ]);
 export type TranscriptEvent = z.infer<typeof TranscriptEvent>;
-export type TranscriptEventKind = TranscriptEvent['kind'];
 
 /* -------------------------------------------------------------------------- */
 /* Tool approvals                                                              */
@@ -1085,11 +1080,22 @@ export const PluginMcpServer = z.discriminatedUnion('type', [
 ]);
 export type PluginMcpServer = z.infer<typeof PluginMcpServer>;
 
-export const PluginMcpFile = z.object({
-  $schema: z.string(),
-  mcpServers: z.record(z.string(), PluginMcpServer),
-});
-export type PluginMcpFile = z.infer<typeof PluginMcpFile>;
+/**
+ * The shape of a plugin's `mcp.json`, as the Agent Plugins spec defines it.
+ *
+ * A type rather than a Zod schema, deliberately. The spec requires a client to
+ * isolate per-component failures, so the loader must never validate this file
+ * as a whole — one malformed server has to be skipped with a warning while its
+ * neighbours load, which is what `services/plugins.ts` does by running
+ * `PluginMcpServer.safeParse` per entry. A whole-file schema could only ever
+ * reject the lot, so there is nothing here for one to do; as a runtime schema
+ * it was unreferenced and cost the web app's entry chunk bytes for a validation
+ * that must not happen.
+ */
+export interface PluginMcpFile {
+  $schema: string;
+  mcpServers: Record<string, PluginMcpServer>;
+}
 
 /** One skill found under `skills/`, as loaded from disk. */
 export const PluginSkill = z.object({

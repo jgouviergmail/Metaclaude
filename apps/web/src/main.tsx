@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { App } from './App';
+import { RootBoundary } from './components/RootBoundary';
 import { ApiError } from './lib/api';
 import { TooltipProvider } from './components/ui/primitives';
 import './styles/index.css';
@@ -57,26 +58,29 @@ if (!container) throw new Error('Root element missing from index.html');
 
 createRoot(container).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <TooltipProvider>
-          <App />
-          <Toaster
-            position="bottom-right"
-            closeButton
-            richColors
-            // Inherit the app's own surfaces so toasts do not look bolted on.
-            toastOptions={{
-              style: {
-                background: 'var(--mc-surface-raised)',
-                border: '1px solid var(--mc-border)',
-                color: 'var(--mc-text)',
-              },
-            }}
-          />
-        </TooltipProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
+    {/* Outside every provider: a throw inside one of them must still be caught. */}
+    <RootBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <TooltipProvider>
+            <App />
+            <Toaster
+              position="bottom-right"
+              closeButton
+              richColors
+              // Inherit the app's own surfaces so toasts do not look bolted on.
+              toastOptions={{
+                style: {
+                  background: 'var(--mc-surface-raised)',
+                  border: '1px solid var(--mc-border)',
+                  color: 'var(--mc-text)',
+                },
+              }}
+            />
+          </TooltipProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </RootBoundary>
   </StrictMode>,
 );
 

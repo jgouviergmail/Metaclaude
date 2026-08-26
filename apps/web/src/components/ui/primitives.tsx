@@ -145,17 +145,48 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   },
 );
 
+/**
+ * A field label with an optional explanatory line.
+ *
+ * The hint is rendered *outside* the `<label>`, and that placement is the whole
+ * point. A labelled control's accessible name is the text content of its
+ * labelling element — the embedded control excluded, but nothing else — so a
+ * hint nested inside the label is announced as part of the name of the field:
+ * "Name Lowercase and dashes; this is the directory name., edit text" every
+ * time focus lands, with no short phrase for voice control to target.
+ * `aria-describedby` does not rescue that; being described does not take text
+ * out of the name. The hint has to leave the label, which is what
+ * `controls.tsx`'s `CheckboxField` already does.
+ *
+ * The container carries the spacing the label used to, so the rendered result
+ * is unchanged.
+ *
+ * When `htmlFor` is given the hint gets the id `<htmlFor>-hint`, so a caller
+ * can wire `aria-describedby` on its control and have the hint announced as a
+ * description rather than dropped. That is opt-in: the name is fixed either
+ * way, and this only decides whether the hint is also read out.
+ */
 export function Label({
   className,
   children,
   hint,
+  htmlFor,
   ...props
 }: HTMLAttributes<HTMLLabelElement> & { htmlFor?: string; hint?: ReactNode }) {
   return (
-    <label className={cn('block space-y-1.5', className)} {...props}>
-      <span className="block text-[13px] font-medium text-ink">{children}</span>
-      {hint ? <span className="block text-xs leading-relaxed text-muted">{hint}</span> : null}
-    </label>
+    <div className={cn('block space-y-1.5', className)}>
+      <label className="block text-[13px] font-medium text-ink" htmlFor={htmlFor} {...props}>
+        {children}
+      </label>
+      {hint ? (
+        <span
+          {...(htmlFor ? { id: `${htmlFor}-hint` } : {})}
+          className="block text-xs leading-relaxed text-muted"
+        >
+          {hint}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

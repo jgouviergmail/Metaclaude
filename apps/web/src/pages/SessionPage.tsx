@@ -42,6 +42,7 @@ function PanelLoading() {
 import { GitPanel } from '@/components/workspace/GitPanel';
 import { SessionList } from '@/components/workspace/SessionList';
 import { api, ApiError } from '@/lib/api';
+import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
 import { useSessionStore, useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
@@ -332,9 +333,7 @@ export function SessionPage() {
             isRunning={isRunning || submitRun.isPending}
             onRate={(runId, rating) => rateRun.mutate({ runId, rating })}
             onRewind={setRewinding}
-            onDecideApproval={(approvalId, approved, remember) =>
-              socket.approve(approvalId, approved, remember)
-            }
+            onDecideApproval={decideApproval}
             emptyHint={
               <div className="flex flex-wrap justify-center gap-2">
                 {SUGGESTIONS.map((suggestion) => (
