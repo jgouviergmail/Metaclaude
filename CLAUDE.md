@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1046 tests, ~14s
+pnpm test:run                            # 1056 tests, ~15s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -105,6 +105,18 @@ component that reaches for one of them throws when rendered bare. Add a provider
 to `main.tsx` and you add it there too. `src/test/setup.ts` registers RTL's
 `cleanup` — without it a second `render` stacks in the same document and the
 failure surfaces as "found multiple elements" on an unrelated query.
+
+**The kernel** has a fixture in `kernel.test.ts`, deliberately half real: the
+database, repositories and event bus are genuine against an in-memory SQLite,
+because what is worth testing lives in the gaps between the kernel and its
+storage. The learning collaborators are fakes. The supervisor fake can be *held
+open* — `supervisor.hold()` then `finish()` — which is the only way queueing, the
+reservation window and cancelling a not-yet-started run are observable at all.
+
+**Prove a new test can fail.** Break the line it covers, watch it go red, then
+put the line back. Three of the kernel tests were written against code that
+already worked, and only a deliberate sabotage of each showed they were testing
+the thing they claimed to.
 
 The two checks that *do* need a live agent live in `apps/api/scripts/` and are
 run by hand (`check:e2e`, `check:browser`). They boot the real server against a

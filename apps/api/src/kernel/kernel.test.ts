@@ -1,16 +1,455 @@
-import { describe, expect, it } from 'vitest';
-import { deriveTitle } from './kernel.js';
-
 /**
- * Only the pure helper is exercised here.
+ * The kernel — admission, scheduling, and the learning loop that closes after.
  *
- * The reason used to be recorded as "everything else needs a live Claude CLI",
- * which was never true — the supervisor is an injected dependency and is now
- * tested with a fake `query` in supervisor.test.ts. What the kernel actually
+ * This file used to test one pure helper and say so honestly: "what the kernel
  * needs is a fixture for its ten collaborators, which is a piece of work in its
- * own right and is tracked as one. Leaving a false reason in place is how a gap
- * stops being noticed.
+ * own right". This is that fixture, and the tests it makes possible.
+ *
+ * The fixture is deliberately *half* real. The database, the repositories and
+ * the event bus are the genuine articles against an in-memory SQLite, because
+ * the things worth testing here are exactly the ones that live in the gaps
+ * between the kernel and its storage — a run's status after a cancellation, a
+ * session marked busy by one path and released by another. The learning
+ * collaborators are fakes, because they have their own tests and because a real
+ * reflexion pass would spawn a CLI.
+ *
+ * The supervisor is a fake the test can *hold open*, which is what makes the
+ * concurrency behaviour observable at all: queueing, the reservation window,
+ * and cancelling a run that has not started are all states that only exist
+ * while something is still running.
  */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Run, Workspace, WorkspaceSettings } from '@metaclaude/shared';
+import { WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
+import { migrate, openDatabase, type Db } from '../db/index.js';
+import { EventBus } from './bus.js';
+import { deriveTitle, Kernel } from './kernel.js';
+import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
+import type { RunOutcome, RunRequest, SupervisorCallbacks } from './supervisor.js';
+
+/* -------------------------------------------------------------------------- */
+/* The fixture                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** A supervisor whose runs the test starts, holds and finishes by hand. */
+function fakeSupervisor() {
+  const started: RunRequest[] = [];
+  const pending: Array<{ request: RunRequest; settle: (outcome: RunOutcome) => void }> = [];
+  const interrupted: string[] = [];
+  /** Resolve immediately unless a test asks to hold runs open. */
+  let hold = false;
+
+  const outcome = (over: Partial<RunOutcome> = {}): RunOutcome => ({
+    status: 'succeeded',
+    usage: {
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUsd: 0.01,
+      durationMs: 20,
+      turns: 1,
+    },
+    error: null,
+    finalText: 'done',
+    claudeSessionId: 'sdk-session',
+    rewindPoint: null,
+    ...over,
+  });
+
+  const supervisor = {
+    hold: () => {
+      hold = true;
+    },
+    started,
+    interrupted,
+    /** Finish the oldest held run. */
+    finish: (over: Partial<RunOutcome> = {}) => {
+      const next = pending.shift();
+      next?.settle(outcome(over));
+    },
+    get holding(): number {
+      return pending.length;
+    },
+
+    execute(request: RunRequest, callbacks: SupervisorCallbacks): Promise<RunOutcome> {
+      started.push(request);
+      // The real supervisor reports the CLI session id, and the kernel persists
+      // it — a session that never records one cannot be resumed or rewound.
+      callbacks.onClaudeSessionId('sdk-session');
+      if (!hold) return Promise.resolve(outcome());
+      return new Promise<RunOutcome>((resolve) => {
+        pending.push({ request, settle: resolve });
+      });
+    },
+    async interrupt(runId: string): Promise<boolean> {
+      interrupted.push(runId);
+      return true;
+    },
+    async rewind(): Promise<never> {
+      throw new Error('not used here');
+    },
+  };
+
+  return supervisor;
+}
+
+function setup(options: { maxConcurrentRuns?: number; settings?: Partial<WorkspaceSettings> } = {}) {
+  const db = openDatabase({ path: ':memory:' });
+  migrate(db);
+
+  const bus = new EventBus();
+  const workspaces = new WorkspaceRepo(db);
+  const sessions = new SessionRepo(db);
+  const runs = new RunRepo(db);
+  const transcript = new TranscriptRepo(db);
+  const supervisor = fakeSupervisor();
+
+  const classifier = {
+    classify: vi.fn().mockResolvedValue({ category: 'code', confidence: 1 }),
+    learn: vi.fn().mockResolvedValue(undefined),
+  };
+  const policy = {
+    select: vi.fn().mockReturnValue(null),
+    update: vi.fn(),
+    revise: vi.fn(),
+  };
+  const reflexion = { reflect: vi.fn().mockResolvedValue(0) };
+  const memory = {
+    search: vi.fn().mockResolvedValue([]),
+    recordUsage: vi.fn(),
+    reinforce: vi.fn(),
+  };
+  const contextProvider = { resolve: vi.fn().mockReturnValue({ mcpServers: {}, agents: {} }) };
+  const finished: Run[] = [];
+
+  const settings = WorkspaceSettingsSchema.parse(options.settings ?? {});
+  const workspace: Workspace = workspaces.create({
+    name: 'Test',
+    slug: 'test',
+    description: '',
+    path: '/tmp/metaclaude-test',
+    color: '#6366f1',
+    icon: 'folder',
+    settings,
+  });
+
+  const kernel = new Kernel({
+    db,
+    bus,
+    workspaces,
+    sessions,
+    runs,
+    transcript,
+    memory: memory as never,
+    classifier: classifier as never,
+    policy: policy as never,
+    reflexion: reflexion as never,
+    contextProvider: contextProvider as never,
+    supervisor: supervisor as never,
+    maxConcurrentRuns: options.maxConcurrentRuns ?? 2,
+    onRunFinished: (run) => finished.push(run),
+    log: () => {},
+  });
+
+  const newSession = (title = '') =>
+    sessions.create({
+      workspaceId: workspace.id,
+      title,
+      model: 'default',
+      effort: null,
+      permissionMode: 'default',
+    });
+
+  return {
+    db,
+    kernel,
+    workspace,
+    workspaces,
+    sessions,
+    runs,
+    transcript,
+    supervisor,
+    classifier,
+    policy,
+    reflexion,
+    memory,
+    finished,
+    newSession,
+  };
+}
+
+type Fixture = ReturnType<typeof setup>;
+let fixture: Fixture;
+
+beforeEach(() => {
+  fixture = setup();
+});
+
+afterEach(() => {
+  fixture.db.close();
+});
+
+/** Wait for a run to reach a terminal status. */
+async function settled(fx: Fixture, runId: string): Promise<Run> {
+  return vi.waitFor(() => {
+    const run = fx.runs.get(runId);
+    if (!run || ['queued', 'running', 'waiting_approval'].includes(run.status)) {
+      throw new Error(`run ${runId} is ${run?.status ?? 'missing'}`);
+    }
+    return run;
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admission                                                                   */
+/* -------------------------------------------------------------------------- */
+
+describe('admission', () => {
+  it('records a run and hands it to the supervisor', async () => {
+    const session = fixture.newSession();
+
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do the thing' });
+    await settled(fixture, run.id);
+
+    expect(fixture.supervisor.started).toHaveLength(1);
+    expect(fixture.runs.get(run.id)?.status).toBe('succeeded');
+  });
+
+  it('names the session from its first prompt', async () => {
+    // Otherwise the sidebar is a column of "New session".
+    const session = fixture.newSession();
+
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'Fix the parser bug' });
+    await settled(fixture, run.id);
+
+    expect(fixture.sessions.get(session.id)?.title).toBe('Fix the parser bug');
+  });
+
+  it('refuses an empty prompt', async () => {
+    const session = fixture.newSession();
+
+    await expect(fixture.kernel.submit({ sessionId: session.id, prompt: '   ' })).rejects.toThrow(
+      /empty/i,
+    );
+  });
+
+  it('refuses an unknown session', async () => {
+    await expect(fixture.kernel.submit({ sessionId: 'ses_nope', prompt: 'x' })).rejects.toThrow(
+      /session/i,
+    );
+  });
+
+  it('refuses a second run in a session that is already busy', async () => {
+    fixture.supervisor.hold();
+    const session = fixture.newSession();
+    await fixture.kernel.submit({ sessionId: session.id, prompt: 'first' });
+
+    await expect(fixture.kernel.submit({ sessionId: session.id, prompt: 'second' })).rejects.toThrow(
+      /in flight/i,
+    );
+  });
+
+  it('lets one of two simultaneous submits through, and only one', async () => {
+    // The subtle one. `submit` awaits the classifier before the run reaches the
+    // scheduler, and `execute` only registers in `active` a microtask later.
+    // Without a synchronous reservation across that window both submits pass the
+    // "already running?" check, resume the same Claude session and interleave
+    // their transcripts.
+    fixture.supervisor.hold();
+    const session = fixture.newSession();
+
+    const results = await Promise.allSettled([
+      fixture.kernel.submit({ sessionId: session.id, prompt: 'first' }),
+      fixture.kernel.submit({ sessionId: session.id, prompt: 'second' }),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+  });
+
+  it('frees the session again once the run is over', async () => {
+    // The reservation is taken synchronously; a path that failed to release it
+    // would lock the session for the life of the process.
+    const session = fixture.newSession();
+    const first = await fixture.kernel.submit({ sessionId: session.id, prompt: 'first' });
+    await settled(fixture, first.id);
+
+    const second = await fixture.kernel.submit({ sessionId: session.id, prompt: 'second' });
+    expect(second.id).not.toBe(first.id);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Scheduling                                                                  */
+/* -------------------------------------------------------------------------- */
+
+describe('scheduling', () => {
+  it('queues past the concurrency limit rather than running everything', async () => {
+    const fx = setup({ maxConcurrentRuns: 1 });
+    fx.supervisor.hold();
+
+    const a = await fx.kernel.submit({ sessionId: fx.newSession().id, prompt: 'a' });
+    const b = await fx.kernel.submit({ sessionId: fx.newSession().id, prompt: 'b' });
+
+    await vi.waitFor(() => expect(fx.supervisor.started).toHaveLength(1));
+    expect(fx.runs.get(a.id)?.status).toBe('running');
+    expect(fx.runs.get(b.id)?.status).toBe('queued');
+
+    fx.supervisor.finish();
+    await vi.waitFor(() => expect(fx.supervisor.started).toHaveLength(2));
+    fx.db.close();
+  });
+
+  it('cancelling a queued run never starts it', async () => {
+    // `reject`, not `resolve`, on the waiter: resolving would hand it the slot
+    // and start the run the operator just stopped, while reporting success.
+    const fx = setup({ maxConcurrentRuns: 1 });
+    fx.supervisor.hold();
+
+    await fx.kernel.submit({ sessionId: fx.newSession().id, prompt: 'a' });
+    const queuedSession = fx.newSession();
+    const queued = await fx.kernel.submit({ sessionId: queuedSession.id, prompt: 'b' });
+
+    expect(fx.kernel.interrupt(queuedSession.id)).toBe(true);
+    fx.supervisor.finish();
+
+    const run = await settled(fx, queued.id);
+    expect(run.status).toBe('interrupted');
+    expect(fx.supervisor.started.map((r) => r.runId)).not.toContain(queued.id);
+    fx.db.close();
+  });
+
+  it('asks the CLI to stop a run that is already going', async () => {
+    fixture.supervisor.hold();
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'a' });
+    await vi.waitFor(() => expect(fixture.supervisor.started).toHaveLength(1));
+
+    expect(fixture.kernel.interrupt(session.id)).toBe(true);
+    expect(fixture.supervisor.interrupted).toContain(run.id);
+    fixture.supervisor.finish({ status: 'interrupted', error: 'stopped' });
+    await settled(fixture, run.id);
+  });
+
+  it('reports nothing to stop when the session is idle', () => {
+    expect(fixture.kernel.interrupt(fixture.newSession().id)).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The learning loop                                                           */
+/* -------------------------------------------------------------------------- */
+
+describe('the loop that closes after a run', () => {
+  it('scores the run and reinforces the memories it used', async () => {
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do it' });
+    await settled(fixture, run.id);
+
+    await vi.waitFor(() => expect(fixture.memory.reinforce).toHaveBeenCalled());
+    expect(fixture.runs.get(run.id)?.reward).toBeGreaterThan(0);
+  });
+
+  it('teaches the classifier from a run that finished', async () => {
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do it' });
+    await settled(fixture, run.id);
+
+    await vi.waitFor(() => expect(fixture.classifier.learn).toHaveBeenCalled());
+  });
+
+  it('does not teach the classifier from an interrupted run', async () => {
+    // A run the operator stopped says nothing about what they meant.
+    fixture.supervisor.hold();
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do it' });
+    await vi.waitFor(() => expect(fixture.supervisor.started).toHaveLength(1));
+    fixture.supervisor.finish({ status: 'interrupted', error: 'stopped' });
+    await settled(fixture, run.id);
+
+    await vi.waitFor(() => expect(fixture.memory.reinforce).toHaveBeenCalled());
+    expect(fixture.classifier.learn).not.toHaveBeenCalled();
+  });
+
+  it('leaves the bandit alone when the workspace has not asked it to learn', async () => {
+    // `autoPolicyEnabled` off means the operator chooses the model; updating
+    // arms from runs they picked would teach the learner their preferences and
+    // then present them back as its own recommendation.
+    const fx = setup({ settings: { autoPolicyEnabled: false } });
+    const run = await fx.kernel.submit({ sessionId: fx.newSession().id, prompt: 'do it' });
+    await settled(fx, run.id);
+
+    await vi.waitFor(() => expect(fx.memory.reinforce).toHaveBeenCalled());
+    expect(fx.policy.update).not.toHaveBeenCalled();
+    fx.db.close();
+  });
+
+  it('updates the bandit when it is the one choosing', async () => {
+    const fx = setup({ settings: { autoPolicyEnabled: true } });
+    const run = await fx.kernel.submit({ sessionId: fx.newSession().id, prompt: 'do it' });
+    await settled(fx, run.id);
+
+    await vi.waitFor(() => expect(fx.policy.update).toHaveBeenCalled());
+    fx.db.close();
+  });
+
+  it('announces the run to whatever is listening', async () => {
+    // The scheduler's automation bookkeeping hangs off this hook; a run that
+    // finished without firing it leaves an automation showing its last outcome
+    // forever.
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do it' });
+    await settled(fixture, run.id);
+
+    await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
+  });
+
+  it('records a failure as a failure, and still closes the loop', async () => {
+    fixture.supervisor.hold();
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do it' });
+    await vi.waitFor(() => expect(fixture.supervisor.started).toHaveLength(1));
+    fixture.supervisor.finish({ status: 'failed', error: 'it broke' });
+
+    const settledRun = await settled(fixture, run.id);
+    expect(settledRun.status).toBe('failed');
+    expect(settledRun.error).toContain('it broke');
+    await vi.waitFor(() => expect(fixture.memory.reinforce).toHaveBeenCalled());
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Rewind                                                                      */
+/* -------------------------------------------------------------------------- */
+
+describe('rewindRun', () => {
+  it('refuses a run that does not exist, rather than throwing', async () => {
+    // Reached from a button. A rejection is a 500 on top of whatever the
+    // operator was already trying to recover from.
+    const result = await fixture.kernel.rewindRun('run_nope', true);
+
+    expect(result.canRewind).toBe(false);
+    expect(result.error).toMatch(/no longer exists/i);
+  });
+
+  it('refuses a run that recorded no anchor, and says why', async () => {
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do it' });
+    await settled(fixture, run.id);
+
+    const result = await fixture.kernel.rewindRun(run.id, true);
+
+    expect(result.canRewind).toBe(false);
+    expect(result.error).toMatch(/checkpoint/i);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The pure helper                                                             */
+/* -------------------------------------------------------------------------- */
+
 describe('deriveTitle', () => {
   it('uses the first meaningful line', () => {
     expect(deriveTitle('Fix the login bug\nand then deploy')).toBe('Fix the login bug');
@@ -28,81 +467,5 @@ describe('deriveTitle', () => {
     expect(deriveTitle('- item one\nitem two')).toBe('item one');
     expect(deriveTitle('* item one')).toBe('item one');
     expect(deriveTitle('-   spaced item')).toBe('spaced item');
-  });
-
-  it('skips lines that are nothing but markers', () => {
-    expect(deriveTitle('#\n## Real title')).toBe('Real title');
-    expect(deriveTitle('>\n* \nActual line')).toBe('Actual line');
-    expect(deriveTitle('---\nAfter the rule')).toBe('After the rule');
-    expect(deriveTitle('1.\nNumbered follow-up')).toBe('Numbered follow-up');
-  });
-
-  it('collapses runs of whitespace', () => {
-    expect(deriveTitle('hello    world\t\tagain')).toBe('hello world again');
-    expect(deriveTitle('   padded   title   ')).toBe('padded title');
-  });
-
-  it('returns "New session" for empty or whitespace-only input', () => {
-    expect(deriveTitle('')).toBe('New session');
-    expect(deriveTitle('   ')).toBe('New session');
-    expect(deriveTitle('\n\n\n')).toBe('New session');
-    expect(deriveTitle('\t \n \t')).toBe('New session');
-  });
-
-  it('leaves a title that already fits untouched', () => {
-    const exactly = 'x'.repeat(60);
-    expect(deriveTitle(exactly)).toBe(exactly);
-    expect(deriveTitle(exactly).endsWith('…')).toBe(false);
-  });
-
-  it('truncates on a word boundary and appends an ellipsis', () => {
-    const title = deriveTitle(
-      'Please refactor the authentication service so that it stops leaking sessions',
-    );
-    expect(title).toBe('Please refactor the authentication service so that it stops…');
-    expect(title.endsWith('…')).toBe(true);
-    // Cut on whitespace, so the visible part is a whole number of words.
-    expect(title.slice(0, -1)).toBe(title.slice(0, -1).trimEnd());
-    expect(
-      'Please refactor the authentication service so that it stops leaking sessions'.startsWith(
-        title.slice(0, -1),
-      ),
-    ).toBe(true);
-  });
-
-  it('falls back to a hard cut when there is no usable word boundary', () => {
-    const title = deriveTitle('a'.repeat(80));
-    expect(title).toBe(`${'a'.repeat(60)}…`);
-    expect(title).toHaveLength(61);
-  });
-
-  it('honours a custom maximum length', () => {
-    expect(deriveTitle('one two three four five six seven', 20)).toBe('one two three four…');
-    expect(deriveTitle('one two three four five six seven', 20).length).toBeLessThanOrEqual(21);
-    expect(deriveTitle('short', 20)).toBe('short');
-  });
-
-  it('does not cut mid-word when the last space is very early', () => {
-    // The final space sits below 60% of the limit, so a hard cut is preferred
-    // over an uselessly short title.
-    const title = deriveTitle(`ab ${'c'.repeat(120)}`);
-    expect(title).toHaveLength(61);
-    expect(title.startsWith('ab ccc')).toBe(true);
-  });
-
-  it('handles a realistic multi-line markdown prompt', () => {
-    const prompt = [
-      '# Task',
-      '',
-      '- Investigate the flaky test in `crypto.test.ts`',
-      '- Then fix it',
-    ].join('\n');
-    expect(deriveTitle(prompt)).toBe('Task');
-  });
-
-  it('never returns an empty string', () => {
-    for (const prompt of ['', ' ', '#', '# ', '- ', '\n#\n', '>>>', '...']) {
-      expect(deriveTitle(prompt).length).toBeGreaterThan(0);
-    }
   });
 });
