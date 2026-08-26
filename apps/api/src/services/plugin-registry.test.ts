@@ -10,7 +10,7 @@
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PLUGIN_MCP_SCHEMA_URL, PLUGIN_SCHEMA_URL } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
@@ -239,5 +239,29 @@ describe('reading a plugin whose files changed underneath', () => {
     expect(listed?.name).toBe('formatter');
     expect(listed?.warnings.join(' ')).toMatch(/could not be read/i);
     expect(listed?.skills).toEqual([]);
+  });
+});
+
+describe('name collisions with the data directory', () => {
+  it('refuses a plugin whose name claims another plugin’s state directory', async () => {
+    // `dataFor` is `<name>.data`, a sibling of the code, and the name grammar
+    // permits periods — so `acme.data` resolves to exactly the directory
+    // holding plugin `acme`'s state. The uniqueness check cannot see it: the
+    // names differ, only the paths collide. Installing it would `rm -rf` that
+    // state, and `refresh()` would then hand `acme` a PLUGIN_DATA pointing at
+    // the other plugin's code.
+    await registry.install(await build('acme', {}));
+    const marker = join(pluginsDir, 'acme.data', 'state.json');
+    await mkdir(dirname(marker), { recursive: true });
+    await writeFile(marker, '{"kept":true}', 'utf8');
+
+    await expect(registry.install(await build('acme.data', {}))).rejects.toThrow(/collides/);
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  it('still allows an ordinary name containing a period', async () => {
+    // The grammar permits them for reverse-DNS style names, and refusing all
+    // of them would be a wider change than the collision needs.
+    await expect(registry.install(await build('com.acme.tools', {}))).resolves.toBeDefined();
   });
 });

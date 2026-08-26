@@ -24,7 +24,13 @@ import {
   verifyPassword,
 } from './crypto.js';
 import { LOGIN_FREE_ATTEMPTS, lockoutDurationMs } from './ratelimit.js';
-import { generateRecoveryCodes, generateTotpSecret, totpUri, verifyTotp } from './totp.js';
+import {
+  generateRecoveryCodes,
+  generateTotpSecret,
+  matchTotpCounter,
+  totpUri,
+  verifyTotp,
+} from './totp.js';
 
 /** Idle timeout: a session unused for this long is dead. */
 export const SESSION_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -45,6 +51,7 @@ interface UserRow {
   password_hash: string;
   role: string;
   totp_secret: string | null;
+  totp_last_step: number | null;
   totp_pending_secret: string | null;
   totp_enabled: number;
   recovery_codes: string;
@@ -195,6 +202,23 @@ export class AuthService {
 
     const now = Date.now();
     if (row.locked_until !== null && row.locked_until > now) {
+      // Burn the same scrypt an unknown user does. Returning here without it
+      // made a locked account ~100 ms *faster* than a non-existent one, which
+      // is precisely the timing channel the decoy hash above exists to close —
+      // the guarantee is meant to hold on every path, not only the one it was
+      // written for.
+      //
+      // The 429 itself remains distinguishable from the 401 an unknown name
+      // gets, and that is a deliberate trade rather than an oversight: on a
+      // self-hosted single-operator tool, an owner locked out of their own box
+      // needs to be told so and told when it lifts. What that channel discloses
+      // is one username on a deployment that already answers
+      // /api/auth/bootstrap-status, at five requests per candidate against a
+      // 10-token bucket refilling at one per six seconds, writing an audit line
+      // per probe and locking the real account where the owner will see it.
+      // docs/SECURITY.md says so rather than leaving it implied.
+      decoyHash ??= await hashPassword(generateToken(16));
+      await verifyPassword(input.password, decoyHash);
       return { status: 'locked', retryAfterMs: row.locked_until - now };
     }
 
@@ -246,7 +270,20 @@ export class AuthService {
    * A consumed recovery code is removed from the stored list immediately.
    */
   private consumeSecondFactor(row: UserRow, code: string): boolean {
-    if (row.totp_secret && verifyTotp(row.totp_secret, code)) return true;
+    if (row.totp_secret) {
+      // The matched counter, not just "did it match": verification allows ±1
+      // period of drift, so one code is valid for around ninety seconds, and
+      // nothing recorded that it had been spent. An observed
+      // (username, password, code) triple could be replayed inside that window
+      // for a second, independent session — while the recovery codes below have
+      // always been strictly single-use.
+      const step = matchTotpCounter(row.totp_secret, code);
+      if (step !== null) {
+        if (row.totp_last_step !== null && step <= row.totp_last_step) return false;
+        this.db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, row.id);
+        return true;
+      }
+    }
 
     const normalised = code.trim().toUpperCase();
     const codes = JSON.parse(row.recovery_codes) as string[];

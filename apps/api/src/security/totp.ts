@@ -89,26 +89,47 @@ export function verifyTotp(
   code: string,
   options: TotpOptions & { window?: number; atMs?: number } = {},
 ): boolean {
+  return matchTotpCounter(secret, code, options) !== null;
+}
+
+/**
+ * The same check, returning *which* counter matched.
+ *
+ * The counter is what makes a code single-use. Returning only a boolean left
+ * the caller nothing to record, so the same six digits stayed valid for the
+ * whole ±1 window — around ninety seconds in which an observed code could be
+ * replayed for a second, independent session. `AuthService` stores the matched
+ * counter and refuses anything at or below it.
+ *
+ * A counter, not the code itself: a stored code would have to be compared
+ * against, and the next code must still work the moment the period rolls over.
+ */
+export function matchTotpCounter(
+  secret: string,
+  code: string,
+  options: TotpOptions & { window?: number; atMs?: number } = {},
+): number | null {
   const digits = options.digits ?? 6;
   const trimmed = code.trim();
-  if (!new RegExp(`^\\d{${digits}}$`).test(trimmed)) return false;
+  if (!new RegExp(`^\\d{${digits}}$`).test(trimmed)) return null;
 
   const window = options.window ?? 1;
   const now = options.atMs ?? Date.now();
   const period = options.periodSeconds ?? 30;
   const provided = Buffer.from(trimmed, 'utf8');
 
-  let matched = false;
+  let matched: number | null = null;
   for (let step = -window; step <= window; step += 1) {
+    const at = now + step * period * 1000;
     let expected: Buffer;
     try {
-      expected = Buffer.from(totpCode(secret, now + step * period * 1000, options), 'utf8');
+      expected = Buffer.from(totpCode(secret, at, options), 'utf8');
     } catch {
-      return false;
+      return null;
     }
     // Deliberately no early exit: checking every step keeps the timing flat.
     if (expected.length === provided.length && timingSafeEqual(expected, provided)) {
-      matched = true;
+      matched = Math.floor(at / (period * 1000));
     }
   }
   return matched;

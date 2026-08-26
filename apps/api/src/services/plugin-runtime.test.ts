@@ -10,7 +10,7 @@
  * own — one materialiser, one resolver, plugins as another source feeding both.
  */
 
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -193,5 +193,37 @@ describe('skills reach the workspace', () => {
     // Disabling must remove it, not merely stop refreshing it: a stale skill
     // directory would keep working and look like the toggle did nothing.
     expect(existsSync(join(workspace.path, '.claude', 'skills', 'review'))).toBe(false);
+  });
+
+  it('refuses to work through a symlinked .claude directory', async () => {
+    // `resolve()` is lexical, so `<ws>/.claude` being a symlink pointed the
+    // whole routine at the link's target: the `rm(root, {recursive, force})`
+    // that rebuilds the tree deleted *that* directory's `skills`, and the
+    // `mkdir`/`cp`/`writeFile` that follow wrote into it. This runs on every
+    // run submission, before the run, with failures swallowed into a log line —
+    // so it fires silently, and a hostile cloned repo or an approval-free agent
+    // write is enough to plant the link.
+    //
+    // The service imports `isInside` from the jail module and uses it for the
+    // per-skill destination, but never for the root it derives them from.
+    const elsewhere = join(workspacesDir, 'elsewhere');
+    await mkdir(join(elsewhere, 'skills', 'precious'), { recursive: true });
+    await writeFile(join(elsewhere, 'skills', 'precious', 'SKILL.md'), 'do not delete me', 'utf8');
+    await symlink(elsewhere, join(workspace.path, '.claude'), 'dir');
+
+    registry.upsertSkill({
+      workspaceId: workspace.id,
+      name: 'house-style',
+      description: 'The house style.',
+      body: 'Follow it.',
+    });
+
+    // It declines rather than throwing: this runs inside a run submission, and
+    // a workspace with an odd `.claude` must not become a workspace that
+    // cannot run at all.
+    await expect(registry.materialiseSkills(workspace)).resolves.toBe(0);
+
+    expect(existsSync(join(elsewhere, 'skills', 'precious', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(elsewhere, 'skills', 'house-style'))).toBe(false);
   });
 });

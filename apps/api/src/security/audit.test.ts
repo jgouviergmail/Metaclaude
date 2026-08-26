@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
-import { type AuditInput, AuditLog } from './audit.js';
+import { type AuditInput, AuditLog, redactUrlCredentials } from './audit.js';
 
 const BASE = 1_700_000_000_000;
 const DAY = 86_400_000;
@@ -309,5 +309,54 @@ describe('prune', () => {
 
     rec({ actor: 'z', action: 'and-another' }, BASE + 2);
     expect(audit.verifyChain()).toEqual({ ok: true, entries: 3 });
+  });
+});
+
+describe('redactUrlCredentials', () => {
+  it('strips a token embedded in a clone URL', () => {
+    // How a PAT is handed to git, and `assertCloneableUrl` checks the scheme
+    // only. The audit line is the copy that outlives the workspace: git also
+    // writes the URL into `.git/config`, but deleting the workspace takes that
+    // with it, while the entry here survives for AUDIT_RETENTION_DAYS and is
+    // rendered in the Settings audit view.
+    expect(redactUrlCredentials('https://x-access-token:ghp_secret@github.com/me/repo.git')).toBe(
+      'https://github.com/me/repo.git',
+    );
+    expect(redactUrlCredentials('https://user:pw@example.com/r')).not.toContain('pw');
+    // A token passed as the whole userinfo, with no password half.
+    expect(redactUrlCredentials('https://ghp_secret@github.com/me/repo.git')).toBe(
+      'https://github.com/me/repo.git',
+    );
+  });
+
+  it('keeps the SSH login name, which is not a secret', () => {
+    //  is the ordinary form of every SSH clone URL. Blanking it would
+    // turn a faithful record into a URL that does not work and never existed —
+    // and there is no password half there to protect.
+    expect(redactUrlCredentials('ssh://git@github.com/me/repo.git')).toBe(
+      'ssh://git@github.com/me/repo.git',
+    );
+    // A password over SSH is still stripped.
+    expect(redactUrlCredentials('ssh://git:hunter2@host/r')).toBe('ssh://git@host/r');
+  });
+
+  it('leaves a URL without credentials byte-identical', () => {
+    // Identity matters: an audit line that quietly rewrites what the operator
+    // typed is a worse record than one that does not.
+    for (const url of [
+      'https://github.com/me/repo.git',
+      'ssh://git@github.com/me/repo.git',
+      'https://example.com/a/b?c=d#e',
+    ]) {
+      expect(redactUrlCredentials(url)).toBe(url);
+    }
+  });
+
+  it('returns anything unparseable untouched', () => {
+    // A plugin `source` is a filesystem path, not a URL. Reconstructing blindly
+    // would throw on exactly the input the second call site passes.
+    for (const value of ['/opt/metaclaude/plugins/reviewer', 'local', '', 'not a url']) {
+      expect(redactUrlCredentials(value)).toBe(value);
+    }
   });
 });

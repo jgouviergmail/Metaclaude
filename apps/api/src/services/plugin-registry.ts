@@ -18,6 +18,7 @@
  * fields; a row that projected today's ten columns would discard both.
  */
 
+import { existsSync } from 'node:fs';
 import { cp, lstat, mkdir, readlink, realpath, rm } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { newId, type PluginRecord, type PluginSkill } from '@metaclaude/shared';
@@ -283,6 +284,23 @@ export class PluginRegistry {
     // anyway: a name is the only attacker-controlled part of this path.
     if (!isInside(this.deps.pluginsDir, root)) {
       throw new PluginError('That plugin name does not produce a valid install path.');
+    }
+
+    // A plugin's state lives at `<name>.data`, beside its code — and the name
+    // grammar permits periods, so `acme.data` claims the directory holding
+    // plugin `acme`'s state. Installing it would `rm -rf` that state, and
+    // `refresh()` would then hand `acme` a PLUGIN_DATA pointing at the other
+    // plugin's *code*. The uniqueness check above cannot see it: the two names
+    // differ, only the paths collide.
+    //
+    // Far more likely to be an unlucky name than an attack — installing is
+    // owner-only, from a directory already on the server — but the failure is
+    // silent data loss either way.
+    if (root.endsWith('.data') || existsSync(this.dataFor(probe.name))) {
+      throw new PluginError(
+        `"${probe.name}" collides with another plugin's data directory. Rename it.`,
+        409,
+      );
     }
 
     await rm(root, { recursive: true, force: true });

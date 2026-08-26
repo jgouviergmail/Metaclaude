@@ -23,7 +23,7 @@ import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { parseJson, toBool, toInt } from '../db/index.js';
 import type { RuntimeContext } from '../kernel/kernel.js';
-import { isInside } from '../security/paths.js';
+import { isInside, PathEscapeError, resolveInside } from '../security/paths.js';
 import type { Vault } from '../security/vault.js';
 import type { PluginRuntime } from './plugin-registry.js';
 
@@ -320,7 +320,29 @@ export class Registry {
    * skill cannot linger on disk and keep affecting runs.
    */
   async materialiseSkills(workspace: Workspace): Promise<number> {
-    const root = resolve(workspace.path, '.claude', 'skills');
+    // Through the jail, not `resolve`. `resolve` is purely lexical, so a
+    // symlinked `<ws>/.claude` pointed this whole routine at the link's target:
+    // the `rm(root, { recursive: true, force: true })` below deleted *that*
+    // directory's `skills`, and the `mkdir`/`cp`/`writeFile` that follow wrote
+    // into it. This runs on every run submission, before the run, with failures
+    // swallowed into a log line — so it fires silently, and a hostile cloned
+    // repo or an approval-free agent write is enough to plant the link.
+    //
+    // `resolveInside` realpaths the nearest existing ancestor, so it permits
+    // the ordinary case where `skills` does not exist yet, and `.claude` is not
+    // a blocked segment.
+    let root: string;
+    try {
+      root = resolveInside(workspace.path, '.claude/skills');
+    } catch (error) {
+      if (!(error instanceof PathEscapeError)) throw error;
+      // Declining, not throwing: a workspace with an odd `.claude` must not
+      // become a workspace that cannot run at all.
+      this.log('error', 'refusing to materialise skills through a symlinked .claude', {
+        path: workspace.path,
+      });
+      return 0;
+    }
     await rm(root, { recursive: true, force: true });
 
     const skills = this.listSkills(workspace.id).filter((skill) => skill.enabled);

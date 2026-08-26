@@ -123,6 +123,25 @@ describe('resolveInside', () => {
     expect(() => resolveInside(jail, 'escape-file')).toThrow(PathEscapeError);
   });
 
+  it('rejects a symlink that stays inside the jail but resolves to a blocked segment', () => {
+    // The gap the two existing symlink cases leave between them. The blocked
+    // segments are checked against the *requested* path, and the realpath pass
+    // is used only for `isInside` — so a link that never leaves the jail but
+    // lands on `.git` passed both gates. `FileService` then follows it on every
+    // syscall: `readdir` enumerates the directory, `readFile` reads
+    // `.git/config` — the credentialed clone URL the blocklist comment names —
+    // and `writeFile` writes into it. The file routes carry no `requireOperator`,
+    // so a viewer reaches all of it.
+    mkdirSync(join(jail, '.git'), { recursive: true });
+    writeFileSync(join(jail, '.git', 'config'), '[remote "origin"]\n\turl = https://token@host/r\n');
+    symlinkSync(join(jail, '.git'), join(jail, 'g'), 'dir');
+
+    expect(() => resolveInside(jail, '.git/config')).toThrow(PathEscapeError);
+    // The same file, one indirection away.
+    expect(() => resolveInside(jail, 'g/config')).toThrow(PathEscapeError);
+    expect(() => resolveInside(jail, 'g')).toThrow(PathEscapeError);
+  });
+
   it('allows a symlink that stays inside the jail', () => {
     symlinkSync(join(jail, 'sub'), join(jail, 'inner-link'), 'dir');
     expect(() => resolveInside(jail, 'inner-link/file.txt')).not.toThrow();

@@ -30,7 +30,19 @@ and rejection of trivially repetitive strings. No composition rules, because
 they push people toward `P@ssw0rd1!`.
 
 **A login for an unknown user still performs a full scrypt verification** against
-a pre-computed decoy hash, so response timing cannot enumerate accounts.
+a pre-computed decoy hash, so response timing cannot enumerate accounts. The
+locked-account path does the same work before answering, for the same reason:
+returning early made a locked account measurably faster than a name that does
+not exist.
+
+What timing closes, the status code does not. A locked account answers `429`
+where an unknown name answers `401`, so someone willing to spend five requests
+per candidate can learn that a username exists. That is deliberate: an owner
+locked out of their own server needs to be told so, and told when it lifts.
+The disclosure is one username, on a deployment that already answers
+`/api/auth/bootstrap-status`, against a ten-token bucket refilling at one per
+six seconds, writing an audit line per probe and leaving the real account
+locked where the owner will notice.
 
 **Two-factor authentication** is TOTP (RFC 6238), implemented directly on
 `node:crypto`. Verification checks every step in the ±1 window with no early

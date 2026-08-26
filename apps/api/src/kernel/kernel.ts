@@ -678,6 +678,20 @@ export class Kernel {
     const workspace = this.deps.workspaces.get(run.workspaceId);
     if (!workspace) return refuse('That run’s workspace no longer exists.');
 
+    // `planRewind` judges the *target* run, and only the target run. A finished
+    // run in a session that has since started another is rewindable by that
+    // test and must not be: both resume the same Claude session id, so this
+    // would open a second CLI onto the id the live run is appending to and
+    // restore files under a process still writing them. The UI does not
+    // compensate — the button is gated on `run.rewindPoint` alone.
+    //
+    // Asked here rather than inside `planRewind` because the answer is not a
+    // property of the two rows: `hasActiveRunForSession` also covers the
+    // reservation window and the queue, which only the kernel can see.
+    if (this.hasActiveRunForSession(session.id)) {
+      return refuse('This session has a run in flight. Stop it first, then rewind.');
+    }
+
     const plan = planRewind(run, session);
     if (!plan.ok) return refuse(plan.reason);
 

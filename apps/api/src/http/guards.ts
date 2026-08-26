@@ -9,7 +9,7 @@
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
-import type { User, UserRole } from '@metaclaude/shared';
+import type { PermissionMode, User, UserRole } from '@metaclaude/shared';
 import { CSRF_HEADER, SESSION_COOKIE } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { clientKey } from '../security/ratelimit.js';
@@ -132,6 +132,35 @@ export function requestIp(context: AppContext, request: FastifyRequest): string 
     request.headers['x-forwarded-for'] as string | undefined,
     context.config.trustProxy,
   );
+}
+
+/**
+ * Refuse `bypassPermissions` unless the deployment enabled it.
+ *
+ * A deployment-level decision, not a per-workspace one: with it, every write,
+ * delete, shell command and network call runs unprompted. The check existed
+ * verbatim in five places and was missing from the two that create a workspace
+ * or a session — so a workspace could be born with
+ * `defaultPermissionMode: 'bypassPermissions'` on a deployment that forbids it.
+ *
+ * The runtime is fail-safe either way: `AgentSupervisor.buildOptions` resolves
+ * the mode again and downgrades. But the settings screen would have shown a
+ * safety claim the deployment does not honour, and a stored mode that only one
+ * backstop refuses is a mode one refactor away from being real.
+ *
+ * Centralised here rather than repeated, because five copies of a rule is five
+ * chances for the sixth caller to forget it — which is exactly what happened.
+ */
+export function assertPermissionModeAllowed(
+  context: AppContext,
+  mode: PermissionMode | undefined,
+): void {
+  if (mode === 'bypassPermissions' && !context.config.allowBypassPermissions) {
+    throw new HttpError(
+      403,
+      'Bypass mode is disabled on this deployment. Set METACLAUDE_ALLOW_BYPASS_PERMISSIONS to enable it.',
+    );
+  }
 }
 
 /** Consistent JSON error body. */

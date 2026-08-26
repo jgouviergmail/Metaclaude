@@ -421,4 +421,25 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE runs ADD COLUMN rewind_point TEXT;
     `,
   },
+  {
+    version: 7,
+    name: 'totp_last_step',
+    sql: /* sql */ `
+      -- The TOTP counter most recently accepted for this user.
+      --
+      -- Verification allows ±1 period of clock drift, so one code is valid for
+      -- around ninety seconds. Nothing recorded that it had been used, so the
+      -- same six digits could be replayed for a second, independent session
+      -- inside that window — while the recovery codes beside them have always
+      -- been strictly single-use.
+      --
+      -- The counter rather than the code: the next period's code must still
+      -- work the moment it rolls over, and a stored code would have to be
+      -- compared against rather than ordered.
+      --
+      -- NULL means no code has been consumed since this column existed, which
+      -- accepts anything in the window exactly as before.
+      ALTER TABLE users ADD COLUMN totp_last_step INTEGER;
+    `,
+  },
 ];

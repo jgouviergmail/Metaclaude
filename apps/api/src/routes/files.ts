@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { ConnectRepositoryRequest } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import { redactUrlCredentials } from '../security/audit.js';
 import { queryIntOr, spreadInt } from '../http/query.js';
 
 export function registerFileRoutes(app: App, context: AppContext): void {
@@ -140,7 +141,7 @@ export function registerFileRoutes(app: App, context: AppContext): void {
       target: workspace.id,
       outcome: 'success',
       ipAddress: requestIp(context, request),
-      detail: input.gitUrl ?? 'local',
+      detail: input.gitUrl ? redactUrlCredentials(input.gitUrl) : 'local',
     });
     return reply.send(result);
   });

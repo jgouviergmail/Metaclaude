@@ -34,6 +34,7 @@ import { createHash } from 'node:crypto';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import type { PermissionBroker } from './permissions.js';
+import { resolvePermissionMode } from './permissions.js';
 import { narrate } from './sdk-narrator.js';
 
 /* -------------------------------------------------------------------------- */
@@ -246,10 +247,16 @@ export class AgentSupervisor {
     const { workspace, policy } = request;
     const settings = workspace.settings;
 
-    const permissionMode =
-      policy.permissionMode === 'bypassPermissions' && !this.deps.allowBypassPermissions
-        ? 'default'
-        : policy.permissionMode;
+    // The last line of defence, and the only one that sees a mode persisted
+    // *before* the deployment turned bypass off — a workspace default or an
+    // automation policy the routes gated when it was written and cannot gate
+    // again now. `resolvePermissionMode` is the same rule the routes enforce,
+    // shared rather than restated: it had been written and left with no caller,
+    // which is how the inline copy here drifted out of anyone's sight.
+    const permissionMode = resolvePermissionMode(
+      policy.permissionMode,
+      this.deps.allowBypassPermissions,
+    );
 
     const options: Options = {
       cwd: workspace.path,

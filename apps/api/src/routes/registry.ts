@@ -7,7 +7,14 @@ import { AutomationTrigger, EffortLevel, McpTransport, ModelSelector, Permission
 import { z } from 'zod';
 import { InstallPluginRequest } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
-import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
+import {
+  assertPermissionModeAllowed,
+  HttpError,
+  requestIp,
+  requireOperator,
+  requireOwner,
+} from '../http/guards.js';
+import { redactUrlCredentials } from '../security/audit.js';
 
 export function registerRegistryRoutes(app: App, context: AppContext): void {
   /**
@@ -219,12 +226,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
 
     // An unattended loop in bypass mode is the single most dangerous
     // configuration this system can be put into.
-    if (
-      parsed.data.policy?.permissionMode === 'bypassPermissions' &&
-      !context.config.allowBypassPermissions
-    ) {
-      throw new HttpError(403, 'Bypass mode is disabled on this deployment.');
-    }
+    assertPermissionModeAllowed(context, parsed.data.policy?.permissionMode);
 
     const automation = context.scheduler.create({
       ...parsed.data,
@@ -247,12 +249,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     const parsed = AutomationInput.partial().omit({ workspaceId: true }).safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
 
-    if (
-      parsed.data.policy?.permissionMode === 'bypassPermissions' &&
-      !context.config.allowBypassPermissions
-    ) {
-      throw new HttpError(403, 'Bypass mode is disabled on this deployment.');
-    }
+    assertPermissionModeAllowed(context, parsed.data.policy?.permissionMode);
 
     const automation = context.scheduler.update(request.params.id, parsed.data as never);
     if (!automation) throw new HttpError(404, 'Automation not found.');
@@ -349,7 +346,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       target: record.name,
       outcome: 'success',
       ipAddress: requestIp(context, request),
-      detail: input.source,
+      detail: redactUrlCredentials(input.source),
     });
     return reply.status(201).send(record);
   });

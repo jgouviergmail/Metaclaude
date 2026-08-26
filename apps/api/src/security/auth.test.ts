@@ -34,8 +34,22 @@ afterAll(() => {
 });
 
 /** Clear the brute-force counters so tests do not lock each other out. */
+/**
+ * Return the account to a state where the next login can succeed.
+ *
+ * `totp_last_step` is cleared alongside the lockout because a TOTP code is now
+ * strictly single-use, per RFC 6238 §5.2 — so two logins inside one 30-second
+ * period are genuinely refused, and several cases here sign in twice in a row
+ * on purpose. Real operators hit the same rule and wait for the next code;
+ * these tests would rather not wait thirty seconds each.
+ *
+ * It is *not* cleared where the point of the case is the single-use rule
+ * itself.
+ */
 function unlock(): void {
-  db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL').run();
+  db.prepare(
+    'UPDATE users SET failed_logins = 0, locked_until = NULL, totp_last_step = NULL',
+  ).run();
 }
 
 /**
@@ -475,6 +489,59 @@ describe('TOTP enrolment and second-factor login', () => {
     const second = await auth.login({ username: 'jules', password: PASSWORD, totp: code });
     expect(second).toEqual({ status: 'invalid' });
     expect(auth.remainingRecoveryCodes(user.id)).toBe(9);
+    unlock();
+  }, 30_000);
+
+  it('accepts a TOTP code exactly once, like the recovery codes beside it', async () => {
+    // `verifyTotp` returns a bare boolean and `consumeSecondFactor` writes
+    // nothing, so the same six digits stayed valid for the whole ±1 window —
+    // up to ~90 seconds. Anyone who observed one valid (username, password,
+    // code) triple could replay it for a second, independent 14-day session:
+    // a phishing proxy, or a glance at the keyboard. The password is a
+    // precondition, which is what makes this low rather than worse, but a
+    // second factor that survives its own use is not a second factor for that
+    // window — and the single-use recovery codes three lines down show the
+    // intent.
+    unlock();
+    const code = totpCode(secret, Date.now());
+
+    const first = await auth.login({ username: 'jules', password: PASSWORD, totp: code });
+    expect(first.status).toBe('ok');
+    if (first.status === 'ok') auth.revokeSession(first.sessionId);
+
+    // Only the lockout is cleared here — clearing the consumed counter would
+    // erase the very thing under test.
+    db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL').run();
+    const replay = await auth.login({ username: 'jules', password: PASSWORD, totp: code });
+    expect(replay).toEqual({ status: 'invalid' });
+    unlock();
+  }, 30_000);
+
+  it('accepts the next code after one has been used', async () => {
+    // The other direction, and the reason the check records a step rather than
+    // a code: burning one code must not lock the account out of the next.
+    unlock();
+    const now = Date.now();
+    const first = await auth.login({
+      username: 'jules',
+      password: PASSWORD,
+      totp: totpCode(secret, now),
+    });
+    expect(first.status).toBe('ok');
+    if (first.status === 'ok') auth.revokeSession(first.sessionId);
+
+    // Again, the consumed counter stays: a later period must be accepted on
+    // its own merits, not because the record was wiped.
+    db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL').run();
+    const next = await auth.login({
+      username: 'jules',
+      password: PASSWORD,
+      // One period ahead: the next code an authenticator would show, and the
+      // furthest the ±1 drift window reaches.
+      totp: totpCode(secret, now + 30_000),
+    });
+    expect(next.status).toBe('ok');
+    if (next.status === 'ok') auth.revokeSession(next.sessionId);
     unlock();
   }, 30_000);
 

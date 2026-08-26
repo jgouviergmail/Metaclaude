@@ -18,7 +18,13 @@ import {
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { decideApproval } from '../http/approvals.js';
-import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
+import {
+  assertPermissionModeAllowed,
+  HttpError,
+  requestIp,
+  requireOperator,
+  requireOwner,
+} from '../http/guards.js';
 import { spreadInt, spreadTimestamp } from '../http/query.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 
@@ -49,6 +55,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     if (!parsed.success) {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
     }
+    assertPermissionModeAllowed(context, parsed.data.settings?.defaultPermissionMode);
 
     const workspace = await context.workspaces.create(parsed.data);
     context.audit.record({
@@ -90,14 +97,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
     }
 
-    // `bypassPermissions` is a deployment-level decision, not a per-workspace one.
-    const requestedMode = parsed.data.settings?.defaultPermissionMode;
-    if (requestedMode === 'bypassPermissions' && !context.config.allowBypassPermissions) {
-      throw new HttpError(
-        403,
-        'Bypass mode is disabled on this deployment. Set METACLAUDE_ALLOW_BYPASS_PERMISSIONS to enable it.',
-      );
-    }
+    assertPermissionModeAllowed(context, parsed.data.settings?.defaultPermissionMode);
 
     // Reject an out-of-bounds extra directory here rather than silently
     // dropping it at run time, so the operator learns the setting did not take.
@@ -157,6 +157,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     if (!parsed.success) {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
     }
+    assertPermissionModeAllowed(context, parsed.data.permissionMode);
 
     const workspace = mustGetWorkspace(parsed.data.workspaceId);
     const settings = workspace.settings;
@@ -201,9 +202,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     if (!parsed.success) {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
     }
-    if (parsed.data.permissionMode === 'bypassPermissions' && !context.config.allowBypassPermissions) {
-      throw new HttpError(403, 'Bypass mode is disabled on this deployment.');
-    }
+    assertPermissionModeAllowed(context, parsed.data.permissionMode);
 
     const session = context.sessionRepo.update(request.params.id, {
       ...parsed.data,
@@ -250,9 +249,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     if (!parsed.success) {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
     }
-    if (parsed.data.permissionMode === 'bypassPermissions' && !context.config.allowBypassPermissions) {
-      throw new HttpError(403, 'Bypass mode is disabled on this deployment.');
-    }
+    assertPermissionModeAllowed(context, parsed.data.permissionMode);
 
     // Skills live in the database but the CLI discovers them on disk, so they
     // are written out immediately before the run that will use them.

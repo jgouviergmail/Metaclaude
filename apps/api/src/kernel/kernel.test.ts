@@ -444,6 +444,43 @@ describe('rewindRun', () => {
     expect(result.canRewind).toBe(false);
     expect(result.error).toMatch(/checkpoint/i);
   });
+
+  it('refuses a finished run whose session has since started another', async () => {
+    // `planRewind` tests `IN_FLIGHT` against the *target* run only, so an
+    // earlier, finished run in a session looked rewindable while a newer run in
+    // the same session was mid-`Edit`. Both resume the same Claude session id,
+    // so `supervisor.rewind` opens a second CLI onto the id the live run is
+    // appending to and restores files under it. The UI does not compensate:
+    // the button is gated on `run.rewindPoint` alone.
+    //
+    // The kernel already knows the answer — `hasActiveRunForSession` covers the
+    // reservation window and the queue as well as `active` — it simply was not
+    // asked.
+    const fx = setup();
+    const session = fx.newSession();
+
+    // Held so the first run can finish *with* an anchor — otherwise the
+    // refusal below could be the boring "no checkpoint" one.
+    fx.supervisor.hold();
+    const first = await fx.kernel.submit({ sessionId: session.id, prompt: 'edit the parser' });
+    await vi.waitFor(() => expect(fx.supervisor.started).toHaveLength(1));
+    fx.supervisor.finish({ rewindPoint: 'msg_1' });
+    const done = await settled(fx, first.id);
+    expect(done.rewindPoint).toBe('msg_1');
+
+    const second = await fx.kernel.submit({ sessionId: session.id, prompt: 'and again' });
+    await vi.waitFor(() => expect(fx.supervisor.started.map((r) => r.runId)).toContain(second.id));
+
+    // The fake supervisor's `rewind` throws "not used here". Reaching it is the
+    // failure this test is about, so a clean refusal is the whole assertion.
+    const result = await fx.kernel.rewindRun(first.id, true);
+    expect(result.canRewind).toBe(false);
+    expect(result.error).toMatch(/in flight/i);
+
+    fx.supervisor.finish();
+    await settled(fx, second.id);
+    fx.db.close();
+  });
 });
 
 /* -------------------------------------------------------------------------- */

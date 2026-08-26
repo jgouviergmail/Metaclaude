@@ -57,9 +57,7 @@ export function resolveInside(root: string, userPath: string): string {
 
   if (!isInside(absoluteRoot, candidate)) throw new PathEscapeError(userPath);
 
-  for (const segment of relative(absoluteRoot, candidate).split(sep)) {
-    if (BLOCKED_SEGMENTS.has(segment)) throw new PathEscapeError(userPath);
-  }
+  assertNoBlockedSegment(absoluteRoot, candidate, userPath);
 
   // Resolve symlinks so a link planted inside the workspace cannot point out of
   // it. A non-existent path is fine (we may be creating it) — in that case we
@@ -68,7 +66,23 @@ export function resolveInside(root: string, userPath: string): string {
   const realCandidate = safeRealpath(candidate);
   if (!isInside(realRoot, realCandidate)) throw new PathEscapeError(userPath);
 
+  // And again on the *resolved* path. Checking only the requested one left a
+  // gap between the two symlink cases above: a link that never leaves the jail
+  // — so `isInside` is satisfied — but resolves onto a blocked segment. Every
+  // syscall `FileService` makes follows symlinks, so `<ws>/g -> <ws>/.git` put
+  // `readdir`, `readFile` and `writeFile` back on `.git`, whose `config` is the
+  // credentialed clone URL this blocklist exists for. The file routes carry no
+  // operator check, so a viewer could read it.
+  assertNoBlockedSegment(realRoot, realCandidate, userPath);
+
   return candidate;
+}
+
+/** Refuse a path any of whose segments below `root` is on the blocklist. */
+function assertNoBlockedSegment(root: string, target: string, requested: string): void {
+  for (const segment of relative(root, target).split(sep)) {
+    if (BLOCKED_SEGMENTS.has(segment)) throw new PathEscapeError(requested);
+  }
 }
 
 /**
