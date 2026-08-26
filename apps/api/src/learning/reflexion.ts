@@ -433,6 +433,26 @@ export function setInsightStatus(db: Db, id: string, status: Insight['status']):
   return db.prepare('UPDATE insights SET status = ? WHERE id = ?').run(status, id).changes > 0;
 }
 
+/**
+ * Drop triaged insights older than `retentionDays`.
+ *
+ * Nothing else deletes from this table. `setInsightStatus` only writes the
+ * status column, and the run foreign key is `ON DELETE SET NULL`, so deleting a
+ * session cascades its runs and leaves the insights behind with a null
+ * `run_id`: only dropping the whole workspace reclaimed them. The footprint is
+ * modest on a single-operator system, but "grows forever" is not a retention
+ * policy, and every other table in the janitor's sweep has one.
+ *
+ * Only the terminal statuses. `new` and `accepted` are the operator's review
+ * queue, and silently emptying a queue is worse than letting it grow.
+ */
+export function pruneInsights(db: Db, retentionDays: number, now: number = Date.now()): number {
+  const cutoff = now - retentionDays * 86_400_000;
+  return db
+    .prepare("DELETE FROM insights WHERE status IN ('rejected','applied') AND created_at < ?")
+    .run(cutoff).changes;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                     */
 /* -------------------------------------------------------------------------- */

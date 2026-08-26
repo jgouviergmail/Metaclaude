@@ -4,7 +4,13 @@ import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
 import { HashingEmbedder } from './embeddings.js';
 import { MemoryStore } from './memory.js';
-import { ReflexionEngine, listInsights, parseJsonLoose, setInsightStatus } from './reflexion.js';
+import {
+  ReflexionEngine,
+  listInsights,
+  parseJsonLoose,
+  pruneInsights,
+  setInsightStatus,
+} from './reflexion.js';
 
 /**
  * `reflect()` and `invoke()` need a live Claude CLI subprocess, so nothing here
@@ -406,5 +412,52 @@ describe('insights', () => {
     expect(setInsightStatus(db, 'ins_nope', 'accepted')).toBe(false);
     expect(listInsights(db, { status: 'accepted' }).map((i) => i.id)).toEqual([target.id]);
     expect(listInsights(db, { status: 'new' })).toHaveLength(2);
+  });
+
+  it('prunes triaged insights past the retention window, and only those', () => {
+    // Nothing else deletes from this table: the status update only writes a
+    // column, and `run_id` is ON DELETE SET NULL, so a deleted session leaves
+    // its insights behind. Without this the table only ever grows.
+    const now = Date.UTC(2026, 0, 1);
+    const statuses = ['new', 'accepted', 'rejected', 'applied'] as const;
+    for (const status of statuses) {
+      engine.recordInsight({
+        workspaceId: null,
+        runId: null,
+        kind: 'lesson',
+        title: status,
+        body: '',
+        confidence: 0.5,
+        payload: null,
+      });
+      const id = listInsights(db, { limit: 1 })[0]!.id;
+      // Backdate past the window and set the status, in one statement each.
+      db.prepare('UPDATE insights SET status = ?, created_at = ? WHERE id = ?').run(
+        status,
+        now - 400 * 86_400_000,
+        id,
+      );
+    }
+    // One more, terminal but recent: retention is a window, not a status test.
+    engine.recordInsight({
+      workspaceId: null,
+      runId: null,
+      kind: 'lesson',
+      title: 'recent-applied',
+      body: '',
+      confidence: 0.5,
+      payload: null,
+    });
+    db.prepare('UPDATE insights SET status = ?, created_at = ? WHERE title = ?').run(
+      'applied',
+      now - 10 * 86_400_000,
+      'recent-applied',
+    );
+
+    expect(pruneInsights(db, 365, now)).toBe(2);
+
+    const left = listInsights(db).map((insight) => insight.title).sort();
+    // The review queue survives however old it is; only rejected/applied go.
+    expect(left).toEqual(['accepted', 'new', 'recent-applied']);
   });
 });

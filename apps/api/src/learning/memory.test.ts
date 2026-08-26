@@ -277,6 +277,23 @@ describe('search', () => {
     });
   }
 
+  /** The corpus plus two memories that share nothing but stopwords with it. */
+  async function seedNoise(): Promise<void> {
+    await seedCorpus();
+    await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Coffee',
+      content: 'The good beans are in the cupboard above the kettle.',
+    });
+    await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Piano',
+      content: 'The upright is tuned to A=442 and the middle pedal sticks.',
+    });
+  }
+
   it('returns nothing when the corpus is empty', async () => {
     await expect(store.search('anything')).resolves.toEqual([]);
   });
@@ -304,6 +321,39 @@ describe('search', () => {
     const relevant = await store.search('database migration schema');
     expect(relevant.length).toBeGreaterThan(0);
     expect(relevant[0]!.memory.title).toBe('Database migrations');
+  });
+
+  it('does not let one shared word drag the whole corpus back', async () => {
+    // The test above is weaker than it looks: `parsnip violin sonata` matches
+    // no token in the corpus, so FTS returns nothing and only the dense arm is
+    // ever exercised. The lexical arm's real behaviour is visible only when
+    // the MATCH *does* hit — and `toFtsQuery` OR-joins every token, so one
+    // incidental word in common is enough to return every row.
+    //
+    // Ranked last by BM25 is not the same as excluded: fusion adds
+    // 1/(K+index+1) for every id the arm returns, unconditionally, and the
+    // caller's `limit` is then filled from the bottom of the ranking.
+    //
+    // `minSimilarity: 1` is what makes this a test of the lexical arm rather
+    // than of the embedder: no vector reaches a cosine of 1, so the dense arm
+    // contributes nothing and every id below came through BM25.
+    await seedNoise();
+
+    const results = await store.search('how are the migrations applied', { minSimilarity: 1 });
+    expect(results.map((entry) => entry.memory.title)).toEqual(['Database migrations']);
+  });
+
+  it('still returns every genuine lexical match, not just the best one', async () => {
+    // The other half of the gate, and the reason it is relative rather than
+    // "top 1": two memories that both genuinely match must both survive it.
+    await seedNoise();
+
+    const results = await store.search('vitest migrations', { minSimilarity: 1 });
+    const titles = results.map((entry) => entry.memory.title);
+    expect(titles).toContain('Database migrations');
+    expect(titles).toContain('Test runner');
+    expect(titles).not.toContain('Coffee');
+    expect(titles).not.toContain('Piano');
   });
 
   it('respects the requested limit and filters by kind', async () => {
@@ -468,6 +518,32 @@ describe('recordUsage and reinforce', () => {
     expect(lowered.confidence).toBeLessThan(raised.confidence);
     // A low reward does not count as a success.
     expect(lowered.successCount).toBe(1);
+  });
+
+  it('lands a re-rating where a single observation of that value would', async () => {
+    // `previousReward` is the caller saying "this run was already rated; that
+    // rating is superseded, not added to." The success-count arm honoured it.
+    // Confidence did not: it applied a fresh full EMA move from the
+    // already-moved stored value, so re-rating the same run walked confidence
+    // up without bound — eight identical thumbs-up took 0.5 to 0.80 where one
+    // observation puts it at 0.55. `rateRun` has no idempotence guard, so the
+    // public API reaches this directly.
+    const memo = await remembered();
+    store.recordUsage(runId, [memo]);
+
+    store.reinforce(runId, 0.9);
+    const once = store.get(memo.memory.id)!.confidence;
+
+    // Same rating, three more times. Nothing new was observed.
+    store.reinforce(runId, 0.9, 0.9);
+    store.reinforce(runId, 0.9, 0.9);
+    store.reinforce(runId, 0.9, 0.9);
+    expect(store.get(memo.memory.id)!.confidence).toBeCloseTo(once, 6);
+
+    // And changing the rating lands where that value alone would have, rather
+    // than somewhere along the path taken to get there.
+    store.reinforce(runId, 0.1, 0.9);
+    expect(store.get(memo.memory.id)!.confidence).toBeCloseTo(0.7 + 0.12 * (0.1 - 0.7), 6);
   });
 
   it('attributes proportionally to how strongly the memory was retrieved', async () => {

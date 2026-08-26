@@ -30,7 +30,7 @@ import type { TaskCategory, TaskClassifier } from '../learning/classifier.js';
 import type { MemoryStore } from '../learning/memory.js';
 import type { ReflexionEngine } from '../learning/reflexion.js';
 import type { EventBus } from './bus.js';
-import { buildMemoryContext } from './context.js';
+import { selectMemoryContext } from './context.js';
 import { PermissionBroker } from './permissions.js';
 import { planRewind } from './rewind.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
@@ -373,10 +373,13 @@ export class Kernel {
           limit: 8,
         });
         if (retrieved.length > 0) {
-          this.deps.memory.recordUsage(run.id, retrieved);
-          systemPromptAppend = [systemPromptAppend, buildMemoryContext(retrieved)]
-            .filter(Boolean)
-            .join('\n\n');
+          // Credit what was injected, not what was retrieved: the budget can
+          // drop the tail, and a memory the model never saw must not be
+          // reinforced for the outcome — nor have its decay clock reset, which
+          // is what would make it unreapable. See selectMemoryContext.
+          const { text, injected } = selectMemoryContext(retrieved);
+          if (injected.length > 0) this.deps.memory.recordUsage(run.id, injected);
+          systemPromptAppend = [systemPromptAppend, text].filter(Boolean).join('\n\n');
         }
       } catch (error) {
         // Retrieval is an enhancement. If it fails, run without it.

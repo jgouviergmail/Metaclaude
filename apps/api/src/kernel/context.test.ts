@@ -1,6 +1,11 @@
 import type { Memory, MemoryKind, MemorySearchResult } from '@metaclaude/shared';
 import { describe, expect, it } from 'vitest';
-import { MEMORY_CONTEXT_BUDGET, buildMemoryContext, composeSystemAppend } from './context.js';
+import {
+  MEMORY_CONTEXT_BUDGET,
+  buildMemoryContext,
+  composeSystemAppend,
+  selectMemoryContext,
+} from './context.js';
 
 function memory(overrides: Partial<Memory> = {}): Memory {
   return {
@@ -97,6 +102,33 @@ describe('buildMemoryContext', () => {
     expect(bounded).not.toContain('Runner up');
     expect(bounded).not.toContain('Third');
     expect(bounded).toBe(onlyFirst);
+  });
+
+  it('reports exactly the memories it injected, not the ones it was offered', () => {
+    // The kernel credits what it retrieved, and `recordUsage` stamps
+    // `last_used_at` on every id it is handed. A memory the budget dropped was
+    // never shown to the model, so crediting it is wrong twice over: it is
+    // reinforced for an outcome it had no part in, and — because `decay()`
+    // measures idleness from `last_used_at` — its decay clock is reset, so it
+    // can never fall to FORGET_THRESHOLD and `collect()` can never reap it.
+    // A memory that is always retrieved and never injected is immortal.
+    const results = [
+      result({ id: 'a', title: 'Top hit', content: 'The single most relevant fact.' }, 10),
+      result({ id: 'b', title: 'Runner up', content: 'B'.repeat(400) }, 5),
+      result({ id: 'c', title: 'Third', content: 'C'.repeat(400) }, 1),
+    ];
+    const budget = buildMemoryContext([results[0]!]).length;
+
+    const { text, injected } = selectMemoryContext(results, budget);
+
+    expect(text).toContain('Top hit');
+    expect(injected.map((entry) => entry.memory.id)).toEqual(['a']);
+  });
+
+  it('reports nothing injected when the block comes back empty', () => {
+    const { text, injected } = selectMemoryContext([result({}, 1)], 10);
+    expect(text).toBe('');
+    expect(injected).toEqual([]);
   });
 
   it('skips an oversized entry but still takes a later one that fits', () => {

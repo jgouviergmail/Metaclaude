@@ -6,6 +6,7 @@
  * make the UI feel slow.
  */
 
+import { pruneInsights } from './learning/reflexion.js';
 import type { AppContext } from './context.js';
 
 /** Fast sweep: expired sessions, stale replay buffers. */
@@ -15,6 +16,13 @@ const SLOW_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /** Audit entries older than this are pruned (and the chain re-anchored). */
 const AUDIT_RETENTION_DAYS = 365;
+
+/**
+ * Triaged insights older than this are dropped. The same window as the audit
+ * log, because they answer the same question — what happened, and when.
+ * `new` and `accepted` are exempt: they are the operator's review queue.
+ */
+const INSIGHT_RETENTION_DAYS = 365;
 
 export function startJanitor(context: AppContext): () => void {
   const fast = setInterval(() => {
@@ -33,10 +41,11 @@ export function startJanitor(context: AppContext): () => void {
       const decayed = context.memory.decay();
       const collected = context.memory.collect();
       const audited = context.audit.prune(AUDIT_RETENTION_DAYS);
+      const insights = pruneInsights(context.db, INSIGHT_RETENTION_DAYS);
 
-      if (decayed > 0 || collected > 0 || audited > 0) {
+      if (decayed > 0 || collected > 0 || audited > 0 || insights > 0) {
         context.log.info(
-          { decayed, collected, auditPruned: audited },
+          { decayed, collected, auditPruned: audited, insightsPruned: insights },
           'janitor: memory and audit maintenance',
         );
       }

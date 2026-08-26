@@ -139,6 +139,32 @@ describe('ruleClassify', () => {
       'refactor',
     );
   });
+
+  /**
+   * The present participle is how a prompt describes work already under way,
+   * and four cues closed the group before it: `crash(?:e[sd])?`,
+   * `deploy(?:s|ed|ment)?`, `investigate`, `extract`. Their neighbours in the
+   * same file already inflect two different ways — `review(?:s|ed|ing)?`,
+   * `refactor[\p{L}\p{N}_]*` — which is what marks these as omissions rather
+   * than choices.
+   *
+   * The cost is not a wrong answer: an unmatched prompt falls through to
+   * `chat`, which is a legitimate arm-set, so the bandit converges more slowly
+   * and `kernel.ts` files the prompt as a `chat` exemplar, teaching the kNN arm
+   * the same miss.
+   */
+  it('matches the present participle, which is how work in progress is described', () => {
+    expect(ruleClassify('The server keeps crashing when I open the settings page')?.category).toBe(
+      'debug',
+    );
+    expect(ruleClassify('We are deploying the new version to the VPS tonight')?.category).toBe(
+      'ops',
+    );
+    expect(ruleClassify('Investigating why the queue is slow')?.category).toBe('research');
+    expect(ruleClassify('Extracting the shared helper into its own module')?.category).toBe(
+      'refactor',
+    );
+  });
 });
 
 describe('TaskClassifier', () => {

@@ -101,6 +101,24 @@ export const RELATIVE_SIMILARITY_FLOOR = 0.5;
 export const MIN_ABSOLUTE_SIMILARITY = 0.05;
 
 /**
+ * The same idea for the lexical arm, and it needs its own constant because
+ * BM25 is not a similarity.
+ *
+ * `toFtsQuery` OR-joins every token, so one incidental word in common — "the",
+ * "how", "run" — matches a row. BM25 ranks those last, but the arm returned
+ * ids, not scores, and fusion credits every id it returns: a corpus smaller
+ * than the caller's `limit` therefore came back whole, however little of it had
+ * anything to do with the query.
+ *
+ * SQLite's `bm25()` is negated (more negative is a better match), so the floor
+ * is a *ceiling* on the returned value: keep what scores at least this
+ * fraction of the best hit. Looser than the dense arm's 0.5 because BM25's
+ * spread across a small corpus is much wider than cosine's — measured here, a
+ * one-stopword match lands around 6% of a genuine multi-term hit.
+ */
+export const RELATIVE_BM25_FLOOR = 0.25;
+
+/**
  * Confidence floor below which a memory stops being retrieved and becomes
  * eligible for collection.
  */
@@ -371,15 +389,22 @@ export class MemoryStore {
     params.push(FORGET_THRESHOLD);
 
     try {
-      return this.db
-        .prepare<unknown[], { id: string }>(
-          `SELECT m.id FROM memories_fts
+      const rows = this.db
+        .prepare<unknown[], { id: string; rank: number }>(
+          `SELECT m.id, bm25(memories_fts) AS rank FROM memories_fts
            JOIN memories m ON m.rowid = memories_fts.rowid
            WHERE ${clauses.join(' AND ')}
-           ORDER BY bm25(memories_fts) ASC
+           ORDER BY rank ASC
            LIMIT ?`,
         )
-        .all(...params, limit)
+        .all(...params, limit);
+
+      const best = rows[0]?.rank;
+      // A non-negative best means BM25 separated nothing (an empty or
+      // degenerate index); keep the ranking rather than discarding it all.
+      if (best === undefined || best >= 0) return rows.map((row) => row.id);
+      return rows
+        .filter((row) => row.rank <= best * RELATIVE_BM25_FLOOR)
         .map((row) => row.id);
     } catch {
       // A malformed MATCH expression must degrade to dense-only retrieval, not
@@ -476,10 +501,23 @@ export class MemoryStore {
         // weakest retrieved memory moves a little.
         const attribution = Math.min(1, Math.max(0.25, usage.score));
         const learningRate = 0.12 * attribution;
-        const confidence = clamp01(row.confidence + learningRate * (reward - row.confidence));
 
         // A re-rating supersedes the previous observation rather than adding to
-        // it; only the change in success-count needs undoing.
+        // it, so the previous move is *undone* before the new one is applied.
+        //
+        // Without this, confidence took a fresh full step from the
+        // already-moved value every time: clicking the same rating eight times
+        // walked 0.5 to 0.80 where one observation of it belongs at 0.55, and
+        // `rateRun` has no idempotence guard to stop that. The forward step is
+        // c' = c + lr(r - c) = c(1 - lr) + lr·r, so the inverse is
+        // c = (c' - lr·r)/(1 - lr). `lr` is at most 0.12, so the divisor is
+        // never near zero.
+        const base =
+          previousReward === null
+            ? row.confidence
+            : clamp01((row.confidence - learningRate * previousReward) / (1 - learningRate));
+        const confidence = clamp01(base + learningRate * (reward - base));
+
         const successDelta =
           (reward >= 0.6 ? 1 : 0) -
           (previousReward !== null && previousReward >= 0.6 ? 1 : 0);

@@ -86,7 +86,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
   {
     category: 'debug',
     patterns: [
-      cue('debug[\\p{L}\\p{N}_]*', 'bugs?', 'crash(?:e[sd])?', 'stack ?traces?', 'traceback', 'exceptions?',
+      cue('debug[\\p{L}\\p{N}_]*', 'bugs?', 'crash(?:e[sd]|ing)?', 'stack ?traces?', 'traceback', 'exceptions?',
           'regressions?', 'failing', 'fails?', 'broken', 'errors?'),
       cue('d[ée]bogu[\\p{L}\\p{N}_]*', 'd[ée]bugg[\\p{L}\\p{N}_]*', 'plante', 'erreurs?', 'panne', 'r[ée]gressions?',
           'ne marche pas', 'ne fonctionne pas'),
@@ -113,7 +113,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
   {
     category: 'refactor',
     patterns: [
-      cue('refactor[\\p{L}\\p{N}_]*', 'restructure', 'clean ?up', 'simplif[\\p{L}\\p{N}_]+', 'deduplicate', 'extract',
+      cue('refactor[\\p{L}\\p{N}_]*', 'restructure', 'clean ?up', 'simplif[\\p{L}\\p{N}_]+', 'deduplicate', 'extract(?:s|ed|ing)?',
           'rename'),
       cue('refactoris[\\p{L}\\p{N}_]*', 'restructure', 'simplifie', 'nettoie', 'renomme', 'factoris[\\p{L}\\p{N}_]*'),
     ],
@@ -130,7 +130,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
   {
     category: 'research',
     patterns: [
-      cue('research', 'investigate', 'compare', 'evaluate', 'benchmark', 'find out', 'survey',
+      cue('research(?:es|ed|ing)?', 'investigat(?:e|es|ed|ing)', 'compare', 'evaluate', 'benchmark', 'find out', 'survey',
           'state of the art'),
       cue('recherche', 'enqu[êe]te', 'compare', '[ée]valu[\\p{L}\\p{N}_]*', "[ée]tat de l'art",
           'documente-toi'),
@@ -147,7 +147,7 @@ const RULES: ReadonlyArray<{ category: TaskCategory; patterns: readonly RegExp[]
   {
     category: 'ops',
     patterns: [
-      cue('deploy(?:s|ed|ment)?', 'docker', 'kubernetes', 'k8s', 'ci\\/?cd', 'pipeline', 'nginx',
+      cue('deploy(?:s|ed|ing|ments?)?', 'docker', 'kubernetes', 'k8s', 'ci\\/?cd', 'pipeline', 'nginx',
           'terraform', 'systemd', 'infra[\\p{L}\\p{N}_]*'),
       cue('d[ée]ploi[\\p{L}\\p{N}_]*', 'conteneuris[\\p{L}\\p{N}_]*', 'conteneur', 'infrastructure',
           'mise en production'),
