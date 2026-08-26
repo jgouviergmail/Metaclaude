@@ -14,6 +14,7 @@
 import {
   Plug,
   Activity,
+  LifeBuoy,
   Bot,
   Brain,
   FolderGit2,
@@ -48,6 +49,7 @@ const NAV: NavEntry[] = [
   { to: '/agents', label: 'Agents & skills', icon: <Bot /> },
   { to: '/plugins', label: 'Plugins', icon: <Plug /> },
   { to: '/analytics', label: 'Analytics', icon: <Activity /> },
+  { to: '/help', label: 'Help', icon: <LifeBuoy /> },
   { to: '/settings', label: 'Settings', icon: <Settings />, primary: true },
 ];
 

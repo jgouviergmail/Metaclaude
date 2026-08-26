@@ -179,6 +179,12 @@ runs, cost where one was reported, and each one's share of the whole. The
 per-workspace filter tells you what one workspace cost; only this tells you
 which one is spending the ceiling.
 
+### Help that ships with the product
+A Help screen whose content is the repository's own: the user guide, the
+changelog, and search — plus **Ask Metaclaude about itself**, a plan-mode
+session seeded with that same guide, answering with citations and executing
+nothing. The deploy checks refuse a release whose docs disagree with its code.
+
 ### What Claude itself offers
 A **From Claude** tab shows what the CLI reports for a workspace rather than
 what Metaclaude assumes: the models this subscription grants and which of them

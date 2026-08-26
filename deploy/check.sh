@@ -1121,6 +1121,44 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "The documentation the product ships agrees with the product"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The Help screen renders CHANGELOG.md and states APP_VERSION beside it. A
+# release whose version has no changelog entry would show the user a "What's
+# new" that does not know what is new — so the agreement is asserted here,
+# where every push runs, rather than remembered at tag time.
+app_version="$(grep -oE "APP_VERSION = '[^']+'" "$REPO_ROOT/packages/shared/src/constants.ts" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")"
+if [ -z "$app_version" ]; then
+  bad "reading APP_VERSION" "packages/shared/src/constants.ts no longer declares it where this check looks"
+elif grep -q "^## \[$app_version\]" "$REPO_ROOT/CHANGELOG.md" 2>/dev/null; then
+  ok "CHANGELOG.md has an entry for the running version ($app_version)"
+else
+  bad "CHANGELOG.md has no entry for $app_version" "the in-app What's new would not know what is new"
+fi
+
+# The user guide names environment variables; a renamed variable must take its
+# documentation with it. Scoped to docs/guide/ — the trap list in CLAUDE.md
+# legitimately discusses names that no longer exist.
+guide_vars="$(grep -rhoE 'METACLAUDE_[A-Z_]+' "$REPO_ROOT/docs/guide" 2>/dev/null | sort -u)"
+if [ -n "$guide_vars" ]; then
+  missing_vars=""
+  while IFS= read -r var; do
+    grep -q "^$var=" "$REPO_ROOT/.env.example" || grep -q "$var" "$REPO_ROOT/compose.yml" \
+      || missing_vars="$missing_vars $var"
+  done <<EOF
+$guide_vars
+EOF
+  if [ -n "$missing_vars" ]; then
+    bad "the guide documents a setting that does not exist" "$missing_vars"
+  else
+    ok "every setting the guide names exists in .env.example or compose.yml"
+  fi
+else
+  ok "the guide names no settings, so none can be stale"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "Every log line the documentation says to grep for is one the code writes"
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1146,7 +1184,7 @@ seen = []
 # decide what the pattern means: `|` is an alternation under -E and a literal
 # pipe character under the default BRE.
 call = re.compile(r"\bgrep\s+((?:-[A-Za-z]+\s+)*)'([^']+)'")
-for doc in sorted((root / "docs").glob("*.md")) + [root / "README.md"]:
+for doc in sorted((root / "docs").rglob("*.md")) + [root / "README.md"]:
     if not doc.exists():
         continue
     for flags, pattern in call.findall(doc.read_text(encoding="utf-8")):

@@ -9,6 +9,21 @@ This file is part of the product surface: the in-app changelog renders from it,
 and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 "The system that documents itself").
 
+## [Unreleased]
+
+### Added
+
+- **Help, inside the product.** A Help screen fed from the repository rather
+  than from strings in the code: the user guide (`docs/guide/`, nine chapters,
+  bundled per-chapter as lazy chunks), this changelog, and search that treats
+  a two-word query as one question. "Ask Metaclaude about itself" opens a
+  plan-mode session in a workspace seeded with the same guide — the assistant
+  answers from the pages you are reading, with citations, and can execute
+  nothing.
+- **Documentation that cannot drift.** The deploy checks now fail when the
+  running version has no changelog entry, when the guide names a setting that
+  does not exist, or when any documented log line stops existing in the code.
+
 ## [0.1.0] — 2026-08-26
 
 The first version deployed to a real server, reachable at a real domain with a

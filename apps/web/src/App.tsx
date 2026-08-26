@@ -36,6 +36,7 @@ const lazyPage = <K extends string>(load: () => Promise<Record<K, ComponentType>
 
 const AgentsPage = lazyPage(() => import('@/pages/AgentsPage'), 'AgentsPage');
 const AnalyticsPage = lazyPage(() => import('@/pages/AnalyticsPage'), 'AnalyticsPage');
+const HelpPage = lazyPage(() => import('@/pages/HelpPage'), 'HelpPage');
 const AutomationsPage = lazyPage(() => import('@/pages/AutomationsPage'), 'AutomationsPage');
 const MemoryPage = lazyPage(() => import('@/pages/MemoryPage'), 'MemoryPage');
 const PluginsPage = lazyPage(() => import('@/pages/PluginsPage'), 'PluginsPage');
@@ -214,6 +215,7 @@ export function App() {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/plugins" element={<PluginsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
