@@ -12,6 +12,7 @@ import {
   type AgentDefinitionRecord,
   type AnalyticsSummary,
   type ApprovalRequest,
+  type Attachment,
   type AuditEntry,
   type ClaudeCredentialStatus,
   type ConnectRepositoryResult,
@@ -70,6 +71,11 @@ export class ApiError extends Error {
 let onUnauthenticated: (() => void) | null = null;
 export function setUnauthenticatedHandler(handler: () => void): void {
   onUnauthenticated = handler;
+}
+
+/** Where an attachment's bytes are served — same-origin, cookie-authenticated. */
+export function attachmentUrl(id: string): string {
+  return `/api/attachments/${id}`;
 }
 
 /** Read the CSRF token the server set as a readable cookie at login. */
@@ -265,8 +271,18 @@ export const api = {
       permissionMode?: string;
       agentName?: string | null;
       ultracode?: boolean;
+      attachmentIds?: string[];
     },
   ) => request<{ run: Run }>(`/api/sessions/${sessionId}/runs`, { method: 'POST', body }),
+
+  uploadAttachment: (sessionId: string, body: { name: string; mime: string; data: string }) =>
+    request<{ attachment: Attachment }>(`/api/sessions/${sessionId}/attachments`, {
+      method: 'POST',
+      body,
+    }),
+
+  deleteAttachment: (id: string) =>
+    request<{ ok: boolean }>(`/api/attachments/${id}`, { method: 'DELETE' }),
 
   interrupt: (sessionId: string) =>
     request<{ interrupted: boolean }>(`/api/sessions/${sessionId}/interrupt`, { method: 'POST' }),

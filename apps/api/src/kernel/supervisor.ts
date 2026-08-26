@@ -35,8 +35,9 @@ import type {
   TranscriptEvent,
   Workspace,
 } from '@metaclaude/shared';
-import { MAX_TOOL_RESULT_CHARS, newId } from '@metaclaude/shared';
+import { ATTACHMENT_LIMITS, MAX_TOOL_RESULT_CHARS, newId } from '@metaclaude/shared';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
@@ -59,6 +60,17 @@ export interface SupervisorCallbacks {
   onWaitingChange: (waiting: boolean) => void;
 }
 
+/** A file the message carries, resolved to its place inside the workspace. */
+export interface RunAttachment {
+  id: string;
+  name: string;
+  /** Workspace-relative path — what the agent's own tools open. */
+  path: string;
+  mime: string;
+  bytes: number;
+  absolutePath: string;
+}
+
 export interface RunRequest {
   runId: string;
   sessionId: string;
@@ -77,6 +89,8 @@ export interface RunRequest {
   marketplaces: Record<string, { source: MarketplaceSource }>;
   /** What started this run — a delegated run must not delegate again. */
   triggeredBy: Run['triggeredBy'];
+  /** Files this message carries; empty for automations and delegations. */
+  attachments: RunAttachment[];
   abortSignal: AbortSignal;
 }
 
@@ -168,19 +182,84 @@ interface LiveRun {
  * leaves the subprocess waiting for input that is not coming — so `close` is
  * idempotent and every exit path calls it.
  */
+/**
+ * A user message's content: a plain string, or the Messages-API block array
+ * carrying inline images and documents beside the text. Derived from the
+ * SDK's own type so a renamed field fails compilation here, not a live run.
+ */
+export type UserContent = SDKUserMessage['message']['content'];
+
+const INLINE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
+function inlineImageType(mime: string): 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | null {
+  return INLINE_IMAGE_TYPES.has(mime)
+    ? (mime as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif')
+    : null;
+}
+
+/**
+ * The prompt as the model receives it.
+ *
+ * Attachments always reach the model as named workspace paths — the robust
+ * channel at any size, since the agent's Read tool handles images and PDFs
+ * natively and everything else goes through its ordinary tooling. Small
+ * images and PDFs additionally ride inline as content blocks, so the model
+ * sees them without a tool round-trip. A file that cannot be read any more is
+ * listed as missing rather than failing the run: the message is the user's,
+ * and it must go out.
+ */
+export async function buildUserContent(
+  prompt: string,
+  attachments: RunAttachment[],
+  readBytes: (path: string) => Promise<Buffer> = (path) => readFile(path),
+): Promise<UserContent> {
+  if (attachments.length === 0) return prompt;
+
+  const blocks: Exclude<UserContent, string> = [];
+  const lines: string[] = [];
+  for (const attachment of attachments) {
+    const imageType =
+      attachment.bytes <= ATTACHMENT_LIMITS.inlineImageBytes ? inlineImageType(attachment.mime) : null;
+    const inlinePdf =
+      attachment.mime === 'application/pdf' && attachment.bytes <= ATTACHMENT_LIMITS.inlinePdfBytes;
+
+    let note = '';
+    if (imageType || inlinePdf) {
+      try {
+        const data = (await readBytes(attachment.absolutePath)).toString('base64');
+        blocks.push(
+          imageType
+            ? { type: 'image', source: { type: 'base64', media_type: imageType, data } }
+            : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
+        );
+      } catch {
+        note = ' — missing on disk';
+      }
+    }
+    const kb = Math.max(1, Math.round(attachment.bytes / 1024));
+    lines.push(`- ${attachment.path} (${attachment.mime}, ${kb} KB)${note}`);
+  }
+
+  blocks.push({
+    type: 'text',
+    text: `${prompt}\n\nAttached files, stored in this workspace:\n${lines.join('\n')}`,
+  });
+  return blocks;
+}
+
 class PromptStream {
   private readonly queued: SDKUserMessage[] = [];
   private wake: (() => void) | null = null;
   private closed = false;
 
-  push(text: string): boolean {
+  push(content: UserContent): boolean {
     if (this.closed) return false;
     // No cast: this object *is* an `SDKUserMessage`, and saying so lets the
     // compiler notice when the SDK renames a field rather than waiting for a
     // run to fail.
     const message: SDKUserMessage = {
       type: 'user',
-      message: { role: 'user', content: text },
+      message: { role: 'user', content },
       parent_tool_use_id: null,
       session_id: '',
     };
@@ -595,8 +674,9 @@ export class AgentSupervisor {
 
     // Streaming input rather than a string prompt. Every SDK control method is
     // documented as streaming-input only, so this is what makes the handle
-    // below worth holding.
-    stream.push(request.prompt);
+    // below worth holding. Attachments ride the first message as content
+    // blocks beside the text; see buildUserContent for the rules.
+    stream.push(await buildUserContent(request.prompt, request.attachments));
 
     const handle = (this.deps.query ?? sdkQuery)({ prompt: stream, options });
     const entry: LiveRun = {
@@ -1179,7 +1259,13 @@ export class StreamState {
       seq: this.seq++,
       at: Date.now(),
       text: request.prompt,
-      attachments: [],
+      attachments: request.attachments.map((attachment) => ({
+        name: attachment.name,
+        path: attachment.path,
+        bytes: attachment.bytes,
+        attachmentId: attachment.id,
+        mime: attachment.mime,
+      })),
     });
   }
 

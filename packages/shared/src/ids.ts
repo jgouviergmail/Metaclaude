@@ -24,6 +24,7 @@ export const ID_PREFIXES = {
   automation: 'aut',
   approval: 'apr',
   artifact: 'art',
+  attachment: 'att',
   secret: 'sec',
   audit: 'aud',
   insight: 'ins',

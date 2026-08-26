@@ -24,6 +24,24 @@ The controls under the input change what the *next* message does:
 
 Enter sends. Shift+Enter inserts a newline.
 
+## Attaching files
+
+The paperclip attaches files to your next message — up to 8, 20 MB each.
+Drag & drop onto the composer and pasting a screenshot straight from the
+clipboard both work; on a phone, the picker offers the camera and the photo
+library. Accepted types: images (PNG, JPEG, WebP, GIF), PDF, text (plain,
+Markdown, CSV, HTML, JSON), ZIP archives, and Word/Excel documents.
+
+Every attachment is stored **in the workspace**, under `attachments/` — so the
+agent reads it with its own tools (images and PDFs natively), it shows up in
+the Files browser, and it stays part of the record. Small images and PDFs also
+ride the message itself, so the model sees them immediately. In the
+transcript, images render as thumbnails and other files as chips; both open
+the stored bytes.
+
+A chip can be removed until the message is sent; after that the file is part
+of the transcript and stays. Uploading the same file twice stores it once.
+
 ## While a run is working
 
 You can keep typing: a message sent into a live run **steers** it — the agent

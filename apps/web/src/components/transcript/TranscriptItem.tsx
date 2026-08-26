@@ -16,6 +16,7 @@ import {
   History,
   Info,
   ListChecks,
+  Paperclip,
   ThumbsDown,
   ThumbsUp,
   TriangleAlert,
@@ -24,6 +25,7 @@ import {
 import { memo, useMemo, useState } from 'react';
 import type { Run, TranscriptEvent } from '@metaclaude/shared';
 import { Badge, Button, Tooltip } from '@/components/ui/primitives';
+import { attachmentUrl } from '@/lib/api';
 import { renderMarkdown } from '@/lib/markdown';
 import { RunMetaChips } from './RunMetaChips';
 import { useUiStore } from '@/lib/store';
@@ -35,6 +37,55 @@ import { DiffView } from './DiffView';
 /* -------------------------------------------------------------------------- */
 /* User message                                                                */
 /* -------------------------------------------------------------------------- */
+
+/** One attachment on a sent message: an inline thumbnail, or a named chip. */
+function MessageAttachment({
+  attachment,
+}: {
+  attachment: Extract<TranscriptEvent, { kind: 'user_message' }>['attachments'][number];
+}) {
+  const [broken, setBroken] = useState(false);
+  const url = attachment.attachmentId ? attachmentUrl(attachment.attachmentId) : null;
+  const isImage = Boolean(attachment.mime?.startsWith('image/'));
+
+  if (url && isImage && !broken) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" title={attachment.name} className="block">
+        <img
+          src={url}
+          alt={attachment.name}
+          loading="lazy"
+          onError={() => setBroken(true)}
+          className="max-h-40 max-w-full rounded-lg border border-line object-contain"
+        />
+      </a>
+    );
+  }
+
+  const chip = (
+    <span
+      className={cn(
+        'inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-1 text-[12px] text-muted',
+        url && 'hover:border-accent hover:text-ink',
+      )}
+    >
+      <Paperclip className="size-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{attachment.name}</span>
+      <span className="shrink-0 text-subtle">
+        {broken ? 'missing' : `${Math.max(1, Math.round(attachment.bytes / 1024))} KB`}
+      </span>
+    </span>
+  );
+
+  // Events persisted before attachments carried ids have nothing to link to.
+  return url ? (
+    <a href={url} target="_blank" rel="noreferrer" title={attachment.name} className="block max-w-full">
+      {chip}
+    </a>
+  ) : (
+    chip
+  );
+}
 
 export const UserMessage = memo(function UserMessage({
   event,
@@ -49,6 +100,15 @@ export const UserMessage = memo(function UserMessage({
           <p className="whitespace-pre-wrap break-words text-[15px] leading-[1.65] text-ink">
             {event.text}
           </p>
+          {event.attachments.length > 0 ? (
+            <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Attachments">
+              {event.attachments.map((attachment) => (
+                <li key={`${attachment.path}-${attachment.name}`} className="max-w-full">
+                  <MessageAttachment attachment={attachment} />
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <div
           className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-raised text-muted"

@@ -8,6 +8,7 @@
 
 import type { App } from '../http/types.js';
 import {
+  ATTACHMENT_LIMITS,
   CreateWorkspaceRequest,
   EffortLevel,
   ModelSelector,
@@ -238,6 +239,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     // Per-message only, never on CreateSession: orchestration multiplies cost,
     // so nothing stored may leave it quietly on for the next prompt.
     ultracode: z.boolean().optional(),
+    attachmentIds: z.array(z.string()).max(ATTACHMENT_LIMITS.maxPerMessage).optional(),
   });
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/runs', async (request, reply) => {
@@ -261,6 +263,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       const run = await context.kernel.submit({
         sessionId: session.id,
         prompt: parsed.data.prompt,
+        ...(parsed.data.attachmentIds?.length ? { attachmentIds: parsed.data.attachmentIds } : {}),
         overrides: {
           ...(parsed.data.model !== undefined ? { model: parsed.data.model } : {}),
           ...(parsed.data.effort !== undefined ? { effort: parsed.data.effort } : {}),
@@ -296,6 +299,80 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     const run = context.runRepo.get(request.params.id);
     if (!run) throw new HttpError(404, 'Run not found.');
     return reply.send({ run, events: context.transcriptRepo.byRun(run.id) });
+  });
+
+  /* ------------------------------ Attachments --------------------------- */
+
+  const UploadAttachment = z.object({
+    name: z.string().min(1).max(255),
+    mime: z.string().max(255).default(''),
+    /** Base64 of the raw bytes; the service enforces the decoded size cap. */
+    data: z.string().min(1),
+  });
+
+  app.post<{ Params: { id: string } }>(
+    '/api/sessions/:id/attachments',
+    // The global bodyLimit (8 MB) fits prompts, not files: 20 MB of payload is
+    // ~27 MB once base64-encoded and JSON-wrapped. Raised for this route only.
+    { bodyLimit: 32 * 1024 * 1024 },
+    async (request, reply) => {
+      const actor = requireOperator(request);
+      const session = mustGetSession(request.params.id);
+      const workspace = mustGetWorkspace(session.workspaceId);
+      const parsed = UploadAttachment.safeParse(request.body);
+      if (!parsed.success) throw new HttpError(400, 'Invalid upload.');
+
+      const data = Buffer.from(parsed.data.data, 'base64');
+      const attachment = await context.attachments.save(workspace, session.id, {
+        name: parsed.data.name,
+        mime: parsed.data.mime,
+        data,
+      });
+
+      context.audit.record({
+        actor: actor.username,
+        action: 'attachment.upload',
+        target: attachment.id,
+        ipAddress: requestIp(context, request),
+        detail: `${workspace.name}: ${attachment.name} (${attachment.bytes} bytes)`,
+      });
+      return reply.status(201).send({ attachment });
+    },
+  );
+
+  app.get<{ Params: { id: string } }>('/api/attachments/:id', async (request, reply) => {
+    const attachment = context.attachments.get(request.params.id);
+    if (!attachment) throw new HttpError(404, 'Attachment not found.');
+    const workspace = mustGetWorkspace(attachment.workspaceId);
+
+    // Only images and PDFs render inline. Everything else downloads: serving
+    // an uploaded HTML file inline on this origin would execute its scripts
+    // with the app's cookies — a stored XSS dressed as a feature.
+    const inline = attachment.mime.startsWith('image/') || attachment.mime === 'application/pdf';
+    reply
+      .header('content-type', attachment.mime)
+      .header('x-content-type-options', 'nosniff')
+      .header(
+        'content-disposition',
+        `${inline ? 'inline' : 'attachment'}; filename="${attachment.name.replace(/"/g, '')}"`,
+      )
+      // Content-hash named, so the bytes behind an id never change.
+      .header('cache-control', 'private, max-age=31536000, immutable');
+    // stream() checks existence synchronously and throws a 404-carrying
+    // AttachmentError; a missing file surfaces before any byte is sent.
+    return reply.send(context.attachments.stream(attachment, workspace.path));
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/attachments/:id', async (request, reply) => {
+    const actor = requireOperator(request);
+    await context.attachments.remove(request.params.id);
+    context.audit.record({
+      actor: actor.username,
+      action: 'attachment.delete',
+      target: request.params.id,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send({ ok: true });
   });
 
   app.post<{ Params: { id: string } }>('/api/runs/:id/rate', async (request, reply) => {

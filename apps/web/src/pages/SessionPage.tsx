@@ -43,6 +43,7 @@ import { GitPanel } from '@/components/workspace/GitPanel';
 import { SessionList } from '@/components/workspace/SessionList';
 import { api, ApiError } from '@/lib/api';
 import { decideApproval } from '@/lib/approvals';
+import { usePendingAttachments } from '@/lib/attachments';
 import { socket } from '@/lib/socket';
 import { useSessionStore, useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
@@ -181,6 +182,8 @@ export function SessionPage() {
 
   /* ------------------------------ Mutations ------------------------------- */
 
+  const pending = usePendingAttachments(sessionId);
+
   const submitRun = useMutation({
     mutationFn: (prompt: string) =>
       api.submitRun(sessionId, {
@@ -189,7 +192,11 @@ export function SessionPage() {
         effort: composer.effort,
         permissionMode: composer.permissionMode,
         ultracode: composer.ultracode,
+        ...(pending.readyIds.length > 0 ? { attachmentIds: pending.readyIds } : {}),
       }),
+    // Only a message that actually left consumes its attachments; on error the
+    // chips stay, ready to ride the retry.
+    onSuccess: () => pending.clear(),
     onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : 'Could not start the run.');
     },
@@ -360,6 +367,9 @@ export function SessionPage() {
             value={composer}
             onChange={setComposer}
             onSubmit={(prompt) => submitRun.mutate(prompt)}
+            attachments={pending.attachments}
+            onAttachFiles={pending.attach}
+            onRemoveAttachment={pending.remove}
             {...(catalogueQuery.data ? { catalogue: catalogueQuery.data } : {})}
             onInterrupt={() => {
               socket.interrupt(sessionId);

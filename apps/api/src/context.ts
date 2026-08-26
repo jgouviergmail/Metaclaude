@@ -35,6 +35,7 @@ import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
+import { AttachmentService } from './services/attachments.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
@@ -85,6 +86,7 @@ export interface AppContext {
   registry: Registry;
   workspaces: WorkspaceService;
   files: FileService;
+  attachments: AttachmentService;
   git: GitService;
   analytics: AnalyticsService;
   scheduler: Scheduler;
@@ -308,6 +310,10 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   // Declared before the kernel because the kernel's completion hook feeds it.
   let schedulerRef: Scheduler | null = null;
 
+  // Shared between the kernel (binding and loading a run's files) and the
+  // HTTP routes (upload, serve, delete) — one ledger, one jail.
+  const attachments = new AttachmentService(db);
+
   const kernel = new Kernel({
     db,
     bus,
@@ -315,6 +321,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     sessions: sessionRepo,
     runs: runRepo,
     transcript: transcriptRepo,
+    attachments,
     memory,
     classifier,
     policy,
@@ -457,6 +464,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     registry,
     workspaces,
     files: new FileService(),
+    attachments,
     git: new GitService(),
     analytics,
     scheduler,

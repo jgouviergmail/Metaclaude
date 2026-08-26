@@ -30,6 +30,7 @@ import { computeReward } from '../learning/bandit.js';
 import type { TaskCategory, TaskClassifier } from '../learning/classifier.js';
 import type { MemoryStore } from '../learning/memory.js';
 import type { ReflexionEngine } from '../learning/reflexion.js';
+import type { AttachmentService } from '../services/attachments.js';
 import type { EventBus } from './bus.js';
 import { selectMemoryContext } from './context.js';
 import { PermissionBroker } from './permissions.js';
@@ -71,6 +72,8 @@ export interface SubmitOptions {
   sessionId: string;
   prompt: string;
   triggeredBy?: Run['triggeredBy'];
+  /** Pending attachments this message carries; bound to the run at admission. */
+  attachmentIds?: string[];
   /** Explicit overrides; when absent the workspace default or the bandit decides. */
   overrides?: Partial<Pick<RunPolicy, 'model' | 'effort' | 'permissionMode' | 'agentName' | 'ultracode'>>;
 }
@@ -88,6 +91,7 @@ export interface KernelDeps {
   reflexion: ReflexionEngine;
   contextProvider: ContextProvider;
   supervisor: AgentSupervisor;
+  attachments: AttachmentService;
   maxConcurrentRuns: number;
   /** How long a delegation waits for its run. Injectable so tests need not. */
   delegationTimeoutMs?: number;
@@ -233,6 +237,24 @@ export class Kernel {
         triggeredBy: options.triggeredBy ?? 'user',
         category: classification.category,
       });
+
+      // Bind the message's attachments before anything can execute. The
+      // service's UPDATE only lands where run_id IS NULL, so a pending upload
+      // is consumed exactly once; a failed bind (already sent, wrong session)
+      // fails the whole admission rather than running with half the files.
+      if (options.attachmentIds?.length) {
+        try {
+          this.deps.attachments.bind(options.attachmentIds, session.id, run.id);
+        } catch (error) {
+          this.deps.runs.finish(run.id, {
+            status: 'failed',
+            usage: run.usage,
+            error: (error as Error).message,
+          });
+          this.publishRun(this.deps.runs.get(run.id) as Run);
+          throw error;
+        }
+      }
 
       // The first prompt names the session, so the sidebar reads well at a glance.
       if (!session.title.trim()) {
@@ -573,6 +595,14 @@ export class Kernel {
       agents: runtime.agents,
       marketplaces: runtime.marketplaces ?? {},
       triggeredBy: run.triggeredBy,
+      attachments: this.deps.attachments.byRun(run.id).map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        path: attachment.path,
+        mime: attachment.mime,
+        bytes: attachment.bytes,
+        absolutePath: this.deps.attachments.absolutePath(attachment, workspace.path),
+      })),
       abortSignal: controller.signal,
     };
 

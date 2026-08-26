@@ -484,4 +484,31 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE runs ADD COLUMN served_model TEXT;
     `,
   },
+  {
+    version: 10,
+    name: 'attachments',
+    sql: /* sql */ `
+      -- Files a message carries. The bytes live on disk under the workspace's
+      -- attachments/ directory (content-hash named, so two uploads of the
+      -- same file share one file); this table is the ledger — who uploaded
+      -- what, into which session, and which run consumed it. run_id is NULL
+      -- from upload until the message is submitted; binding it is the
+      -- write-is-the-check that stops one pending upload being sent twice.
+      CREATE TABLE attachments (
+        id           TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+        session_id   TEXT NOT NULL REFERENCES sessions(id),
+        run_id       TEXT REFERENCES runs(id),
+        name         TEXT NOT NULL,
+        path         TEXT NOT NULL,
+        mime         TEXT NOT NULL,
+        bytes        INTEGER NOT NULL,
+        sha256       TEXT NOT NULL,
+        created_at   INTEGER NOT NULL
+      );
+      CREATE INDEX idx_attachments_session ON attachments(session_id, created_at);
+      CREATE INDEX idx_attachments_run ON attachments(run_id);
+      CREATE INDEX idx_attachments_hash ON attachments(workspace_id, sha256);
+    `,
+  },
 ];

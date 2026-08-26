@@ -411,7 +411,19 @@ export const TranscriptEvent = z.discriminatedUnion('kind', [
     seq: z.number().int(),
     at: Millis,
     text: z.string(),
-    attachments: z.array(z.object({ name: z.string(), path: z.string(), bytes: z.number() })).default([]),
+    // `attachmentId` and `mime` are optional because events persisted before
+    // attachments shipped carry neither; the renderer degrades to a plain chip.
+    attachments: z
+      .array(
+        z.object({
+          name: z.string(),
+          path: z.string(),
+          bytes: z.number(),
+          attachmentId: z.string().optional(),
+          mime: z.string().optional(),
+        }),
+      )
+      .default([]),
   }),
   z.object({
     kind: z.literal('assistant_text'),
@@ -789,6 +801,65 @@ export const GitStatus = z.object({
   conflicted: z.array(z.string()),
 });
 export type GitStatus = z.infer<typeof GitStatus>;
+
+/* -------------------------------------------------------------------------- */
+/* Attachments                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a message may carry, and how much.
+ *
+ * Files land under the workspace's `attachments/` directory — on disk, where
+ * the agent's own Read tool handles images and PDFs natively and every other
+ * type through its ordinary tooling. Small images and PDFs additionally ride
+ * the prompt itself as content blocks (the API caps a block around 5 MB of
+ * base64, hence the conservative inline ceilings); everything else reaches
+ * the model as a named path, which is the robust channel for any size.
+ */
+export const ATTACHMENT_LIMITS = {
+  maxBytes: 20 * 1024 * 1024,
+  maxPerMessage: 8,
+  inlineImageBytes: 2 * 1024 * 1024,
+  inlinePdfBytes: 4 * 1024 * 1024,
+} as const;
+
+/**
+ * The types a message accepts. An allowlist rather than a denylist: the point
+ * of an attachment is that the agent can do something with it, and honesty
+ * about what is supported beats accepting bytes that will sit inert.
+ */
+export const ATTACHMENT_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'text/html',
+  'application/json',
+  'application/zip',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+] as const;
+
+export const Attachment = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  sessionId: z.string(),
+  /** Bound when the message is submitted; null while still pending in the composer. */
+  runId: z.string().nullable().default(null),
+  /** The name the user gave the file, for display. */
+  name: z.string(),
+  /** Workspace-relative path under `attachments/`, derived from the content hash. */
+  path: z.string(),
+  mime: z.string(),
+  bytes: z.number().int().nonnegative(),
+  sha256: z.string(),
+  createdAt: Millis,
+});
+export type Attachment = z.infer<typeof Attachment>;
 
 /* -------------------------------------------------------------------------- */
 /* Analytics                                                                   */

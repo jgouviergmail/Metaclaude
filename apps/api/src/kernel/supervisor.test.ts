@@ -13,7 +13,13 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '@metaclaude/shared';
-import { AgentSupervisor, type RunRequest, type SupervisorCallbacks } from './supervisor.js';
+import {
+  AgentSupervisor,
+  buildUserContent,
+  type RunAttachment,
+  type RunRequest,
+  type SupervisorCallbacks,
+} from './supervisor.js';
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                    */
@@ -72,6 +78,7 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
     agents: {},
     marketplaces: {},
     triggeredBy: 'user',
+    attachments: [],
     abortSignal: new AbortController().signal,
     ...overrides,
   };
@@ -387,6 +394,124 @@ describe('the prompt reaches the CLI as streaming input', () => {
     const outcome = await run;
     expect(outcome.status).toBe('succeeded');
     expect(outcome.claudeSessionId).toBe('sdk-session');
+  });
+
+  it('announces the message’s attachments on the opening transcript event', async () => {
+    // The web renders the user's bubble from this event alone; an attachment
+    // the event does not name is one the operator sent and can never see.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+    const callbacks = makeCallbacks();
+
+    const run = supervisor.execute(
+      makeRequest({
+        attachments: [
+          {
+            id: 'att_1',
+            name: 'plan.png',
+            path: 'attachments/abc-plan.png',
+            mime: 'image/png',
+            bytes: 123,
+            absolutePath: '/nowhere/abc-plan.png',
+          },
+        ],
+      }),
+      callbacks,
+    );
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+    await run;
+
+    expect(callbacks.events[0]).toMatchObject({
+      kind: 'user_message',
+      attachments: [
+        {
+          name: 'plan.png',
+          path: 'attachments/abc-plan.png',
+          bytes: 123,
+          attachmentId: 'att_1',
+          mime: 'image/png',
+        },
+      ],
+    });
+  });
+});
+
+describe('buildUserContent', () => {
+  const attachment = (over: Partial<RunAttachment> = {}): RunAttachment => ({
+    id: 'att_1',
+    name: 'shot.png',
+    path: 'attachments/abc-shot.png',
+    mime: 'image/png',
+    bytes: 10,
+    absolutePath: '/ws/attachments/abc-shot.png',
+    ...over,
+  });
+
+  it('stays a plain string when the message carries nothing', async () => {
+    await expect(buildUserContent('hello', [])).resolves.toBe('hello');
+  });
+
+  it('inlines a small image as a block and names its path in the text', async () => {
+    const content = await buildUserContent('look at this', [attachment()], async () =>
+      Buffer.from('png-bytes'),
+    );
+
+    expect(Array.isArray(content)).toBe(true);
+    const blocks = content as Exclude<typeof content, string>;
+    expect(blocks[0]).toEqual({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/png',
+        data: Buffer.from('png-bytes').toString('base64'),
+      },
+    });
+    const tail = blocks.at(-1) as { type: string; text: string };
+    expect(tail.type).toBe('text');
+    expect(tail.text).toContain('look at this');
+    expect(tail.text).toContain('attachments/abc-shot.png');
+  });
+
+  it('sends an oversized image by path only — the agent reads it from disk', async () => {
+    const reads: string[] = [];
+    const content = await buildUserContent(
+      'big one',
+      [attachment({ bytes: 50 * 1024 * 1024 })],
+      async (path) => {
+        reads.push(path);
+        return Buffer.alloc(0);
+      },
+    );
+
+    const blocks = content as Exclude<typeof content, string>;
+    expect(reads).toHaveLength(0);
+    expect(blocks).toHaveLength(1);
+    expect((blocks[0] as { type: string }).type).toBe('text');
+  });
+
+  it('inlines a small PDF as a document block', async () => {
+    const content = await buildUserContent(
+      'read it',
+      [attachment({ mime: 'application/pdf', name: 'doc.pdf', path: 'attachments/x-doc.pdf' })],
+      async () => Buffer.from('%PDF'),
+    );
+
+    const blocks = content as Exclude<typeof content, string>;
+    expect(blocks[0]).toMatchObject({
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf' },
+    });
+  });
+
+  it('marks a file that vanished from disk instead of failing the run', async () => {
+    const content = await buildUserContent('gone', [attachment()], async () => {
+      throw new Error('ENOENT');
+    });
+
+    const blocks = content as Exclude<typeof content, string>;
+    expect(blocks).toHaveLength(1);
+    expect((blocks[0] as { text: string }).text).toContain('missing on disk');
   });
 });
 

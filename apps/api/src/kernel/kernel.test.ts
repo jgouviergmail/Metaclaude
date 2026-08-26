@@ -25,6 +25,7 @@ import { WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { EventBus } from './bus.js';
 import { deriveTitle, Kernel } from './kernel.js';
+import { AttachmentService } from '../services/attachments.js';
 import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import type { RunOutcome, RunRequest, SupervisorCallbacks } from './supervisor.js';
 
@@ -149,6 +150,9 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     reflexion: reflexion as never,
     contextProvider: contextProvider as never,
     supervisor: supervisor as never,
+    // Real service against the same in-memory database — attachments are part
+    // of the storage the kernel is tested against, not a learning collaborator.
+    attachments: new AttachmentService(db),
     maxConcurrentRuns: options.maxConcurrentRuns ?? 2,
     ...(options.delegationTimeoutMs !== undefined
       ? { delegationTimeoutMs: options.delegationTimeoutMs }
@@ -230,6 +234,59 @@ describe('admission', () => {
     await settled(fixture, run.id);
 
     expect(fixture.runs.get(run.id)?.servedModel).toBe('claude-opus-5');
+  });
+
+  it('binds the message’s attachments to the run and hands them to the supervisor', async () => {
+    const session = fixture.newSession();
+    fixture.db
+      .prepare(
+        `INSERT INTO attachments (id, workspace_id, session_id, run_id, name, path, mime, bytes, sha256, created_at)
+         VALUES ('att_1', ?, ?, NULL, 'shot.png', 'attachments/ab-shot.png', 'image/png', 10, 'hash', 0)`,
+      )
+      .run(fixture.workspace.id, session.id);
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'see the screenshot',
+      attachmentIds: ['att_1'],
+    });
+    await settled(fixture, run.id);
+
+    const bound = fixture.db
+      .prepare<[string], { run_id: string | null }>('SELECT run_id FROM attachments WHERE id = ?')
+      .get('att_1');
+    expect(bound?.run_id).toBe(run.id);
+    expect(fixture.supervisor.started[0]?.attachments).toMatchObject([
+      { id: 'att_1', path: 'attachments/ab-shot.png', mime: 'image/png' },
+    ]);
+    // The absolute path is resolved inside the workspace's own jail.
+    expect(fixture.supervisor.started[0]?.attachments[0]?.absolutePath.startsWith('/tmp/metaclaude-test')).toBe(true);
+  });
+
+  it('refuses an attachment that was already sent, and releases the session', async () => {
+    const session = fixture.newSession();
+    fixture.db
+      .prepare(
+        `INSERT INTO runs (id, session_id, workspace_id, prompt, status, started_at)
+         VALUES ('run_elsewhere', ?, ?, 'earlier message', 'succeeded', 0)`,
+      )
+      .run(session.id, fixture.workspace.id);
+    fixture.db
+      .prepare(
+        `INSERT INTO attachments (id, workspace_id, session_id, run_id, name, path, mime, bytes, sha256, created_at)
+         VALUES ('att_used', ?, ?, 'run_elsewhere', 'a.png', 'attachments/ab-a.png', 'image/png', 1, 'h', 0)`,
+      )
+      .run(fixture.workspace.id, session.id);
+
+    await expect(
+      fixture.kernel.submit({ sessionId: session.id, prompt: 'resend it', attachmentIds: ['att_used'] }),
+    ).rejects.toThrow(/already sent/i);
+    expect(fixture.supervisor.started).toHaveLength(0);
+
+    // The admission failure must not leave the session reserved.
+    const retry = await fixture.kernel.submit({ sessionId: session.id, prompt: 'plain message' });
+    await settled(fixture, retry.id);
+    expect(fixture.runs.get(retry.id)?.status).toBe('succeeded');
   });
 
   it('names the session from its first prompt', async () => {

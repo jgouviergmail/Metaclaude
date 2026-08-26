@@ -12,20 +12,25 @@ import {
   ChevronDown,
   CornerDownLeft,
   Gauge,
+  Loader2,
   Network,
+  Paperclip,
   Shield,
   Square,
   Wand2,
+  X,
   Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ATTACHMENT_LIMITS,
   PERMISSION_MODE_INFO,
   type ClaudeCatalogue,
   type EffortLevel,
   type PermissionMode,
 } from '@metaclaude/shared';
 import { Button, Tooltip } from '@/components/ui/primitives';
+import { ATTACHMENT_ACCEPT, formatBytes, type PendingAttachment } from '@/lib/attachments';
 import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
 import { cn, isModifier } from '@/lib/utils';
 import { Menu, MenuItem } from '@/components/ui/Menu';
@@ -49,6 +54,9 @@ export function Composer({
   disabled,
   allowBypass,
   catalogue,
+  attachments = [],
+  onAttachFiles,
+  onRemoveAttachment,
   placeholder = 'Ask Metaclaude to do something…',
 }: {
   value: ComposerValue;
@@ -60,10 +68,17 @@ export function Composer({
   allowBypass?: boolean;
   /** What the CLI offers here. Absent until it answers, and after it fails. */
   catalogue?: ClaudeCatalogue;
+  /** Files pending on the next message; the page owns the upload flow. */
+  attachments?: PendingAttachment[];
+  onAttachFiles?: (files: File[]) => void;
+  onRemoveAttachment?: (key: string) => void;
   placeholder?: string;
 }) {
   const [text, setText] = useState('');
+  const [dragging, setDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploading = attachments.some((item) => item.status === 'uploading');
 
   // Grow with the content up to a cap, then scroll. Recomputed on every change
   // because there is no CSS-only way to auto-size a textarea.
@@ -76,13 +91,21 @@ export function Composer({
 
   const submit = (): void => {
     const prompt = text.trim();
-    if (!prompt || disabled || isRunning) return;
+    // A message never leaves while an upload is in flight: sending would drop
+    // the file silently, which is worse than a moment's wait.
+    if (!prompt || disabled || isRunning || uploading) return;
     onSubmit(prompt);
     setText('');
     // Reset the height immediately so the composer does not stay tall and empty.
     requestAnimationFrame(() => {
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
     });
+  };
+
+  const pickFiles = (list: FileList | null): void => {
+    if (!list || !onAttachFiles) return;
+    const files = Array.from(list);
+    if (files.length > 0) onAttachFiles(files);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -121,14 +144,38 @@ export function Composer({
           className={cn(
             'rounded-2xl border bg-surface transition-colors',
             'focus-within:border-accent',
-            value.permissionMode === 'bypassPermissions' ? 'border-danger' : 'border-line',
+            dragging
+              ? 'border-accent bg-accent-soft/40'
+              : value.permissionMode === 'bypassPermissions'
+                ? 'border-danger'
+                : 'border-line',
           )}
+          onDragOver={(event) => {
+            if (!onAttachFiles) return;
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            if (!onAttachFiles) return;
+            event.preventDefault();
+            setDragging(false);
+            pickFiles(event.dataTransfer.files);
+          }}
         >
           <textarea
             ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={(event) => {
+              // A screenshot pasted from the clipboard is the single most
+              // common way to show the agent something.
+              if (onAttachFiles && event.clipboardData.files.length > 0) {
+                event.preventDefault();
+                pickFiles(event.clipboardData.files);
+              }
+            }}
             placeholder={placeholder}
             disabled={disabled}
             rows={1}
@@ -140,7 +187,79 @@ export function Composer({
             )}
           />
 
+          {attachments.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5 px-3 pb-1.5" aria-label="Pending attachments">
+              {attachments.map((item) => (
+                <li
+                  key={item.key}
+                  className={cn(
+                    'inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[12px]',
+                    item.status === 'error'
+                      ? 'border-danger bg-danger-soft text-danger'
+                      : 'border-line bg-raised text-muted',
+                  )}
+                >
+                  {item.status === 'uploading' ? (
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" aria-label="Uploading" />
+                  ) : (
+                    <Paperclip className="size-3.5 shrink-0" aria-hidden />
+                  )}
+                  <span className="truncate" title={item.name}>
+                    {item.name}
+                  </span>
+                  <span className="shrink-0 text-subtle">
+                    {item.status === 'error' ? (item.error ?? 'failed') : formatBytes(item.bytes)}
+                  </span>
+                  {onRemoveAttachment ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveAttachment(item.key)}
+                      aria-label={`Remove ${item.name}`}
+                      className="shrink-0 rounded p-0.5 hover:bg-surface hover:text-ink"
+                    >
+                      <X className="size-3" aria-hidden />
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-1.5 px-2.5 pb-2.5">
+            {/* Attach ----------------------------------------------------- */}
+            {onAttachFiles ? (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept={ATTACHMENT_ACCEPT}
+                  className="hidden"
+                  aria-hidden
+                  tabIndex={-1}
+                  onChange={(event) => {
+                    pickFiles(event.target.files);
+                    // Same file picked twice must fire change twice.
+                    event.target.value = '';
+                  }}
+                />
+                <Tooltip
+                  content={`Attach files — up to ${ATTACHMENT_LIMITS.maxPerMessage} per message. Drag & drop and pasted screenshots work too.`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={disabled || attachments.length >= ATTACHMENT_LIMITS.maxPerMessage}
+                    aria-label="Attach files"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-raised hover:text-ink disabled:opacity-50"
+                  >
+                    <Paperclip className="size-3.5" aria-hidden />
+                    {attachments.length > 0 ? attachments.length : null}
+                  </button>
+                </Tooltip>
+              </>
+            ) : null}
+
             {/* Model ------------------------------------------------------ */}
             <Menu
               trigger={
@@ -250,12 +369,16 @@ export function Composer({
                   Stop
                 </Button>
               ) : (
-                <Tooltip content="Enter to send · Shift+Enter for a new line">
+                <Tooltip
+                  content={
+                    uploading ? 'Waiting for the upload to finish' : 'Enter to send · Shift+Enter for a new line'
+                  }
+                >
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={submit}
-                    disabled={!text.trim() || disabled}
+                    disabled={!text.trim() || disabled || uploading}
                     aria-label="Send"
                   >
                     <CornerDownLeft className="size-3.5" aria-hidden />

@@ -10,6 +10,7 @@ import { screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClaudeCatalogue } from '@metaclaude/shared';
 import { renderWithProviders } from '@/test/render';
+import type { PendingAttachment } from '@/lib/attachments';
 import { Composer, type ComposerValue } from './Composer';
 
 const catalogue = (models: ClaudeCatalogue['models']): ClaudeCatalogue => ({
@@ -94,5 +95,76 @@ describe('the ultracode toggle', () => {
     // The hint is the honest part: orchestration multiplies token spend, and
     // the person deciding must read that where they decide.
     expect(screen.getByText(/fans out/i)).toBeTruthy();
+  });
+});
+
+describe('attachments', () => {
+  function renderWithAttachments(
+    attachments: PendingAttachment[],
+    handlers: { onAttachFiles?: (files: File[]) => void; onRemoveAttachment?: (key: string) => void } = {},
+  ) {
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <Composer
+        value={{ model: 'opus', effort: null, permissionMode: 'default', ultracode: false }}
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onInterrupt={vi.fn()}
+        isRunning={false}
+        attachments={attachments}
+        onAttachFiles={handlers.onAttachFiles ?? vi.fn()}
+        onRemoveAttachment={handlers.onRemoveAttachment ?? vi.fn()}
+      />,
+    );
+    return { onSubmit };
+  }
+
+  it('offers the attach button only when the page wires the flow', () => {
+    renderComposer({});
+    expect(screen.queryByRole('button', { name: /attach files/i })).toBeNull();
+  });
+
+  it('renders each pending file as a chip, removable', () => {
+    const onRemoveAttachment = vi.fn();
+    renderWithAttachments(
+      [
+        { key: 'k1', id: 'att_1', name: 'plan.png', bytes: 2048, mime: 'image/png', status: 'ready' },
+        { key: 'k2', id: null, name: 'big.pdf', bytes: 1, mime: 'application/pdf', status: 'error', error: 'Over 20 MB' },
+      ],
+      { onRemoveAttachment },
+    );
+
+    expect(screen.getByText('plan.png')).toBeTruthy();
+    expect(screen.getByText('2 KB')).toBeTruthy();
+    expect(screen.getByText('Over 20 MB')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /remove plan\.png/i }));
+    expect(onRemoveAttachment).toHaveBeenCalledWith('k1');
+  });
+
+  it('holds the message while an upload is in flight', () => {
+    const { onSubmit } = renderWithAttachments([
+      { key: 'k1', id: null, name: 'shot.png', bytes: 10, mime: 'image/png', status: 'uploading' },
+    ]);
+
+    fireEvent.change(screen.getByRole('textbox', { name: /prompt/i }), {
+      target: { value: 'look at this' },
+    });
+    const send = screen.getByRole('button', { name: /^send$/i });
+    expect(send.getAttribute('disabled')).not.toBeNull();
+    fireEvent.click(send);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('hands picked files to the page', () => {
+    const onAttachFiles = vi.fn();
+    renderWithAttachments([], { onAttachFiles });
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['bytes'], 'notes.md', { type: 'text/markdown' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(onAttachFiles).toHaveBeenCalledTimes(1);
+    expect(onAttachFiles.mock.calls[0]?.[0]?.[0]?.name).toBe('notes.md');
   });
 });

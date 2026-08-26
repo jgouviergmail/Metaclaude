@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-26
+
+### Added
+
+- **Messages carry files now.** The paperclip, drag & drop onto the composer,
+  a pasted screenshot, or the phone's camera — up to 8 files, 20 MB each, on
+  any message. Every attachment lands in the workspace itself under
+  `attachments/`, where the agent reads it with its own tools (images and
+  PDFs natively) and the Files browser shows it; small images and PDFs also
+  ride the message inline so the model sees them without a tool round-trip.
+  The transcript renders images as thumbnails and everything else as chips,
+  both serving the stored bytes through an authenticated route — uploaded
+  HTML deliberately downloads instead of rendering, because serving it inline
+  on this origin would execute its scripts with the app's cookies. Uploads
+  deduplicate by content hash, bind to exactly one run however submissions
+  race, and are audited like every other mutation.
+
 ## [0.3.0] — 2026-08-26
 
 ### Added
