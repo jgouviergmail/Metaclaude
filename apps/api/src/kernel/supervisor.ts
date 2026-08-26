@@ -467,6 +467,39 @@ export class AgentSupervisor {
     const options = this.buildOptions(request);
     options.abortController = controller;
 
+    /*
+     * Bracket the permission prompt so the run's status says so.
+     *
+     * `onWaitingChange` was declared here, implemented by the kernel — which
+     * flips the run and its session between `running` and `waiting_approval` —
+     * and called by nothing. The broker raises `waiting_approval` when it asks,
+     * and nothing lowered it again: the first prompt in a run left it showing as
+     * blocked on the operator for the rest of its life, while the agent worked.
+     *
+     * Wrapped here rather than in `buildOptions` because the callbacks arrive
+     * with `execute`, and because `buildOptions` is tested for the shape it
+     * produces — not for behaviour that depends on a live run.
+     *
+     * The counter is what makes it correct under parallel tool calls: a plain
+     * true/false pair around each prompt reports "no longer waiting" the moment
+     * the *first* of several is answered, while the operator is still looking at
+     * the rest. `finally` covers the denial, the abort and the throwing broker,
+     * because a run left permanently marked as waiting is the same bug wearing
+     * a different hat.
+     */
+    const ask = options.canUseTool;
+    if (ask) {
+      let outstanding = 0;
+      options.canUseTool = async (...args: Parameters<typeof ask>) => {
+        if (outstanding++ === 0) callbacks.onWaitingChange(true);
+        try {
+          return await ask(...args);
+        } finally {
+          if (--outstanding === 0) callbacks.onWaitingChange(false);
+        }
+      };
+    }
+
     const state = new StreamState(request, callbacks);
     let claudeSessionId: string | null = null;
     let rewindPoint: string | null = null;

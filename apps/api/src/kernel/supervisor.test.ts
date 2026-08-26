@@ -72,14 +72,34 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
   };
 }
 
-function makeCallbacks(): SupervisorCallbacks & { events: unknown[] } {
+function makeCallbacks(): SupervisorCallbacks & { events: unknown[]; waiting: boolean[] } {
   const events: unknown[] = [];
+  /** Every `onWaitingChange` value, in order. */
+  const waiting: boolean[] = [];
   return {
     events,
+    waiting,
     onEvent: (event) => events.push(event),
     onDelta: () => {},
     onClaudeSessionId: () => {},
-    onWaitingChange: () => {},
+    onWaitingChange: (value) => waiting.push(value),
+  };
+}
+
+/** A permission broker whose answers the test releases by hand. */
+function heldBroker() {
+  const pending: Array<() => void> = [];
+  return {
+    get outstanding(): number {
+      return pending.length;
+    },
+    releaseAll(): void {
+      for (const release of pending.splice(0)) release();
+    },
+    request: () =>
+      new Promise<{ behavior: 'allow' }>((resolve) => {
+        pending.push(() => resolve({ behavior: 'allow' }));
+      }),
   };
 }
 
@@ -242,9 +262,9 @@ function fakeQuery() {
   return { query, control };
 }
 
-function makeSupervisor(query: unknown) {
+function makeSupervisor(query: unknown, broker?: { request: () => Promise<unknown> }) {
   return new AgentSupervisor({
-    broker: () => ({ request: async () => ({ behavior: 'allow' }) }) as never,
+    broker: () => (broker ?? { request: async () => ({ behavior: 'allow' }) }) as never,
     allowBypassPermissions: false,
     claudeBinPath: null,
     runTimeoutMs: 60_000,
@@ -880,5 +900,96 @@ describe('reading the CLI’s own catalogue', () => {
     const catalogue = await supervisor.catalogue(WORKSPACE);
 
     expect(catalogue.fetchedAt).toBeGreaterThanOrEqual(before);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Waiting on a human                                                          */
+/* -------------------------------------------------------------------------- */
+
+describe('a run says when it is waiting for a person', () => {
+  /**
+   * `onWaitingChange` was declared on the callbacks, implemented by the kernel —
+   * which flips the run and its session between `running` and
+   * `waiting_approval` — and never called by anything.
+   *
+   * The broker sets `waiting_approval` when a prompt is raised, and nothing ever
+   * set it back. So the first time a run asked permission it showed as waiting
+   * for the rest of its life: the agent worked, the screen said it was blocked
+   * on the operator, and the operator had already answered.
+   */
+  const prompt = (options: Record<string, unknown>, id = 'tool-1') =>
+    (options.canUseTool as (n: string, i: unknown, o: unknown) => Promise<unknown>)(
+      'Bash',
+      { command: 'ls' },
+      { toolUseID: id, signal: new AbortController().signal },
+    );
+
+  it('reports waiting while a prompt is outstanding, and not before', async () => {
+    const { query, control } = fakeQuery();
+    const broker = heldBroker();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query, broker);
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+    expect(callbacks.waiting).toEqual([]);
+
+    const asked = prompt(control.opened[0] as Record<string, unknown>);
+    await vi.waitFor(() => expect(broker.outstanding).toBe(1));
+    expect(callbacks.waiting).toEqual([true]);
+
+    broker.releaseAll();
+    await asked;
+    expect(callbacks.waiting).toEqual([true, false]);
+
+    control.finish();
+    await run;
+  });
+
+  it('does not clear the flag while another prompt is still outstanding', async () => {
+    // Tool calls arrive in parallel. A naive true/false pair around each one
+    // reports "no longer waiting" the moment the *first* is answered, while the
+    // operator is still looking at the second.
+    const { query, control } = fakeQuery();
+    const broker = heldBroker();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query, broker);
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+
+    const first = prompt(control.opened[0] as Record<string, unknown>, 'tool-1');
+    const second = prompt(control.opened[0] as Record<string, unknown>, 'tool-2');
+    await vi.waitFor(() => expect(broker.outstanding).toBe(2));
+
+    // Raised once, not twice.
+    expect(callbacks.waiting).toEqual([true]);
+
+    broker.releaseAll();
+    await Promise.all([first, second]);
+    expect(callbacks.waiting).toEqual([true, false]);
+
+    control.finish();
+    await run;
+  });
+
+  it('clears the flag even when the prompt is refused', async () => {
+    // A denial, an abort or a broker that throws must not leave the run
+    // permanently marked as waiting — that is the bug in a new costume.
+    const { query, control } = fakeQuery();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query, {
+      request: () => Promise.reject(new Error('cancelled')),
+    });
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+
+    await expect(prompt(control.opened[0] as Record<string, unknown>)).rejects.toThrow();
+    expect(callbacks.waiting).toEqual([true, false]);
+
+    control.finish();
+    await run;
   });
 });
