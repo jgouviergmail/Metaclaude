@@ -9,16 +9,17 @@ import type { App } from '../http/types.js';
 import { z } from 'zod';
 import { ConnectRepositoryRequest } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
-import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import {
+  HttpError,
+  mustGetWorkspace as mustGetWorkspaceFrom,
+  requestIp,
+  requireOperator,
+} from '../http/guards.js';
 import { redactUrlCredentials } from '../security/audit.js';
 import { queryIntOr, spreadInt } from '../http/query.js';
 
 export function registerFileRoutes(app: App, context: AppContext): void {
-  const mustGetWorkspace = (id: string) => {
-    const workspace = context.workspaceRepo.get(id);
-    if (!workspace) throw new HttpError(404, 'Workspace not found.');
-    return workspace;
-  };
+  const mustGetWorkspace = (id: string) => mustGetWorkspaceFrom(context, id);
 
   /* -------------------------------- Files ------------------------------- */
 

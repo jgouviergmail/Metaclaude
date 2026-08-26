@@ -173,8 +173,13 @@ export DEBIAN_FRONTEND=noninteractive
 
 step "Base packages"
 apt-get update -qq
+# `sudo` is on this list because the admin account is useless without it: the
+# `usermod -aG sudo` below fails outright on an image that lacks the package
+# (there is no `sudo` group), and the ERR trap then reports a line number rather
+# than the missing word. Every Ubuntu and Debian *cloud* image ships it; a
+# Debian netinstall without "standard system utilities" does not.
 apt-get install -y -qq \
-  ca-certificates curl gnupg lsb-release \
+  ca-certificates curl gnupg lsb-release sudo \
   ufw fail2ban unattended-upgrades apt-listchanges \
   jq git rsync
 info "installed"

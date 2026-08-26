@@ -478,8 +478,19 @@ DONE
 # Only the internal CA needs installing, and saying so unconditionally taught
 # operators to expect a warning that a publicly trusted certificate never shows.
 if grep -q '^METACLAUDE_TLS_MODE="internal"' "$ENV_FILE"; then
-  CA_FILE="/root/metaclaude-ca.crt"
-  docker compose exec -T proxy cat /data/caddy/pki/authorities/local/root.crt > "$CA_FILE" 2>/dev/null || true
+  # Not /root: that directory is 0700 root:root on Debian and Ubuntu and this
+  # script does not change it, so the `scp mcadmin@host:...` printed below could
+  # never work. And `>` truncates before the export runs, so a failed export
+  # left a 0-byte file that the next paragraph presented as the certificate.
+  CA_FILE="$APP_DIR/metaclaude-ca.crt"
+  if docker compose exec -T proxy cat /data/caddy/pki/authorities/local/root.crt \
+       > "$CA_FILE.tmp" 2>/dev/null && [ -s "$CA_FILE.tmp" ]; then
+    mv "$CA_FILE.tmp" "$CA_FILE"
+    chmod 0644 "$CA_FILE"
+  else
+    rm -f "$CA_FILE.tmp" "$CA_FILE"
+    warn "could not export the CA certificate — see docs/DEPLOYMENT.md for the manual command"
+  fi
   cat <<DONE
 
   ${BOLD}Your browser will warn the first time.${OFF} Caddy signed with its own

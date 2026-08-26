@@ -165,9 +165,20 @@ cat <<DONE
                                 password manager. Left empty it is generated
                                 into the same volume as the database it
                                 encrypts, so one snapshot carries both.
+    METACLAUDE_IMAGE            the image to run, e.g.
+                                ghcr.io/<owner>/metaclaude:v1.0.0. .env.example
+                                ships it empty and compose then falls back to
+                                \`metaclaude:latest\`, which exists nowhere —
+                                \`up\` fails with \`pull access denied\`.
 
   Then either push a version tag to deploy through CI, or start it by hand:
 
-    sudo -u $DEPLOY_USER docker compose --project-directory $APP_DIR up -d
+    sudo -u $DEPLOY_USER docker compose --project-directory $APP_DIR \
+      --env-file $APP_DIR/.env --env-file $APP_DIR/releases/.env.image up -d
+
+  Both env files, in that order — the second is where a CI deploy records the
+  image it chose. Omitting it on a host that has already deployed resolves
+  METACLAUDE_IMAGE from .env alone and quietly reverts the box to whatever is
+  written there.
 
 DONE

@@ -10,10 +10,19 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1114 tests, ~24s
+pnpm test:run                            # 1162 tests, ~17s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
+
+There is deliberately no `pnpm lint`. ESLint is not installed and no config
+exists, so the script that used to be here failed with
+`ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT` — a command that lies about the toolchain is
+worse than an absent one. What enforces quality is the four above: `typecheck`
+(which covers the tests, see the tsconfig split), `test:run`, `check.sh` and the
+ratchets. The ten `eslint-disable-next-line` comments in `apps/web` stay: each
+marks a deliberately narrow `useEffect` dependency list beside the comment that
+explains it, which is worth keeping whether or not a linter ever reads it.
 
 `deploy/ratchets.json` holds numbers that may only move the improving way.
 `--update` records improvements but **refuses to loosen a ceiling** — loosening
@@ -103,6 +112,34 @@ restates the code is noise; one that records a decision or a trap is not.
   then emits `<link rel="modulepreload">` for it, which is the opposite of
   deferring it. Let the dynamic `import()` boundaries derive the chunks; see the
   comment in `apps/web/vite.config.ts`.
+- **Caddy reads `{$VAR}` from its own process environment, not from `.env`.**
+  Compose reads `.env` to interpolate `${VAR}` *in the compose file*; a variable
+  documented in `.env.example`, written by `bootstrap.sh` and named in the
+  Caddyfile is still unset as far as Caddy is concerned unless the proxy's
+  `environment:` block forwards it — and it then silently takes the
+  `{$VAR:default}` written inline. That cost a red CI and a proxy that never
+  went healthy. `deploy/check.sh` now asserts the forwarding generically, so a
+  new variable fails the day it is added.
+- **`default_sni`/`fallback_sni` must name a site that exists.** They choose
+  among the *configured* certificates; pointing them at a third address leaves
+  nothing to fall back to and the handshake dies with `tlsv1 alert internal
+  error` before a log line. `METACLAUDE_SNI_DEFAULT` therefore defaults to
+  `METACLAUDE_SITE` rather than to a constant.
+- **The shipped image nests `workspacesDir` inside `dataDir`.**
+  `METACLAUDE_DATA_DIR=/var/lib/metaclaude` with
+  `METACLAUDE_WORKSPACES_DIR=/var/lib/metaclaude/workspaces`, so any check
+  phrased as "is this inside the data directory?" is true for every legitimate
+  workspace path. That is how `additionalDirectories` came to reject
+  everything in production while every test used a sibling layout. Any new
+  containment rule needs a case in `security/directories.test.ts` under the
+  layout that actually ships.
+- **A ratchet that greps text cannot tell code from prose.** Writing
+  `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
+  raw-palette ratchet. Say `bg-gray-<n>`.
+- **The web app's `maxPayload` is the frame-size control, not the app check.**
+  `server.ts` sets ws's own limit, so an oversized frame closes with the
+  standard 1009 and the `raw.length > 64 * 1024` branch in `ws.ts` is a backstop
+  that only becomes reachable if the two figures diverge. Keep them in step.
 
 ## Testing
 

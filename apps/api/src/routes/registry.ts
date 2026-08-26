@@ -251,7 +251,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
 
     assertPermissionModeAllowed(context, parsed.data.policy?.permissionMode);
 
-    const automation = context.scheduler.update(request.params.id, parsed.data as never);
+    const automation = context.scheduler.update(request.params.id, parsed.data);
     if (!automation) throw new HttpError(404, 'Automation not found.');
 
     context.audit.record({

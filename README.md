@@ -204,7 +204,7 @@ posture reflects that:
 | **Path jailing** | Every filesystem operation resolves through a jail check, symlinks included, before an fd is opened |
 | **Secrets** | AES-256-GCM with AAD binding each ciphertext to its slot; values never returned by any endpoint |
 | **Audit** | Hash-chained log — any edit invalidates every entry after it, verifiable from the UI |
-| **Network** | The app binds to an internal Docker network only; nothing reaches it except through the TLS proxy |
+| **Network** | The app publishes no host port — inbound only through the TLS proxy. Outbound egress is open, because the CLI, git and HTTP MCP servers need it |
 | **XSS** | Model output is rendered through an allow-list sanitiser with no raw HTML passthrough |
 
 Details and threat model: **[docs/SECURITY.md](docs/SECURITY.md)**
@@ -231,7 +231,7 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 758 unit + integration tests, ~7s
+pnpm test:run    # 1162 unit + integration tests, ~16s
 pnpm typecheck
 pnpm build
 ```

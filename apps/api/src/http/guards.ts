@@ -9,7 +9,7 @@
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
-import type { PermissionMode, User, UserRole } from '@metaclaude/shared';
+import type { PermissionMode, User, UserRole, Workspace } from '@metaclaude/shared';
 import { CSRF_HEADER, SESSION_COOKIE } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { clientKey } from '../security/ratelimit.js';
@@ -132,6 +132,20 @@ export function requestIp(context: AppContext, request: FastifyRequest): string 
     request.headers['x-forwarded-for'] as string | undefined,
     context.config.trustProxy,
   );
+}
+
+/**
+ * Load a workspace, or fail with 404.
+ *
+ * Here rather than in each registrar because two of them defined it byte for
+ * byte — the same four lines, sixteen call sites in one file and six in the
+ * other. Both were correct, which is the point: two correct copies is a
+ * standing invitation for a third that is not.
+ */
+export function mustGetWorkspace(context: AppContext, id: string): Workspace {
+  const workspace = context.workspaceRepo.get(id);
+  if (!workspace) throw new HttpError(404, 'Workspace not found.');
+  return workspace;
 }
 
 /**

@@ -99,9 +99,18 @@ else
   skip "password authentication" "inconclusive: $(printf '%s' "$methods" | head -1)"
 fi
 
-if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-       -p "$SSH_PORT" "root@$HOST" true 2>&1 | grep -qi 'permission denied'; then
+# Three outcomes, not two. "Not 'permission denied'" is not the same as "root
+# got in": a refused connection, a timeout, an unresolvable name and a fail2ban
+# ban all landed in the `else` and printed a false security claim — and
+# provision.sh documents fail2ban's `Connection refused` as the one failure mode
+# of this host that reads like a dead server. The password check above already
+# has the third branch; this one did not.
+rootout="$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+               -p "$SSH_PORT" "root@$HOST" true 2>&1 || true)"
+if printf '%s' "$rootout" | grep -qi 'permission denied'; then
   ok "root cannot log in"
+elif printf '%s' "$rootout" | grep -qiE 'refused|timed out|timeout|no route|could not resolve|unreachable'; then
+  skip "root login" "could not reach the host: $(printf '%s' "$rootout" | head -1)"
 else
   bad "root login was not refused" "PermitRootLogin should be no"
 fi

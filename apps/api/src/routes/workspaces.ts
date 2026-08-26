@@ -22,6 +22,7 @@ import {
   assertPermissionModeAllowed,
   HttpError,
   requestIp,
+  mustGetWorkspace as mustGetWorkspaceFrom,
   requireOperator,
   requireOwner,
 } from '../http/guards.js';
@@ -29,12 +30,7 @@ import { spreadInt, spreadTimestamp } from '../http/query.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 
 export function registerWorkspaceRoutes(app: App, context: AppContext): void {
-  /** Load a workspace or fail with 404. Used by every nested route. */
-  const mustGetWorkspace = (id: string) => {
-    const workspace = context.workspaceRepo.get(id);
-    if (!workspace) throw new HttpError(404, 'Workspace not found.');
-    return workspace;
-  };
+  const mustGetWorkspace = (id: string) => mustGetWorkspaceFrom(context, id);
 
   const mustGetSession = (id: string) => {
     const session = context.sessionRepo.get(id);

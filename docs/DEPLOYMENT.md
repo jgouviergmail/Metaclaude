@@ -402,24 +402,45 @@ next `ufw reload` and on every `systemctl restart docker`.
 
 ## Backups
 
-Three volumes and one file, in order of how much it hurts to lose them:
+Four volumes and one file, in order of how much it hurts to lose them:
 
 ```bash
 docker run --rm -v metaclaude_metaclaude-data:/d -v "$PWD:/out" \
   alpine tar czf /out/metaclaude-data.tgz -C /d .
 docker run --rm -v metaclaude_metaclaude-workspaces:/d -v "$PWD:/out" \
   alpine tar czf /out/metaclaude-workspaces.tgz -C /d .
+docker run --rm -v metaclaude_metaclaude-home:/d -v "$PWD:/out" \
+  alpine tar czf /out/metaclaude-home.tgz -C /d .
 docker run --rm -v metaclaude_caddy-data:/d -v "$PWD:/out" \
   alpine tar czf /out/caddy-data.tgz -C /d .
 ```
+
+`metaclaude-home` is the one that looks skippable and is not. It holds the
+Claude CLI's own session transcripts, and a session row without them cannot be
+resumed: the kernel passes `claudeSessionId` straight through to the SDK with
+no fallback for an id the CLI no longer knows. Nothing the *operator* wrote is
+lost — the database holds every session, run and transcript event, and the
+workspaces volume holds the files — but every pre-restore conversation stops
+being continuable, and it fails at the next run rather than at restore time.
 
 Plus `METACLAUDE_MASTER_KEY`, which must **not** live in the same place as the
 data — that is what makes it a key rather than a formality.
 
 Restore by stopping the stack, untarring into the volumes, and starting again.
-Verify the vault came back: Settings should show your MCP servers with their
-credentials intact. If the key was wrong the server starts happily and the
-credentials are simply gone, so check rather than assume.
+
+Then verify the vault actually came back, with the check the code performs:
+
+```bash
+docker compose logs app | grep -i 'could not decrypt'
+```
+
+No output means every stored secret opened. Do **not** verify this from the
+Settings screen: the MCP list is built from the `env_keys` and `header_keys`
+columns, which are plain text the vault never touches, so it renders
+identically whether the key was right or wrong. `Vault.resolveEnv` returns
+`null` on a failed AEAD verify and simply omits the key rather than throwing,
+so nothing else on screen changes either. The boot self-test is the only signal,
+and it logs rather than refusing to start.
 
 ---
 

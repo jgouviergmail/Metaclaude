@@ -178,7 +178,23 @@ export class Scheduler {
     return automation;
   }
 
-  update(id: string, patch: Partial<Omit<Automation, 'id' | 'workspaceId'>>): Automation | null {
+  /**
+   * Apply a partial update.
+   *
+   * `policy` is called out separately because it is patched *into* the stored
+   * one rather than replacing it — `{ ...current.policy, ...patch.policy }`
+   * below — so the caller may legitimately send some of its five fields. The
+   * plain `Partial<Omit<Automation, …>>` this used to declare required all
+   * five, which is why the route reached it through `as never`: a cast that
+   * silenced the mismatch and, with it, any future one. Saying what the method
+   * actually accepts lets the cast go.
+   */
+  update(
+    id: string,
+    patch: Partial<Omit<Automation, 'id' | 'workspaceId' | 'policy'>> & {
+      policy?: Partial<Automation['policy']>;
+    },
+  ): Automation | null {
     const current = this.get(id);
     if (!current) return null;
     if (patch.trigger) this.validateTrigger(patch.trigger);

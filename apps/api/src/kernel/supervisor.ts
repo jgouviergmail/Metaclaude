@@ -151,12 +151,16 @@ class PromptStream {
 
   push(text: string): boolean {
     if (this.closed) return false;
-    this.queued.push({
+    // No cast: this object *is* an `SDKUserMessage`, and saying so lets the
+    // compiler notice when the SDK renames a field rather than waiting for a
+    // run to fail.
+    const message: SDKUserMessage = {
       type: 'user',
       message: { role: 'user', content: text },
       parent_tool_use_id: null,
       session_id: '',
-    } as unknown as SDKUserMessage);
+    };
+    this.queued.push(message);
     this.wake?.();
     return true;
   }
@@ -935,7 +939,11 @@ export class StreamState {
       return { claudeSessionId: message.session_id };
     }
     if (message.subtype === 'permission_denied') {
-      const denied = message as unknown as { tool_name: string; message: string; tool_use_id: string };
+      // The narrowing above already gives this the SDK's own
+      // `SDKPermissionDeniedMessage`, with `tool_name`, `tool_use_id` and
+      // `message` on it. Restating that shape as a cast bought nothing and hid
+      // a rename: `as unknown as` silences exactly the error worth having.
+      const denied = message;
       const open = this.openToolCalls.get(denied.tool_use_id);
       if (open) {
         open.status = 'denied';

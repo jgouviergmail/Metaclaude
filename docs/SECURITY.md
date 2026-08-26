@@ -278,6 +278,18 @@ failure hours later.
 **Back up that key with your data volume.** Without it, stored secrets are
 unrecoverable — by design.
 
+**Rotating the key is not supported, and the order matters.** There is no
+re-seal command: `resolveMasterKey` loads a key or generates one, and nothing
+re-encrypts an existing vault under a new one. Changing the key first therefore
+makes every stored ciphertext permanently unreadable — the server starts
+happily, and the secrets are simply gone.
+
+If you need to change it, re-enter every MCP secret through the UI *after*
+bringing the stack up with the new key, having noted the values beforehand.
+`docker compose logs app | grep -i 'could not decrypt'` tells you what did not
+survive. This is a different thing from rotating `CLAUDE_CODE_OAUTH_TOKEN`,
+which has no ciphertext behind it and is an ordinary `.env` edit.
+
 ---
 
 ## Audit
@@ -319,8 +331,17 @@ Two subtleties that took a bug each to get right:
   Retention is an operator decision; it must not leave verification broken
   forever.
 
-Logs are redacted aggressively — cookies, authorization headers, the CSRF header,
-`Set-Cookie`, and any field named like a password, token, key or secret.
+Logs redact the cookie, `Authorization` and CSRF request headers, `Set-Cookie`
+on the response, and the fields `password`, `passwordHash`, `token`,
+`oauthToken`, `apiKey`, `secret` and `totpSecret` — at the top level and one
+level down (`*.password` and friends).
+
+That list is exact rather than a principle, because pino's wildcard matches
+exactly one level: a credential nested two deep would print. Nothing in the
+codebase logs such a shape today — every structured call site logs `{ err }`,
+`{ err: error.message }` or `{ err, url }` — so this is a bound on the
+redaction, not a known leak. Add the field here as well as to `logger.ts` if a
+new one appears.
 
 ---
 
@@ -334,7 +355,7 @@ Logs are redacted aggressively — cookies, authorization headers, the CSRF head
 | Root filesystem | read-only |
 | `/tmp` | tmpfs, `nosuid`, 1 GB |
 | Resources | CPU and memory limits, `nofile` and `nproc` ulimits |
-| Network | internal-only; the app publishes **no** host port |
+| Network | the app publishes **no** host port; inbound only through the TLS proxy. Egress is open by design — see below |
 | Signals | `tini` as PID 1, so CLI subprocesses are reaped |
 
 `/tmp` is `nosuid` but deliberately **not** `noexec`: build tooling the agent
@@ -344,6 +365,15 @@ Forbidding that breaks ordinary development work rather than an attack.
 The only route in is Caddy, which terminates TLS, sets HSTS, `nosniff`,
 `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive
 `Permissions-Policy`, and `X-Robots-Tag: noindex`.
+
+**Egress is not a control here, and nothing above should be read as claiming it
+is.** The app container joins both the `internal` network, which reaches the
+proxy, and `public`, which is what lets it reach *out* — and without that
+nothing the product does works: the Claude CLI cannot call the Anthropic API,
+`git clone` cannot resolve a remote, and no HTTP MCP server is reachable. The
+approval prompt, not the network, is what stands between a model-authored tool
+call and the outside world; that is why every call that reaches the network can
+require one.
 
 ---
 

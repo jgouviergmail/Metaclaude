@@ -15,7 +15,6 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:run": "pnpm -r test:run",
-    "lint": "pnpm -r lint",
     "clean": "pnpm -r exec rm -rf dist node_modules/.vite .tsbuildinfo",
     "docker:build": "docker build -f docker/Dockerfile -t metaclaude:latest .",
     "docker:up": "docker compose up -d",

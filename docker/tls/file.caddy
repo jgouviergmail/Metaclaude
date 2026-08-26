@@ -2,9 +2,16 @@
 #
 # This is the Tailscale route, and the best answer to "no domain name":
 #
-#   tailscale cert --cert-file /opt/metaclaude/certs/mc.crt \
-#                  --key-file  /opt/metaclaude/certs/mc.key \
+#   tailscale cert --cert-file /opt/metaclaude/docker/certs/metaclaude.crt \
+#                  --key-file  /opt/metaclaude/docker/certs/metaclaude.key \
 #                  <machine>.<tailnet>.ts.net
+#
+# Both halves of those paths matter, and both were wrong here. The directory is
+# the one compose mounts at /certs — METACLAUDE_CERTS_DIR, `./docker/certs` by
+# default, which install-app.sh creates under $APP_DIR — not a `certs/` beside
+# it. And the basename is METACLAUDE_CERT_NAME, `metaclaude` by default, which
+# is what the `tls` directive below reads. Caddy refuses a config whose
+# certificate file is missing, so a mismatch is a proxy that never starts.
 #
 # You get a real, publicly-trusted certificate and a stable hostname without
 # owning a domain, and the server needs no inbound ports open at all — set

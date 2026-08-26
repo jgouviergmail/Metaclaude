@@ -892,6 +892,56 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "A host that has never CI-deployed can still be inspected"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# `compose()` passes --env-file "$IMAGE_ENV" unconditionally, and that file is
+# written by `bring_up` — so on a host brought up by bootstrap.sh, which starts
+# the stack with a plain `docker compose up -d`, it did not exist. `status` then
+# printed both release lines and died at `compose ps` with
+#
+#     couldn't find env file: .../releases/.env.image
+#
+# which is exactly the command .github/workflows/deploy.yml tells an operator to
+# run after a failed deploy — so the diagnostic tool failed first, on the host
+# where it was needed most.
+#
+# The existing forced-command cases all exit before reaching compose, and the
+# half-installed case dies at the $RELEASES check in a bare directory, so none
+# of them could see this.
+if command -v docker >/dev/null 2>&1; then
+  fresh="$WORK/fresh-host"
+  mkdir -p "$fresh/releases"
+  : > "$fresh/.env"
+  cp "$REPO_ROOT/compose.yml" "$fresh/compose.yml" 2>/dev/null || true
+
+  # Run only as far as the env-file preparation: driving `compose ps` itself
+  # would need a daemon, and the bug is in the arguments, not the daemon.
+  out="$(APP_DIR="$fresh" bash -c '
+    set -uo pipefail
+    RELEASES="$APP_DIR/releases"
+    IMAGE_ENV="$RELEASES/.env.image"
+    '"$(sed -n '/^\[ -f "\$IMAGE_ENV" \] ||/p' "$REPO_ROOT/deploy/bin/metaclaude-deploy")"'
+    docker compose --project-directory "$APP_DIR" \
+      --env-file "$APP_DIR/.env" --env-file "$IMAGE_ENV" config --services 2>&1
+  ')"
+
+  case "$out" in
+    *"couldn't find env file"*|*"no such file"*)
+      bad "status on a host that has never CI-deployed" \
+          "compose refuses the missing releases/.env.image: $out" ;;
+    *)
+      ok "the image env file is created on demand, so every verb reaches compose" ;;
+  esac
+
+  [ -f "$fresh/releases/.env.image" ] \
+    && ok "and it is left behind, so the next call is cheap" \
+    || bad "the image env file was not created" "the guard did not run"
+else
+  skip "status on a fresh host" "docker not available"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 printf '\n%s%d passed, %d failed, %d skipped%s\n' "$BOLD" "$PASSED" "$FAILED" "$SKIPPED" "$OFF"
 [ "$FAILED" -eq 0 ] || exit 1

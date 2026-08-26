@@ -71,6 +71,19 @@ cd "$APP_DIR" 2>/dev/null || die "no $APP_DIR on this host"
 [ -d "$RELEASES" ] || die \
   "$RELEASES is missing — this host is not fully set up; re-run deploy/install-app.sh"
 
+# `compose()` passes --env-file "$IMAGE_ENV" on every call, and that file is
+# written by `bring_up` — so on a host brought up by bootstrap.sh, which starts
+# the stack with a plain `docker compose up -d`, it does not exist yet. Every
+# verb that reaches compose then died with
+#
+#     couldn't find env file: .../releases/.env.image
+#
+# including `status`, which is precisely what deploy.yml tells an operator to
+# run after a failed deploy. Creating it empty is enough: compose merges the
+# files in order and an empty one contributes nothing, so the resolved image
+# still comes from .env until the first real deploy records one.
+[ -f "$IMAGE_ENV" ] || : > "$IMAGE_ENV"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Parse what CI asked for
 # ─────────────────────────────────────────────────────────────────────────────
