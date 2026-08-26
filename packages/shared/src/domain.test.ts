@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { LoginRequest, RewindRequest, RunPolicy, WorkspaceSettings } from './domain.js';
+import { ClaudeCliSession, LoginRequest, RewindRequest, RunPolicy, WorkspaceSettings } from './domain.js';
 
 const base = { username: 'owner', password: 'a-long-enough-password' };
 
@@ -104,5 +104,32 @@ describe('RunPolicy — ultracode', () => {
 
   it('round-trips an explicit true', () => {
     expect(RunPolicy.parse({ ...base, ultracode: true }).ultracode).toBe(true);
+  });
+});
+
+describe('ClaudeCliSession', () => {
+  it('normalises the CLI listing: optional fields become explicit nulls', () => {
+    const parsed = ClaudeCliSession.parse({
+      sessionId: 'abc-123',
+      summary: 'Fix the parser',
+      lastModified: 1000,
+    });
+    expect(parsed).toMatchObject({
+      firstPrompt: null,
+      gitBranch: null,
+      cwd: null,
+      createdAt: null,
+      adoptedBy: null,
+    });
+  });
+
+  it('carries the adoption link when one exists', () => {
+    const parsed = ClaudeCliSession.parse({
+      sessionId: 'abc-123',
+      summary: 'Fix the parser',
+      lastModified: 1000,
+      adoptedBy: 'ses_9',
+    });
+    expect(parsed.adoptedBy).toBe('ses_9');
   });
 });

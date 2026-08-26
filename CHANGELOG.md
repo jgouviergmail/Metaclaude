@@ -13,6 +13,13 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **Adopt the CLI's own sessions.** The workspace page can now list every
+  conversation the Claude CLI holds for that directory — terminal sessions
+  included — and adopt one into Metaclaude, after which resuming, steering
+  and accounting work as for a native session. Adoption trusts only the CLI's
+  own listing: an id the CLI does not name for that directory is refused, so
+  a request cannot bind a session from some other directory; and a session
+  already adopted is offered as *Open*, never adopted twice.
 - **Help, inside the product.** A Help screen fed from the repository rather
   than from strings in the code: the user guide (`docs/guide/`, nine chapters,
   bundled per-chapter as lazy chunks), this changelog, and search that treats

@@ -120,6 +120,11 @@ controls, not buried settings — and so is **Ultracode**, the CLI's standing
 multi-agent orchestration: one toggle fans the message out across sub-agents at
 maximum effort, offered only when the chosen model can actually do it.
 
+Sessions the CLI already holds for a workspace's directory — terminal
+conversations included — can be **adopted**: one click binds the transcript to
+a Metaclaude session, and resuming, steering and accounting work as if it had
+started here.
+
 ### Permissions
 Every tool call that writes, deletes, runs a command or reaches the network can
 require approval. The prompt shows the **literal** command — not a paraphrase —
@@ -244,7 +249,7 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 1162 unit + integration tests, ~16s
+pnpm test:run    # 1264 unit + integration tests, ~20s
 pnpm typecheck
 pnpm build
 ```

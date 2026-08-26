@@ -6,7 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GitBranch, Loader2, Plus, Settings2 } from 'lucide-react';
+import { GitBranch, Loader2, Plus, Settings2, TerminalSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import {
   type WorkspaceSettings,
 } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { CliSessionList } from '@/components/workspace/CliSessionList';
 import { SessionList } from '@/components/workspace/SessionList';
 import { CheckboxField } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
@@ -44,6 +45,7 @@ export function WorkspacePage() {
   const setLastWorkspace = useUiStore((state) => state.setLastWorkspace);
 
   const [showSettings, setShowSettings] = useState(false);
+  const [showCliSessions, setShowCliSessions] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -66,6 +68,25 @@ export function WorkspacePage() {
 
   const workspace = data?.workspace;
   const sessions = data?.sessions ?? [];
+
+  // The CLI's own transcript store, read only while the import dialog is open.
+  const cliSessions = useQuery({
+    queryKey: ['claude-cli-sessions', workspaceId],
+    queryFn: () => api.claudeCliSessions(workspaceId),
+    enabled: showCliSessions && Boolean(workspaceId),
+  });
+
+  const adoptSession = useMutation({
+    mutationFn: (claudeSessionId: string) => api.adoptCliSession(workspaceId, claudeSessionId),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+      void queryClient.invalidateQueries({ queryKey: ['claude-cli-sessions', workspaceId] });
+      setShowCliSessions(false);
+      navigate(`/w/${workspaceId}/s/${result.session.id}`);
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not adopt that session.'),
+  });
 
   // Land directly in a session when this workspace has none yet.
   const noSessions = Boolean(data) && sessions.length === 0;
@@ -223,7 +244,13 @@ export function WorkspacePage() {
           <Card>
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
               <h2 className="text-sm font-semibold text-ink">Sessions</h2>
-              <span className="text-[12px] text-subtle">{sessions.length}</span>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowCliSessions(true)}>
+                  <TerminalSquare className="size-4" aria-hidden />
+                  From the CLI
+                </Button>
+                <span className="text-[12px] text-subtle">{sessions.length}</span>
+              </div>
             </div>
 
             {sessions.length === 0 ? (
@@ -271,6 +298,32 @@ export function WorkspacePage() {
         name={workspace.name}
         description={workspace.description}
       />
+
+      <Modal
+        open={showCliSessions}
+        onOpenChange={setShowCliSessions}
+        title="Sessions from the Claude CLI"
+        description="Conversations the CLI holds for this directory — including ones started in a terminal. Adopting one binds it here, so resuming and steering work as usual."
+        size="lg"
+      >
+        {cliSessions.isLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner className="size-5" />
+          </div>
+        ) : cliSessions.isError ? (
+          <p className="py-4 text-[13px] text-muted">The CLI's session store could not be read.</p>
+        ) : (
+          <CliSessionList
+            sessions={cliSessions.data?.sessions ?? []}
+            adoptingId={adoptSession.isPending ? adoptSession.variables : null}
+            onAdopt={(claudeSessionId) => adoptSession.mutate(claudeSessionId)}
+            onOpen={(sessionId) => {
+              setShowCliSessions(false);
+              navigate(`/w/${workspaceId}/s/${sessionId}`);
+            }}
+          />
+        )}
+      </Modal>
     </AppShell>
   );
 }

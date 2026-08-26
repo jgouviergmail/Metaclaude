@@ -8,6 +8,7 @@
  */
 
 import { resolve } from 'node:path';
+import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 import type { Logger } from 'pino';
 import type { Config } from './config.js';
 import { migrate, openDatabase, type Db } from './db/index.js';
@@ -30,6 +31,7 @@ import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { CatalogueCache } from './services/claude-catalogue.js';
+import { ClaudeSessions } from './services/claude-sessions.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
@@ -50,6 +52,7 @@ export interface AppContext {
   claudeCredentials: ClaudeCredentials;
   plugins: PluginRegistry;
   claudeCatalogue: CatalogueCache;
+  claudeSessions: ClaudeSessions;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -250,6 +253,14 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     read: (workspacePath) => supervisor.catalogue(workspacePath),
   });
 
+  // The SDK reads the CLI's own transcript store in-process — no subprocess,
+  // so no cache. Injected so tests never touch the real store.
+  const claudeSessions = new ClaudeSessions({
+    list: (options) => listSessions(options),
+    workspaces: workspaceRepo,
+    sessions: sessionRepo,
+  });
+
   // Declared before the kernel because the kernel's completion hook feeds it.
   let schedulerRef: Scheduler | null = null;
 
@@ -305,6 +316,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeCredentials,
     plugins,
     claudeCatalogue,
+    claudeSessions,
     workspaceRepo,
     sessionRepo,
     runRepo,

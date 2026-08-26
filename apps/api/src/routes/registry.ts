@@ -321,6 +321,48 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     );
   });
 
+  /* ------------------------ The CLI's own sessions ------------------------ */
+
+  /**
+   * Sessions the CLI holds for a workspace's directory — including ones that
+   * never went through Metaclaude — and adoption, which binds one to a fresh
+   * Metaclaude session so resuming and steering work as for a native one.
+   *
+   * The service re-lists on adopt and refuses any id the CLI did not name for
+   * this directory; the route's only jobs are validation, the audit line, and
+   * translating the service's errors into HTTP.
+   */
+  app.get('/api/claude/sessions', async (request, reply) => {
+    requireOperator(request);
+    const query = z.object({ workspaceId: z.string().min(1) }).safeParse(request.query);
+    if (!query.success) throw new HttpError(400, 'workspaceId is required.');
+
+    return reply.send({
+      sessions: await context.claudeSessions.listForWorkspace(query.data.workspaceId),
+    });
+  });
+
+  app.post('/api/claude/sessions/adopt', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = z
+      .object({ workspaceId: z.string().min(1), claudeSessionId: z.string().min(1) })
+      .safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+
+    const session = await context.claudeSessions.adopt(
+      parsed.data.workspaceId,
+      parsed.data.claudeSessionId,
+    );
+    context.audit.record({
+      actor: actor.username,
+      action: 'session.adopt',
+      target: session.id,
+      ipAddress: requestIp(context, request),
+      detail: parsed.data.claudeSessionId,
+    });
+    return reply.status(201).send({ session });
+  });
+
   /* ------------------------------- Plugins ------------------------------- */
 
   /**

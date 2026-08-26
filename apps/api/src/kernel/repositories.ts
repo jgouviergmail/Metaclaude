@@ -329,6 +329,16 @@ export class SessionRepo {
       .run(claudeSessionId, Date.now(), id);
   }
 
+  /** claude_session_id → session id for one workspace: the adoption join. */
+  claudeSessionIndex(workspaceId: string): Map<string, string> {
+    const rows = this.db
+      .prepare<[string], { id: string; claude_session_id: string }>(
+        'SELECT id, claude_session_id FROM sessions WHERE workspace_id = ? AND claude_session_id IS NOT NULL',
+      )
+      .all(workspaceId);
+    return new Map(rows.map((row) => [row.claude_session_id, row.id]));
+  }
+
   setTitle(id: string, title: string): void {
     this.db
       .prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?')

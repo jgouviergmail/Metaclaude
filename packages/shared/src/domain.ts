@@ -993,6 +993,24 @@ export const ClaudeCatalogue = z.object({
 });
 export type ClaudeCatalogue = z.infer<typeof ClaudeCatalogue>;
 
+/**
+ * One session as the Claude CLI itself lists it — the CLI's own transcript
+ * store, not Metaclaude's session table. `adoptedBy` is the join between the
+ * two worlds: the Metaclaude session already bound to this CLI session, when
+ * one is, so the interface can offer "open" instead of a second adoption.
+ */
+export const ClaudeCliSession = z.object({
+  sessionId: z.string(),
+  summary: z.string(),
+  lastModified: Millis,
+  firstPrompt: z.string().nullable().default(null),
+  gitBranch: z.string().nullable().default(null),
+  cwd: z.string().nullable().default(null),
+  createdAt: Millis.nullable().default(null),
+  adoptedBy: z.string().nullable().default(null),
+});
+export type ClaudeCliSession = z.infer<typeof ClaudeCliSession>;
+
 export const AuditEntry = z.object({
   id: z.string(),
   at: Millis,

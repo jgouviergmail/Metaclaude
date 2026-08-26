@@ -29,6 +29,7 @@ import {
   type MemorySearchResult,
   type PolicyArm,
   type ClaudeCatalogue,
+  type ClaudeCliSession,
   type LoginResponse,
   type RewindResult,
   type Run,
@@ -276,6 +277,20 @@ export const api = {
    */
   claudeCatalogue: (params: { workspaceId?: string; refresh?: boolean } = {}) =>
     request<ClaudeCatalogue>(`/api/claude/catalogue${qs(params)}`),
+
+  /**
+   * The CLI's own transcript store for a workspace's directory — including
+   * sessions that never went through Metaclaude — and adoption, which binds
+   * one to a fresh Metaclaude session.
+   */
+  claudeCliSessions: (workspaceId: string) =>
+    request<{ sessions: ClaudeCliSession[] }>(`/api/claude/sessions${qs({ workspaceId })}`),
+
+  adoptCliSession: (workspaceId: string, claudeSessionId: string) =>
+    request<{ session: Session }>('/api/claude/sessions/adopt', {
+      method: 'POST',
+      body: { workspaceId, claudeSessionId },
+    }),
 
   /** Preview (`dryRun`) or perform the restore of a run's file changes. */
   rewindRun: (id: string, dryRun: boolean) =>

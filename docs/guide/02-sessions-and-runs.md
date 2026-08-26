@@ -40,6 +40,22 @@ the run is recorded as interrupted, never as a success.
 - **Follow up.** A new message resumes the same Claude session — same context,
   new run, honest accounting.
 
+## Sessions from the CLI
+
+The Claude CLI keeps its own record of every conversation held in a directory —
+including ones that never went through Metaclaude, such as a `claude` session
+run in a terminal on the same machine. On the workspace page, **From the CLI**
+lists them: title, last activity, git branch, and the first prompt.
+
+**Adopt** binds one to a fresh Metaclaude session. From then on it behaves like
+a native session — your next message resumes the same conversation with its
+context intact, and steering, permissions and accounting all apply. A session
+that is already adopted shows **Open** instead; adoption is one-to-one, so the
+same CLI conversation can never end up behind two doors.
+
+Only sessions the CLI itself lists for this workspace's directory are offered
+or accepted — an id from anywhere else is refused.
+
 ## Cost
 
 Each run shows its tokens and, where the CLI reports one, its cost. Analytics
