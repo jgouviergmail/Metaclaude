@@ -140,9 +140,15 @@ export function LoginPage() {
                   ref={totpRef}
                   value={totp}
                   onChange={(event) => setTotp(event.target.value.trim())}
-                  inputMode="numeric"
+                  // Not `numeric`: the hint above promises a recovery code
+                  // works here, and those are `XXXXX-XXXXX`. A numeric keypad
+                  // on a phone makes the one credential that exists for a lost
+                  // authenticator the hardest thing on the screen to type.
+                  inputMode="text"
                   autoComplete="one-time-code"
-                  placeholder="123456"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  placeholder="123456 or ABCDE-FGHJK"
                   required
                   className="mt-1.5 text-center font-mono text-lg tracking-[0.35em]"
                 />

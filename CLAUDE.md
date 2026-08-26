@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1100 tests, ~15s
+pnpm test:run                            # 1111 tests, ~15s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -56,6 +56,13 @@ restates the code is noise; one that records a decision or a trap is not.
   chains onto the wrong predecessor and reports tampering on an intact log.
 - **`Omit` does not distribute over a union.** `apps/api/src/kernel/repositories.ts`
   defines `DistributiveOmit` for transcript events; use it rather than `Omit`.
+- **A test that starts below the edge schema cannot see an edge-schema bug.**
+  `auth.test.ts` proved recovery codes worked — single use, case-insensitive,
+  the lot — by calling `auth.login()` directly. The route rejected them at
+  `LoginRequest.safeParse` long before that, so the feature was dead while its
+  tests were green. When a contract in `packages/shared` decides what may be
+  submitted, test the *contract* too; `packages/shared/src/domain.test.ts` is
+  where.
 - **`git config --local --list` is not what git obeys.** For a *specific* scope
   git defaults `--includes` to off, so an `include.path` directive hides keys
   from the listing that every other invocation honours — and `$GIT_DIR/config.worktree`

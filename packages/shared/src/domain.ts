@@ -122,9 +122,25 @@ export type User = z.infer<typeof User>;
 export const LoginRequest = z.object({
   username: z.string().min(1).max(64),
   password: z.string().min(1).max(1024),
+  /**
+   * The second factor: a TOTP code, or one of the recovery codes.
+   *
+   * Both shapes, because both are real. Recovery codes are issued as
+   * `XXXXX-XXXXX` and the sign-in form tells the operator in so many words that
+   * one works here — but this was `/^\d{6}$/`, so the route answered 400 before
+   * the code reached the verifier. Nothing recovered a lost TOTP device: the
+   * codes were generated, shown once, told to be kept somewhere safe, and were
+   * dead on arrival. The only way back in was editing SQLite on the box.
+   *
+   * Case-insensitive, because `consumeSecondFactor` upper-cases before
+   * comparing and a schema stricter than the check behind it rejects codes that
+   * would have worked. The alphabet is deliberately not spelled out here: this
+   * bounds the input, and the constant-time comparison against the stored codes
+   * is what decides.
+   */
   totp: z
     .string()
-    .regex(/^\d{6}$/)
+    .regex(/^(?:\d{6}|[A-Za-z0-9]{5}-[A-Za-z0-9]{5})$/, 'Enter a 6-digit code or a recovery code.')
     .optional(),
 });
 export type LoginRequest = z.infer<typeof LoginRequest>;
