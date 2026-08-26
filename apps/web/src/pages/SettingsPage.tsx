@@ -21,6 +21,7 @@ import { useState } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { TotpQr } from '@/components/auth/TotpQr';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
   Badge,
@@ -364,18 +365,15 @@ function TotpCard() {
       >
         {enrolling ? (
           <div className="space-y-4">
-            {/* No QR image: rendering one would need either a canvas library or
-                an external service, and the URI pastes into every app anyway. */}
-            <div>
-              <p className="mb-1.5 text-[13px] font-medium text-ink">Setup key</p>
-              <CopyableCode value={enrolling.secret} />
+            <div className="flex justify-center">
+              <TotpQr uri={enrolling.uri} />
             </div>
 
             <div>
               <p className="mb-1.5 text-[13px] font-medium text-ink">
-                Or paste this URI into your app
+                Can't scan? Enter this setup key instead
               </p>
-              <CopyableCode value={enrolling.uri} />
+              <CopyableCode value={enrolling.secret} />
             </div>
 
             <Label htmlFor="totp-code">
