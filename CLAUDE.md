@@ -142,6 +142,19 @@ restates the code is noise; one that records a decision or a trap is not.
   sit untouched in the volume. `relocateWorkspaces` runs at boot and re-points
   rows whose directory is named after their slug; anything else it reports and
   leaves alone, because there is nothing to derive the new location from.
+- **A `docker exec` healthcheck needs something to reap it.** Docker runs a
+  healthcheck through `docker exec`; a `CMD-SHELL` probe forks, and whatever
+  outlives its shell is reparented to PID 1 *inside* the container. Caddy is the
+  proxy image's PID 1 and does not reap — no reason it should, it never forks —
+  so every probe leaked one task. Nothing shows until the cgroup's pids ceiling
+  is hit, about five hours at a 5s interval; then `runc exec` cannot fork into a
+  full cgroup, fails with `procReady not received`, and the healthcheck can
+  never pass again. The container reads `unhealthy` forever *while serving
+  perfectly*, which is what makes it hard to see, and both `up --wait` and the
+  deploy health gate fail on a working site. Found in production at 3643 tasks
+  of a 3647 ceiling with one live process. `init: true` on the proxy; the app
+  image already ships tini. `check.sh` asserts every service with a healthcheck
+  has one or the other.
 - **A ratchet that greps text cannot tell code from prose.** Writing
   `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
   raw-palette ratchet. Say `bg-gray-<n>`.

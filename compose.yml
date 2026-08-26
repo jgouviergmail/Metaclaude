@@ -137,6 +137,35 @@ services:
     # the `profile` subdirective that mode needs is still experimental.
     image: caddy:2.11.4-alpine
     restart: unless-stopped
+
+    # A reaper as PID 1, and it is the healthcheck below that requires it.
+    #
+    # Caddy is this image's PID 1 and does not reap orphans — no reason it
+    # should; it never forks. But a `CMD-SHELL` healthcheck does: Docker runs it
+    # through `docker exec`, its shell forks `wget` and `grep`, and whatever
+    # outlives the shell is reparented to PID 1 inside the namespace. With
+    # nothing reaping, each probe leaves one task behind for good.
+    #
+    # At a 5s interval that is 720 an hour against a pids ceiling of ~3600, so
+    # the cgroup fills in about five hours. What happens then is not a crash —
+    # Caddy keeps serving perfectly, because it never forks. It is `runc exec`
+    # that can no longer fork the probe into a full cgroup, and it fails with
+    #
+    #     OCI runtime exec failed: unable to start container process:
+    #     procReady not received
+    #
+    # so the healthcheck can never pass again, `docker exec` into the container
+    # stops working, and the proxy is `unhealthy` forever on a deployment that
+    # is in fact serving. `up --wait` then fails, and so does the deploy script's
+    # health gate — on a healthy site.
+    #
+    # Found on a real deployment at 3643 tasks of a 3647 ceiling, with one live
+    # process. The same host proved the fix: `app` runs the same kind of probe
+    # 1700 times over 14 hours and sits flat at 18 tasks, because its image
+    # entrypoint is tini. This gives the proxy the same thing without rebuilding
+    # an image we do not own.
+    init: true
+
     depends_on:
       app:
         condition: service_healthy

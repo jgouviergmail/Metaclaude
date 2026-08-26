@@ -991,6 +991,70 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "A container probed through docker exec has something to reap the probe"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Docker runs a healthcheck through `docker exec`. A `CMD-SHELL` probe forks,
+# and whatever outlives its shell is reparented to PID 1 *inside* the container.
+# If PID 1 does not reap — and a server process has no reason to — every probe
+# leaks one task, for good.
+#
+# Nothing about that is visible until the cgroup's pids ceiling is reached: at a
+# 5s interval, about five hours. Then `runc exec` can no longer fork into the
+# full cgroup, fails with `procReady not received`, and the healthcheck can
+# never pass again. The container is `unhealthy` forever while serving
+# perfectly, `up --wait` fails, and the deploy script's health gate fails with
+# it. Found in production at 3643 tasks of a 3647 ceiling.
+#
+# So: a service with a healthcheck needs a reaper. `init: true` is one; an image
+# whose entrypoint is tini is the other, which is what the app image ships.
+if command -v python3 >/dev/null 2>&1; then
+  reaper_report="$(python3 - "$REPO_ROOT" <<'PY'
+import pathlib, re, sys, yaml
+
+root = pathlib.Path(sys.argv[1])
+compose = yaml.safe_load((root / "compose.yml").read_text(encoding="utf-8"))
+
+# An image built here counts as reaped only if its Dockerfile actually says so.
+def dockerfile_reaps(build):
+    if not isinstance(build, dict):
+        build = {"dockerfile": "Dockerfile", "context": build or "."}
+    path = root / build.get("context", ".") / build.get("dockerfile", "Dockerfile")
+    if not path.exists():
+        return False
+    return re.search(r"^ENTRYPOINT\s*\[[^]]*tini", path.read_text(encoding="utf-8"), re.M) is not None
+
+for name, service in (compose.get("services") or {}).items():
+    if "healthcheck" not in service:
+        continue
+    if service.get("init") is True:
+        print(f"ok {name} declares init: true")
+    elif "build" in service and dockerfile_reaps(service["build"]):
+        print(f"ok {name} runs tini as its image entrypoint")
+    else:
+        print(f"bad {name} is probed by docker exec with no reaper as PID 1 — "
+              f"every probe leaks a task and the cgroup fills in hours")
+PY
+)" || reaper_report="bad the reaper check did not run"
+
+  if [ -z "$reaper_report" ]; then
+    bad "checking for a reaper" "no service declares a healthcheck; the check found nothing to verify"
+  else
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      case "$line" in
+        ok\ *)  ok "${line#ok }" ;;
+        *)      bad "a healthcheck with nothing to reap it" "${line#bad }" ;;
+      esac
+    done <<EOF
+$reaper_report
+EOF
+  fi
+else
+  skip "reaper check" "python3 not available"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "Every log line the documentation says to grep for is one the code writes"
 # ─────────────────────────────────────────────────────────────────────────────
 

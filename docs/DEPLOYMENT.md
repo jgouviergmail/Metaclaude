@@ -564,6 +564,36 @@ logs none of these lines.
 
 ---
 
+## If the proxy reads `unhealthy` while the site works fine
+
+Look at the health log before anything else:
+
+```bash
+docker inspect metaclaude-proxy-1 \
+  --format '{{range .State.Health.Log}}[{{.ExitCode}}] {{println .Output}}{{end}}' | tail -5
+```
+
+An exit code of `-1` with `OCI runtime exec failed: … procReady not received`
+means Docker could not *start* the probe, which is a different failure from the
+probe failing. Check the container's task count:
+
+```bash
+CID=$(docker inspect metaclaude-proxy-1 --format '{{.Id}}')
+find /sys/fs/cgroup -name pids.current -path "*$CID*" -exec cat {} \;
+find /sys/fs/cgroup -name pids.max     -path "*$CID*" -exec cat {} \;
+```
+
+Sitting at the ceiling with one live process is the signature of probes leaking
+tasks: PID 1 in that container is not reaping them. `init: true` is the fix and
+is now set on the proxy — a deployment from before it needs `docker compose up
+-d proxy` to pick it up, and `deploy/check.sh` refuses a service that has a
+healthcheck and no reaper.
+
+Restarting clears the backlog and buys another few hours, so a restart that
+"fixes" it is a symptom, not a repair.
+
+---
+
 ## Two things to be clear-eyed about
 
 **The deploy account is in the `docker` group, and that group is
