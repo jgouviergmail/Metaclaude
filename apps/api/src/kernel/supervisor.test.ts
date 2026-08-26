@@ -71,6 +71,7 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
     mcpServers: {},
     agents: {},
     marketplaces: {},
+    triggeredBy: 'user',
     abortSignal: new AbortController().signal,
     ...overrides,
   };
@@ -334,7 +335,11 @@ function fakeQuery() {
   return { query, control };
 }
 
-function makeSupervisor(query: unknown, broker?: { request: () => Promise<unknown> }) {
+function makeSupervisor(
+  query: unknown,
+  broker?: { request: () => Promise<unknown> },
+  extra: { delegate?: () => Promise<never> } = {},
+) {
   return new AgentSupervisor({
     broker: () => (broker ?? { request: async () => ({ behavior: 'allow' }) }) as never,
     allowBypassPermissions: false,
@@ -344,6 +349,7 @@ function makeSupervisor(query: unknown, broker?: { request: () => Promise<unknow
     directoryPolicy: { workspacesDir: '/srv/metaclaude/workspaces', dataDir: '/var/lib/metaclaude' },
     log: () => {},
     query: query as never,
+    ...(extra.delegate ? { delegate: extra.delegate as never } : {}),
   });
 }
 
@@ -1423,6 +1429,44 @@ describe('buildOptions — ultracode', () => {
     // must stay byte-identical for every run that never asked.
     const supervisor = makeSupervisor(fakeQuery().query);
     expect(supervisor.buildOptions(makeRequest()).settings).toBeUndefined();
+  });
+});
+
+describe('buildOptions — the delegation tool', () => {
+  const delegate = async (): Promise<never> => {
+    throw new Error('not called in these tests');
+  };
+
+  it('offers the metaclaude server when delegation is wired', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude');
+  });
+
+  it('withholds it from a run that is itself a delegation — depth is one', () => {
+    // The kernel refuses chained delegation too; withholding the tool means
+    // the model never sees an affordance it would only be refused on.
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'delegation' }));
+
+    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude');
+  });
+
+  it('offers nothing when delegation is not wired at all', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude');
+  });
+
+  it('keeps the configured MCP servers beside it', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    const options = supervisor.buildOptions(
+      makeRequest({ mcpServers: { github: { command: 'npx' } } }),
+    );
+
+    expect(Object.keys(options.mcpServers ?? {}).sort()).toEqual(['github', 'metaclaude']);
   });
 });
 

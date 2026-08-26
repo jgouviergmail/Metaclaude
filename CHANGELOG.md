@@ -9,6 +9,21 @@ This file is part of the product surface: the in-app changelog renders from it,
 and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 "The system that documents itself").
 
+## [Unreleased]
+
+### Added
+
+- **The society of sessions.** The agent can delegate: from a session in one
+  workspace, ask another workspace to work on something and get its answer
+  back. The target runs with its own memory, skills, conventions and
+  permission mode — a project consulted through its own agent answers better
+  than its files read cold. Every delegation passes a permission prompt
+  naming the target and the exact ask, is a real recorded run in the
+  target's history and usage, and accumulates in a standing Delegations
+  session there. Depth is one by construction — a delegated run never sees
+  the tool and the kernel refuses it besides — so chains cannot loop and
+  every delegation traces back to a run a human started.
+
 ## [0.2.0] — 2026-08-26
 
 The system starts to know itself: what its subscription is spending, whether

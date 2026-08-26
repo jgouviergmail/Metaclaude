@@ -38,6 +38,20 @@ Every workspace gets a starter `CLAUDE.md`. It is read at the start of every
 session: build commands, conventions, things to avoid. It is yours — the
 system never rewrites it. The learned memory lives alongside, not inside.
 
+## Asking one workspace from another
+
+The agent can **delegate**: from a session in one workspace, ask another
+workspace to work on something and get its answer back — the target runs
+with its own memory, skills, conventions and permission mode, so a project
+consulted through its own agent answers better than its files read cold.
+
+Every delegation goes through a permission prompt naming the target and the
+exact ask, costs a full run there (visible in that workspace's history and
+usage), and lands in a standing *Delegations* session so context accumulates
+across asks. Depth is one by construction: a delegated run cannot delegate
+further, so chains cannot loop and every delegation traces back to a run a
+human started.
+
 ## Archiving and deleting
 
 Archiving hides a workspace without touching files. Deleting asks separately

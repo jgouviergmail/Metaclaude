@@ -14,7 +14,9 @@
  */
 
 import {
+  createSdkMcpServer,
   query as sdkQuery,
+  tool as sdkTool,
   type Options,
   type Query,
   type SDKMessage,
@@ -27,6 +29,7 @@ import type {
   ClaudeUsage,
   MarketplaceSource,
   RewindResult,
+  Run,
   RunPolicy,
   RunUsage,
   TranscriptEvent,
@@ -34,6 +37,7 @@ import type {
 } from '@metaclaude/shared';
 import { MAX_TOOL_RESULT_CHARS, newId } from '@metaclaude/shared';
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import type { PermissionBroker } from './permissions.js';
@@ -71,6 +75,8 @@ export interface RunRequest {
   agents: Record<string, { description: string; prompt: string; tools?: string[]; model?: string }>;
   /** Enabled plugin marketplaces, keyed by name — the extraKnownMarketplaces value. */
   marketplaces: Record<string, { source: MarketplaceSource }>;
+  /** What started this run — a delegated run must not delegate again. */
+  triggeredBy: Run['triggeredBy'];
   abortSignal: AbortSignal;
 }
 
@@ -114,6 +120,17 @@ export interface SupervisorDeps {
    * timeout reports, and whether a run can be steered entirely unverified.
    */
   query?: typeof sdkQuery;
+  /**
+   * Run a prompt in another workspace and wait for its answer — the kernel's
+   * `delegate`, handed in lazily like the broker (mutual construction). When
+   * absent, runs simply never see the delegation tool.
+   */
+  delegate?: (input: {
+    fromWorkspaceId: string;
+    fromTriggeredBy: Run['triggeredBy'];
+    target: string;
+    prompt: string;
+  }) => Promise<{ status: Run['status']; finalText: string; error: string | null }>;
 }
 
 /**
@@ -376,8 +393,19 @@ export class AgentSupervisor {
     }
     if (settings.checkpointing) options.enableFileCheckpointing = true;
 
-    if (Object.keys(request.mcpServers).length > 0) {
-      options.mcpServers = request.mcpServers as Options['mcpServers'];
+    // The delegation tool: an in-process MCP server, offered only to runs a
+    // human (or an automation) started — a delegated run never sees it, so
+    // the affordance matches the kernel's depth-one rule instead of dangling
+    // a tool that would only ever be refused.
+    const delegationServer: NonNullable<Options['mcpServers']> =
+      this.deps.delegate && request.triggeredBy !== 'delegation'
+        ? { metaclaude: this.buildDelegationServer(request) }
+        : {};
+    if (Object.keys(request.mcpServers).length > 0 || Object.keys(delegationServer).length > 0) {
+      options.mcpServers = {
+        ...(request.mcpServers as Options['mcpServers']),
+        ...delegationServer,
+      };
     }
     if (Object.keys(request.agents).length > 0) {
       options.agents = request.agents as Options['agents'];
@@ -840,6 +868,70 @@ export class AgentSupervisor {
       unavailable.push('session');
       return empty;
     }
+  }
+
+  /**
+   * The in-process MCP server carrying the delegation tool.
+   *
+   * The tool call itself still flows through `canUseTool` like any other, so
+   * the permission prompt shows exactly which workspace is being asked and
+   * what — a delegation is a full run of someone else's agent, and the
+   * human gets to say no to each one.
+   */
+  private buildDelegationServer(request: RunRequest): ReturnType<typeof createSdkMcpServer> {
+    return createSdkMcpServer({
+      name: 'metaclaude',
+      version: '1.0.0',
+      tools: [
+        sdkTool(
+          'delegate',
+          'Ask another workspace of this Metaclaude instance to work on something and return its answer. ' +
+            'The target runs with its own memory, skills, conventions and permission mode — use this to ' +
+            'consult a project through its own agent rather than reading its files cold. Costs a full run ' +
+            'there, and the answer can take minutes. The target cannot delegate further.',
+          {
+            workspace: z.string().describe("The target workspace's slug, exactly as listed."),
+            prompt: z
+              .string()
+              .describe('What to ask. Self-contained — the target does not see this conversation.'),
+          },
+          async (args) => {
+            try {
+              const result = await this.deps.delegate!({
+                fromWorkspaceId: request.workspace.id,
+                fromTriggeredBy: request.triggeredBy,
+                target: args.workspace,
+                prompt: args.prompt,
+              });
+              if (result.status !== 'succeeded') {
+                return {
+                  content: [
+                    {
+                      type: 'text',
+                      text: `The delegated run ${result.status}${result.error ? `: ${result.error}` : '.'}`,
+                    },
+                  ],
+                  isError: true,
+                };
+              }
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: result.finalText || 'The delegated run finished without a final message.',
+                  },
+                ],
+              };
+            } catch (error) {
+              return {
+                content: [{ type: 'text', text: (error as Error).message }],
+                isError: true,
+              };
+            }
+          },
+        ),
+      ],
+    });
   }
 
   /**

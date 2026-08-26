@@ -119,6 +119,9 @@ class RunCancelled extends Error {
   }
 }
 
+/** Outlasts the run timeout, so the timeout's own report arrives first. */
+const DELEGATION_TIMEOUT_MS = 50 * 60_000;
+
 export class Kernel {
   readonly broker: PermissionBroker;
 
@@ -145,6 +148,25 @@ export class Kernel {
    * interleave their transcripts.
    */
   private readonly reserved = new Set<string>();
+
+  /**
+   * Delegated runs waiting to be observed.
+   *
+   * The final text exists only on the `RunOutcome`, and a delegation's caller
+   * may register interest either before or after the run settles — the fake
+   * supervisor resolves in a microtask, and the real one can race a slow
+   * caller the same way. So completion stashes the result, the slot release
+   * marks it ready, and `waitForDelegation` consumes a ready stash or waits.
+   */
+  private readonly delegationWaiters = new Map<
+    string,
+    (result: { run: Run; finalText: string }) => void
+  >();
+  /** `ready` flips once the slot is released — the only point a waiter may resolve. */
+  private readonly delegationSettled = new Map<
+    string,
+    { run: Run; finalText: string; ready: boolean }
+  >();
 
   private shuttingDown = false;
 
@@ -218,6 +240,100 @@ export class Kernel {
       this.reserved.delete(session.id);
       throw error;
     }
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Delegation — the society of sessions                                    */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Run a prompt in *another* workspace on behalf of a running agent, and
+   * wait for the answer.
+   *
+   * The delegated run is a real run: recorded in the target workspace's
+   * history, counted in its usage, learned from like any other — and it runs
+   * with the *target's* context: its memory, skills, conventions and
+   * permission mode. That asymmetry is the point; a workspace consulted
+   * through its own agent answers better than its files read cold.
+   *
+   * Depth is one, structurally: a run triggered by delegation cannot
+   * delegate again, so every delegation chain is exactly two runs long and
+   * attributable to the human-started run at its root. A→B→A loops cannot
+   * form, and quota cannot burn in a circle with nobody watching.
+   */
+  async delegate(input: {
+    fromWorkspaceId: string;
+    fromTriggeredBy: Run['triggeredBy'];
+    /** The target workspace's slug (exact) — never an id, agents speak names. */
+    target: string;
+    prompt: string;
+  }): Promise<{ runId: string; sessionId: string; status: Run['status']; finalText: string; error: string | null }> {
+    if (input.fromTriggeredBy === 'delegation') {
+      throw new Error(
+        'A delegated run cannot delegate further — take the answer back and continue yourself.',
+      );
+    }
+
+    const target = this.deps.workspaces.list().find((workspace) => workspace.slug === input.target);
+    if (!target) {
+      throw new Error(`There is no workspace with the slug "${input.target}".`);
+    }
+    if (target.id === input.fromWorkspaceId) {
+      throw new Error('Delegation is for consulting a different workspace — this is your own.');
+    }
+
+    // One standing session per workspace accumulates delegation context, the
+    // same way a continuous automation does. Busy (a delegation already in
+    // flight there) means a parallel session rather than a refusal.
+    const sessions = this.deps.sessions.list(target.id, { includeArchived: false });
+    let session = sessions.find(
+      (candidate) => candidate.title === 'Delegations' && !this.hasActiveRunForSession(candidate.id),
+    );
+    session ??= this.deps.sessions.create({
+      workspaceId: target.id,
+      title: 'Delegations',
+      model: String(target.settings.defaultModel),
+      effort: target.settings.defaultEffort,
+      permissionMode: target.settings.defaultPermissionMode,
+    });
+
+    const run = await this.submit({
+      sessionId: session.id,
+      prompt: input.prompt,
+      triggeredBy: 'delegation',
+    });
+
+    const settled = await this.waitForDelegation(run.id, DELEGATION_TIMEOUT_MS);
+    return {
+      runId: settled.run.id,
+      sessionId: session.id,
+      status: settled.run.status,
+      finalText: settled.finalText,
+      error: settled.run.error,
+    };
+  }
+
+  /** Consume a ready stash, or wait for settleDelegation to hand one over. */
+  private waitForDelegation(
+    runId: string,
+    timeoutMs: number,
+  ): Promise<{ run: Run; finalText: string }> {
+    const stashed = this.delegationSettled.get(runId);
+    if (stashed?.ready) {
+      this.delegationSettled.delete(runId);
+      return Promise.resolve(stashed);
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.delegationWaiters.delete(runId);
+        reject(new Error('The delegated run did not finish in time.'));
+      }, timeoutMs);
+      timer.unref?.();
+      this.delegationWaiters.set(runId, (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      });
+    });
   }
 
   /**
@@ -358,6 +474,32 @@ export class Kernel {
     } finally {
       this.active.delete(run.id);
       this.broker.cancelRun(run.id);
+      // Only after the slot is truly released: a delegation resolved earlier
+      // would see its own just-finished run as "still active" and open a
+      // needless parallel session for the next sequential ask.
+      this.settleDelegation(run);
+    }
+  }
+
+  /** Resolve a delegation's waiter, or mark its stash consumable. */
+  private settleDelegation(run: Run): void {
+    if (run.triggeredBy !== 'delegation') return;
+
+    let settled = this.delegationSettled.get(run.id);
+    if (!settled) {
+      // runToCompletion threw before stashing — a failure path, but the
+      // waiter must still get an answer rather than a 50-minute timeout.
+      const current = this.deps.runs.get(run.id) ?? run;
+      settled = { run: current, finalText: '', ready: true };
+      this.delegationSettled.set(run.id, settled);
+    }
+    settled.ready = true;
+
+    const waiter = this.delegationWaiters.get(run.id);
+    if (waiter) {
+      this.delegationWaiters.delete(run.id);
+      this.delegationSettled.delete(run.id);
+      waiter(settled);
     }
   }
 
@@ -413,6 +555,7 @@ export class Kernel {
       mcpServers: runtime.mcpServers,
       agents: runtime.agents,
       marketplaces: runtime.marketplaces ?? {},
+      triggeredBy: run.triggeredBy,
       abortSignal: controller.signal,
     };
 
@@ -495,6 +638,18 @@ export class Kernel {
       // A listener must never be able to fail the run that just succeeded.
       this.deps.log('warn', 'onRunFinished listener threw', {
         message: (error as Error).message,
+      });
+    }
+
+    // Delegations only: stash the outcome — the final text exists nowhere
+    // else — but never resolve the waiter here. Resolution waits for the
+    // slot release in `execute`'s finally (see settleDelegation), or the
+    // next sequential delegation would find this run still "active".
+    if (finished.triggeredBy === 'delegation') {
+      this.delegationSettled.set(finished.id, {
+        run: finished,
+        finalText: outcome.finalText,
+        ready: false,
       });
     }
 

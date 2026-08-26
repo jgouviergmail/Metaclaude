@@ -264,6 +264,11 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     env: claudeEnv,
     directoryPolicy: { workspacesDir: config.workspacesDir, dataDir: config.dataDir },
     log: kernelLog,
+    // Same lazy shape as the broker, for the same mutual-construction reason.
+    delegate: (input) => {
+      if (!kernelRef) throw new Error('The kernel is not ready yet.');
+      return kernelRef.delegate(input);
+    },
   });
 
   // What the CLI itself offers, per workspace. Behind a short-lived cache

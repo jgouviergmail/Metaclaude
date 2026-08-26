@@ -336,7 +336,8 @@ export const Run = z.object({
   /** Composite reward computed by the learning subsystem, 0..1. */
   reward: z.number().min(0).max(1).nullable(),
   /** Whether this run was started by an automation rather than a human. */
-  triggeredBy: z.enum(['user', 'automation', 'loop', 'system']),
+  /** `delegation` marks a run another workspace's agent asked for. */
+  triggeredBy: z.enum(['user', 'automation', 'loop', 'system', 'delegation']),
   /**
    * The CLI's uuid for the user message that started this run.
    *

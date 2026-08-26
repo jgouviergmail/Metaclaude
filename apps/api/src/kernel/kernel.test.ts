@@ -526,3 +526,95 @@ describe('deriveTitle', () => {
     expect(deriveTitle('-   spaced item')).toBe('spaced item');
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Delegation — the society of sessions                                        */
+/* -------------------------------------------------------------------------- */
+
+describe('delegation', () => {
+  const makeTarget = (fx: Fixture, slug = 'docs') =>
+    fx.workspaces.create({
+      name: slug,
+      slug,
+      description: '',
+      path: `/tmp/metaclaude-${slug}`,
+      color: '#6366f1',
+      icon: 'folder',
+      settings: WorkspaceSettingsSchema.parse({}),
+    });
+
+  it('runs the prompt in the target workspace and returns its final answer', async () => {
+    const target = makeTarget(fixture);
+
+    const result = await fixture.kernel.delegate({
+      fromWorkspaceId: fixture.workspace.id,
+      fromTriggeredBy: 'user',
+      target: 'docs',
+      prompt: 'summarise the readme',
+    });
+
+    expect(result.status).toBe('succeeded');
+    expect(result.finalText).toBe('done');
+    // A real, recorded run in the target workspace — visible in its history,
+    // counted in its usage, learned from like any other.
+    const run = fixture.runs.get(result.runId);
+    expect(run?.workspaceId).toBe(target.id);
+    expect(run?.triggeredBy).toBe('delegation');
+  });
+
+  it('reuses one Delegations session, so context accumulates across asks', async () => {
+    makeTarget(fixture);
+
+    const first = await fixture.kernel.delegate({
+      fromWorkspaceId: fixture.workspace.id,
+      fromTriggeredBy: 'user',
+      target: 'docs',
+      prompt: 'first question',
+    });
+    const second = await fixture.kernel.delegate({
+      fromWorkspaceId: fixture.workspace.id,
+      fromTriggeredBy: 'user',
+      target: 'docs',
+      prompt: 'second question',
+    });
+
+    expect(second.sessionId).toBe(first.sessionId);
+  });
+
+  it('refuses delegation to the workspace the run is already in', async () => {
+    await expect(
+      fixture.kernel.delegate({
+        fromWorkspaceId: fixture.workspace.id,
+        fromTriggeredBy: 'user',
+        target: 'test',
+        prompt: 'ask yourself',
+      }),
+    ).rejects.toThrow(/different workspace/i);
+  });
+
+  it('refuses an unknown workspace by name', async () => {
+    await expect(
+      fixture.kernel.delegate({
+        fromWorkspaceId: fixture.workspace.id,
+        fromTriggeredBy: 'user',
+        target: 'nowhere',
+        prompt: 'hello?',
+      }),
+    ).rejects.toThrow(/no workspace/i);
+  });
+
+  it('refuses a delegated run delegating again — depth is one, so no loops', async () => {
+    // A→B→A would burn quota in a circle with nobody watching. One hop keeps
+    // every delegation attributable to a human-started run.
+    makeTarget(fixture);
+
+    await expect(
+      fixture.kernel.delegate({
+        fromWorkspaceId: fixture.workspace.id,
+        fromTriggeredBy: 'delegation',
+        target: 'docs',
+        prompt: 'and now you ask someone else',
+      }),
+    ).rejects.toThrow(/cannot delegate/i);
+  });
+});
