@@ -634,6 +634,83 @@ describe('TOTP enrolment and second-factor login', () => {
     expect(auth.remainingRecoveryCodes(user.id)).toBe(8);
   }, 30_000);
 
+  it('survives a clock that jumped forward and was then corrected', async () => {
+    // `totp_last_step` is a wall-clock counter, and `matchTotpCounter` can only
+    // ever return `floor(now/period) + 1` at most. So a login accepted while
+    // the host's clock was two hours fast writes a step 240 periods into the
+    // future, and once chrony steps the clock back *every* code is at or below
+    // it — the account is locked out for the whole skew, with no way back
+    // through the product.
+    //
+    // A stored step beyond what this clock can reach is therefore evidence of a
+    // clock change, not of a replay, and is ignored rather than obeyed.
+    unlock();
+    const now = Date.now();
+    db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(
+      Math.floor((now + 2 * 3_600_000) / 30_000),
+      user.id,
+    );
+
+    const outcome = await auth.login({
+      username: 'jules',
+      password: PASSWORD,
+      totp: totpCode(secret, now),
+    });
+    expect(outcome.status).toBe('ok');
+    if (outcome.status === 'ok') auth.revokeSession(outcome.sessionId);
+    unlock();
+  }, 30_000);
+
+  it('forgets the consumed counter when 2FA is turned off', async () => {
+    // Otherwise a fresh enrolment — a new secret, new recovery codes — inherits
+    // the old counter and the first code the authenticator shows is refused.
+    unlock();
+    const now = Date.now();
+    const first = await auth.login({
+      username: 'jules',
+      password: PASSWORD,
+      totp: totpCode(secret, now),
+    });
+    expect(first.status).toBe('ok');
+    if (first.status === 'ok') auth.revokeSession(first.sessionId);
+
+    expect(await auth.disableTotp(user.id, PASSWORD)).toBe(true);
+    const step = db
+      .prepare<[string], { totp_last_step: number | null }>(
+        'SELECT totp_last_step FROM users WHERE id = ?',
+      )
+      .get(user.id)!.totp_last_step;
+    expect(step).toBeNull();
+
+    // Put the original enrolment back for the cases that follow.
+    const again = await auth.beginTotpEnrolment(user.id, PASSWORD);
+    secret = again!.secret;
+    const confirmed = auth.confirmTotpEnrolment(user.id, totpCode(secret, Date.now()));
+    expect(confirmed).not.toBeNull();
+    recoveryCodes = confirmed!.recoveryCodes;
+    unlock();
+  }, 30_000);
+
+  it('burns the code that confirmed the enrolment', async () => {
+    // `confirmTotpEnrolment` accepted a code and wrote no counter, so the very
+    // first code an operator types — into the enrolment screen, in front of
+    // whoever is watching — stayed valid for a login for the rest of its
+    // window. The property the migration comment claims is "strictly
+    // single-use", and this was the one code it did not cover.
+    unlock();
+    const fresh = await auth.beginTotpEnrolment(user.id, PASSWORD);
+    const enrolCode = totpCode(fresh!.secret, Date.now());
+    const confirmed = auth.confirmTotpEnrolment(user.id, enrolCode);
+    expect(confirmed).not.toBeNull();
+
+    secret = fresh!.secret;
+    recoveryCodes = confirmed!.recoveryCodes;
+
+    const replay = await auth.login({ username: 'jules', password: PASSWORD, totp: enrolCode });
+    expect(replay).toEqual({ status: 'invalid' });
+    unlock();
+  }, 30_000);
+
   it('disableTotp requires the password and clears the secret and codes', async () => {
     unlock();
     await expect(auth.disableTotp(user.id, 'wrong-password-entirely')).resolves.toBe(false);

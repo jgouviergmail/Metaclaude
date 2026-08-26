@@ -18,9 +18,8 @@
  * fields; a row that projected today's ten columns would discard both.
  */
 
-import { existsSync } from 'node:fs';
 import { cp, lstat, mkdir, readlink, realpath, rm } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { newId, type PluginRecord, type PluginSkill } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { isInside } from '../security/paths.js';
@@ -287,18 +286,21 @@ export class PluginRegistry {
     }
 
     // A plugin's state lives at `<name>.data`, beside its code — and the name
-    // grammar permits periods, so `acme.data` claims the directory holding
-    // plugin `acme`'s state. Installing it would `rm -rf` that state, and
-    // `refresh()` would then hand `acme` a PLUGIN_DATA pointing at the other
-    // plugin's *code*. The uniqueness check above cannot see it: the two names
-    // differ, only the paths collide.
+    // grammar permits periods, so a plugin *named* `acme.data` would claim the
+    // directory holding plugin `acme`'s state. Installing it would `rm -rf`
+    // that state, and `refresh()` would then hand `acme` a PLUGIN_DATA pointing
+    // at the other plugin's *code*. The uniqueness check above cannot see it:
+    // the two names differ, only the paths collide.
     //
-    // Far more likely to be an unlucky name than an attack — installing is
-    // owner-only, from a directory already on the server — but the failure is
-    // silent data loss either way.
-    if (root.endsWith('.data') || existsSync(this.dataFor(probe.name))) {
+    // The test is on the *name*, and only on the name. Asking instead whether
+    // `<name>.data` already exists rejects a plugin's own state directory —
+    // and `remove()` keeps that deliberately, so every plugin became
+    // single-use, refused on reinstall with a 409 naming a conflict that does
+    // not exist. This is sufficient regardless of install order: `acme.data`
+    // is refused on its own account, so it never exists to collide with.
+    if (basename(root).endsWith('.data')) {
       throw new PluginError(
-        `"${probe.name}" collides with another plugin's data directory. Rename it.`,
+        `A plugin name may not end in ".data" — that suffix is reserved for plugin state.`,
         409,
       );
     }

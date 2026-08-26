@@ -153,17 +153,24 @@ jobs:
           SHA: ${{ steps.image.outputs.sha }}
         run: |
           set -euo pipefail
-          conclusions="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs"             --jq '[.check_runs[] | select(.name == "CI") | .conclusion] | join(",")')"
-          case ",$conclusions," in
-            *,success,*)
-              echo "CI passed for $SHA" ;;
-            *)
-              echo "::error::CI did not pass for $SHA (CI check runs: ${conclusions:-none})"
-              echo "The image exists because ci.yml pushes it once the unit suite is green,"
-              echo "before the deployed-stack checks report. Deploying it anyway would ship"
-              echo "a commit CI marked red."
-              exit 1 ;;
-          esac
+          # The *latest* run, not the set. This endpoint returns every check run
+          # ever attached to the SHA, and `cancel-in-progress: false` on main
+          # means a re-run adds one rather than replacing it — so asking "does
+          # success appear anywhere" would pass a commit whose CI was re-run and
+          # went red. `// "pending"` covers an empty list and a run still in
+          # flight alike, and both are refused.
+          conclusion="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" --jq '
+            [.check_runs[] | select(.name == "CI")]
+            | sort_by(.started_at) | last | .conclusion // "pending"')"
+          if [ "$conclusion" = success ]; then
+            echo "CI passed for $SHA"
+          else
+            echo "::error::CI did not pass for $SHA (latest CI check run: $conclusion)"
+            echo "The image exists because ci.yml pushes it once the unit suite is green,"
+            echo "before the deployed-stack checks report. Deploying it anyway would ship"
+            echo "a commit CI marked red."
+            exit 1
+          fi
 
       # Pinned from a secret rather than disabled. `StrictHostKeyChecking=no`
       # would make this workflow deploy to whatever answers on that IP, which

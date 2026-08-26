@@ -51,6 +51,17 @@ export function generateTotpSecret(): string {
   return base32Encode(randomBytes(20));
 }
 
+/**
+ * RFC 6238 defaults, named because two modules reason about them.
+ *
+ * `AuthService` needs the same period and window to decide whether a stored
+ * counter is one this clock could have produced; with the numbers written as
+ * literals in both files, changing one here would silently make that check
+ * wrong rather than fail to compile.
+ */
+export const TOTP_PERIOD_SECONDS = 30;
+export const TOTP_WINDOW = 1;
+
 export interface TotpOptions {
   digits?: number;
   periodSeconds?: number;
@@ -60,7 +71,7 @@ export interface TotpOptions {
 /** Compute the TOTP code for a given time. Exported for testing determinism. */
 export function totpCode(secret: string, atMs: number, options: TotpOptions = {}): string {
   const digits = options.digits ?? 6;
-  const period = options.periodSeconds ?? 30;
+  const period = options.periodSeconds ?? TOTP_PERIOD_SECONDS;
   const algorithm = options.algorithm ?? 'sha1';
 
   const counter = Math.floor(atMs / 1000 / period);
@@ -113,9 +124,9 @@ export function matchTotpCounter(
   const trimmed = code.trim();
   if (!new RegExp(`^\\d{${digits}}$`).test(trimmed)) return null;
 
-  const window = options.window ?? 1;
+  const window = options.window ?? TOTP_WINDOW;
   const now = options.atMs ?? Date.now();
-  const period = options.periodSeconds ?? 30;
+  const period = options.periodSeconds ?? TOTP_PERIOD_SECONDS;
   const provided = Buffer.from(trimmed, 'utf8');
 
   let matched: number | null = null;
@@ -150,7 +161,7 @@ export function totpUri(params: {
     issuer,
     algorithm: 'SHA1',
     digits: String(params.digits ?? 6),
-    period: String(params.periodSeconds ?? 30),
+    period: String(params.periodSeconds ?? TOTP_PERIOD_SECONDS),
   });
   return `otpauth://totp/${label}?${query.toString()}`;
 }

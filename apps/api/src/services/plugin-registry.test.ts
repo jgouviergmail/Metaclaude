@@ -255,8 +255,31 @@ describe('name collisions with the data directory', () => {
     await mkdir(dirname(marker), { recursive: true });
     await writeFile(marker, '{"kept":true}', 'utf8');
 
-    await expect(registry.install(await build('acme.data', {}))).rejects.toThrow(/collides/);
+    await expect(registry.install(await build('acme.data', {}))).rejects.toThrow(/reserved for plugin state/);
     expect(existsSync(marker)).toBe(true);
+  });
+
+  it('lets a removed plugin be reinstalled, state and all', async () => {
+    // `remove()` deletes the code and deliberately keeps `<name>.data` — its
+    // own comment says "reinstalling the same plugin is the common next
+    // action", and `install()` tells the operator to remove first in order to
+    // replace. A collision check that looked for `<name>.data` therefore fired
+    // on the plugin's *own* state directory and made every plugin single-use,
+    // with a 409 naming a conflict that does not exist and no way out short of
+    // deleting the directory by hand on the server.
+    const first = await registry.install(await build('acme', {}));
+    const state = join(pluginsDir, 'acme.data', 'state.json');
+    await mkdir(dirname(state), { recursive: true });
+    await writeFile(state, '{"kept":true}', 'utf8');
+
+    expect(await registry.remove(first.id)).toBe(true);
+    expect(existsSync(join(pluginsDir, 'acme'))).toBe(false);
+    expect(existsSync(state)).toBe(true);
+
+    const again = await registry.install(await build('acme', { version: '2.0.0' }));
+    expect(again.version).toBe('2.0.0');
+    // The point of keeping the directory: an update must not lose the state.
+    expect(await readFile(state, 'utf8')).toBe('{"kept":true}');
   });
 
   it('still allows an ordinary name containing a period', async () => {

@@ -173,7 +173,7 @@ cat <<DONE
 
   Then either push a version tag to deploy through CI, or start it by hand:
 
-    sudo -u $DEPLOY_USER docker compose --project-directory $APP_DIR \
+    sudo -u $DEPLOY_USER docker compose --project-directory $APP_DIR \\
       --env-file $APP_DIR/.env --env-file $APP_DIR/releases/.env.image up -d
 
   Both env files, in that order — the second is where a CI deploy records the

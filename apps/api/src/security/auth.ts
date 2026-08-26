@@ -28,6 +28,8 @@ import {
   generateRecoveryCodes,
   generateTotpSecret,
   matchTotpCounter,
+  TOTP_PERIOD_SECONDS,
+  TOTP_WINDOW,
   totpUri,
   verifyTotp,
 } from './totp.js';
@@ -279,7 +281,18 @@ export class AuthService {
       // always been strictly single-use.
       const step = matchTotpCounter(row.totp_secret, code);
       if (step !== null) {
-        if (row.totp_last_step !== null && step <= row.totp_last_step) return false;
+        // A stored step this clock cannot reach is evidence of a clock change,
+        // not of a replay, so it is ignored rather than obeyed. Without this, a
+        // login accepted while the host's clock ran fast — a wrong RTC, a
+        // restored snapshot, the hours before chrony steps it back — wrote a
+        // counter far in the future and locked the account out for the whole
+        // skew, with no route back through the product. `matchTotpCounter`
+        // never returns more than `floor(now/period) + window`, so anything
+        // above that came from a different clock.
+        const reachable = Math.floor(Date.now() / (TOTP_PERIOD_SECONDS * 1000)) + TOTP_WINDOW;
+        const consumed =
+          row.totp_last_step !== null && row.totp_last_step <= reachable ? row.totp_last_step : null;
+        if (consumed !== null && step <= consumed) return false;
         this.db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, row.id);
         return true;
       }
@@ -482,17 +495,22 @@ export class AuthService {
   confirmTotpEnrolment(userId: string, code: string): { recoveryCodes: string[] } | null {
     const row = this.db.prepare<[string], UserRow>('SELECT * FROM users WHERE id = ?').get(userId);
     if (!row?.totp_pending_secret) return null;
-    if (!verifyTotp(row.totp_pending_secret, code)) return null;
+    // The matched counter, not just "did it match": this code has now been
+    // used, and it is typed into an enrolment screen in front of whoever is
+    // watching. Leaving the counter unset let it be replayed into a login for
+    // the rest of its window — the one code the single-use rule did not cover.
+    const step = matchTotpCounter(row.totp_pending_secret, code);
+    if (step === null) return null;
 
     const recoveryCodes = generateRecoveryCodes();
     this.db
       .prepare(
         `UPDATE users SET
            totp_secret = totp_pending_secret, totp_pending_secret = NULL,
-           totp_enabled = 1, recovery_codes = ?, updated_at = ?
+           totp_enabled = 1, recovery_codes = ?, totp_last_step = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .run(JSON.stringify(recoveryCodes), Date.now(), userId);
+      .run(JSON.stringify(recoveryCodes), step, Date.now(), userId);
 
     return { recoveryCodes };
   }
@@ -512,9 +530,13 @@ export class AuthService {
 
     this.db
       .prepare(
+        // `totp_last_step` goes with the secret it counted. Left behind, the
+        // next enrolment — a brand-new secret, new recovery codes — inherits
+        // it, and the first code the authenticator shows is refused as a
+        // replay of a code from a factor that no longer exists.
         `UPDATE users SET
            totp_enabled = 0, totp_secret = NULL, totp_pending_secret = NULL,
-           recovery_codes = '[]', updated_at = ?
+           recovery_codes = '[]', totp_last_step = NULL, updated_at = ?
          WHERE id = ?`,
       )
       .run(Date.now(), userId);

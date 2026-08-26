@@ -24,7 +24,7 @@ import { toast } from 'sonner';
 import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
 import { useAuthStore } from '@/lib/store';
@@ -152,7 +152,21 @@ export function DashboardPage() {
                       <Button
                         variant="ghost"
                         size="xs"
-                        onClick={() => void decideApproval(approval.id, false)}
+                        // Not `void`: `decideApproval` awaits the HTTP fallback
+                        // and throws on any non-2xx, so an unhandled rejection
+                        // would leave the operator with a tap that did nothing
+                        // and no way to know. The card in the session view
+                        // reports failure by re-enabling its buttons; this row
+                        // has none to re-enable, so it says so.
+                        onClick={() => {
+                          decideApproval(approval.id, false).catch((error: unknown) => {
+                            toast.error(
+                              error instanceof ApiError
+                                ? error.message
+                                : 'Could not send that decision.',
+                            );
+                          });
+                        }}
                       >
                         Deny
                       </Button>
