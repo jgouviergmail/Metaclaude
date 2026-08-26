@@ -13,6 +13,14 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **The doctor.** One button under Settings → System runs every self-check
+  the system knows how to make — database integrity, the audit chain, the
+  secrets vault, disk space on both volumes, the Claude CLI and its
+  credential, and any automation the failure guard has switched off — each
+  answering with a verdict and its evidence. Read-only by design: guarded
+  autonomy starts with self-knowledge that changes nothing, and acting on a
+  finding stays a human decision. A probe that itself breaks fails its own
+  check rather than the examination.
 - **The quota, on screen.** Analytics now shows the subscription's own
   windows as the CLI reports them — the five-hour session window, the weekly
   windows, per-model buckets — each with utilisation, tone escalating toward

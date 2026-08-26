@@ -22,6 +22,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { TotpQr } from '@/components/auth/TotpQr';
+import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
   Badge,
@@ -92,8 +93,9 @@ export function SettingsPage() {
               <AppearanceCard />
             </Tabs.Content>
 
-            <Tabs.Content value="system">
+            <Tabs.Content value="system" className="space-y-4">
               <SystemCard />
+              {user?.role === 'owner' ? <DoctorCard /> : null}
             </Tabs.Content>
 
             {user?.role === 'owner' ? (
@@ -638,6 +640,47 @@ function PreferenceToggle({
 /* -------------------------------------------------------------------------- */
 /* System                                                                      */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * On demand rather than on mount: a full examination probes the CLI binary
+ * and walks the audit chain, and running that on every tab visit would be
+ * noise. The button is the request.
+ */
+function DoctorCard() {
+  const doctorQuery = useQuery({
+    queryKey: ['doctor'],
+    queryFn: () => api.doctor(),
+    enabled: false,
+  });
+
+  return (
+    <Card>
+      <CardHeader
+        title="Doctor"
+        description="Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations."
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={doctorQuery.isFetching}
+            onClick={() => void doctorQuery.refetch()}
+          >
+            Run checks
+          </Button>
+        }
+      />
+      <div className="px-4 pb-4">
+        {doctorQuery.data ? (
+          <DoctorReportView report={doctorQuery.data} />
+        ) : doctorQuery.isError ? (
+          <p className="text-[12.5px] text-muted">The examination could not run.</p>
+        ) : (
+          <p className="text-[12.5px] text-subtle">Not run yet.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 function SystemCard() {
   const { data, isLoading } = useQuery({

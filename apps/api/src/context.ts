@@ -7,7 +7,10 @@
  * instance for tests.
  */
 
+import { execFile } from 'node:child_process';
+import { statfs } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudeUsage } from '@metaclaude/shared';
 import type { Logger } from 'pino';
@@ -33,6 +36,7 @@ import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
+import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
@@ -57,6 +61,7 @@ export interface AppContext {
   claudeUsage: TtlCache<ClaudeUsage>;
   claudeSessions: ClaudeSessions;
   marketplaces: MarketplacesService;
+  doctor: Doctor;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -114,6 +119,8 @@ export function buildClaudeEnv(config: Config): Record<string, string> {
 
   return env;
 }
+
+const execFileAsync = promisify(execFile);
 
 export async function createAppContext(config: Config, log: Logger): Promise<AppContext> {
   const db = openDatabase({ path: config.databasePath });
@@ -336,6 +343,33 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
 
   schedulerRef = scheduler;
 
+  // Read-only self-diagnosis. Probes are bound here so the doctor itself
+  // stays testable against fakes; on demand only, so no caching.
+  const doctor = new Doctor({
+    db,
+    audit,
+    vault,
+    dataDir: config.dataDir,
+    workspacesDir: config.workspacesDir,
+    diskFree: async (path) => {
+      const stats = await statfs(path);
+      return Number(stats.bavail) * Number(stats.bsize);
+    },
+    cliVersion: async () => {
+      try {
+        const { stdout } = await execFileAsync(config.claude.binPath ?? 'claude', ['--version'], {
+          timeout: 10_000,
+        });
+        return stdout.trim().split('\n')[0] ?? null;
+      } catch {
+        return null;
+      }
+    },
+    credentialMode: () => claudeCredentials.status().mode,
+    activeRuns: () => kernel.activeCount,
+    queuedRuns: () => kernel.queuedCount,
+  });
+
   const context: AppContext = {
     config,
     log,
@@ -350,6 +384,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeUsage,
     claudeSessions,
     marketplaces,
+    doctor,
     workspaceRepo,
     sessionRepo,
     runRepo,

@@ -31,6 +31,7 @@ import {
   type ClaudeCatalogue,
   type ClaudeCliSession,
   type ClaudeUsage,
+  type DoctorReport,
   type Marketplace,
   type MarketplaceCatalogue,
   type MarketplaceInput,
@@ -285,6 +286,9 @@ export const api = {
   /** The subscription's quota windows, as the CLI itself reports them. */
   claudeUsage: (params: { workspaceId?: string; refresh?: boolean } = {}) =>
     request<ClaudeUsage>(`/api/claude/usage${qs(params)}`),
+
+  /** Every self-check the system knows how to run, in one report. Owner-only. */
+  doctor: () => request<DoctorReport>('/api/system/doctor'),
 
   /**
    * The CLI's own transcript store for a workspace's directory — including

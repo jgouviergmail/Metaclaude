@@ -1034,6 +1034,30 @@ export const ClaudeUsageBehaviorWindow = z.object({
 });
 export type ClaudeUsageBehaviorWindow = z.infer<typeof ClaudeUsageBehaviorWindow>;
 
+/**
+ * The doctor — the system examining itself, read-only.
+ *
+ * Every check is named, has one of three statuses, and speaks in sentences.
+ * The report's own status is the worst of its checks, so a screen (or an
+ * agent) can act on one field and drill into the rest.
+ */
+export const DoctorCheck = z.object({
+  name: z.string(),
+  status: z.enum(['ok', 'warn', 'fail']),
+  summary: z.string(),
+  /** Supporting evidence — the broken entry id, the failing slots, the path. */
+  detail: z.string().nullable().default(null),
+});
+export type DoctorCheck = z.infer<typeof DoctorCheck>;
+
+export const DoctorReport = z.object({
+  status: z.enum(['ok', 'warn', 'fail']),
+  checks: z.array(DoctorCheck),
+  version: z.string(),
+  ranAt: Millis,
+});
+export type DoctorReport = z.infer<typeof DoctorReport>;
+
 export const ClaudeUsage = z.object({
   /** 'pro', 'max', … — null for API-key or third-party-provider sessions. */
   subscriptionType: z.string().nullable(),

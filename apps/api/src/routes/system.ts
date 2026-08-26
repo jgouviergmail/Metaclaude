@@ -162,4 +162,14 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
     requireOwner(request);
     return reply.send(context.audit.verifyChain());
   });
+
+  /**
+   * The doctor — every self-check the system knows how to run, in one
+   * read-only report. Owner-only like the audit verification beside it: the
+   * findings name paths, versions and failing secret slots.
+   */
+  app.get('/api/system/doctor', async (request, reply) => {
+    requireOwner(request);
+    return reply.send(await context.doctor.run());
+  });
 }

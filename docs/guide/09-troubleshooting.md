@@ -4,6 +4,15 @@ The failures people actually hit, and what each one means. The operator-side
 diagnostics — container logs, boot self-checks, the external verifier — are in
 the repository's deployment guide; this page is the view from the interface.
 
+## Start with the doctor
+
+Before hunting a specific symptom, **Settings → System → Doctor → Run checks**
+(owner only). It runs every self-check the system knows — database integrity,
+the audit chain, the secrets vault, disk space on both volumes, the Claude CLI
+and its credential, and any automation the failure guard switched off — and
+answers with a verdict per check plus the evidence. It reads and reports;
+nothing is changed.
+
 ## "A run is stuck on Working"
 
 First, check for an open permission prompt — a run waiting for your approval
