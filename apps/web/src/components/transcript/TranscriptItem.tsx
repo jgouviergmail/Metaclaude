@@ -13,6 +13,7 @@ import {
   ChevronRight,
   CircleDot,
   Coins,
+  History,
   Info,
   ListChecks,
   ThumbsDown,
@@ -280,10 +281,15 @@ export const ResultFooter = memo(function ResultFooter({
   event,
   rating,
   onRate,
+  canRewind,
+  onRewind,
 }: {
   event: Extract<TranscriptEvent, { kind: 'result' }>;
   rating: number | null;
   onRate: (value: number) => void;
+  /** False when the run recorded no checkpoint anchor; the control is hidden. */
+  canRewind: boolean;
+  onRewind: () => void;
 }) {
   const failed = event.status === 'failed';
   const interrupted = event.status === 'interrupted';
@@ -346,6 +352,21 @@ export const ResultFooter = memo(function ResultFooter({
         {/* Rating is the strongest signal the learner receives, so it sits
             directly under every result rather than behind a menu. */}
         <div className="ml-auto flex items-center gap-1">
+          {/* Undo sits with the rating rather than in a menu: the moment an
+              operator wants it is the moment they finish reading the result,
+              and it is the one action here that is time-sensitive. */}
+          {canRewind ? (
+            <Tooltip content="Restore the files this run changed">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Rewind the files this run changed"
+                onClick={onRewind}
+              >
+                <History className="size-3.5" />
+              </Button>
+            </Tooltip>
+          ) : null}
           <span className="mr-1 hidden sm:inline">Was this useful?</span>
           <Tooltip content="Good — reinforce this approach">
             <Button
@@ -385,10 +406,14 @@ export function TranscriptItem({
   event,
   rating,
   onRate,
+  canRewind,
+  onRewind,
 }: {
   event: TranscriptEvent;
   rating: number | null;
   onRate: (runId: string, value: number) => void;
+  canRewind: boolean;
+  onRewind: (runId: string) => void;
 }) {
   const expandTools = useUiStore((state) => state.expandTools);
 
@@ -415,6 +440,8 @@ export function TranscriptItem({
           event={event}
           rating={rating}
           onRate={(value) => onRate(event.runId, value)}
+          canRewind={canRewind}
+          onRewind={() => onRewind(event.runId)}
         />
       );
     default:

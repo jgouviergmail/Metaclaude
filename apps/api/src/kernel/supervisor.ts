@@ -22,6 +22,7 @@ import {
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
+  RewindResult,
   RunPolicy,
   RunUsage,
   TranscriptEvent,
@@ -72,6 +73,14 @@ export interface RunOutcome {
   /** The assistant's final message, used for reflexion and previews. */
   finalText: string;
   claudeSessionId: string | null;
+  /**
+   * The CLI's uuid for the user message that opened this run, or null.
+   *
+   * The anchor a rewind restores to. It exists only on the wire — the CLI
+   * acknowledges the prompt with it and never mentions it again — so a run that
+   * does not capture it here can never be rewound, whatever its checkpoints say.
+   */
+  rewindPoint: string | null;
 }
 
 export interface SupervisorDeps {
@@ -458,6 +467,7 @@ export class AgentSupervisor {
 
     const state = new StreamState(request, callbacks);
     let claudeSessionId: string | null = null;
+    let rewindPoint: string | null = null;
     let usage: RunUsage = { ...EMPTY_USAGE };
     let error: string | null = null;
     let status: RunOutcome['status'] = 'succeeded';
@@ -483,6 +493,11 @@ export class AgentSupervisor {
           claudeSessionId = captured.claudeSessionId;
           callbacks.onClaudeSessionId(captured.claudeSessionId);
         }
+        // First acknowledgement only. A run is steerable, so the operator can
+        // type a follow-up into it and the CLI acknowledges that too; letting
+        // the anchor move forward would silently shrink what "undo this run"
+        // restores to whatever happened after the last thing they said.
+        if (captured.rewindPoint && rewindPoint === null) rewindPoint = captured.rewindPoint;
         if (captured.usage) usage = captured.usage;
         if (captured.error) {
           error = captured.error;
@@ -517,7 +532,109 @@ export class AgentSupervisor {
     // The SDK reports API duration; wall-clock is what the operator experiences.
     usage.durationMs = Date.now() - startedAt;
 
-    return { status, usage, error, finalText: state.finalText, claudeSessionId };
+    return { status, usage, error, finalText: state.finalText, claudeSessionId, rewindPoint };
+  }
+
+  /**
+   * Restore a finished run's files, or preview what that would do.
+   *
+   * The interesting constraint is that the run is over. Every other control
+   * method here acts on a handle in `this.live`, which by definition only
+   * exists while the subprocess is running — and an operator does not know a
+   * run made a mess until it has finished. So this opens a *new* session,
+   * resumed onto the same CLI session id, purely to issue one control request.
+   * The checkpoints live with the session rather than with the process, which
+   * is what makes that work.
+   *
+   * Three options are load-bearing and none is optional: `resume` names the
+   * session the checkpoints belong to, `cwd` is the directory their paths are
+   * recorded against, and the CLI will not serve a rewind for a session it did
+   * not open with checkpointing enabled.
+   *
+   * Never throws. It is reached from a button the operator pressed to recover
+   * from something that had already gone wrong; a rejected promise there
+   * becomes a 500 on top of the mess they were trying to clean up.
+   */
+  async rewind(params: {
+    claudeSessionId: string;
+    rewindPoint: string;
+    workspacePath: string;
+    dryRun: boolean;
+  }): Promise<RewindResult> {
+    const stream = new PromptStream();
+    // This session's own kill switch.
+    //
+    // Closing the input asks the subprocess to exit; it does not compel it, and
+    // the first version of this awaited the message stream ending as proof. It
+    // hung — a CLI that keeps its stream open past the last input turns "undo
+    // my run" into a request that never answers. Aborting is teardown that does
+    // not depend on the CLI agreeing to it.
+    const controller = new AbortController();
+    const refuse = (message: string): RewindResult => ({
+      canRewind: false,
+      error: message,
+      filesChanged: [],
+      insertions: 0,
+      deletions: 0,
+      skippedLinks: 0,
+      applied: false,
+    });
+
+    try {
+      const handle = (this.deps.query ?? sdkQuery)({
+        prompt: stream,
+        options: {
+          cwd: params.workspacePath,
+          resume: params.claudeSessionId,
+          enableFileCheckpointing: true,
+          abortController: controller,
+          env: this.deps.env,
+          ...(this.deps.claudeBinPath ? { pathToClaudeCodeExecutable: this.deps.claudeBinPath } : {}),
+        },
+      });
+
+      // Drained rather than ignored. The control channel is pumped by consuming
+      // the message stream, so a rewind issued against an un-iterated handle
+      // waits on a reply that is sitting unread. Nothing here is a transcript
+      // event — this session exists to carry one request — so the messages are
+      // discarded, and the loop ends on the close-then-abort below.
+      const drained = (async () => {
+        try {
+          for await (const _ of handle) void _;
+        } catch (error) {
+          this.deps.log('debug', 'rewind session ended', {
+            message: (error as Error).message,
+          });
+        }
+      })();
+
+      try {
+        const result = await handle.rewindFiles(params.rewindPoint, { dryRun: params.dryRun });
+        return {
+          canRewind: result.canRewind,
+          error: result.error ?? null,
+          filesChanged: result.filesChanged ?? [],
+          insertions: result.insertions ?? 0,
+          deletions: result.deletions ?? 0,
+          // Only a real rewind can report this; the SDK never sets it on a
+          // preview, and inventing a zero there would read as "nothing was
+          // skipped" for a question that was not asked.
+          skippedLinks: params.dryRun ? 0 : (result.skippedLinks ?? 0),
+          applied: !params.dryRun && result.canRewind,
+        };
+      } finally {
+        // Close first so a CLI that exits cleanly does; abort so one that does
+        // not still goes. Awaiting the drain after both keeps the subprocess
+        // from outliving the request that spawned it.
+        stream.close();
+        controller.abort();
+        await drained;
+      }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      this.deps.log('warn', 'rewind failed', { message });
+      return refuse(message);
+    }
   }
 }
 
@@ -529,6 +646,7 @@ interface Captured {
   claudeSessionId?: string;
   usage?: RunUsage;
   error?: string;
+  rewindPoint?: string;
 }
 
 /**
@@ -681,8 +799,20 @@ export class StreamState {
   }
 
   private handleUser(message: Extract<SDKMessage, { type: 'user' }>): Captured {
+    // The replay acknowledgement: the CLI echoing back a user message with the
+    // uuid it filed it under. That uuid is the only thing a rewind can be
+    // addressed to, and it is never repeated, so it is picked up here on the
+    // way past. Tool results arrive as `type: 'user'` too — hence the flag
+    // rather than "the first user message we see", which would anchor a rewind
+    // to the middle of the run.
+    const replay = message as { isReplay?: boolean; uuid?: string };
+    const captured: Captured =
+      replay.isReplay === true && typeof replay.uuid === 'string'
+        ? { rewindPoint: replay.uuid }
+        : {};
+
     const content = message.message.content;
-    if (typeof content === 'string' || !Array.isArray(content)) return {};
+    if (typeof content === 'string' || !Array.isArray(content)) return captured;
 
     for (const block of content) {
       if (!block || typeof block !== 'object') continue;
@@ -708,7 +838,7 @@ export class StreamState {
       // UI can render a live checklist rather than a wall of JSON.
       if (open.name === 'TodoWrite') this.emitTodo(open.input);
     }
-    return {};
+    return captured;
   }
 
   private emitTodo(input: unknown): void {

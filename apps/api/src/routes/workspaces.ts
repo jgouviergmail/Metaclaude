@@ -12,11 +12,12 @@ import {
   EffortLevel,
   ModelSelector,
   PermissionMode,
+  RewindRequest,
   WorkspaceSettings,
 } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { HttpError, requestIp, requireOperator } from '../http/guards.js';
+import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
 import { spreadInt, spreadTimestamp } from '../http/query.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 
@@ -307,6 +308,39 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     const run = context.kernel.rateRun(request.params.id, parsed.data.rating);
     if (!run) throw new HttpError(404, 'Run not found, or it has not finished yet.');
     return reply.send({ run });
+  });
+
+  /**
+   * Restore the files a run changed, or preview what that would restore.
+   *
+   * Owner-only, and deliberately stricter than rating a run: this overwrites
+   * the working tree with an older copy of itself, which is the most
+   * destructive thing the API can be asked to do to a workspace.
+   *
+   * `dryRun` defaults to true in the schema, so a request that forgets the body
+   * previews rather than destroys. Only the real thing is audited — a preview
+   * changes nothing, and an audit log full of previews is one nobody reads.
+   */
+  app.post<{ Params: { id: string } }>('/api/runs/:id/rewind', async (request, reply) => {
+    const user = requireOwner(request);
+    const { dryRun } = RewindRequest.parse(request.body ?? {});
+
+    const result = await context.kernel.rewindRun(request.params.id, dryRun);
+
+    if (!dryRun) {
+      context.audit.record({
+        actor: user.username,
+        action: 'run.rewind',
+        target: request.params.id,
+        outcome: result.applied ? 'success' : 'failure',
+        ipAddress: requestIp(context, request),
+        detail: result.applied
+          ? `${result.filesChanged.length} file(s) restored`
+          : (result.error ?? 'refused'),
+      });
+    }
+
+    return reply.send(result);
   });
 
   app.get('/api/runs', async (request, reply) => {

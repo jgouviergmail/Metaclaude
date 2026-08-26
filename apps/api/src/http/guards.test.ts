@@ -8,6 +8,7 @@
 
 import type { FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { User } from '@metaclaude/shared';
 import { SESSION_COOKIE } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
@@ -18,6 +19,7 @@ import {
   requestIp,
   requireOperator,
   requireOwner,
+  sendError,
   requireRole,
   verifyCsrf,
 } from './guards.js';
@@ -258,5 +260,51 @@ describe('requestIp', () => {
     // entry is attacker-controlled: keying the rate limiter on it would hand
     // out a fresh bucket per request.
     expect(requestIp(context({ trustProxy: true }), from('10.0.0.1', '1.2.3.4, 5.6.7.8'))).toBe('5.6.7.8');
+  });
+});
+
+describe('sendError', () => {
+  /** A minimal reply that records what it was told to send. */
+  const reply = () => {
+    const captured = { status: 200, body: undefined as unknown };
+    const self = {
+      status(code: number) {
+        captured.status = code;
+        return self;
+      },
+      send(body: unknown) {
+        captured.body = body;
+        return self;
+      },
+      captured,
+    };
+    return self;
+  };
+
+  it('answers a schema violation with 400 and the reason', () => {
+    // Zod throws rather than returning, and a ZodError carries no statusCode —
+    // so it used to land in the 500 branch. The operator was told "internal
+    // server error" for their own malformed request, which sends them looking
+    // at the server logs for a bug that is not there.
+    const target = reply();
+    try {
+      z.object({ dryRun: z.boolean() }).parse({ dryRun: 'yes' });
+    } catch (error) {
+      sendError(target as never, error);
+    }
+
+    expect(target.captured.status).toBe(400);
+    expect((target.captured.body as { code: string }).code).toBe('invalid_request');
+    expect((target.captured.body as { error: string }).error).toBeTruthy();
+  });
+
+  it('still hides an unexpected failure behind a 500', () => {
+    // The other half of the same rule: a real bug must not leak its message,
+    // its stack, or a path from inside the server to the client.
+    const target = reply();
+    sendError(target as never, new Error('ENOENT /var/lib/metaclaude/master.key'));
+
+    expect(target.captured.status).toBe(500);
+    expect((target.captured.body as { error: string }).error).toBe('Internal server error.');
   });
 });

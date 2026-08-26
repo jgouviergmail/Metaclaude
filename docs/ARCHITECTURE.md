@@ -115,6 +115,36 @@ A crash leaves runs marked `running` and sessions marked busy. Both repositories
 expose `recoverOrphaned()`, called once at boot, which marks them interrupted.
 History stays truthful and the UI does not show a phantom live run.
 
+### Rewind
+A workspace with file checkpointing on can undo a run's file changes after the
+fact.
+
+The mechanism is the CLI's, not ours — `enableFileCheckpointing` on the way in,
+`Query.rewindFiles()` on the way back — but it needs an address, and that is the
+part with no second source. The CLI files each user message under a uuid and
+sends it back once, as a replay acknowledgement mid-stream. The supervisor picks
+it off the wire and it is stored on the run as `rewind_point`; the *first*
+acknowledgement only, so that a follow-up typed into a steerable run does not
+move the anchor forward and quietly shrink what "undo this run" restores. Null
+means the run cannot be rewound, and the UI offers nothing rather than a button
+that fails.
+
+Rewinding a *finished* run is the interesting case, and the only one that
+matters — an operator does not know a run made a mess until it is over. Every
+other control method acts on a handle that exists only while the subprocess
+runs. So `AgentSupervisor.rewind()` opens a new session, resumed onto the same
+CLI session id with checkpointing enabled, purely to issue one control request:
+the checkpoints belong to the session rather than to the process. That session
+is drained (the control channel is pumped by consuming the message stream, so an
+un-iterated handle waits forever on a reply nobody is reading), then closed
+*and* aborted — closing the input asks the subprocess to exit, and aborting is
+teardown that does not depend on it agreeing.
+
+Every rewind is previewed first, by the CLI's own dry run rather than by a
+second implementation that could disagree with the real one. The route is
+owner-only and `dryRun` defaults to true, so a request that forgets its body
+previews rather than destroys.
+
 ---
 
 ## Automations and time

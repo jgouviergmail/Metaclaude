@@ -311,10 +311,52 @@ export const Run = z.object({
   reward: z.number().min(0).max(1).nullable(),
   /** Whether this run was started by an automation rather than a human. */
   triggeredBy: z.enum(['user', 'automation', 'loop', 'system']),
+  /**
+   * The CLI's uuid for the user message that started this run.
+   *
+   * The anchor a rewind restores to. Null when the run cannot be rewound —
+   * checkpointing was off, the CLI sent no acknowledgement, or the run predates
+   * the feature. The UI treats all three the same way: no rewind offered.
+   */
+  rewindPoint: z.string().nullable(),
   startedAt: Millis,
   finishedAt: Millis.nullable(),
 });
 export type Run = z.infer<typeof Run>;
+
+/**
+ * What a rewind did, or would do.
+ *
+ * The same shape answers both questions, because the preview has to be
+ * trustworthy: it is produced by the CLI's own dry run, not by a second
+ * implementation that could disagree with the real one.
+ */
+export const RewindResult = z.object({
+  /** False when the CLI declined — no checkpoints, session gone, files moved. */
+  canRewind: z.boolean(),
+  /** The CLI's own words when it declined. Shown verbatim; never paraphrased. */
+  error: z.string().nullable(),
+  /** Workspace-relative paths that changed, or would change. */
+  filesChanged: z.array(z.string()),
+  insertions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  /**
+   * Files the CLI refused to touch because a symlink, a hard link or a moved
+   * parent directory made the restore unsafe. Only ever set on a real rewind —
+   * a preview cannot know — so a non-zero count here is the operator's signal
+   * that the restore was partial.
+   */
+  skippedLinks: z.number().int().nonnegative(),
+  /** False for a preview, true when the files were actually restored. */
+  applied: z.boolean(),
+});
+export type RewindResult = z.infer<typeof RewindResult>;
+
+export const RewindRequest = z.object({
+  /** Preview only. Defaults to true so a mistaken call cannot destroy work. */
+  dryRun: z.boolean().default(true),
+});
+export type RewindRequest = z.infer<typeof RewindRequest>;
 
 /* -------------------------------------------------------------------------- */
 /* Transcript events                                                           */

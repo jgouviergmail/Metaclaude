@@ -20,6 +20,7 @@ import {
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Composer, type ComposerValue } from '@/components/transcript/Composer';
 import { MessageStream } from '@/components/transcript/MessageStream';
+import { RewindDialog } from '@/components/transcript/RewindDialog';
 import { Button, Spinner, Tooltip } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/Modal';
 // CodeMirror is 265 kB gzipped — more than the rest of the application put
@@ -55,6 +56,8 @@ export function SessionPage() {
 
   const [panel, setPanel] = useState<SidePanel>('none');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** The run whose file changes the operator is considering undoing. */
+  const [rewinding, setRewinding] = useState<string | null>(null);
 
   // Selected field by field rather than `useSessionStore()`, which subscribes to
   // the whole store: streaming deltas land many times a second, and taking the
@@ -312,6 +315,7 @@ export function SessionPage() {
             approvals={approvals}
             isRunning={isRunning || submitRun.isPending}
             onRate={(runId, rating) => rateRun.mutate({ runId, rating })}
+            onRewind={setRewinding}
             onDecideApproval={(approvalId, approved, remember) =>
               socket.approve(approvalId, approved, remember)
             }
@@ -383,6 +387,27 @@ export function SessionPage() {
           await deleteSession.mutateAsync();
         }}
       />
+
+      {/* Mounted only while a run is selected, which is what narrows `rewinding`
+          to a string inside these callbacks — the alternative was a cast that
+          claims something the type system cannot check. */}
+      {rewinding ? (
+        <RewindDialog
+          open
+          onOpenChange={(open) => !open && setRewinding(null)}
+          onPreview={() => api.rewindRun(rewinding, true)}
+          onApply={async () => {
+            const result = await api.rewindRun(rewinding, false);
+            // The file browser and the source-control panel are both views of
+            // the tree that just changed underneath them, and neither receives
+            // a frame for a rewind — it happens outside any run.
+            for (const key of ['files', 'file', 'workspace'] as const) {
+              void queryClient.invalidateQueries({ queryKey: [key] });
+            }
+            return result;
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }

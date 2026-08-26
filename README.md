@@ -156,6 +156,12 @@ A directory, plus the agent policy that applies inside it. Optional git clone on
 creation, a file browser with a real editor, and a source-control panel with
 staging, diffs and commits.
 
+### Rewind
+Any finished run can be undone. With file checkpointing on, every run records
+the point it started from, and the transcript offers a Restore control that
+first shows you exactly which files would change and by how many lines — the
+CLI's own dry run, not an estimate — before anything is written.
+
 ### Extensibility
 Skills (written to `.claude/skills/` before each run so the CLI discovers them),
 custom subagents, and MCP servers with credentials held in an AES-256-GCM vault.

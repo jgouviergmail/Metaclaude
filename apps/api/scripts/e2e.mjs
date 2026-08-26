@@ -348,6 +348,58 @@ results.section('learning');
   );
 }
 
+/**
+ * Rewind.
+ *
+ * The unit tests drive a fake `query`, so what they cannot prove is the part
+ * that only exists once a real CLI is on the other end: that the anchor uuid is
+ * actually delivered on the wire, and that resuming a finished session is
+ * enough to reach its checkpoints. That is exactly the "only observable end to
+ * end" case, so the real restore runs only with an agent — while the guards
+ * around it are checked either way, because a 500 on a malformed body or a
+ * silent success for an operator are bugs regardless.
+ */
+results.section('rewind');
+{
+  const run = (await api.call(`/api/runs?workspaceId=${workspaceId}`)).body.runs[0];
+
+  results.check(
+    'a malformed body is a 400, not a 500',
+    (await api.call('/api/runs/run_missing/rewind', { method: 'POST', body: { dryRun: 'yes' } }))
+      .status === 400,
+  );
+
+  const unknown = await api.call('/api/runs/run_missing/rewind', {
+    method: 'POST',
+    body: { dryRun: true },
+  });
+  results.check(
+    'an unknown run refuses rather than throwing',
+    unknown.status === 200 && unknown.body.canRewind === false,
+    unknown.text.slice(0, 140),
+  );
+
+  if (AGENT_CHECKS_ENABLED && run) {
+    results.check('the run recorded an anchor to rewind to', typeof run.rewindPoint === 'string');
+
+    const preview = await api.call(`/api/runs/${run.id}/rewind`, {
+      method: 'POST',
+      body: { dryRun: true },
+    });
+    results.check(
+      'a preview answers without applying',
+      preview.status === 200 && preview.body.applied === false,
+      preview.text.slice(0, 200),
+    );
+    results.check(
+      'and says whether it could restore',
+      typeof preview.body.canRewind === 'boolean',
+    );
+  } else {
+    results.skip('rewinding a real run', 'no run was performed');
+  }
+}
+
 results.section('automations');
 {
   const created = await api.call('/api/automations', {

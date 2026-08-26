@@ -35,6 +35,7 @@ export function MessageStream({
   approvals,
   isRunning,
   onRate,
+  onRewind,
   onDecideApproval,
   emptyHint,
 }: {
@@ -44,6 +45,7 @@ export function MessageStream({
   approvals: ApprovalRequest[];
   isRunning: boolean;
   onRate: (runId: string, rating: number) => void;
+  onRewind: (runId: string) => void;
   onDecideApproval: (approvalId: string, approved: boolean, remember: boolean) => void;
   emptyHint?: React.ReactNode;
 }) {
@@ -128,6 +130,11 @@ export function MessageStream({
                   event={event}
                   rating={group.run?.rating ?? null}
                   onRate={onRate}
+                  // Only a run that recorded an anchor can be undone. Offering
+                  // the action on one that cannot is a button that exists to
+                  // fail.
+                  canRewind={Boolean(group.run?.rewindPoint)}
+                  onRewind={onRewind}
                 />
               ))}
             </section>

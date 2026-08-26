@@ -72,6 +72,7 @@ interface RunRow {
   rating: number | null;
   reward: number | null;
   triggered_by: string;
+  rewind_point: string | null;
   started_at: number;
   finished_at: number | null;
 }
@@ -399,6 +400,7 @@ function toRun(row: RunRow): Run {
     rating: row.rating,
     reward: row.reward,
     triggeredBy: row.triggered_by as Run['triggeredBy'],
+    rewindPoint: row.rewind_point,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   };
@@ -446,15 +448,33 @@ export class RunRepo {
 
   finish(
     id: string,
-    input: { status: RunStatus; usage: Run['usage']; error?: string | null },
+    input: {
+      status: RunStatus;
+      usage: Run['usage'];
+      error?: string | null;
+      /**
+       * The uuid this run can be rewound to, captured off the wire mid-run.
+       *
+       * `COALESCE` rather than a plain assignment: a run that ends without one
+       * (checkpointing off, an older CLI, a crash before the acknowledgement)
+       * must not erase an anchor an earlier write already recorded.
+       */
+      rewindPoint?: string | null;
+    },
   ): Run | null {
     this.db
-      .prepare('UPDATE runs SET status = ?, usage = ?, error = ?, finished_at = ? WHERE id = ?')
+      .prepare(
+        `UPDATE runs
+            SET status = ?, usage = ?, error = ?, finished_at = ?,
+                rewind_point = COALESCE(?, rewind_point)
+          WHERE id = ?`,
+      )
       .run(
         input.status,
         JSON.stringify(input.usage),
         input.error ? input.error.slice(0, 8000) : null,
         Date.now(),
+        input.rewindPoint ?? null,
         id,
       );
     return this.get(id);

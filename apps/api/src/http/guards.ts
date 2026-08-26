@@ -8,6 +8,7 @@
  */
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { ZodError } from 'zod';
 import type { User, UserRole } from '@metaclaude/shared';
 import { CSRF_HEADER, SESSION_COOKIE } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
@@ -139,6 +140,21 @@ export function sendError(reply: FastifyReply, error: unknown): FastifyReply {
     return reply
       .status(error.statusCode)
       .send({ error: error.message, code: error.code ?? 'error' });
+  }
+
+  // A schema violation is the client's fault, and Zod's own error carries no
+  // statusCode — so without this it fell through to the 500 below and told the
+  // operator "internal server error" for their own malformed request, sending
+  // them to the server logs to look for a bug that is not there. Only the first
+  // issue is returned: the rest are usually the same mistake seen from
+  // different angles, and the field path is what they need.
+  if (error instanceof ZodError) {
+    const issue = error.issues[0];
+    const path = issue?.path.join('.');
+    return reply.status(400).send({
+      error: issue ? `${path ? `${path}: ` : ''}${issue.message}` : 'Invalid request.',
+      code: 'invalid_request',
+    });
   }
 
   const statusCode = (error as { statusCode?: number }).statusCode;

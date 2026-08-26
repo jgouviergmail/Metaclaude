@@ -93,6 +93,14 @@ interface FakeQuery {
   interrupted: number;
   models: Array<string | undefined>;
   modes: string[];
+  /** Options each `query()` was opened with, newest last. */
+  opened: Array<Record<string, unknown>>;
+  /** Arguments of every `rewindFiles` call. */
+  rewinds: Array<{ userMessageId: string; dryRun: boolean | undefined }>;
+  /** What the next `rewindFiles` should answer. */
+  rewindResult: Record<string, unknown>;
+  /** True once the supervisor tore this session down. */
+  torndown: boolean;
   /** Let a test decide when the run finishes. */
   finish: (result?: Record<string, unknown>) => void;
   emit: (message: Record<string, unknown>) => void;
@@ -111,6 +119,10 @@ function fakeQuery() {
     interrupted: 0,
     models: [],
     modes: [],
+    opened: [],
+    rewinds: [],
+    rewindResult: { canRewind: true, filesChanged: ['src/a.ts'], insertions: 3, deletions: 7 },
+    torndown: false,
     finish: () => {},
     emit: () => {},
   };
@@ -143,12 +155,14 @@ function fakeQuery() {
   };
 
   const query = (params: { prompt: unknown; options?: Record<string, unknown> }) => {
+    control.opened.push(params.options ?? {});
     // Faithful to the SDK: aborting the controller ends the message stream.
     // Without this the fake would let the supervisor pass a test the real thing
     // would fail, which is worse than having no test.
     const aborter = params.options?.abortController as AbortController | undefined;
     aborter?.signal.addEventListener('abort', () => {
       aborted = true;
+      control.torndown = true;
       wake?.();
     });
     // Drain whatever the supervisor gives us, so queued turns are observable.
@@ -198,6 +212,10 @@ function fakeQuery() {
         control.modes.push(mode);
       },
       getContextUsage: async () => ({ totalTokens: 1234, maxTokens: 200_000, categories: [], rawMaxTokens: 200_000, percentage: 0.6, gridRows: [] }),
+      rewindFiles: async (userMessageId: string, options?: { dryRun?: boolean }) => {
+        control.rewinds.push({ userMessageId, dryRun: options?.dryRun });
+        return control.rewindResult;
+      },
     });
   };
 
@@ -399,5 +417,192 @@ describe('failures are reported as failures', () => {
     const outcome = await run;
     expect(outcome.status).toBe('failed');
     expect(outcome.error).toContain('refused');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Rewind                                                                      */
+/* -------------------------------------------------------------------------- */
+
+describe('a run records where it can be rewound to', () => {
+  /**
+   * The workspace setting has always been honoured — `enableFileCheckpointing`
+   * was set — but nothing could act on it, because rewinding needs the uuid the
+   * CLI assigns to the user message that opened the turn, and that uuid exists
+   * only on the wire. It arrives as a replay acknowledgement mid-run. Miss it
+   * and the checkpoints are unreachable forever.
+   */
+  const replay = (uuid: string, text: string) => ({
+    type: 'user',
+    uuid,
+    isReplay: true,
+    session_id: 'sdk-session',
+    parent_tool_use_id: null,
+    message: { role: 'user', content: text },
+  });
+
+  it('captures the uuid the CLI assigns to the opening prompt', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit(replay('11111111-1111-4111-8111-111111111111', 'first turn'));
+    control.finish();
+
+    expect((await run).rewindPoint).toBe('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('keeps the first acknowledgement, not the last', async () => {
+    // A run is steerable: the operator can type a follow-up into it. Undoing
+    // "the run" means undoing all of it, so a later turn must not move the
+    // anchor forward and quietly shrink what a rewind restores.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit(replay('11111111-1111-4111-8111-111111111111', 'first turn'));
+    await supervisor.send('run_1', 'and also this');
+    control.emit(replay('22222222-2222-4222-8222-222222222222', 'and also this'));
+    control.finish();
+
+    expect((await run).rewindPoint).toBe('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('reports no rewind point when the CLI never acknowledges', async () => {
+    // Checkpointing off, or an older CLI. Null is the honest answer, and it is
+    // what stops the UI offering a button that cannot work.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+
+    expect((await run).rewindPoint).toBeNull();
+  });
+
+  it('ignores a user message that is not a replay acknowledgement', async () => {
+    // Tool results arrive as `type: 'user'` too. Treating one as the anchor
+    // would rewind to the middle of the run.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit({
+      type: 'user',
+      uuid: '33333333-3333-4333-8333-333333333333',
+      session_id: 'sdk-session',
+      parent_tool_use_id: null,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'ok' }] },
+    });
+    control.finish();
+
+    expect((await run).rewindPoint).toBeNull();
+  });
+});
+
+describe('rewinding a finished run', () => {
+  const target = {
+    claudeSessionId: 'sdk-session',
+    rewindPoint: '11111111-1111-4111-8111-111111111111',
+    workspacePath: '/var/lib/metaclaude/workspaces/test',
+  };
+
+  it('previews without touching the files', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const result = await supervisor.rewind({ ...target, dryRun: true });
+
+    expect(control.rewinds).toEqual([{ userMessageId: target.rewindPoint, dryRun: true }]);
+    expect(result.applied).toBe(false);
+    expect(result.filesChanged).toEqual(['src/a.ts']);
+    expect(result.insertions).toBe(3);
+    expect(result.deletions).toBe(7);
+  });
+
+  it('applies when asked to', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const result = await supervisor.rewind({ ...target, dryRun: false });
+
+    expect(control.rewinds).toEqual([{ userMessageId: target.rewindPoint, dryRun: false }]);
+    expect(result.applied).toBe(true);
+  });
+
+  it('resumes the run\'s own session, in the workspace, with checkpointing on', async () => {
+    // All three or nothing: the checkpoints belong to that session, they are
+    // recorded relative to that directory, and the CLI will not serve a rewind
+    // for a session it did not open with checkpointing enabled.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.rewind({ ...target, dryRun: true });
+
+    expect(control.opened).toHaveLength(1);
+    expect(control.opened[0]).toMatchObject({
+      resume: 'sdk-session',
+      cwd: '/var/lib/metaclaude/workspaces/test',
+      enableFileCheckpointing: true,
+    });
+  });
+
+  it('tears the session down instead of waiting to be let go', async () => {
+    // The subprocess sits on stdin until the input iterable ends, so a rewind
+    // that leaks one leaks a whole CLI per click. But closing the input only
+    // *asks* it to exit: this fake, like a CLI that keeps its stream open,
+    // never ends the message side on its own. The first implementation awaited
+    // that ending as proof of teardown and hung here forever — which is what
+    // "undo my run" would have done to the operator.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.rewind({ ...target, dryRun: true });
+
+    expect(control.torndown).toBe(true);
+  });
+
+  it('passes the refusal through in the CLI\'s own words', async () => {
+    // "Could not rewind" tells the operator nothing. "No checkpoints found for
+    // this session" tells them the workspace had checkpointing off.
+    const { query, control } = fakeQuery();
+    control.rewindResult = { canRewind: false, error: 'No checkpoints found for this session.' };
+    const supervisor = makeSupervisor(query);
+
+    const result = await supervisor.rewind({ ...target, dryRun: false });
+
+    expect(result.canRewind).toBe(false);
+    expect(result.error).toBe('No checkpoints found for this session.');
+    expect(result.applied).toBe(false);
+  });
+
+  it('reports files the CLI refused to restore', async () => {
+    // A partial restore that reads as a complete one is how an operator walks
+    // away believing their tree is clean.
+    const { query, control } = fakeQuery();
+    control.rewindResult = { canRewind: true, filesChanged: ['a'], skippedLinks: 2 };
+    const supervisor = makeSupervisor(query);
+
+    const result = await supervisor.rewind({ ...target, dryRun: false });
+
+    expect(result.skippedLinks).toBe(2);
+  });
+
+  it('never throws when the CLI cannot be reached', async () => {
+    // A rewind is offered from a screen the operator is already using. A
+    // rejected promise here becomes an unhandled 500 on a button they pressed
+    // to recover from something that had already gone wrong.
+    const supervisor = makeSupervisor(() => {
+      throw new Error('spawn claude ENOENT');
+    });
+
+    const result = await supervisor.rewind({ ...target, dryRun: true });
+
+    expect(result.canRewind).toBe(false);
+    expect(result.error).toContain('ENOENT');
   });
 });

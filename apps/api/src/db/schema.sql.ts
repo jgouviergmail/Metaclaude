@@ -401,4 +401,24 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX plugins_enabled ON plugins(enabled);
     `,
   },
+  {
+    version: 6,
+    name: 'run_rewind_point',
+    sql: /* sql */ `
+      -- The anchor a run can be rewound to.
+      --
+      -- File checkpointing has always been switched on for workspaces that ask
+      -- for it, but nothing could act on it: rewinding needs the uuid the CLI
+      -- assigns to the user message that started the turn, and that uuid only
+      -- exists on the wire. It arrives as a replay acknowledgement while the run
+      -- is streaming, so it is captured there and stored here — after the run
+      -- ends there is nowhere else to get it.
+      --
+      -- NULL means the run predates this column, ran with checkpointing off, or
+      -- the CLI never sent the ack. All three are the same thing to the UI: the
+      -- run cannot be rewound, and it says so rather than offering a button
+      -- that fails.
+      ALTER TABLE runs ADD COLUMN rewind_point TEXT;
+    `,
+  },
 ];

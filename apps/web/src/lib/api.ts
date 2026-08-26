@@ -26,6 +26,7 @@ import {
   type MemoryKind,
   type MemorySearchResult,
   type PolicyArm,
+  type RewindResult,
   type Run,
   type Session,
   type SkillDefinition,
@@ -269,6 +270,10 @@ export const api = {
 
   rateRun: (id: string, rating: number) =>
     request<{ run: Run }>(`/api/runs/${id}/rate`, { method: 'POST', body: { rating } }),
+
+  /** Preview (`dryRun`) or perform the restore of a run's file changes. */
+  rewindRun: (id: string, dryRun: boolean) =>
+    request<RewindResult>(`/api/runs/${id}/rewind`, { method: 'POST', body: { dryRun } }),
 
   runs: (params: { workspaceId?: string; limit?: number; since?: number } = {}) =>
     request<{ runs: Run[] }>(`/api/runs${qs(params)}`),

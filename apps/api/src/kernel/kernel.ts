@@ -15,6 +15,7 @@
 
 import type {
   ApprovalRequest,
+  RewindResult,
   Run,
   RunPolicy,
   Session,
@@ -31,6 +32,7 @@ import type { ReflexionEngine } from '../learning/reflexion.js';
 import type { EventBus } from './bus.js';
 import { buildMemoryContext } from './context.js';
 import { PermissionBroker } from './permissions.js';
+import { planRewind } from './rewind.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import { AgentSupervisor, type RunRequest } from './supervisor.js';
 
@@ -445,6 +447,7 @@ export class Kernel {
         status: outcome.status,
         usage: outcome.usage,
         error: outcome.error,
+        rewindPoint: outcome.rewindPoint,
       }) ?? run;
 
     this.deps.sessions.addUsage(session.id, {
@@ -643,6 +646,44 @@ export class Kernel {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Restore the files a run changed, or preview what that would restore.
+   *
+   * Thin on purpose: `planRewind` owns every refusal and the supervisor owns
+   * the CLI conversation. What is left here is resolving the three records the
+   * plan needs, which is the one thing the kernel is uniquely able to do.
+   */
+  async rewindRun(runId: string, dryRun: boolean): Promise<RewindResult> {
+    const refuse = (reason: string): RewindResult => ({
+      canRewind: false,
+      error: reason,
+      filesChanged: [],
+      insertions: 0,
+      deletions: 0,
+      skippedLinks: 0,
+      applied: false,
+    });
+
+    const run = this.deps.runs.get(runId);
+    if (!run) return refuse('That run no longer exists.');
+
+    const session = this.deps.sessions.get(run.sessionId);
+    if (!session) return refuse('That run’s session no longer exists.');
+
+    const workspace = this.deps.workspaces.get(run.workspaceId);
+    if (!workspace) return refuse('That run’s workspace no longer exists.');
+
+    const plan = planRewind(run, session);
+    if (!plan.ok) return refuse(plan.reason);
+
+    return this.deps.supervisor.rewind({
+      claudeSessionId: plan.claudeSessionId,
+      rewindPoint: plan.rewindPoint,
+      workspacePath: workspace.path,
+      dryRun,
+    });
   }
 
   hasActiveRunForSession(sessionId: string): boolean {
