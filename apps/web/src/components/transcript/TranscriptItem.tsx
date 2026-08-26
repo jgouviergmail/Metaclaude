@@ -22,9 +22,10 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
-import type { TranscriptEvent } from '@metaclaude/shared';
+import type { Run, TranscriptEvent } from '@metaclaude/shared';
 import { Badge, Button, Tooltip } from '@/components/ui/primitives';
 import { renderMarkdown } from '@/lib/markdown';
+import { RunMetaChips } from './RunMetaChips';
 import { useUiStore } from '@/lib/store';
 import { cn, formatCost, formatDuration, formatTokens } from '@/lib/utils';
 import { SubagentEvent } from './Delegation';
@@ -289,12 +290,15 @@ export const SystemNote = memo(function SystemNote({
 
 export const ResultFooter = memo(function ResultFooter({
   event,
+  run,
   rating,
   onRate,
   canRewind,
   onRewind,
 }: {
   event: Extract<TranscriptEvent, { kind: 'result' }>;
+  /** The run this result closes — carries the policy and the served model. */
+  run: Run | null;
   rating: number | null;
   onRate: (value: number) => void;
   /** False when the run recorded no checkpoint anchor; the control is hidden. */
@@ -325,6 +329,9 @@ export const ResultFooter = memo(function ResultFooter({
         <Badge tone={failed ? 'danger' : interrupted ? 'warning' : 'success'}>
           {event.status}
         </Badge>
+
+        {/* What actually ran. Under Auto nothing else answers that question. */}
+        {run ? <RunMetaChips policy={run.policy} servedModel={run.servedModel} /> : null}
 
         {event.usage.durationMs > 0 ? (
           <span className="tabular-nums">{formatDuration(event.usage.durationMs)}</span>
@@ -414,12 +421,15 @@ export const ResultFooter = memo(function ResultFooter({
 
 export function TranscriptItem({
   event,
+  run,
   rating,
   onRate,
   canRewind,
   onRewind,
 }: {
   event: TranscriptEvent;
+  /** The run the event belongs to, when the caller has it; results render its parameters. */
+  run?: Run | null;
   rating: number | null;
   onRate: (runId: string, value: number) => void;
   canRewind: boolean;
@@ -448,6 +458,7 @@ export function TranscriptItem({
       return (
         <ResultFooter
           event={event}
+          run={run ?? null}
           rating={rating}
           onRate={(value) => onRate(event.runId, value)}
           canRewind={canRewind}

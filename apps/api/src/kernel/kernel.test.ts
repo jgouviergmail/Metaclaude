@@ -54,6 +54,7 @@ function fakeSupervisor() {
     error: null,
     finalText: 'done',
     claudeSessionId: 'sdk-session',
+    servedModel: 'claude-opus-5',
     rewindPoint: null,
     ...over,
   });
@@ -215,6 +216,17 @@ describe('admission', () => {
 
     expect(fixture.supervisor.started).toHaveLength(1);
     expect(fixture.runs.get(run.id)?.status).toBe('succeeded');
+  });
+
+  it('records the model that actually served, off the outcome', async () => {
+    // The policy can say 'default' under Auto; the CLI's init message is the
+    // one place the concrete choice is named, and it exists only on the wire.
+    const session = fixture.newSession();
+
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do the thing' });
+    await settled(fixture, run.id);
+
+    expect(fixture.runs.get(run.id)?.servedModel).toBe('claude-opus-5');
   });
 
   it('names the session from its first prompt', async () => {

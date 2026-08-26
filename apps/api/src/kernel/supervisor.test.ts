@@ -390,6 +390,36 @@ describe('the prompt reaches the CLI as streaming input', () => {
   });
 });
 
+describe('the served model is captured off the wire', () => {
+  // The policy records what Metaclaude asked for; under Auto that can be
+  // literally 'default', with the CLI choosing. The init message is the one
+  // place the CLI names its choice, and it exists only on the wire.
+  it('reads it from the init message and reports it in the outcome', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit({ type: 'system', subtype: 'init', session_id: 'sdk-session', model: 'claude-opus-5' });
+    control.finish();
+
+    const outcome = await run;
+    expect(outcome.servedModel).toBe('claude-opus-5');
+  });
+
+  it('reports null when the CLI never said', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+
+    const outcome = await run;
+    expect(outcome.servedModel).toBeNull();
+  });
+});
+
 describe('a turn that produces a result ends the run', () => {
   /**
    * The bug this pins down shipped and reached a real deployment: the answer

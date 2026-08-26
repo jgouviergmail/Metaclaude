@@ -472,4 +472,16 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 9,
+    name: 'run_served_model',
+    sql: /* sql */ `
+      -- The model that actually served the run, from the CLI's own init
+      -- message. The policy records what Metaclaude *asked for*, and under
+      -- Auto that can be literally 'default' — the CLI then chooses, and
+      -- nothing recorded its choice. NULL means the run predates this column
+      -- or the CLI never said; the UI then falls back to the policy.
+      ALTER TABLE runs ADD COLUMN served_model TEXT;
+    `,
+  },
 ];

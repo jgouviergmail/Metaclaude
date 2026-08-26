@@ -87,6 +87,8 @@ export interface RunOutcome {
   /** The assistant's final message, used for reflexion and previews. */
   finalText: string;
   claudeSessionId: string | null;
+  /** The model that actually served, from the CLI's init message; null if unsaid. */
+  servedModel: string | null;
   /**
    * The CLI's uuid for the user message that opened this run, or null.
    *
@@ -585,6 +587,7 @@ export class AgentSupervisor {
 
     const state = new StreamState(request, callbacks);
     let claudeSessionId: string | null = null;
+    let servedModel: string | null = null;
     let rewindPoint: string | null = null;
     let usage: RunUsage = { ...EMPTY_USAGE };
     let error: string | null = null;
@@ -616,6 +619,7 @@ export class AgentSupervisor {
         // the anchor move forward would silently shrink what "undo this run"
         // restores to whatever happened after the last thing they said.
         if (captured.rewindPoint && rewindPoint === null) rewindPoint = captured.rewindPoint;
+        if (captured.servedModel) servedModel = captured.servedModel;
         if (captured.usage) usage = captured.usage;
         if (captured.error) {
           error = captured.error;
@@ -683,7 +687,15 @@ export class AgentSupervisor {
     // The SDK reports API duration; wall-clock is what the operator experiences.
     usage.durationMs = Date.now() - startedAt;
 
-    return { status, usage, error, finalText: state.finalText, claudeSessionId, rewindPoint };
+    return {
+      status,
+      usage,
+      error,
+      finalText: state.finalText,
+      claudeSessionId,
+      servedModel,
+      rewindPoint,
+    };
   }
 
   /**
@@ -1116,6 +1128,7 @@ export class AgentSupervisor {
 
 interface Captured {
   claudeSessionId?: string;
+  servedModel?: string;
   usage?: RunUsage;
   error?: string;
   rewindPoint?: string;
@@ -1221,7 +1234,7 @@ export class StreamState {
 
   private handleSystem(message: Extract<SDKMessage, { type: 'system' }>): Captured {
     if (message.subtype === 'init') {
-      return { claudeSessionId: message.session_id };
+      return { claudeSessionId: message.session_id, servedModel: message.model };
     }
     if (message.subtype === 'permission_denied') {
       // The narrowing above already gives this the SDK's own

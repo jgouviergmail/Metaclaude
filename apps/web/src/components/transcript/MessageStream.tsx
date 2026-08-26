@@ -140,6 +140,7 @@ export function MessageStream({
                 <TranscriptItem
                   key={event.id}
                   event={event}
+                  run={group.run ?? null}
                   rating={group.run?.rating ?? null}
                   onRate={onRate}
                   // Only a run that recorded an anchor can be undone. Offering

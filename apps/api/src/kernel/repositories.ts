@@ -73,6 +73,7 @@ interface RunRow {
   reward: number | null;
   triggered_by: string;
   rewind_point: string | null;
+  served_model: string | null;
   started_at: number;
   finished_at: number | null;
 }
@@ -427,6 +428,7 @@ function toRun(row: RunRow): Run {
     reward: row.reward,
     triggeredBy: row.triggered_by as Run['triggeredBy'],
     rewindPoint: row.rewind_point,
+    servedModel: row.served_model,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   };
@@ -486,13 +488,16 @@ export class RunRepo {
        * must not erase an anchor an earlier write already recorded.
        */
       rewindPoint?: string | null;
+      /** Same COALESCE rationale: a crash before init must not erase it. */
+      servedModel?: string | null;
     },
   ): Run | null {
     this.db
       .prepare(
         `UPDATE runs
             SET status = ?, usage = ?, error = ?, finished_at = ?,
-                rewind_point = COALESCE(?, rewind_point)
+                rewind_point = COALESCE(?, rewind_point),
+                served_model = COALESCE(?, served_model)
           WHERE id = ?`,
       )
       .run(
@@ -501,6 +506,7 @@ export class RunRepo {
         input.error ? input.error.slice(0, 8000) : null,
         Date.now(),
         input.rewindPoint ?? null,
+        input.servedModel ?? null,
         id,
       );
     return this.get(id);

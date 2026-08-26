@@ -606,6 +606,7 @@ export class Kernel {
         usage: outcome.usage,
         error: outcome.error,
         rewindPoint: outcome.rewindPoint,
+        servedModel: outcome.servedModel,
       }) ?? run;
 
     this.deps.sessions.addUsage(session.id, {

@@ -72,6 +72,7 @@ function run(id: string, status: Run['status'], sessionId = SESSION_ID): Run {
     reward: null,
     triggeredBy: 'user',
     rewindPoint: null,
+    servedModel: null,
     startedAt: 1,
     finishedAt: null,
   };

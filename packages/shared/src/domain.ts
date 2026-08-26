@@ -346,6 +346,12 @@ export const Run = z.object({
    * the feature. The UI treats all three the same way: no rewind offered.
    */
   rewindPoint: z.string().nullable(),
+  /**
+   * The model that actually served the run, from the CLI's own init message.
+   * The policy records what was *asked for* — under Auto that can be
+   * literally 'default', with the CLI choosing. Null when the CLI never said.
+   */
+  servedModel: z.string().nullable().default(null),
   startedAt: Millis,
   finishedAt: Millis.nullable(),
 });

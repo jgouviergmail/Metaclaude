@@ -32,6 +32,12 @@ the run is recorded as interrupted, never as a success.
 
 ## After a run
 
+Every result footer states **what actually ran**: the model — the one the CLI
+itself reported serving, which under Auto is the only honest answer — the
+effort, the permission mode, whether the learner made the choice, and an
+ultracode marker when it applied. Hover the model chip for the requested-vs-
+served detail.
+
 - **Rate it.** The thumbs on a finished run are the strongest signal the
   learner gets — your judgement overrides every automatic metric.
 - **Rewind it.** A run made with checkpointing on offers **Restore**: a

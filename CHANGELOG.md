@@ -13,6 +13,13 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **What actually ran, on every result.** Each run's footer now shows the
+  model, effort, permission mode and provenance (learner, workspace default,
+  or your choice), plus an ultracode marker. The model shown is the one the
+  CLI itself reported serving, captured off its init message and persisted —
+  because under Auto the policy can say literally `default`, and nothing
+  else answers "which model was that?". Hover for the requested-vs-served
+  detail.
 - **The society of sessions.** The agent can delegate: from a session in one
   workspace, ask another workspace to work on something and get its answer
   back. The target runs with its own memory, skills, conventions and

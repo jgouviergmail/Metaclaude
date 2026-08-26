@@ -42,6 +42,7 @@ const run: Run = {
   reward: null,
   triggeredBy: 'user',
   rewindPoint: '11111111-1111-4111-8111-111111111111',
+  servedModel: null,
   startedAt: 0,
   finishedAt: 1,
 };
