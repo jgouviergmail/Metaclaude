@@ -735,6 +735,43 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "The firewall reset cannot discard the rules the script just wrote"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# `ufw reset` means "back to installation defaults", and the files it restores
+# include after.rules — where provision.sh writes the DOCKER-USER filtering that
+# is the *only* thing standing between a published container port and the
+# internet. ufw filters INPUT; Docker DNATs and forwards, so a packet for a
+# published port never traverses INPUT and `ufw deny` is true and irrelevant.
+#
+# Resetting after writing therefore threw that filtering away, silently: ufw came
+# up, reported active, listed every rule that had been asked for, and the chain
+# that actually governs published ports was back to the packaged default.
+#
+# A line-order check rather than a behavioural one, because reproducing it needs
+# root, ufw and a live host — all three of which this file refuses to require.
+
+prov="$REPO_ROOT/deploy/provision.sh"
+reset_line="$(grep -n 'ufw --force reset' "$prov" | head -1 | cut -d: -f1)"
+write_line="$(grep -n 'AFTER_RULES=\|AFTER6_RULES=' "$prov" | head -1 | cut -d: -f1)"
+
+if [ -z "$reset_line" ]; then
+  # Not an error in itself — but the ordering below is then unverified, and
+  # saying so is better than reporting a pass nobody checked.
+  skip "ufw reset ordering" "provision.sh no longer calls 'ufw --force reset'"
+elif [ -z "$write_line" ]; then
+  skip "ufw reset ordering" "provision.sh no longer writes after.rules"
+elif [ "$(grep -c 'ufw --force reset' "$prov")" -ne 1 ]; then
+  bad "provision.sh resets ufw more than once" \
+      "a second reset after after.rules is written discards the DOCKER-USER block"
+elif [ "$reset_line" -lt "$write_line" ]; then
+  ok "ufw is reset (line $reset_line) before after.rules is written (line $write_line)"
+else
+  bad "ufw is reset after after.rules is written" \
+      "line $reset_line resets; line $write_line wrote the DOCKER-USER block that reset discards"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 printf '\n%s%d passed, %d failed, %d skipped%s\n' "$BOLD" "$PASSED" "$FAILED" "$SKIPPED" "$OFF"
 [ "$FAILED" -eq 0 ] || exit 1

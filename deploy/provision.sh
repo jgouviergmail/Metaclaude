@@ -482,6 +482,20 @@ if [ "$SKIP_FIREWALL" = "yes" ]; then
 else
   step "Firewall"
 
+  # Reset FIRST, and never again below.
+  #
+  # `ufw reset` means "back to installation defaults", and the files it restores
+  # include after.rules and after6.rules — the ones this step is about to write
+  # the DOCKER-USER filtering into. Resetting afterwards therefore threw that
+  # filtering away ninety lines after writing it, and said nothing: ufw came up,
+  # reported active, `ufw status` listed every rule the script had asked for,
+  # and the one chain that actually governs published container ports was back
+  # to the packaged default.
+  #
+  # Order is the whole fix. Anything this script customises has to be written
+  # after the point where ufw is allowed to overwrite it.
+  ufw --force reset >/dev/null 2>&1 || true
+
   # ── The Docker/ufw bypass, and why the obvious fix is not one ─────────────
   #
   # ufw filters INPUT. Docker DNATs in nat/PREROUTING and filters in FORWARD, so
@@ -600,7 +614,7 @@ else
     info "no global IPv6 address on this host"
   fi
 
-  ufw --force reset >/dev/null 2>&1 || true
+  # The reset happened at the top of this step, before after.rules was written.
   ufw default deny incoming >/dev/null
   # Outgoing stays open, deliberately and permanently. Metaclaude exists to call
   # out: the Claude API, MCP servers, webhooks, git remotes, package registries
