@@ -115,6 +115,40 @@ A crash leaves runs marked `running` and sessions marked busy. Both repositories
 expose `recoverOrphaned()`, called once at boot, which marks them interrupted.
 History stays truthful and the UI does not show a phantom live run.
 
+### Where the usage went
+Analytics could already scope to one workspace at a time. That answers "how much
+did this one cost" and never "which one is eating the quota" — and on a
+subscription with a weekly ceiling, the second question is the one that matters.
+It needs every workspace on screen at once, so it cannot be a filter; the
+summary now carries `byWorkspace` and the page draws a ranked, proportional
+comparison from it.
+
+Two decisions about how that chart tells the truth. The bars are scaled against
+the *heaviest* workspace rather than the total, because against the total four
+similar workspaces are four short stubs and the chart says nothing; the share of
+the whole is then stated as a number beside it, since "twice as long as the
+other one" reads too easily as "half the quota". And a lone workspace gets no
+percentage at all — one bar at 100% looks like a finding, and it is the absence
+of anything to compare.
+
+The ranking falls back to tokens when no cost was reported, because a
+subscription reports none: ordering purely by money would leave every row at
+zero and the order arbitrary, on exactly the plan the view exists for.
+
+### Delegated work
+The transcript recorded each subagent's `status` and never rendered it, so a
+subagent that failed looked identical to one that succeeded. That matters more
+here than almost anywhere: a subagent's work is summarised rather than streamed,
+so if the summary does not mention the failure, nothing does — and the parent
+run's own result is still a success.
+
+Subagent events are also scattered through the transcript wherever the
+delegation happened, which answers "what happened next" and never "what did this
+run farm out". A strip above each run answers the second question in one line,
+collapsing repeats by name and reporting the *worst* status of each group: seven
+of eight succeeding is not a success, and taking the last one would report
+whichever happened to finish last.
+
 ### What Claude offers, asked rather than assumed
 Metaclaude used to describe Claude's capabilities from lists written when the
 pages were built: three model names and their prices in the composer, and no way

@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1018 tests, ~14s
+pnpm test:run                            # 1046 tests, ~14s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -71,6 +71,17 @@ restates the code is noise; one that records a decision or a trap is not.
   name of a labelled control is its `<label>`'s text content, so a hint nested
   inside the label is announced as part of the name however it is described.
   Move it out of the label — `components/ui/controls.tsx` does.
+- **Every Zod schema in `packages/shared` ships in the web app's entry chunk.**
+  `parseWireFrame` validates socket frames, so `TranscriptEvent`, `Run`,
+  `Session`, `ApprovalRequest` and everything they reference are genuinely
+  reachable and *should* be there. The rest — the request/response contracts
+  only the API validates — are retained too, because `z.object(...)` is a call
+  Rollup cannot prove side-effect-free, and `sideEffects: false` only lets it
+  drop a whole unused module, not a declaration inside a used one. Each new
+  contract therefore costs the entry roughly a kilobyte gzipped. To reclaim it,
+  move the API-only schemas into their own module that nothing in the entry's
+  runtime graph imports; annotating declarations `/*#__PURE__*/` also works and
+  is easier to get subtly wrong.
 - **Naming a Vite manual chunk pulls it into the entry's graph.** `index.html`
   then emits `<link rel="modulepreload">` for it, which is the opposite of
   deferring it. Let the dynamic `import()` boundaries derive the chunks; see the

@@ -166,6 +166,12 @@ CLI's own dry run, not an estimate — before anything is written.
 Skills (written to `.claude/skills/` before each run so the CLI discovers them),
 custom subagents, and MCP servers with credentials held in an AES-256-GCM vault.
 
+### Where the usage went
+Analytics ranks every workspace against each other over the period — tokens,
+runs, cost where one was reported, and each one's share of the whole. The
+per-workspace filter tells you what one workspace cost; only this tells you
+which one is spending the ceiling.
+
 ### What Claude itself offers
 A **From Claude** tab shows what the CLI reports for a workspace rather than
 what Metaclaude assumes: the models this subscription grants and which of them

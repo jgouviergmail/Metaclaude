@@ -27,6 +27,7 @@ import { Badge, Button, Tooltip } from '@/components/ui/primitives';
 import { renderMarkdown } from '@/lib/markdown';
 import { useUiStore } from '@/lib/store';
 import { cn, formatCost, formatDuration, formatTokens } from '@/lib/utils';
+import { SubagentEvent } from './Delegation';
 import { ToolCallCard } from './ToolCallCard';
 import { DiffView } from './DiffView';
 
@@ -218,26 +219,6 @@ export const DiffEvent = memo(function DiffEvent({
 /* Subagent                                                                    */
 /* -------------------------------------------------------------------------- */
 
-export const SubagentEvent = memo(function SubagentEvent({
-  event,
-}: {
-  event: Extract<TranscriptEvent, { kind: 'subagent' }>;
-}) {
-  return (
-    <div className="rounded-lg border border-info/25 bg-info-soft/40 px-3 py-2">
-      <div className="flex items-center gap-2">
-        <Badge tone="info">subagent</Badge>
-        <span className="text-[13px] font-medium text-ink">{event.agentName}</span>
-        <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">
-          {event.description}
-        </span>
-      </div>
-      {event.summary ? (
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{event.summary}</p>
-      ) : null}
-    </div>
-  );
-});
 
 /* -------------------------------------------------------------------------- */
 /* System notes                                                                */

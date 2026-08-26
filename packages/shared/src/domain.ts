@@ -820,6 +820,68 @@ export const ClaudeCredentialStatus = z.object({
 export type ClaudeCredentialStatus = z.infer<typeof ClaudeCredentialStatus>;
 
 /* -------------------------------------------------------------------------- */
+/* Analytics                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One workspace's share of the usage.
+ *
+ * Analytics could already scope to one workspace, which answers "how much did
+ * this one cost" and never "which one is eating the quota" — and on a
+ * subscription with a weekly ceiling, that second question is the one that
+ * matters. It needs every workspace at once, so it cannot be a filter.
+ */
+export const WorkspaceUsage = z.object({
+  workspaceId: z.string(),
+  name: z.string(),
+  /** The workspace's own colour, so the ranking is readable at a glance. */
+  color: z.string(),
+  runs: z.number().int().nonnegative(),
+  costUsd: z.number().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1),
+});
+export type WorkspaceUsage = z.infer<typeof WorkspaceUsage>;
+
+/**
+ * The aggregate view of a period.
+ *
+ * Lives here rather than in the analytics service because both sides read it:
+ * the shape was written out twice — once as an interface in `services/`, once
+ * inline in the web client's `request<…>` — and the copies had already started
+ * to matter, since adding a field to one silently left the other describing a
+ * response it no longer receives.
+ */
+export const AnalyticsSummary = z.object({
+  totalRuns: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1),
+  totalCostUsd: z.number().nonnegative(),
+  totalInputTokens: z.number().int().nonnegative(),
+  totalOutputTokens: z.number().int().nonnegative(),
+  medianDurationMs: z.number().nonnegative(),
+  p95DurationMs: z.number().nonnegative(),
+  averageReward: z.number().nullable(),
+  byModel: z.array(
+    z.object({
+      model: z.string(),
+      runs: z.number().int().nonnegative(),
+      costUsd: z.number().nonnegative(),
+      successRate: z.number().min(0).max(1),
+    }),
+  ),
+  byCategory: z.array(
+    z.object({
+      category: z.string(),
+      runs: z.number().int().nonnegative(),
+      averageReward: z.number().nullable(),
+    }),
+  ),
+  byWorkspace: z.array(WorkspaceUsage),
+});
+export type AnalyticsSummary = z.infer<typeof AnalyticsSummary>;
+
+/* -------------------------------------------------------------------------- */
 /* What Claude itself offers                                                   */
 /* -------------------------------------------------------------------------- */
 

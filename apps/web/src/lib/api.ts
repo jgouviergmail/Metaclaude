@@ -10,6 +10,7 @@
 import {
   CSRF_COOKIE,
   type AgentDefinitionRecord,
+  type AnalyticsSummary,
   type ApprovalRequest,
   type AuditEntry,
   type ClaudeCredentialStatus,
@@ -501,21 +502,9 @@ export const api = {
   },
 
   analytics: (params: { workspaceId?: string; days?: number; granularity?: string } = {}) =>
-    request<{
-      summary: {
-        totalRuns: number;
-        successRate: number;
-        totalCostUsd: number;
-        totalInputTokens: number;
-        totalOutputTokens: number;
-        medianDurationMs: number;
-        p95DurationMs: number;
-        averageReward: number | null;
-        byModel: Array<{ model: string; runs: number; costUsd: number; successRate: number }>;
-        byCategory: Array<{ category: string; runs: number; averageReward: number | null }>;
-      };
-      series: UsagePoint[];
-    }>(`/api/analytics${qs(params)}`),
+    // The summary's shape lives in `packages/shared`. It used to be written out
+    // here as well as in the service, and the two had already started to drift.
+    request<{ summary: AnalyticsSummary; series: UsagePoint[] }>(`/api/analytics${qs(params)}`),
 
   audit: (params: { limit?: number; before?: number; action?: string } = {}) =>
     request<{ entries: AuditEntry[] }>(`/api/audit${qs(params)}`),

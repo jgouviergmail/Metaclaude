@@ -17,6 +17,7 @@ import { Button, EmptyState } from '@/components/ui/primitives';
 import type { StreamingBlock } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { ApprovalCard } from './ApprovalCard';
+import { DelegationStrip } from './Delegation';
 import { AssistantText, ThinkingBlock, TranscriptItem } from './TranscriptItem';
 
 /** Distance from the bottom still treated as "at the bottom". */
@@ -124,6 +125,13 @@ export function MessageStream({
         <div className="mx-auto max-w-4xl space-y-6">
           {groups.map((group) => (
             <section key={group.runId} className="space-y-3" aria-label="Exchange">
+              {/* What this run farmed out, in one line. The individual events
+                  are scattered through the transcript wherever the delegation
+                  happened, which answers "what happened next" and never "what
+                  did this run delegate". Renders nothing when it delegated
+                  nothing, which is most runs. */}
+              <DelegationStrip events={group.events} />
+
               {group.events.map((event) => (
                 <TranscriptItem
                   key={event.id}

@@ -7,7 +7,7 @@
  * never disagree with the run history.
  */
 
-import type { UsagePoint } from '@metaclaude/shared';
+import type { AnalyticsSummary, UsagePoint, WorkspaceUsage } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { parseJson } from '../db/index.js';
 
@@ -26,39 +26,39 @@ interface RunAggregateRow {
   policy: string;
   category: string | null;
   reward: number | null;
+  workspace_id: string;
+  /** NULL once the workspace has been deleted; its runs outlive it. */
+  workspace_name: string | null;
+  workspace_color: string | null;
 }
 
-export interface AnalyticsSummary {
-  totalRuns: number;
-  successRate: number;
-  totalCostUsd: number;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  medianDurationMs: number;
-  p95DurationMs: number;
-  averageReward: number | null;
-  byModel: Array<{ model: string; runs: number; costUsd: number; successRate: number }>;
-  byCategory: Array<{ category: string; runs: number; averageReward: number | null }>;
-}
 
 export class AnalyticsService {
   constructor(private readonly db: Db) {}
 
   private fetch(options: { workspaceId?: string; since: number; until: number }): RunAggregateRow[] {
-    const clauses = ['started_at >= ?', 'started_at < ?'];
+    const clauses = ['r.started_at >= ?', 'r.started_at < ?'];
     const params: unknown[] = [options.since, options.until];
     if (options.workspaceId) {
-      clauses.push('workspace_id = ?');
+      clauses.push('r.workspace_id = ?');
       params.push(options.workspaceId);
     }
     // Only finished runs: an in-flight run has no usage yet and would drag every
     // average toward zero.
-    clauses.push("status NOT IN ('queued','running','waiting_approval')");
+    clauses.push("r.status NOT IN ('queued','running','waiting_approval')");
 
     return this.db
       .prepare<unknown[], RunAggregateRow>(
-        `SELECT started_at, status, usage, policy, category, reward FROM runs
-         WHERE ${clauses.join(' AND ')} ORDER BY started_at ASC`,
+        // LEFT JOIN as defence, not because it is expected to matter:
+        // `runs.workspace_id` cascades on delete, so an orphaned run should not
+        // exist. If one ever does, an INNER JOIN would silently drop it from
+        // every figure on this page, which is strictly worse than a row
+        // labelled as orphaned — the parts would stop adding up to the whole.
+        `SELECT r.started_at, r.status, r.usage, r.policy, r.category, r.reward,
+                r.workspace_id, w.name AS workspace_name, w.color AS workspace_color
+           FROM runs r
+           LEFT JOIN workspaces w ON w.id = r.workspace_id
+          WHERE ${clauses.join(' AND ')} ORDER BY r.started_at ASC`,
       )
       .all(...params);
   }
@@ -128,6 +128,7 @@ export class AnalyticsService {
     const rewards: number[] = [];
 
     const byModel = new Map<string, { runs: number; cost: number; ok: number }>();
+    const byWorkspace = new Map<string, Omit<WorkspaceUsage, 'workspaceId' | 'successRate'> & { ok: number }>();
     const byCategory = new Map<string, { runs: number; rewards: number[] }>();
 
     for (const row of rows) {
@@ -151,6 +152,24 @@ export class AnalyticsService {
       modelEntry.cost += usage.costUsd;
       if (succeeded) modelEntry.ok += 1;
       byModel.set(model, modelEntry);
+
+      const workspace = byWorkspace.get(row.workspace_id) ?? {
+        // Only reachable for an orphaned run — see the join above. Named rather
+        // than blank so the row can be recognised instead of puzzled over.
+        name: row.workspace_name ?? 'Unknown workspace',
+        color: row.workspace_color ?? DELETED_WORKSPACE_COLOR,
+        runs: 0,
+        costUsd: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        ok: 0,
+      };
+      workspace.runs += 1;
+      workspace.costUsd += usage.costUsd;
+      workspace.inputTokens += usage.inputTokens;
+      workspace.outputTokens += usage.outputTokens;
+      if (succeeded) workspace.ok += 1;
+      byWorkspace.set(row.workspace_id, workspace);
 
       const category = row.category ?? 'uncategorised';
       const categoryEntry = byCategory.get(category) ?? { runs: 0, rewards: [] };
@@ -183,9 +202,33 @@ export class AnalyticsService {
           averageReward: entry.rewards.length > 0 ? round(mean(entry.rewards), 4) : null,
         }))
         .sort((a, b) => b.runs - a.runs),
+      byWorkspace: [...byWorkspace]
+        .map(([workspaceId, entry]) => ({
+          workspaceId,
+          name: entry.name,
+          color: entry.color,
+          runs: entry.runs,
+          costUsd: round(entry.costUsd, 6),
+          inputTokens: entry.inputTokens,
+          outputTokens: entry.outputTokens,
+          successRate: entry.runs > 0 ? entry.ok / entry.runs : 0,
+        }))
+        // Cost first, tokens as the tie-break. A subscription reports no
+        // per-run dollar cost at all, so ordering purely by money would leave
+        // every row at zero and the ranking arbitrary — on exactly the plan
+        // this view exists for.
+        .sort(
+          (a, b) =>
+            b.costUsd - a.costUsd ||
+            b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens) ||
+            b.runs - a.runs,
+        ),
     };
   }
 }
+
+/** Shown for an orphaned run's row. Neutral, not alarming. */
+const DELETED_WORKSPACE_COLOR = '#6b7280';
 
 /* -------------------------------------------------------------------------- */
 

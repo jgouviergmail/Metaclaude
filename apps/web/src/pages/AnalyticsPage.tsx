@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import type { PolicyArm } from '@metaclaude/shared';
+import { WorkspaceUsageBars } from '@/components/analytics/WorkspaceUsageBars';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog } from '@/components/ui/Modal';
@@ -416,6 +417,24 @@ export function AnalyticsPage() {
                   </LineChart>
                 </ChartFrame>
               </div>
+
+              {/* -------------------------- Where it went ---------------------- */}
+              {/*
+                Only under "All workspaces". Scoped to one, this is a single bar
+                at 100% — a chart that answers a question nobody asked, taking
+                the place of the filter that already answered theirs.
+              */}
+              {scope === 'all' ? (
+                <Card>
+                  <CardHeader
+                    title="Where the usage went"
+                    description="Every workspace over this period, ranked by tokens. On a subscription this is the view that matters: the per-workspace filter tells you what one cost, and only this tells you which one is spending the ceiling."
+                  />
+                  <div className="px-4 pb-4">
+                    <WorkspaceUsageBars rows={summary.byWorkspace} />
+                  </div>
+                </Card>
+              ) : null}
 
               {/* ---------------------------- Breakdowns ----------------------- */}
               <div className="grid gap-3 lg:grid-cols-2">

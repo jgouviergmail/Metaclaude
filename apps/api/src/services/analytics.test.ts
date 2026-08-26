@@ -236,6 +236,7 @@ describe('summary', () => {
       averageReward: null,
       byModel: [],
       byCategory: [],
+      byWorkspace: [],
     });
   });
 
@@ -528,5 +529,122 @@ describe('series', () => {
   it('returns nothing when the range is inverted', () => {
     insertRun({ startedAt: T0 });
     expect(analytics.series({ since: T0 + DAY, until: T0, granularity: 'hour' })).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* byWorkspace                                                                 */
+/* -------------------------------------------------------------------------- */
+
+describe('byWorkspace', () => {
+  /**
+   * Where the subscription is actually going.
+   *
+   * The page could already scope to one workspace at a time, which answers
+   * "how much did this one cost" and never "which one is eating the quota".
+   * On a subscription with a weekly ceiling that second question is the one
+   * that matters, and it is the only one that needs every workspace at once.
+   */
+  it('splits usage by workspace, heaviest first', () => {
+    insertRun({ startedAt: T0, workspaceId: wsA, costUsd: 1, inputTokens: 100, outputTokens: 10 });
+    insertRun({ startedAt: T0, workspaceId: wsB, costUsd: 5, inputTokens: 900, outputTokens: 90 });
+    insertRun({ startedAt: T0, workspaceId: wsB, costUsd: 2, inputTokens: 100, outputTokens: 10 });
+
+    const { byWorkspace } = analytics.summary({ since: T0 - DAY });
+
+    expect(byWorkspace.map((entry) => entry.workspaceId)).toEqual([wsB, wsA]);
+    expect(byWorkspace[0]).toMatchObject({ runs: 2, costUsd: 7, inputTokens: 1000, outputTokens: 100 });
+  });
+
+  it('carries the workspace name and colour, so the chart can be read', () => {
+    // Rendering ids would make the ranking unreadable, and a second round trip
+    // per row to resolve them would make it slow.
+    insertRun({ startedAt: T0, workspaceId: wsA, costUsd: 1 });
+
+    const { byWorkspace } = analytics.summary({ since: T0 - DAY });
+
+    expect(byWorkspace[0]?.name).toBe('alpha');
+    expect(byWorkspace[0]?.color).toBeTruthy();
+  });
+
+  it('ranks by tokens when nothing reported a cost', () => {
+    // A subscription reports no per-run dollar cost, so ordering purely by
+    // money would leave every row at zero and the ranking arbitrary — on
+    // exactly the plan this feature exists for.
+    insertRun({ startedAt: T0, workspaceId: wsA, costUsd: 0, inputTokens: 10, outputTokens: 1 });
+    insertRun({ startedAt: T0, workspaceId: wsB, costUsd: 0, inputTokens: 900, outputTokens: 90 });
+
+    const { byWorkspace } = analytics.summary({ since: T0 - DAY });
+
+    expect(byWorkspace.map((entry) => entry.workspaceId)).toEqual([wsB, wsA]);
+  });
+
+  it('reports a success rate per workspace', () => {
+    insertRun({ startedAt: T0, workspaceId: wsA, status: 'succeeded' });
+    insertRun({ startedAt: T0, workspaceId: wsA, status: 'failed' });
+
+    const { byWorkspace } = analytics.summary({ since: T0 - DAY });
+
+    expect(byWorkspace[0]?.successRate).toBe(0.5);
+  });
+
+  it('honours the window like every other figure', () => {
+    insertRun({ startedAt: T0 - DAY - 1, workspaceId: wsA, costUsd: 100 });
+    insertRun({ startedAt: T0, workspaceId: wsB, costUsd: 1 });
+
+    const { byWorkspace } = analytics.summary({ since: T0 - DAY });
+
+    expect(byWorkspace).toHaveLength(1);
+    expect(byWorkspace[0]?.workspaceId).toBe(wsB);
+  });
+
+  it('omits a workspace with no runs in the window', () => {
+    // An empty row is not information; it is a line that has to be scanned
+    // past on every read.
+    insertRun({ startedAt: T0, workspaceId: wsA });
+
+    expect(analytics.summary({ since: T0 - DAY }).byWorkspace).toHaveLength(1);
+  });
+
+  it('loses a deleted workspace’s runs, because the rows cascade', () => {
+    // Worth pinning rather than assuming: `runs.workspace_id` is ON DELETE
+    // CASCADE and `foreign_keys` is ON, so deleting a workspace really does
+    // remove its history. Every total on this page is computed from those rows,
+    // so this is what "deleted" costs — and if a later migration softens the
+    // cascade, the row will reappear here and someone will have to decide
+    // deliberately how to attribute it.
+    insertRun({ startedAt: T0, workspaceId: wsA, costUsd: 3 });
+    insertRun({ startedAt: T0, workspaceId: wsB, costUsd: 1 });
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run(wsA);
+
+    const { byWorkspace } = analytics.summary({ since: T0 - DAY });
+
+    expect(byWorkspace.map((entry) => entry.workspaceId)).toEqual([wsB]);
+  });
+
+  it('names an orphaned run rather than dropping it from the totals', () => {
+    // Defence in depth against the join, not a description of today: with the
+    // cascade in place this row cannot normally exist. An INNER JOIN would make
+    // one silently vanish from every figure on the page if it ever did, which
+    // is strictly worse than a row labelled as orphaned.
+    db.pragma('foreign_keys = OFF');
+    insertRun({ startedAt: T0, workspaceId: 'ws_vanished', costUsd: 3 });
+
+    const { byWorkspace, totalCostUsd } = analytics.summary({ since: T0 - DAY });
+
+    expect(byWorkspace).toHaveLength(1);
+    expect(byWorkspace[0]?.name).toBeTruthy();
+    expect(byWorkspace[0]?.costUsd).toBe(3);
+    // The point of not dropping it: the parts still add up to the whole.
+    expect(totalCostUsd).toBe(3);
+  });
+
+  it('is a single row when the query is already scoped to one workspace', () => {
+    insertRun({ startedAt: T0, workspaceId: wsA });
+    insertRun({ startedAt: T0, workspaceId: wsB });
+
+    const { byWorkspace } = analytics.summary({ workspaceId: wsA, since: T0 - DAY });
+
+    expect(byWorkspace.map((entry) => entry.workspaceId)).toEqual([wsA]);
   });
 });
