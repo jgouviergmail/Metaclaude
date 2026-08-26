@@ -226,6 +226,22 @@ export function MemoryPage() {
     onError: (error) => toast.error(messageFor(error, 'Could not update that insight.')),
   });
 
+  const synthesise = useMutation({
+    mutationFn: (id: string) => api.synthesiseSkill(id),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['insights'] });
+      if (result === undefined) {
+        // 204: the model judged the procedures do not cohere — a legitimate
+        // answer, reported as such rather than as silence or failure.
+        toast.info('Nothing distilled — the procedures do not cohere into one skill yet.');
+      } else {
+        toast.success('A skill was drafted. Review it below.');
+      }
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'The synthesis could not run.'),
+  });
+
   const installSkill = useMutation({
     mutationFn: (id: string) => api.installSkillFromInsight(id),
     onSuccess: (result) => {
@@ -558,18 +574,33 @@ export function MemoryPage() {
 
           {/* ----------------------------- Insights -------------------------- */}
           <section className="space-y-3" aria-labelledby="insights-heading">
-            <div className="space-y-1">
-              <h2
-                id="insights-heading"
-                className="flex items-center gap-2 text-sm font-semibold text-ink"
-              >
-                <Lightbulb className="size-4 text-warning" aria-hidden />
-                Insights awaiting review
-              </h2>
-              <p className="text-xs leading-relaxed text-muted">
-                Distilled by the reflexion pass after a run. Proposals are never installed
-                automatically — nothing here changes the agent's behaviour until you accept it.
-              </p>
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div className="space-y-1">
+                <h2
+                  id="insights-heading"
+                  className="flex items-center gap-2 text-sm font-semibold text-ink"
+                >
+                  <Lightbulb className="size-4 text-warning" aria-hidden />
+                  Insights awaiting review
+                </h2>
+                <p className="text-xs leading-relaxed text-muted">
+                  Distilled by the reflexion pass after a run. Proposals are never installed
+                  automatically — nothing here changes the agent's behaviour until you accept it.
+                </p>
+              </div>
+              {workspaceId ? (
+                <Tooltip content="Read this workspace's accumulated procedures and, if they cohere, draft one skill — as a proposal below, never installed directly.">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={synthesise.isPending}
+                    onClick={() => synthesise.mutate(workspaceId)}
+                  >
+                    <Sparkles className="size-4" aria-hidden />
+                    Distil a skill
+                  </Button>
+                </Tooltip>
+              ) : null}
             </div>
 
             {insightsQuery.isLoading ? (

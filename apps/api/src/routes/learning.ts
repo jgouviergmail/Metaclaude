@@ -212,6 +212,37 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
     return reply.status(201).send({ skill });
   });
 
+  /**
+   * Distil a workspace's accumulated procedures into a proposed skill.
+   *
+   * The output is a `skill_proposal` insight — the same object the per-run
+   * reflexion produces — so it lands in the same review queue and installs
+   * through the same explicit action above. Costs one cheap model call, so
+   * it is a button, never a background loop. 204 when the model judged the
+   * procedures do not cohere: a legitimate answer, not an error.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/api/workspaces/:id/synthesise-skill',
+    async (request, reply) => {
+      const actor = requireOperator(request);
+      if (!context.workspaceRepo.get(request.params.id)) {
+        throw new HttpError(404, 'Workspace not found.');
+      }
+
+      const insight = await context.synthesizer.synthesise(request.params.id);
+      context.audit.record({
+        actor: actor.username,
+        action: 'skill.synthesise',
+        target: request.params.id,
+        ipAddress: requestIp(context, request),
+        detail: insight ? insight.title : 'declined: the procedures do not cohere',
+      });
+
+      if (!insight) return reply.status(204).send();
+      return reply.status(201).send({ insight });
+    },
+  );
+
   /* -------------------------------- Policy ------------------------------ */
 
   app.get<{ Querystring: { workspaceId?: string; category?: string } }>(

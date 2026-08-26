@@ -16,7 +16,7 @@
  *    affect the run the operator is watching.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { extractJson, structuredCall } from './structured-call.js';
 import type { Insight, MemoryKind, Run, TranscriptEvent } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
@@ -294,54 +294,19 @@ export class ReflexionEngine {
     return lines.join('\n');
   }
 
-  /** Run the tool-less structured call. */
+  /** Run the tool-less structured call. Mechanics shared with skill synthesis. */
   private async invoke(transcript: string): Promise<ReflexionOutput | null> {
-    const controller = new AbortController();
-    // Reflection is a background nicety; it must never run long.
-    const timer = setTimeout(() => controller.abort(), 120_000);
-    timer.unref?.();
-
-    try {
-      let structured: unknown = null;
-      let text = '';
-
-      for await (const message of query({
+    return structuredCall<ReflexionOutput>(
+      { env: this.deps.env, claudeBinPath: this.deps.claudeBinPath, cwd: this.deps.cwd },
+      {
         prompt: transcript,
-        options: {
-          cwd: this.deps.cwd,
-          // A plain system prompt, not the claude_code preset: the reflector is
-          // a classifier, not an agent, and the preset would add cost and tools.
-          systemPrompt: SYSTEM_PROMPT,
-          model: 'haiku',
-          maxTurns: 1,
-          // Belt and braces: no tools offered, and none permitted.
-          allowedTools: [],
-          disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task'],
-          permissionMode: 'dontAsk',
-          settingSources: [],
-          thinking: { type: 'disabled' },
-          outputFormat: {
-            type: 'json_schema',
-            schema: REFLEXION_SCHEMA as unknown as Record<string, unknown>,
-          },
-          abortController: controller,
-          env: this.deps.env,
-          ...(this.deps.claudeBinPath ? { pathToClaudeCodeExecutable: this.deps.claudeBinPath } : {}),
-        },
-      })) {
-        if (message.type === 'result') {
-          structured = (message as { structured_output?: unknown }).structured_output ?? null;
-          const result = (message as { result?: string }).result;
-          if (typeof result === 'string') text = result;
-        }
-      }
-
-      if (structured && typeof structured === 'object') return structured as ReflexionOutput;
-      // Some CLI versions omit `structured_output`; recover from the text body.
-      return parseJsonLoose(text);
-    } finally {
-      clearTimeout(timer);
-    }
+        // A plain system prompt, not the claude_code preset: the reflector is
+        // a classifier, not an agent, and the preset would add cost and tools.
+        systemPrompt: SYSTEM_PROMPT,
+        schema: REFLEXION_SCHEMA as unknown as Record<string, unknown>,
+        accept: (parsed) => Array.isArray((parsed as ReflexionOutput).lessons),
+      },
+    );
   }
 
   /* ---------------------------------------------------------------------- */
@@ -462,21 +427,7 @@ export function pruneInsights(db: Db, retentionDays: number, now: number = Date.
  * or a fenced code block.
  */
 export function parseJsonLoose(text: string): ReflexionOutput | null {
-  if (!text?.trim()) return null;
-
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
-  const candidates = [fenced?.[1], text].filter((c): c is string => Boolean(c));
-
-  for (const candidate of candidates) {
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start < 0 || end <= start) continue;
-    try {
-      const parsed = JSON.parse(candidate.slice(start, end + 1)) as ReflexionOutput;
-      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.lessons)) return parsed;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-  return null;
+  return extractJson<ReflexionOutput>(text, (parsed) =>
+    Array.isArray((parsed as ReflexionOutput).lessons),
+  );
 }

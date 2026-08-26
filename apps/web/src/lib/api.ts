@@ -433,6 +433,15 @@ export const api = {
   installSkillFromInsight: (id: string) =>
     request<{ skill: SkillDefinition }>(`/api/insights/${id}/install-skill`, { method: 'POST' }),
 
+  /**
+   * Distil a workspace's accumulated procedures into a proposed skill.
+   * Resolves undefined on a 204 — the model judged they do not cohere.
+   */
+  synthesiseSkill: (workspaceId: string) =>
+    request<{ insight: Insight } | undefined>(`/api/workspaces/${workspaceId}/synthesise-skill`, {
+      method: 'POST',
+    }),
+
   /* ------------------------------ Policy ------------------------------ */
   policy: (params: { workspaceId?: string; category?: string } = {}) =>
     request<{

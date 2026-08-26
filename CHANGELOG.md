@@ -13,6 +13,13 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **Skill synthesis.** Reflexion learns one run at a time; "Distil a skill"
+  reads across runs — the workspace's accumulated procedural memories,
+  highest-confidence first, handed to one cheap tool-less model call that
+  either drafts a coherent skill or answers that the procedures do not
+  cohere. Refusal is a first-class answer, reported as such. A draft lands
+  in the same review queue as every per-run proposal and installs only
+  through the same explicit action: synthesis never touches the registry.
 - **The brief.** The dashboard opens (for the owner) with one card
   answering "what happened, what needs me": a headline sentence, the last
   24 hours' activity, each failure linked into its session with the error

@@ -43,3 +43,12 @@ After a run, a cheap, tool-less pass reads the transcript and extracts durable
 lessons into memory — the mechanism by which "the tests need the shared
 package built first" stops being rediscovered weekly. Reflexion can be toggled
 per workspace.
+
+## Distilling a skill
+
+Reflexion learns one run at a time; **Distil a skill** (on the Memory page,
+with a workspace selected) reads *across* runs: the workspace's accumulated
+procedures are handed to one cheap model call that either drafts a coherent,
+reusable skill from them or answers that they do not cohere — refusal being
+the common, correct case. A draft lands in the same review queue as every
+other proposal: nothing changes the agent's behaviour until you accept it.

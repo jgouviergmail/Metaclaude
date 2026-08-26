@@ -40,6 +40,8 @@ import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { UpdateChecker } from './services/update-check.js';
 import { BriefService } from './services/brief.js';
+import { SkillSynthesizer, SYNTHESIS_SCHEMA, SYNTHESIS_SYSTEM_PROMPT, type SynthesisOutput } from './learning/synthesis.js';
+import { structuredCall } from './learning/structured-call.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
@@ -65,6 +67,7 @@ export interface AppContext {
   marketplaces: MarketplacesService;
   doctor: Doctor;
   brief: BriefService;
+  synthesizer: SkillSynthesizer;
   /** Null when METACLAUDE_UPDATE_REPO is set empty. */
   updateChecker: UpdateChecker | null;
 
@@ -387,6 +390,24 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     pendingApprovals: () => kernel.broker.listPending().length,
   });
 
+  // Cross-run skill synthesis: same scratch-dir, tool-less call shape as the
+  // reflector, and the same review queue for what it proposes.
+  const synthesizer = new SkillSynthesizer({
+    db,
+    memory,
+    call: (prompt) =>
+      structuredCall<SynthesisOutput>(
+        { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
+        {
+          prompt,
+          systemPrompt: SYNTHESIS_SYSTEM_PROMPT,
+          schema: SYNTHESIS_SCHEMA as unknown as Record<string, unknown>,
+          accept: (parsed) => typeof (parsed as SynthesisOutput).worthIt === 'boolean',
+        },
+      ),
+    log: kernelLog,
+  });
+
   const updateChecker = config.updateRepo
     ? new UpdateChecker({
         repo: config.updateRepo,
@@ -417,6 +438,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     marketplaces,
     doctor,
     brief,
+    synthesizer,
     updateChecker,
     workspaceRepo,
     sessionRepo,
