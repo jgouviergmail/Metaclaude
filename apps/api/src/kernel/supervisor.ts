@@ -13,7 +13,14 @@
  * terminal. Metaclaude never talks to the Anthropic API directly.
  */
 
-import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import {
+  query as sdkQuery,
+  type Options,
+  type Query,
+  type SDKMessage,
+  type SDKControlGetContextUsageResponse,
+  type SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import type {
   RunPolicy,
   RunUsage,
@@ -82,6 +89,84 @@ export interface SupervisorDeps {
   /** Bounds on what `additionalDirectories` may grant. */
   directoryPolicy: DirectoryPolicy;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
+  /**
+   * The SDK entry point, injectable so this module can be tested at all.
+   *
+   * It had no tests for exactly this reason — "it needs a live CLI" — which was
+   * never true and left the code deciding what the transcript says, what a
+   * timeout reports, and whether a run can be steered entirely unverified.
+   */
+  query?: typeof sdkQuery;
+}
+
+/**
+ * A live run's control surface.
+ *
+ * The SDK's 27 control methods are documented "only supported when streaming
+ * input is used", and the handle carrying them used to be discarded at the
+ * `for await`. Holding it is what makes a run steerable rather than merely
+ * watchable.
+ */
+interface LiveRun {
+  handle: Query;
+  /** Push another user turn into the run. Resolves false once the run is over. */
+  send: (text: string) => boolean;
+  /** Close the input iterable. Idempotent — see `PromptStream`. */
+  close: () => void;
+  /**
+   * Set when the operator asked for a clean stop.
+   *
+   * The CLI reports an interrupted turn as an errored result, which the outcome
+   * mapping would otherwise record as `failed` — and a failed run is what the
+   * bandit learns from. Stopping a run yourself would have taught the learner
+   * that the model and effort it chose were bad.
+   */
+  interruptRequested: boolean;
+}
+
+/**
+ * The streaming-input side of a run.
+ *
+ * A queue with one waiter. The two failure modes are equal and opposite:
+ * closing twice makes the iterator throw inside the SDK, and never closing
+ * leaves the subprocess waiting for input that is not coming — so `close` is
+ * idempotent and every exit path calls it.
+ */
+class PromptStream {
+  private readonly queued: SDKUserMessage[] = [];
+  private wake: (() => void) | null = null;
+  private closed = false;
+
+  push(text: string): boolean {
+    if (this.closed) return false;
+    this.queued.push({
+      type: 'user',
+      message: { role: 'user', content: text },
+      parent_tool_use_id: null,
+      session_id: '',
+    } as unknown as SDKUserMessage);
+    this.wake?.();
+    return true;
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.wake?.();
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+    for (;;) {
+      while (this.queued.length > 0) yield this.queued.shift() as SDKUserMessage;
+      if (this.closed) return;
+      await new Promise<void>((resolve) => {
+        this.wake = () => {
+          this.wake = null;
+          resolve();
+        };
+      });
+    }
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -261,6 +346,72 @@ export class AgentSupervisor {
   }
 
   /**
+   * Runs currently in flight, by run id.
+   *
+   * Entries are removed in `execute`'s `finally`, so a finished run cannot
+   * retain its handle, its options and its abort controller for the life of the
+   * process — and a control call arriving a moment late is a no-op rather than
+   * an action on a dead subprocess.
+   */
+  private readonly live = new Map<string, LiveRun>();
+
+  /** Queue another user turn on a live run. False when the run is not live. */
+  async send(runId: string, text: string): Promise<boolean> {
+    const run = this.live.get(runId);
+    if (!run) return false;
+    return run.send(text);
+  }
+
+  /**
+   * Stop the current turn cleanly.
+   *
+   * Not the abort controller: that is a SIGKILL where the CLI offers a turn
+   * stop that flushes the transcript and returns a receipt naming any messages
+   * still queued. The controller stays as the hard kill for timeouts.
+   */
+  async interrupt(runId: string): Promise<boolean> {
+    const run = this.live.get(runId);
+    if (!run) return false;
+    run.interruptRequested = true;
+    try {
+      await run.handle.interrupt();
+    } finally {
+      // Nothing more will be typed into a run being stopped, and leaving the
+      // iterable open holds the subprocess on stdin after its last turn — on
+      // the one path where the operator is actively trying to stop it.
+      run.close();
+    }
+    return true;
+  }
+
+  async setModel(runId: string, model: string): Promise<boolean> {
+    const run = this.live.get(runId);
+    if (!run) return false;
+    await run.handle.setModel(model);
+    return true;
+  }
+
+  async setPermissionMode(runId: string, mode: RunPolicy['permissionMode']): Promise<boolean> {
+    const run = this.live.get(runId);
+    if (!run) return false;
+    await run.handle.setPermissionMode(mode);
+    return true;
+  }
+
+  /**
+   * How much of the context window this run has spent, or null if not live.
+   *
+   * The SDK's own shape is returned rather than a reduction of it: it carries
+   * per-category token counts, which is the difference between a progress bar
+   * and being able to see that the context is 70% one file read.
+   */
+  async contextUsage(runId: string): Promise<SDKControlGetContextUsageResponse | null> {
+    const run = this.live.get(runId);
+    if (!run) return null;
+    return run.handle.getContextUsage();
+  }
+
+  /**
    * Execute a run to completion.
    *
    * Never throws for an agent-side failure — a failed run is a normal outcome
@@ -291,6 +442,17 @@ export class AgentSupervisor {
       request.abortSignal.addEventListener('abort', onExternalAbort, { once: true });
     }
 
+    // Closing the input on abort is separate from closing it in the `finally`.
+    // The SDK tears down its side when the controller fires, and a subprocess
+    // still blocked reading stdin does not notice; the `finally` runs only
+    // after the iterator has settled, which is exactly what is being waited on.
+    // Declared here and captured by the abort listener below rather than looked
+    // up in `this.live`: the listener is registered before the map entry
+    // exists, so a lookup would silently find nothing in exactly the window
+    // where an early abort has to be handled.
+    const stream = new PromptStream();
+    controller.signal.addEventListener('abort', () => stream.close(), { once: true });
+
     const options = this.buildOptions(request);
     options.abortController = controller;
 
@@ -300,8 +462,22 @@ export class AgentSupervisor {
     let error: string | null = null;
     let status: RunOutcome['status'] = 'succeeded';
 
+    // Streaming input rather than a string prompt. Every SDK control method is
+    // documented as streaming-input only, so this is what makes the handle
+    // below worth holding.
+    stream.push(request.prompt);
+
+    const handle = (this.deps.query ?? sdkQuery)({ prompt: stream, options });
+    const entry: LiveRun = {
+      handle,
+      send: (text) => stream.push(text),
+      close: () => stream.close(),
+      interruptRequested: false,
+    };
+    this.live.set(request.runId, entry);
+
     try {
-      for await (const message of query({ prompt: request.prompt, options })) {
+      for await (const message of handle) {
         const captured = state.handle(message);
         if (captured.claudeSessionId) {
           claudeSessionId = captured.claudeSessionId;
@@ -310,7 +486,8 @@ export class AgentSupervisor {
         if (captured.usage) usage = captured.usage;
         if (captured.error) {
           error = captured.error;
-          status = 'failed';
+          status = entry.interruptRequested ? 'interrupted' : 'failed';
+          if (entry.interruptRequested) error = 'The run was stopped.';
         }
       }
     } catch (caught) {
@@ -328,6 +505,12 @@ export class AgentSupervisor {
     } finally {
       clearTimeout(timeout);
       request.abortSignal.removeEventListener('abort', onExternalAbort);
+      // Order matters on the way out: stop accepting input, then forget the
+      // run, then flush the transcript. Closing the stream is what lets the
+      // subprocess exit; `close` is idempotent so the abort path may have
+      // already done it.
+      stream.close();
+      this.live.delete(request.runId);
       state.finalise();
     }
 

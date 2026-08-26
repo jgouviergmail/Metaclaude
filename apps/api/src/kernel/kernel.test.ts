@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { deriveTitle } from './kernel.js';
 
 /**
- * Only the pure helper is exercised here: everything else in the kernel needs a
- * live Claude CLI subprocess.
+ * Only the pure helper is exercised here.
+ *
+ * The reason used to be recorded as "everything else needs a live Claude CLI",
+ * which was never true — the supervisor is an injected dependency and is now
+ * tested with a fake `query` in supervisor.test.ts. What the kernel actually
+ * needs is a fixture for its ten collaborators, which is a piece of work in its
+ * own right and is tracked as one. Leaving a false reason in place is how a gap
+ * stops being noticed.
  */
 describe('deriveTitle', () => {
   it('uses the first meaningful line', () => {

@@ -34,6 +34,15 @@ import { PermissionBroker } from './permissions.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import { AgentSupervisor, type RunRequest } from './supervisor.js';
 
+/**
+ * How long a clean stop is given before the run is killed outright.
+ *
+ * Long enough for the CLI to finish the tool call it is inside and flush the
+ * transcript; short enough that the operator who tapped Stop does not wonder
+ * whether it worked.
+ */
+const INTERRUPT_GRACE_MS = 5_000;
+
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -601,8 +610,23 @@ export class Kernel {
   interrupt(sessionId: string): boolean {
     for (const [runId, entry] of this.active) {
       if (entry.session.id !== sessionId) continue;
-      entry.controller.abort();
       this.broker.cancelRun(runId);
+
+      // Ask the CLI to stop this turn cleanly. Aborting the controller is a
+      // SIGKILL: the transcript loses whatever the model was mid-way through
+      // writing, and the run is recorded as a failure the bandit then learns
+      // from — so stopping a run yourself taught the learner that the model and
+      // effort it had chosen were bad ones.
+      void this.deps.supervisor.interrupt(runId).catch(() => {
+        entry.controller.abort();
+      });
+
+      // And keep the kill as a guarantee. A CLI that ignores the request, or
+      // one already wedged, must not leave the operator holding a button that
+      // did nothing. Aborting a run that has already finished is a no-op, so
+      // this needs no cleanup; unref'd so it cannot hold the process open.
+      const fallback = setTimeout(() => entry.controller.abort(), INTERRUPT_GRACE_MS);
+      fallback.unref?.();
       return true;
     }
 

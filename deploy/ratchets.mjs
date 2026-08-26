@@ -23,8 +23,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,10 +36,22 @@ const UPDATE = process.argv.includes('--update');
 /* Measurements                                                               */
 /* -------------------------------------------------------------------------- */
 
-/** Every tracked file, so a metric can never be fooled by an untracked scratch copy. */
+/**
+ * Every file git would keep, tracked or not yet added.
+ *
+ * `--others --exclude-standard` is what makes a brand-new test file count on
+ * the run that creates it. Counting only tracked files meant a lot's own tests
+ * were invisible until they were staged, so the ratchet reported no
+ * improvement at the exact moment there was one — and anything .gitignore
+ * covers is still excluded, which is the property that mattered.
+ */
 function tracked(pattern) {
-  const out = execFileSync('git', ['ls-files', '-z', pattern], { cwd: ROOT, encoding: 'utf8' });
-  return out.split('\0').filter(Boolean);
+  const out = execFileSync(
+    'git',
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', pattern],
+    { cwd: ROOT, encoding: 'utf8' },
+  );
+  return [...new Set(out.split('\0').filter(Boolean))];
 }
 
 function read(path) {
