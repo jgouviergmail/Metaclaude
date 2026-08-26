@@ -150,7 +150,19 @@ proxy_answers() {
 
 record() {
   install -d -m 0750 "$RELEASES"
-  [ -f "$CURRENT" ] && cp "$CURRENT" "$PREVIOUS"
+  # Rotate on a deploy; never on a rollback.
+  #
+  # On a rollback the target *is* `previous`, so rotating files the image being
+  # escaped as the next rollback target — and the second press of the button
+  # reinstates the outage the first one ended. That is the button an operator
+  # presses repeatedly, at the worst possible moment, precisely because they are
+  # not sure it worked.
+  #
+  # Leaving `previous` alone makes a second rollback idempotent: it redeploys
+  # the same known-good image.
+  if [ "$ACTION" != "rollback" ] && [ -f "$CURRENT" ]; then
+    cp "$CURRENT" "$PREVIOUS"
+  fi
   printf '%s\n' "$1" > "$CURRENT"
 }
 

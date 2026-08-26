@@ -772,6 +772,63 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Rolling back twice does not reinstate the outage"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# `record` keeps the two-entry history the rollback button reads. It ran for
+# both actions, so a rollback filed the image it was *escaping* as the next
+# rollback target: press the button twice and the broken image comes back.
+#
+# That is the button an operator presses repeatedly, during an incident,
+# precisely because they are not sure the first press worked.
+#
+# The function is lifted out of the script rather than restated here, so this
+# tests the code that ships.
+
+if ! sed -n '/^record() {/,/^}/p' "$REPO_ROOT/deploy/bin/metaclaude-deploy" > "$WORK/record.sh"; then
+  bad "extracting record() from metaclaude-deploy" "could not read the script"
+elif [ "$(grep -c '^}' "$WORK/record.sh")" -ne 1 ]; then
+  bad "extracting record()" "the definition moved; this check needs updating"
+else
+  # `record` reads ACTION, but it is sourced — shellcheck cannot see through
+  # that and reports every assignment in here as dead.
+  # shellcheck disable=SC2034
+  (
+    RELEASES="$WORK/releases"; CURRENT="$RELEASES/current"; PREVIOUS="$RELEASES/previous"
+    ACTION="deploy"
+    # shellcheck source=/dev/null
+    . "$WORK/record.sh"
+
+    record "img-A"                                 # first ever deploy
+    record "img-B-broken"                          # B ships and breaks
+    ACTION="rollback"; record "img-A"          # operator rolls back to A
+
+    printf 'current=%s previous=%s\n' "$(cat "$CURRENT")" "$(cat "$PREVIOUS")" \
+      > "$WORK/record.result"
+
+    # And again, because that is what actually happens.
+    ACTION="rollback"; record "$(cat "$PREVIOUS")"
+    printf 'again=%s\n' "$(cat "$CURRENT")" >> "$WORK/record.result"
+  )
+
+  result="$(cat "$WORK/record.result" 2>/dev/null || echo 'the subshell died')"
+  case "$result" in
+    *"current=img-A previous=img-A"*)
+      ok "a rollback leaves the known-good image as the rollback target" ;;
+    *"previous=img-B-broken"*)
+      bad "a rollback files the broken image as the next rollback target" \
+          "pressing rollback twice redeploys it" ;;
+    *) bad "record() behaved unexpectedly" "$(printf '%s' "$result" | tr '\n' ' ')" ;;
+  esac
+
+  case "$result" in
+    *"again=img-A"*) ok "a second rollback is idempotent" ;;
+    *) bad "a second rollback does not redeploy the same image" \
+           "$(printf '%s' "$result" | tr '\n' ' ')" ;;
+  esac
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 printf '\n%s%d passed, %d failed, %d skipped%s\n' "$BOLD" "$PASSED" "$FAILED" "$SKIPPED" "$OFF"
 [ "$FAILED" -eq 0 ] || exit 1
