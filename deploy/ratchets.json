@@ -1,7 +1,7 @@
 {
   "metrics": {
-    "tests": 808,
-    "testFiles": 33,
+    "tests": 829,
+    "testFiles": 34,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 1,
     "initialJsGzipKb": 174

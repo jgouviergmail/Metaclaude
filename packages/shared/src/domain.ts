@@ -788,3 +788,136 @@ export const AuditEntry = z.object({
   detail: z.string().nullable(),
 });
 export type AuditEntry = z.infer<typeof AuditEntry>;
+
+/* -------------------------------------------------------------------------- */
+/* Agent Plugins 1.0.0                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The vendor-neutral plugin format published on 2026-08-06 by Amazon, Cursor,
+ * Microsoft, OpenAI and Vercel, with Google joining as a core maintainer.
+ *
+ * One directory packages Agent Skills and MCP servers so the same folder works
+ * across every client that implements the spec. The schemas below are a
+ * transcription of 1.0.0, not an interpretation of it: where the spec says a
+ * field is the only permitted set, this refuses the rest, because a manifest
+ * that validates here and nowhere else would defeat the point of a standard.
+ *
+ * https://github.com/agentplugins/agent-plugins-spec
+ */
+export const PLUGIN_SCHEMA_URL = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+export const PLUGIN_MCP_SCHEMA_URL = 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json';
+
+export const PluginAuthor = z.object({
+  name: z.string().optional(),
+  email: z.string().optional(),
+  url: z.string().optional(),
+});
+
+export const PluginManifest = z
+  .object({
+    $schema: z.string(),
+    /** Lowercase alphanumeric, hyphens and periods; 1–64 characters. */
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-z0-9][a-z0-9.-]*$/, 'A plugin name is lowercase letters, digits, hyphens and periods.'),
+    version: z.string().optional(),
+    description: z.string().optional(),
+    author: PluginAuthor.optional(),
+    homepage: z.string().optional(),
+    repository: z.string().optional(),
+    license: z.string().optional(),
+    keywords: z.array(z.string()).optional(),
+    /**
+     * Client-specific data, keyed by reverse-domain namespace. The spec says a
+     * client MUST ignore members it does not implement *without validating
+     * them*, so this stays deliberately unshaped.
+     */
+    extensions: z.record(z.string(), z.unknown()).optional(),
+  })
+  // "The only permitted top-level fields are …" — an unknown key is reported
+  // rather than accepted, but per the spec it is not fatal, so the loader
+  // strips and warns instead of refusing the plugin.
+  .strict();
+export type PluginManifest = z.infer<typeof PluginManifest>;
+
+const PluginMcpStdio = z.object({
+  type: z.literal('stdio'),
+  /** A bare executable name, or a ./ path relative to the plugin root. */
+  command: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  cwd: z.string().optional(),
+});
+
+const PluginMcpHttp = z.object({
+  type: z.literal('streamable-http'),
+  url: z.string().url(),
+  headers: z.record(z.string(), z.string()).optional(),
+});
+
+/** Legacy in 1.0.0, and still permitted. */
+const PluginMcpSse = z.object({
+  type: z.literal('sse'),
+  url: z.string().url(),
+  headers: z.record(z.string(), z.string()).optional(),
+});
+
+export const PluginMcpServer = z.discriminatedUnion('type', [
+  PluginMcpStdio,
+  PluginMcpHttp,
+  PluginMcpSse,
+]);
+export type PluginMcpServer = z.infer<typeof PluginMcpServer>;
+
+export const PluginMcpFile = z.object({
+  $schema: z.string(),
+  mcpServers: z.record(z.string(), PluginMcpServer),
+});
+export type PluginMcpFile = z.infer<typeof PluginMcpFile>;
+
+/** One skill found under `skills/`, as loaded from disk. */
+export const PluginSkill = z.object({
+  name: z.string(),
+  description: z.string(),
+  /** Absolute path to the skill's SKILL.md. */
+  path: z.string(),
+});
+export type PluginSkill = z.infer<typeof PluginSkill>;
+
+/** An installed plugin, as the API reports it. */
+export const PluginRecord = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.string().nullable(),
+  description: z.string().nullable(),
+  homepage: z.string().nullable(),
+  license: z.string().nullable(),
+  keywords: z.array(z.string()),
+  /** Where it came from: a git URL, or a path on the server. */
+  source: z.string(),
+  /** Absolute path of the plugin root inside the container. */
+  root: z.string(),
+  enabled: z.boolean(),
+  skills: z.array(PluginSkill),
+  mcpServers: z.array(z.string()),
+  /**
+   * Per-component problems. The spec requires that a failure isolated to one
+   * component type must not stop the others loading, so these are reported
+   * beside a plugin that is otherwise working rather than replacing it.
+   */
+  warnings: z.array(z.string()),
+  installedAt: Millis,
+  updatedAt: Millis,
+});
+export type PluginRecord = z.infer<typeof PluginRecord>;
+
+export const InstallPluginRequest = z
+  .object({
+    /** A git URL to clone, or an absolute path already on the server. */
+    source: z.string().min(1).max(500),
+  })
+  .strict();
+export type InstallPluginRequest = z.infer<typeof InstallPluginRequest>;
