@@ -8,6 +8,7 @@
 
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { APP_VERSION } from '@metaclaude/shared';
 import { renderWithProviders } from '@/test/render';
 import { HelpPage } from './HelpPage';
 
@@ -61,7 +62,10 @@ describe('HelpPage', () => {
       expect(screen.getByRole('heading', { name: /changelog/i })).toBeTruthy();
     });
     // The subtitle states the running version; the changelog must know it too —
-    // the check.sh guard enforces the same agreement at release time.
-    expect(screen.getAllByText(/0\.1\.0/).length).toBeGreaterThanOrEqual(2);
+    // the check.sh guard enforces the same agreement at release time. Asserted
+    // against APP_VERSION itself, not a literal: a version bump must not turn
+    // this test into a lie about an older release.
+    const version = APP_VERSION.replace(/\./g, '\\.');
+    expect(screen.getAllByText(new RegExp(version)).length).toBeGreaterThanOrEqual(2);
   });
 });

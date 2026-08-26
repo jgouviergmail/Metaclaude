@@ -9,7 +9,12 @@ This file is part of the product surface: the in-app changelog renders from it,
 and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 "The system that documents itself").
 
-## [Unreleased]
+## [0.2.0] — 2026-08-26
+
+The system starts to know itself: what its subscription is spending, whether
+its own machinery is healthy, what happened while you were away — and it
+begins converting what it learns into capability, always through a human's
+review.
 
 ### Added
 
@@ -141,4 +146,5 @@ rehearsed end to end.
   recovery code), a symlink escape past the directory grants, and a lexical
   retrieval gate that admitted the whole corpus when every score was noise.
 
+[0.2.0]: https://github.com/jgouviergmail/Metaclaude/releases/tag/v0.2.0
 [0.1.0]: https://github.com/jgouviergmail/Metaclaude/releases/tag/v0.1.0
