@@ -28,6 +28,15 @@ composer, the memory the system accumulates about your projects, the
 automations that run without you. The rest of this guide takes them one at a
 time.
 
+## The brief
+
+For the owner, the dashboard opens with **The brief** — one card answering
+"what happened, what needs me" for the last 24 hours: a headline, the
+failures linked straight into their sessions, approvals waiting, the
+automations the failure guard switched off, the doctor's verdict, insight
+growth, and the quota window closest to its ceiling. It is composed from the
+server's own records, so it costs nothing and is always current.
+
 ## The three ideas worth knowing on day one
 
 - **Nothing irreversible happens without you.** The default permission mode

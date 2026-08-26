@@ -1059,6 +1059,44 @@ export const DoctorReport = z.object({
 export type DoctorReport = z.infer<typeof DoctorReport>;
 
 /**
+ * The morning brief — one page answering "what happened, what needs me".
+ *
+ * Types rather than schemas for the same reason as UpdateCheck below: the
+ * server composes it from already-validated data and nothing parses it at an
+ * edge, so a Zod declaration would only cost the web entry a kilobyte.
+ */
+export interface BriefFailure {
+  runId: string;
+  sessionId: string;
+  workspaceId: string;
+  workspaceName: string;
+  /** The prompt that failed, truncated to a line. */
+  prompt: string;
+  error: string | null;
+  at: number;
+}
+
+export interface Brief {
+  since: number;
+  generatedAt: number;
+  /** The one sentence to read when nothing else gets read. */
+  headline: string;
+  activity: AnalyticsSummary;
+  failures: BriefFailure[];
+  pendingApprovals: number;
+  automations: {
+    /** Switched off by the failure guard — silently, which is why it is here. */
+    disabledByGuard: string[];
+    nextRun: { name: string; at: number } | null;
+  };
+  doctor: DoctorReport;
+  /** Null when the CLI could not answer — the brief still stands. */
+  quota: ClaudeUsage | null;
+  /** Insights the reflexion pass added in the period. */
+  newInsights: number;
+}
+
+/**
  * The update check's answer — the informational half of guarded self-update.
  *
  * A type rather than a schema, deliberately: the server produces it and

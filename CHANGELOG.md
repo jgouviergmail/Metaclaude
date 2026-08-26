@@ -13,6 +13,15 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **The brief.** The dashboard opens (for the owner) with one card
+  answering "what happened, what needs me": a headline sentence, the last
+  24 hours' activity, each failure linked into its session with the error
+  in sight, approvals waiting, the automations the failure guard switched
+  off — named, since nothing else says so loudly — the doctor's verdict,
+  insight growth, and the quota window closest to its ceiling. Composed
+  deterministically from the server's own records: no model in the loop,
+  so it is always available and always current; a source that cannot
+  answer (usually the quota) costs its section, never the page.
 - **A guarded update check.** Settings → System → Updates compares the
   running version against the latest published release and answers with one
   of three honest states: an update exists, up to date, or "cannot tell"

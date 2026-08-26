@@ -39,6 +39,7 @@ import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { UpdateChecker } from './services/update-check.js';
+import { BriefService } from './services/brief.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
@@ -63,6 +64,7 @@ export interface AppContext {
   claudeSessions: ClaudeSessions;
   marketplaces: MarketplacesService;
   doctor: Doctor;
+  brief: BriefService;
   /** Null when METACLAUDE_UPDATE_REPO is set empty. */
   updateChecker: UpdateChecker | null;
 
@@ -373,6 +375,18 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     queuedRuns: () => kernel.queuedCount,
   });
 
+  const analytics = new AnalyticsService(db);
+
+  // The brief reads the same quota cache as the Analytics screen; a CLI that
+  // cannot answer costs the section, never the page.
+  const brief = new BriefService({
+    db,
+    analytics,
+    doctor,
+    usage: () => claudeUsage.get(config.dataDir),
+    pendingApprovals: () => kernel.broker.listPending().length,
+  });
+
   const updateChecker = config.updateRepo
     ? new UpdateChecker({
         repo: config.updateRepo,
@@ -402,6 +416,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeSessions,
     marketplaces,
     doctor,
+    brief,
     updateChecker,
     workspaceRepo,
     sessionRepo,
@@ -416,7 +431,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     workspaces,
     files: new FileService(),
     git: new GitService(),
-    analytics: new AnalyticsService(db),
+    analytics,
     scheduler,
     kernel,
     startedAt: Date.now(),

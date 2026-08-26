@@ -30,6 +30,7 @@ import {
   type PolicyArm,
   type ClaudeCatalogue,
   type ClaudeCliSession,
+  type Brief,
   type ClaudeUsage,
   type DoctorReport,
   type Marketplace,
@@ -290,6 +291,9 @@ export const api = {
 
   /** Every self-check the system knows how to run, in one report. Owner-only. */
   doctor: () => request<DoctorReport>('/api/system/doctor'),
+
+  /** The morning brief — what happened, what needs a human. Owner-only. */
+  brief: () => request<Brief>('/api/brief'),
 
   /** Is a newer release published? Informational only — deploys stay tag-driven. */
   updateCheck: (refresh = false) =>

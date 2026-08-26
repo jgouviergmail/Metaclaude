@@ -23,6 +23,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { BriefView } from '@/components/analytics/BriefView';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { decideApproval } from '@/lib/approvals';
@@ -64,6 +65,15 @@ export function DashboardPage() {
   const insightsQuery = useQuery({
     queryKey: ['insights', 'new'],
     queryFn: () => api.insights({ status: 'new', limit: 5 }),
+  });
+
+  // The brief embeds the doctor and (cached) quota, both of which cost a
+  // subprocess on a cold cache — fetched once and kept for the visit.
+  const briefQuery = useQuery({
+    queryKey: ['brief'],
+    queryFn: () => api.brief(),
+    enabled: user?.role === 'owner',
+    staleTime: 5 * 60_000,
   });
 
   const createWorkspace = useMutation({
@@ -128,6 +138,20 @@ export function DashboardPage() {
                 </p>
               </div>
             </div>
+          ) : null}
+
+          {/* The brief: what happened, what needs a human. Owner-only, since
+              it embeds the doctor. */}
+          {briefQuery.data ? (
+            <Card>
+              <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+                <h2 className="text-sm font-semibold text-ink">The brief</h2>
+                <span className="text-[11.5px] text-subtle">last 24 hours</span>
+              </div>
+              <div className="px-4 py-3">
+                <BriefView brief={briefQuery.data} />
+              </div>
+            </Card>
           ) : null}
 
           {/* Pending approvals — the only thing that blocks an agent. */}

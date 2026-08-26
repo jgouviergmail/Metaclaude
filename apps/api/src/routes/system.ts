@@ -178,6 +178,15 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
    * published? Applying one stays the tag-driven, health-gated deploy
    * pipeline — no route can trigger it.
    */
+  /**
+   * The morning brief — what happened, what needs a human. Owner-only for
+   * the same reason as the doctor it embeds.
+   */
+  app.get('/api/brief', async (request, reply) => {
+    requireOwner(request);
+    return reply.send(await context.brief.generate());
+  });
+
   app.get('/api/system/update-check', async (request, reply) => {
     requireOwner(request);
     if (!context.updateChecker) {
