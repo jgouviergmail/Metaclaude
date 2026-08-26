@@ -19,10 +19,12 @@ import {
   type Query,
   type SDKMessage,
   type SDKControlGetContextUsageResponse,
+  type SDKControlGetUsageResponse,
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
   ClaudeCatalogue,
+  ClaudeUsage,
   MarketplaceSource,
   RewindResult,
   RunPolicy,
@@ -837,6 +839,127 @@ export class AgentSupervisor {
       });
       unavailable.push('session');
       return empty;
+    }
+  }
+
+  /**
+   * The subscription's quota picture, from the CLI's own usage endpoint.
+   *
+   * The SDK method is experimental and says so in its name; this wrapper is
+   * the one place allowed to call it, and it maps the answer into the stable
+   * `ClaudeUsage` contract so a shape change lands here, in one file with
+   * tests, rather than in the screen. A CLI without the method is a missing
+   * panel (`unavailable: ['usage']`), never a broken screen.
+   */
+  async usage(workspacePath: string): Promise<ClaudeUsage> {
+    const unavailable: string[] = [];
+    const empty: ClaudeUsage = {
+      subscriptionType: null,
+      windows: [],
+      extraUsage: null,
+      behaviors: null,
+      unavailable,
+      fetchedAt: Date.now(),
+    };
+
+    /** ISO 8601 or null → epoch millis or null; a malformed stamp is null too. */
+    const at = (iso: string | null | undefined): number | null => {
+      if (!iso) return null;
+      const parsed = Date.parse(iso);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
+    const share = (
+      entries: Array<{ name: string; pct: number }> | undefined,
+    ): Array<{ name: string; pct: number }> =>
+      (entries ?? []).map(({ name, pct }) => ({ name, pct }));
+
+    try {
+      return await this.probe({ cwd: workspacePath }, async (handle) => {
+        let answer: SDKControlGetUsageResponse;
+        try {
+          answer = await handle.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET();
+        } catch (error) {
+          unavailable.push('usage');
+          this.deps.log('debug', 'the CLI could not answer "usage"', {
+            message: (error as Error).message,
+          });
+          return { ...empty, fetchedAt: Date.now() };
+        }
+
+        const limits = answer.rate_limits;
+        const windows: ClaudeUsage['windows'] = [];
+        if (!answer.rate_limits_available || !limits) {
+          // API key, Bedrock, Vertex — plans without windows. Named so the
+          // screen can say "does not apply" instead of rendering nothing.
+          unavailable.push('rate_limits');
+        } else {
+          const named: Array<[key: string, label: string]> = [
+            ['five_hour', 'Session (5 h)'],
+            ['seven_day', 'Week — all models'],
+            ['seven_day_oauth_apps', 'Week — connected apps'],
+            ['seven_day_opus', 'Week — Opus'],
+            ['seven_day_sonnet', 'Week — Sonnet'],
+          ];
+          for (const [key, label] of named) {
+            const window = limits[key as 'five_hour'];
+            // null and absent both mean "no such bucket on this plan" — which
+            // is not a bucket at 0%.
+            if (!window) continue;
+            windows.push({
+              key,
+              label,
+              utilization: window.utilization ?? null,
+              resetsAt: at(window.resets_at),
+            });
+          }
+          for (const bucket of limits.model_scoped ?? []) {
+            windows.push({
+              key: `model:${bucket.display_name}`,
+              label: bucket.display_name,
+              utilization: bucket.utilization ?? null,
+              resetsAt: at(bucket.resets_at),
+            });
+          }
+        }
+
+        const behaviorWindow = (
+          window: NonNullable<SDKControlGetUsageResponse['behaviors']>['day'],
+        ): NonNullable<ClaudeUsage['behaviors']>['day'] => ({
+          requestCount: window.request_count,
+          sessionCount: window.session_count,
+          behaviors: window.behaviors.map(({ key, pct, count }) => ({ key, pct, count })),
+          agents: share(window.agents),
+          skills: share(window.skills),
+          plugins: share(window.plugins),
+          mcpServers: share(window.mcp_servers),
+        });
+
+        return {
+          subscriptionType: answer.subscription_type,
+          windows,
+          extraUsage:
+            limits?.extra_usage != null
+              ? {
+                  isEnabled: limits.extra_usage.is_enabled,
+                  monthlyLimit: limits.extra_usage.monthly_limit,
+                  usedCredits: limits.extra_usage.used_credits,
+                  utilization: limits.extra_usage.utilization,
+                }
+              : null,
+          behaviors: answer.behaviors
+            ? { day: behaviorWindow(answer.behaviors.day), week: behaviorWindow(answer.behaviors.week) }
+            : null,
+          unavailable,
+          fetchedAt: Date.now(),
+        };
+      });
+    } catch (caught) {
+      this.deps.log('warn', 'could not read the CLI usage', {
+        message: (caught as Error).message,
+      });
+      unavailable.push('session');
+      return { ...empty, fetchedAt: Date.now() };
     }
   }
 

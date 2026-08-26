@@ -30,6 +30,7 @@ import {
   type PolicyArm,
   type ClaudeCatalogue,
   type ClaudeCliSession,
+  type ClaudeUsage,
   type Marketplace,
   type MarketplaceCatalogue,
   type MarketplaceInput,
@@ -280,6 +281,10 @@ export const api = {
    */
   claudeCatalogue: (params: { workspaceId?: string; refresh?: boolean } = {}) =>
     request<ClaudeCatalogue>(`/api/claude/catalogue${qs(params)}`),
+
+  /** The subscription's quota windows, as the CLI itself reports them. */
+  claudeUsage: (params: { workspaceId?: string; refresh?: boolean } = {}) =>
+    request<ClaudeUsage>(`/api/claude/usage${qs(params)}`),
 
   /**
    * The CLI's own transcript store for a workspace's directory — including

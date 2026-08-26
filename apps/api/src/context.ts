@@ -9,6 +9,7 @@
 
 import { resolve } from 'node:path';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
+import type { ClaudeUsage } from '@metaclaude/shared';
 import type { Logger } from 'pino';
 import type { Config } from './config.js';
 import { migrate, openDatabase, type Db } from './db/index.js';
@@ -30,7 +31,7 @@ import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
-import { CatalogueCache } from './services/claude-catalogue.js';
+import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { PluginRegistry } from './services/plugin-registry.js';
@@ -53,6 +54,7 @@ export interface AppContext {
   claudeCredentials: ClaudeCredentials;
   plugins: PluginRegistry;
   claudeCatalogue: CatalogueCache;
+  claudeUsage: TtlCache<ClaudeUsage>;
   claudeSessions: ClaudeSessions;
   marketplaces: MarketplacesService;
 
@@ -255,6 +257,11 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     read: (workspacePath) => supervisor.catalogue(workspacePath),
   });
 
+  // Same shape, same reason: reading the quota spawns a CLI subprocess.
+  const claudeUsage = new TtlCache<ClaudeUsage>({
+    read: (workspacePath) => supervisor.usage(workspacePath),
+  });
+
   // The SDK reads the CLI's own transcript store in-process — no subprocess,
   // so no cache. Injected so tests never touch the real store.
   const claudeSessions = new ClaudeSessions({
@@ -340,6 +347,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeCredentials,
     plugins,
     claudeCatalogue,
+    claudeUsage,
     claudeSessions,
     marketplaces,
     workspaceRepo,

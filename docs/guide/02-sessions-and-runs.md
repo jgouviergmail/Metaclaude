@@ -61,3 +61,11 @@ or accepted — an id from anywhere else is refused.
 Each run shows its tokens and, where the CLI reports one, its cost. Analytics
 aggregates them per workspace and ranks workspaces against each other — the
 view that tells you which project is spending the ceiling.
+
+Analytics also shows the **subscription quota** itself, as the CLI reports it:
+the five-hour session window, the weekly windows, and any per-model buckets,
+each with its utilisation and when it resets. Under them, the CLI's own
+attribution of what has been consuming the quota — behaviours like heavy
+sub-agent use, and the agents, skills, plugins and MCP servers involved. That
+attribution is approximate by its own admission: it reads this machine's
+transcripts, so other devices and claude.ai are not counted.

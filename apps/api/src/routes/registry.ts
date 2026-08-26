@@ -321,6 +321,23 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     );
   });
 
+  /**
+   * The subscription's quota windows, from the CLI's own usage endpoint —
+   * the five-hour session window, the weekly ones, the per-model buckets,
+   * and the CLI's attribution of what has been consuming them. Cached like
+   * the catalogue, for the same reason: each read spawns a subprocess.
+   */
+  app.get('/api/claude/usage', async (request, reply) => {
+    requireOperator(request);
+    const query = request.query as { workspaceId?: string; refresh?: string };
+
+    const workspace = query.workspaceId ? context.workspaceRepo.get(query.workspaceId) : null;
+    if (query.workspaceId && !workspace) throw new HttpError(404, 'Workspace not found.');
+
+    const path = workspace?.path ?? context.config.dataDir;
+    return reply.send(await context.claudeUsage.get(path, { force: query.refresh === 'true' }));
+  });
+
   /* ------------------------ The CLI's own sessions ------------------------ */
 
   /**

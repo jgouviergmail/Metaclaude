@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import type { PolicyArm } from '@metaclaude/shared';
+import { QuotaPanel } from '@/components/analytics/QuotaPanel';
 import { WorkspaceUsageBars } from '@/components/analytics/WorkspaceUsageBars';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
@@ -154,6 +155,14 @@ export function AnalyticsPage() {
     queryFn: () => api.policy({ ...(workspaceId ? { workspaceId } : {}) }),
   });
 
+  // The quota read spawns a CLI subprocess server-side (cached a minute
+  // there); a long staleTime keeps this page from re-asking on every focus.
+  const usageQuery = useQuery({
+    queryKey: ['claude-usage'],
+    queryFn: () => api.claudeUsage(),
+    staleTime: 60_000,
+  });
+
   const resetPolicy = useMutation({
     mutationFn: () =>
       api.resetPolicy({ workspaceId: workspaceId ?? null, includeClassifier: true }),
@@ -252,6 +261,29 @@ export function AnalyticsPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl space-y-6 px-3 py-4 sm:px-6 sm:py-6">
+          {/* Independent of the analytics query on purpose: the quota picture
+              exists even in a period with no runs, and is most needed when the
+              wall is close — which is not when someone is browsing history. */}
+          <Card>
+            <CardHeader
+              title="Subscription quota"
+              description={
+                usageQuery.data?.subscriptionType
+                  ? `The ${usageQuery.data.subscriptionType} plan's windows, as the CLI reports them.`
+                  : 'The plan windows, as the CLI reports them.'
+              }
+            />
+            <div className="px-4 pb-4">
+              {usageQuery.isLoading ? (
+                <Skeleton className="h-24 rounded-xl" />
+              ) : usageQuery.data ? (
+                <QuotaPanel usage={usageQuery.data} />
+              ) : (
+                <p className="text-[12.5px] text-subtle">The quota could not be read.</p>
+              )}
+            </div>
+          </Card>
+
           {analyticsQuery.isLoading ? (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">

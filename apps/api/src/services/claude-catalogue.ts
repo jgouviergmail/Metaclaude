@@ -15,37 +15,41 @@
 
 import type { ClaudeCatalogue } from '@metaclaude/shared';
 
-export interface CatalogueCacheDeps {
-  /** Read the catalogue for one workspace directory. */
-  read: (workspacePath: string) => Promise<ClaudeCatalogue>;
+export interface TtlCacheDeps<T> {
+  /** Read the value for one workspace directory. */
+  read: (workspacePath: string) => Promise<T>;
   ttlMs?: number;
   /** Injectable clock, so the tests do not sleep. */
   now?: () => number;
 }
 
-interface Entry {
+interface Entry<T> {
   at: number;
-  value: ClaudeCatalogue;
+  value: T;
 }
 
-export class CatalogueCache {
+/**
+ * Generic because the CLI answers more than one expensive question the same
+ * way: the catalogue was the first tenant, the usage windows the second.
+ */
+export class TtlCache<T> {
   private readonly ttlMs: number;
   private readonly now: () => number;
-  private readonly entries = new Map<string, Entry>();
+  private readonly entries = new Map<string, Entry<T>>();
   /**
    * Reads currently in flight, by workspace.
    *
    * Without this, three panels mounting together are three CLI subprocesses for
    * one answer. Sharing the promise makes concurrent callers one read.
    */
-  private readonly inFlight = new Map<string, Promise<ClaudeCatalogue>>();
+  private readonly inFlight = new Map<string, Promise<T>>();
 
-  constructor(private readonly deps: CatalogueCacheDeps) {
+  constructor(private readonly deps: TtlCacheDeps<T>) {
     this.ttlMs = deps.ttlMs ?? 60_000;
     this.now = deps.now ?? Date.now;
   }
 
-  async get(workspacePath: string, options: { force?: boolean } = {}): Promise<ClaudeCatalogue> {
+  async get(workspacePath: string, options: { force?: boolean } = {}): Promise<T> {
     if (!options.force) {
       const cached = this.entries.get(workspacePath);
       if (cached && this.now() - cached.at < this.ttlMs) return cached.value;
@@ -82,3 +86,6 @@ export class CatalogueCache {
     this.entries.delete(workspacePath);
   }
 }
+
+/** The catalogue's cache — the class's original tenant, name kept for its callers. */
+export class CatalogueCache extends TtlCache<ClaudeCatalogue> {}

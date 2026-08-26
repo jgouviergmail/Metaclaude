@@ -134,6 +134,10 @@ interface FakeQuery {
   mcp_: Array<Record<string, unknown>>;
   /** Make `supportedCommands` throw, the way an older CLI would. */
   failCommands: boolean;
+  /** What the experimental usage method answers. */
+  usageResponse: Record<string, unknown>;
+  /** Make the usage method throw, the way a CLI without it would. */
+  failUsage: boolean;
   /**
    * When true, `interrupt()` only records the call — it does not end the turn
    * with an error result. That is what a CLI which honours the stop by simply
@@ -168,6 +172,40 @@ function fakeQuery() {
     agents_: [{ name: 'explorer', description: 'Reads widely' }],
     mcp_: [],
     failCommands: false,
+    usageResponse: {
+      subscription_type: 'max',
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: 42, resets_at: '2026-08-26T15:00:00.000Z' },
+        seven_day: { utilization: 61, resets_at: '2026-08-30T00:00:00.000Z' },
+        seven_day_opus: null,
+        model_scoped: [
+          { display_name: 'Fable', utilization: 12, resets_at: '2026-08-30T00:00:00.000Z' },
+        ],
+        extra_usage: { is_enabled: true, monthly_limit: 50, used_credits: 3.5, utilization: 7 },
+      },
+      behaviors: {
+        day: {
+          request_count: 120,
+          session_count: 6,
+          behaviors: [{ key: 'subagent_heavy', pct: 34, count: 41 }],
+          agents: [{ name: 'explorer', pct: 20 }],
+          skills: [],
+          plugins: [],
+          mcp_servers: [{ name: 'github', pct: 9 }],
+        },
+        week: {
+          request_count: 900,
+          session_count: 40,
+          behaviors: [],
+          agents: [],
+          skills: [],
+          plugins: [],
+          mcp_servers: [],
+        },
+      },
+    },
+    failUsage: false,
     interruptEndsCleanly: false,
     finish: () => {},
     emit: () => {},
@@ -286,6 +324,10 @@ function fakeQuery() {
       supportedAgents: async () => control.agents_,
       mcpServerStatus: async () => control.mcp_,
       accountInfo: async () => ({ subscriptionType: 'max', organization: 'Personal' }),
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => {
+        if (control.failUsage) throw new Error('unsupported control request');
+        return control.usageResponse;
+      },
     });
   };
 
@@ -1000,6 +1042,103 @@ describe('reading the CLI’s own catalogue', () => {
     const catalogue = await supervisor.catalogue(WORKSPACE);
 
     expect(catalogue.fetchedAt).toBeGreaterThanOrEqual(before);
+  });
+});
+
+describe('reading the subscription quota', () => {
+  const WORKSPACE = '/srv/metaclaude/workspaces/test';
+
+  it('normalises every window — session, weekly, and per-model buckets — into one list', async () => {
+    const { query } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const usage = await supervisor.usage(WORKSPACE);
+
+    expect(usage.subscriptionType).toBe('max');
+    expect(usage.windows).toEqual([
+      {
+        key: 'five_hour',
+        label: 'Session (5 h)',
+        utilization: 42,
+        resetsAt: Date.parse('2026-08-26T15:00:00.000Z'),
+      },
+      {
+        key: 'seven_day',
+        label: 'Week — all models',
+        utilization: 61,
+        resetsAt: Date.parse('2026-08-30T00:00:00.000Z'),
+      },
+      {
+        key: 'model:Fable',
+        label: 'Fable',
+        utilization: 12,
+        resetsAt: Date.parse('2026-08-30T00:00:00.000Z'),
+      },
+    ]);
+    expect(usage.extraUsage).toEqual({
+      isEnabled: true,
+      monthlyLimit: 50,
+      usedCredits: 3.5,
+      utilization: 7,
+    });
+    expect(usage.behaviors?.day.behaviors[0]).toEqual({
+      key: 'subagent_heavy',
+      pct: 34,
+      count: 41,
+    });
+    expect(usage.behaviors?.day.mcpServers[0]).toEqual({ name: 'github', pct: 9 });
+  });
+
+  it('leaves a null window out rather than rendering an empty row', async () => {
+    // `seven_day_opus: null` in the fixture — the server said "no such
+    // bucket", which is not a bucket at 0%. Asserted against the windows that
+    // *are* there: an empty list would satisfy a bare not-contains while
+    // proving only that everything broke.
+    const { query } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const usage = await supervisor.usage(WORKSPACE);
+    const keys = usage.windows.map((window) => window.key);
+    expect(keys).toContain('five_hour');
+    expect(keys).not.toContain('seven_day_opus');
+  });
+
+  it('answers with what it has when the CLI lacks the usage method', async () => {
+    // The method is experimental and named as such; a CLI without it is a
+    // missing panel, not a broken screen.
+    const { query, control } = fakeQuery();
+    control.failUsage = true;
+    const supervisor = makeSupervisor(query);
+
+    const usage = await supervisor.usage(WORKSPACE);
+
+    expect(usage.windows).toEqual([]);
+    expect(usage.unavailable).toContain('usage');
+  });
+
+  it('reports rate limits as unavailable when the plan has none', async () => {
+    const { query, control } = fakeQuery();
+    control.usageResponse = {
+      subscription_type: null,
+      rate_limits_available: false,
+      rate_limits: null,
+      behaviors: null,
+    };
+    const supervisor = makeSupervisor(query);
+
+    const usage = await supervisor.usage(WORKSPACE);
+
+    expect(usage.windows).toEqual([]);
+    expect(usage.subscriptionType).toBeNull();
+    expect(usage.unavailable).toContain('rate_limits');
+  });
+
+  it('tears the probe session down', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.usage(WORKSPACE);
+    expect(control.torndown).toBe(true);
   });
 });
 

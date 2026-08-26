@@ -1000,6 +1000,63 @@ export const ClaudeCatalogue = z.object({
 export type ClaudeCatalogue = z.infer<typeof ClaudeCatalogue>;
 
 /**
+ * The subscription's quota picture, as the CLI itself reports it.
+ *
+ * Every window — the five-hour session window, the weekly ones, and the
+ * per-model buckets — is normalised into one flat list so the screen renders
+ * them uniformly and a bucket the server adds tomorrow costs nothing here.
+ * The behaviours block is the CLI's own attribution of what has been eating
+ * the quota, from its local transcripts: approximate by its own admission
+ * (other devices and claude.ai are invisible to it), which the UI must say.
+ */
+export const ClaudeUsageWindow = z.object({
+  /** Stable identity: 'five_hour', 'seven_day', … or 'model:<display name>'. */
+  key: z.string(),
+  label: z.string(),
+  /** Percentage of the window used, 0–100; null when the server did not say. */
+  utilization: z.number().nullable(),
+  resetsAt: Millis.nullable(),
+});
+export type ClaudeUsageWindow = z.infer<typeof ClaudeUsageWindow>;
+
+export const ClaudeUsageShare = z.object({ name: z.string(), pct: z.number() });
+export type ClaudeUsageShare = z.infer<typeof ClaudeUsageShare>;
+
+export const ClaudeUsageBehaviorWindow = z.object({
+  requestCount: z.number(),
+  sessionCount: z.number(),
+  /** Overlapping categories — not a partition, so shares do not sum to 100. */
+  behaviors: z.array(z.object({ key: z.string(), pct: z.number(), count: z.number() })),
+  agents: z.array(ClaudeUsageShare),
+  skills: z.array(ClaudeUsageShare),
+  plugins: z.array(ClaudeUsageShare),
+  mcpServers: z.array(ClaudeUsageShare),
+});
+export type ClaudeUsageBehaviorWindow = z.infer<typeof ClaudeUsageBehaviorWindow>;
+
+export const ClaudeUsage = z.object({
+  /** 'pro', 'max', … — null for API-key or third-party-provider sessions. */
+  subscriptionType: z.string().nullable(),
+  windows: z.array(ClaudeUsageWindow),
+  /** The overage-credits arrangement, when the plan has one. */
+  extraUsage: z
+    .object({
+      isEnabled: z.boolean(),
+      monthlyLimit: z.number().nullable(),
+      usedCredits: z.number().nullable(),
+      utilization: z.number().nullable(),
+    })
+    .nullable(),
+  behaviors: z
+    .object({ day: ClaudeUsageBehaviorWindow, week: ClaudeUsageBehaviorWindow })
+    .nullable(),
+  /** What could not be read, by name — same convention as the catalogue. */
+  unavailable: z.array(z.string()),
+  fetchedAt: Millis,
+});
+export type ClaudeUsage = z.infer<typeof ClaudeUsage>;
+
+/**
  * One session as the Claude CLI itself lists it — the CLI's own transcript
  * store, not Metaclaude's session table. `adoptedBy` is the join between the
  * two worlds: the Metaclaude session already bound to this CLI session, when

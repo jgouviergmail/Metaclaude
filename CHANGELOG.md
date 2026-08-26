@@ -13,6 +13,13 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **The quota, on screen.** Analytics now shows the subscription's own
+  windows as the CLI reports them — the five-hour session window, the weekly
+  windows, per-model buckets — each with utilisation, tone escalating toward
+  the ceiling, and its reset time; plus the CLI's attribution of what has
+  been consuming them, carrying its own caveat (this machine's transcripts
+  only). A plan without windows says "does not apply" in words rather than
+  rendering nothing.
 - **Plugin marketplaces.** The CLI-native plugin store, inside the product:
   add a marketplace by GitHub repo or marketplace.json URL, browse its
   catalogue as the marketplace itself describes it, and enable plugins per
