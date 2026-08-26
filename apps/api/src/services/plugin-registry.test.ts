@@ -198,8 +198,10 @@ describe('what a run receives', () => {
     expect(server.env.PLUGIN_ROOT).toBe(record.root);
     // Separate from the root: the root is code an update replaces wholesale,
     // and the data is state that must survive it.
-    expect(server.env.PLUGIN_DATA).not.toBe(record.root);
-    expect(server.env.PLUGIN_DATA.startsWith(pluginsDir)).toBe(true);
+    const dataDir = server.env.PLUGIN_DATA;
+    expect(typeof dataDir).toBe('string');
+    expect(dataDir).not.toBe(record.root);
+    expect(dataDir?.startsWith(pluginsDir)).toBe(true);
   });
 
   it('reports a skill name claimed by two plugins instead of silently dropping one', async () => {

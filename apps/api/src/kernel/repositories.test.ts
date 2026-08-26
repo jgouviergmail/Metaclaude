@@ -10,6 +10,7 @@ import {
   WorkspaceRepo,
   defaultWorkspaceSettings,
 } from './repositories.js';
+import type { PendingTranscriptEvent } from './repositories.js';
 
 let db: Db;
 let workspaces: WorkspaceRepo;
@@ -60,16 +61,15 @@ function makeRun(session: Session, prompt = 'do the thing'): Run {
 }
 
 /**
- * `Omit` does not distribute over a union, so `Omit<TranscriptEvent, 'seq'>` —
- * the type `TranscriptRepo.append` declares — collapses to the fields every
- * variant shares. Distribute it here so the tests can build properly typed
- * events of a specific kind.
+ * The repo's own input type, imported rather than restated. Its predecessor
+ * here was a private copy plus a cast to the *non*-distributive
+ * `Omit<TranscriptEvent, 'seq'>`, and the cast is what let the copy drift out
+ * of step with the signature it was standing in for without anything noticing.
  */
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-type EventInput = DistributiveOmit<TranscriptEvent, 'seq'> & { seq?: number };
+type EventInput = PendingTranscriptEvent;
 
 function append(sessionId: string, event: EventInput): TranscriptEvent {
-  return transcript.append(sessionId, event as Omit<TranscriptEvent, 'seq'> & { seq?: number });
+  return transcript.append(sessionId, event);
 }
 
 function systemEvent(runId: string, at: number, message: string): EventInput {

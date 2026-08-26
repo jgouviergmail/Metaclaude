@@ -1,0 +1,5 @@
+{
+  // What ships. See apps/api/tsconfig.build.json for why the split exists.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

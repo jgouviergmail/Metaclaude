@@ -1,0 +1,11 @@
+{
+  // What ships. `tsconfig.json` is the wider one — it typechecks the tests too,
+  // which is the point: a fixture that has drifted off a shared contract is a
+  // test asserting against a shape the product no longer has, and excluding it
+  // from the compiler is how five of them drifted unnoticed.
+  //
+  // `exclude` replaces rather than merges, so the parent's entries are repeated
+  // here in full.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

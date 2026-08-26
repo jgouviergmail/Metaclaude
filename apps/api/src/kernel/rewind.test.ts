@@ -21,7 +21,7 @@ const run: Run = {
     model: 'default',
     effort: null,
     permissionMode: 'default',
-    thinking: 'off',
+    thinking: 'disabled',
     thinkingBudgetTokens: null,
     agentName: null,
     source: 'explicit',

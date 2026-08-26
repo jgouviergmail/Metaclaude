@@ -31,7 +31,6 @@ const OWNER: User = {
   role: 'owner',
   totpEnabled: false,
   createdAt: 1,
-  updatedAt: 1,
   lastLoginAt: null,
 };
 
