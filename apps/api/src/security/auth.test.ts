@@ -711,6 +711,84 @@ describe('TOTP enrolment and second-factor login', () => {
     unlock();
   }, 30_000);
 
+  it('refuses a second simultaneous login with the same TOTP code', async () => {
+    // Single use was a property of the *sequential* case only. Both branches of
+    // `consumeSecondFactor` read a snapshot of the user row taken before the
+    // ~100 ms scrypt, decided against it, and wrote unconditionally — so two
+    // requests submitted together both read "not yet used" and both won. The
+    // consumption is the check now, and the loser is told the code is invalid.
+    unlock();
+    const code = totpCode(secret, Date.now());
+    const both = await Promise.all([
+      auth.login({ username: 'jules', password: PASSWORD, totp: code }),
+      auth.login({ username: 'jules', password: PASSWORD, totp: code }),
+    ]);
+
+    const ok = both.filter((outcome) => outcome.status === 'ok');
+    expect(ok).toHaveLength(1);
+    for (const outcome of ok) {
+      if (outcome.status === 'ok') auth.revokeSession(outcome.sessionId);
+    }
+    unlock();
+  }, 60_000);
+
+  it('refuses a second simultaneous login with the same recovery code', async () => {
+    // The same race, and this one was never introduced by anything recent: the
+    // recovery codes have been described in three comments as "strictly
+    // single-use" since they were written, and two concurrent logins with one
+    // code issued two 14-day sessions while consuming a single code.
+    unlock();
+    const before = auth.remainingRecoveryCodes(user.id);
+    const code = recoveryCodes[recoveryCodes.length - 1]!;
+    const both = await Promise.all([
+      auth.login({ username: 'jules', password: PASSWORD, totp: code }),
+      auth.login({ username: 'jules', password: PASSWORD, totp: code }),
+    ]);
+
+    const ok = both.filter((outcome) => outcome.status === 'ok');
+    expect(ok).toHaveLength(1);
+    // Exactly one code spent, not one spent for two sessions.
+    expect(auth.remainingRecoveryCodes(user.id)).toBe(before - 1);
+    for (const outcome of ok) {
+      if (outcome.status === 'ok') auth.revokeSession(outcome.sessionId);
+    }
+    unlock();
+  }, 60_000);
+
+  it('does not charge the lockout budget for a code that was merely already used', async () => {
+    // A resubmitted sign-in form is not a guess. Charging it meant that two
+    // enrolled devices whose clocks differ inside the ±1 window could lock the
+    // account out with codes that were correct when they were generated.
+    unlock();
+    const code = totpCode(secret, Date.now());
+    const first = await auth.login({ username: 'jules', password: PASSWORD, totp: code });
+    expect(first.status).toBe('ok');
+    if (first.status === 'ok') auth.revokeSession(first.sessionId);
+
+    const failuresBefore = db
+      .prepare<[string], { failed_logins: number }>('SELECT failed_logins FROM users WHERE id = ?')
+      .get(user.id)!.failed_logins;
+
+    for (let i = 0; i < 5; i += 1) {
+      const replay = await auth.login({ username: 'jules', password: PASSWORD, totp: code });
+      expect(replay).toEqual({ status: 'invalid' });
+    }
+
+    const failuresAfter = db
+      .prepare<[string], { failed_logins: number }>('SELECT failed_logins FROM users WHERE id = ?')
+      .get(user.id)!.failed_logins;
+    expect(failuresAfter).toBe(failuresBefore);
+
+    // And a genuinely wrong code still is charged.
+    await auth.login({ username: 'jules', password: PASSWORD, totp: wrongCodeFor(secret) });
+    expect(
+      db
+        .prepare<[string], { failed_logins: number }>('SELECT failed_logins FROM users WHERE id = ?')
+        .get(user.id)!.failed_logins,
+    ).toBeGreaterThan(failuresBefore);
+    unlock();
+  }, 60_000);
+
   it('disableTotp requires the password and clears the secret and codes', async () => {
     unlock();
     await expect(auth.disableTotp(user.id, 'wrong-password-entirely')).resolves.toBe(false);

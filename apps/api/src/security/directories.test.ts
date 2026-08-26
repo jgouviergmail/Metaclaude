@@ -6,6 +6,9 @@
  * an approval prompt. Every case below is an escape attempt.
  */
 
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { reviewAdditionalDirectories } from './directories.js';
 
@@ -106,7 +109,68 @@ describe('reviewAdditionalDirectories', () => {
     );
 
     expect(review.allowed).toEqual(['/var/lib/metaclaude/workspaces/shared-lib']);
-    expect(review.rejected).toHaveLength(2);
+    // The *reasons*, not just the count: asserting only `toHaveLength(2)` let
+    // the whole data-directory branch be deleted with this test still green,
+    // which is the failure CLAUDE.md's "prove a new test can fail" is about.
+    expect(review.rejected.map((entry) => entry.path)).toEqual([
+      '/var/lib/metaclaude',
+      '/etc',
+    ]);
+    for (const entry of review.rejected) {
+      expect(entry.reason).toMatch(/is outside|workspaces root|data directory/);
+    }
+  });
+
+  it('refuses a candidate that reaches the data directory through a symlink', () => {
+    // The check compares path names, so without resolving them it was checking
+    // a name rather than a place: a link inside the workspaces root pointing at
+    // the data directory passed `isInside(workspacesRoot, target)` on its
+    // spelling and granted the agent the master key and the database.
+    const base = mkdtempSync(join(tmpdir(), 'mc-dirs-'));
+    const dataDir = join(base, 'metaclaude');
+    const workspacesDir = join(dataDir, 'workspaces');
+    mkdirSync(workspacesDir, { recursive: true });
+    writeFileSync(join(dataDir, 'master.key'), 'secret');
+    symlinkSync(dataDir, join(workspacesDir, 'looks-like-a-workspace'), 'dir');
+
+    const review = reviewAdditionalDirectories(
+      [join(workspacesDir, 'looks-like-a-workspace')],
+      { workspacesDir, dataDir },
+    );
+    expect(review.allowed).toEqual([]);
+    // "is outside the workspaces root", not "would expose the data directory":
+    // once resolved, the target genuinely is outside, and that is the more
+    // accurate of the two things to tell the operator.
+    expect(review.rejected[0]?.reason).toMatch(/is outside/);
+
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  it('does not pretend to bound what a symlink *inside* a granted directory reaches', () => {
+    // Deliberately asserting the limit rather than a defence, because there is
+    // no path check that could provide one: the agent writes inside the
+    // directory it was granted, so any link it creates there postdates every
+    // check. The same is true of its own workspace, which is why this is a
+    // property of directory grants rather than a hole in this function.
+    // docs/SECURITY.md says so; what is bounded here is which directory is
+    // *named*.
+    const base = mkdtempSync(join(tmpdir(), 'mc-dirs-'));
+    const dataDir = join(base, 'metaclaude');
+    const workspacesDir = join(dataDir, 'workspaces');
+    const shared = join(workspacesDir, 'shared-lib');
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(join(dataDir, 'master.key'), 'secret');
+
+    const review = reviewAdditionalDirectories([shared], { workspacesDir, dataDir });
+    expect(review.allowed).toEqual([shared]);
+
+    // Created after the grant, as an agent would.
+    symlinkSync(dataDir, join(shared, 'escape'), 'dir');
+    expect(reviewAdditionalDirectories([shared], { workspacesDir, dataDir }).allowed).toEqual([
+      shared,
+    ]);
+
+    rmSync(base, { recursive: true, force: true });
   });
 
   it('refuses a directory that would contain the data directory', () => {

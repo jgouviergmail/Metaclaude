@@ -20,7 +20,7 @@
  */
 
 import { resolve } from 'node:path';
-import { isInside } from './paths.js';
+import { isInside, safeRealpath } from './paths.js';
 
 export interface DirectoryPolicy {
   /** Absolute root that every workspace lives under. */
@@ -46,8 +46,12 @@ export function reviewAdditionalDirectories(
   candidates: readonly string[],
   policy: DirectoryPolicy,
 ): DirectoryReview {
-  const workspacesRoot = resolve(policy.workspacesDir);
-  const dataRoot = resolve(policy.dataDir);
+  // Resolved, not merely normalised. Every test below compares path *names*,
+  // and a name is not where the file is: with the roots or the candidate
+  // reached through a symlink, `isInside` compares two strings that describe
+  // different places on disk and answers about neither.
+  const workspacesRoot = safeRealpath(resolve(policy.workspacesDir));
+  const dataRoot = safeRealpath(resolve(policy.dataDir));
 
   const allowed: string[] = [];
   const rejected: { path: string; reason: string }[] = [];
@@ -62,7 +66,7 @@ export function reviewAdditionalDirectories(
       continue;
     }
 
-    const target = resolve(raw);
+    const target = safeRealpath(resolve(raw));
 
     if (!isInside(workspacesRoot, target)) {
       rejected.push({ path: raw, reason: `is outside ${workspacesRoot}` });

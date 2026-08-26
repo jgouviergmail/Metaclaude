@@ -101,8 +101,7 @@ export const RELATIVE_SIMILARITY_FLOOR = 0.5;
 export const MIN_ABSOLUTE_SIMILARITY = 0.05;
 
 /**
- * The same idea for the lexical arm, and it needs its own constant because
- * BM25 is not a similarity.
+ * Relevance gate for the lexical arm.
  *
  * `toFtsQuery` OR-joins every token, so one incidental word in common — "the",
  * "how", "run" — matches a row. BM25 ranks those last, but the arm returned
@@ -110,13 +109,27 @@ export const MIN_ABSOLUTE_SIMILARITY = 0.05;
  * than the caller's `limit` therefore came back whole, however little of it had
  * anything to do with the query.
  *
- * SQLite's `bm25()` is negated (more negative is a better match), so the floor
- * is a *ceiling* on the returned value: keep what scores at least this
- * fraction of the best hit. Looser than the dense arm's 0.5 because BM25's
- * spread across a small corpus is much wider than cosine's — measured here, a
- * one-stopword match lands around 6% of a genuine multi-term hit.
+ * **Absolute, not relative to the best hit**, and both halves of that are
+ * measured rather than chosen. fts5 clamps a term's IDF at 1e-6, so a token
+ * present in every document contributes essentially nothing: across the probes
+ * here, stopword-only matches score between -0.000001 and -0.000003 while
+ * genuine ones run from -0.45 to -4.3. Four orders of magnitude, and the gap
+ * does not move with corpus size, because it is the clamp that produces it.
+ *
+ * A ratio to the best hit fails at both ends of that. When *every* match is
+ * noise the best is ~0, `best * fraction` is ~0 too, and the test admits the
+ * whole corpus — a query of nothing but "the" kept 21 rows of 21. And when the
+ * best hit is strong it discards weaker genuine ones for being long rather than
+ * irrelevant: two memories each containing the same identifier once scored
+ * -2.74 and -0.45 purely from length normalisation, so the arm whose stated job
+ * is exact identifiers dropped the longer runbook. Worse, that cut moved when
+ * *unrelated* memories were added, because they shift the average document
+ * length.
+ *
+ * SQLite's `bm25()` is negated — more negative is a better match — so this is a
+ * ceiling on the value rather than a floor on its magnitude.
  */
-export const RELATIVE_BM25_FLOOR = 0.25;
+export const MIN_ABSOLUTE_BM25 = 0.01;
 
 /**
  * Confidence floor below which a memory stops being retrieved and becomes
@@ -399,13 +412,7 @@ export class MemoryStore {
         )
         .all(...params, limit);
 
-      const best = rows[0]?.rank;
-      // A non-negative best means BM25 separated nothing (an empty or
-      // degenerate index); keep the ranking rather than discarding it all.
-      if (best === undefined || best >= 0) return rows.map((row) => row.id);
-      return rows
-        .filter((row) => row.rank <= best * RELATIVE_BM25_FLOOR)
-        .map((row) => row.id);
+      return rows.filter((row) => row.rank <= -MIN_ABSOLUTE_BM25).map((row) => row.id);
     } catch {
       // A malformed MATCH expression must degrade to dense-only retrieval, not
       // fail the request.
@@ -502,21 +509,32 @@ export class MemoryStore {
         const attribution = Math.min(1, Math.max(0.25, usage.score));
         const learningRate = 0.12 * attribution;
 
-        // A re-rating supersedes the previous observation rather than adding to
-        // it, so the previous move is *undone* before the new one is applied.
+        // A first observation moves confidence toward the reward. A re-rating
+        // supersedes the previous one, so it moves by the *change* in reward
+        // and nothing else.
         //
-        // Without this, confidence took a fresh full step from the
-        // already-moved value every time: clicking the same rating eight times
-        // walked 0.5 to 0.80 where one observation of it belongs at 0.55, and
-        // `rateRun` has no idempotence guard to stop that. The forward step is
-        // c' = c + lr(r - c) = c(1 - lr) + lr·r, so the inverse is
-        // c = (c' - lr·r)/(1 - lr). `lr` is at most 0.12, so the divisor is
-        // never near zero.
-        const base =
+        // Written as the delta rather than as "undo the old step, apply the new
+        // one". That inverse — `(c' - lr·rp)/(1 - lr)` — is only exact if
+        // nothing touched the memory in between, and things do: six other runs
+        // reinforcing it left a re-rating landing at 0.2656 where the true
+        // counterfactual is 0.3170, over-correcting toward the forget
+        // threshold. Worse, `clamp01` on that intermediate value erased history
+        // outright: below roughly `lr·rp` it pinned to 0 and the result became
+        // `lr·r ≤ 0.12`, so a *downgrade* could raise a memory from 0.09 to
+        // 0.114 and any low-confidence memory was rewritten from scratch.
+        //
+        // The two forms agree exactly whenever nothing clamps, which is what
+        // the idempotence test below pins; they differ only where the old one
+        // was wrong. The correction is bounded by `lr` — at most 0.12 — so a
+        // re-rating cannot swing a memory across the forget threshold on its
+        // own, and the case where the forward step never happened at all (a
+        // memory pinned during the run and unpinned before the rating) costs
+        // that much rather than the whole history.
+        const confidence = clamp01(
           previousReward === null
-            ? row.confidence
-            : clamp01((row.confidence - learningRate * previousReward) / (1 - learningRate));
-        const confidence = clamp01(base + learningRate * (reward - base));
+            ? row.confidence + learningRate * (reward - row.confidence)
+            : row.confidence + learningRate * (reward - previousReward),
+        );
 
         const successDelta =
           (reward >= 0.6 ? 1 : 0) -

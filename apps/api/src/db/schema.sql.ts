@@ -430,8 +430,16 @@ export const MIGRATIONS: readonly Migration[] = [
       -- Verification allows ±1 period of clock drift, so one code is valid for
       -- around ninety seconds. Nothing recorded that it had been used, so the
       -- same six digits could be replayed for a second, independent session
-      -- inside that window — while the recovery codes beside them have always
-      -- been strictly single-use.
+      -- inside that window.
+      --
+      -- This column does not make a code single-use on its own, and an earlier
+      -- version of this comment claimed the recovery codes beside it always
+      -- had been. Neither was true: both branches read a snapshot of the user
+      -- row taken before the ~100 ms scrypt and wrote unconditionally, so two
+      -- *concurrent* logins with one code — of either kind — both succeeded.
+      -- What makes them single-use is that the write is now the check, with the
+      -- condition in the WHERE clause; see consumeSecondFactor in security/auth.ts.
+      -- (No backticks in here: this whole block is a template literal.)
       --
       -- The counter rather than the code: the next period's code must still
       -- work the moment it rolls over, and a stored code would have to be

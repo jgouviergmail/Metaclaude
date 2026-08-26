@@ -60,8 +60,29 @@ Enrolment is two-phase, and both phases needed a fix:
   authority as removing it.
 
 `totp_enabled` stays false throughout, so a mis-scanned QR code cannot lock you
-out. Ten single-use recovery codes are issued on confirmation and removed from
-the stored list the moment one is consumed.
+out. Ten recovery codes are issued on confirmation.
+
+**Both kinds of second factor are single-use, and that is enforced by the write
+rather than by a check before it.** A TOTP code is valid across a ±1 period
+window — about ninety seconds — and a recovery code until it is spent, so each
+is recorded as consumed: the counter for TOTP, removal from the list for a
+recovery code. Each is committed by an `UPDATE` carrying its own precondition in
+the `WHERE`, and a statement that changes no rows means another request got
+there first. That matters because verifying the password costs ~100 ms of
+scrypt, and everything after it would otherwise be deciding against a snapshot
+of the account taken before that: two logins submitted together with one code
+both succeeded, and two with one recovery code issued two sessions while
+consuming a single code.
+
+A code that was merely already spent is refused but not counted toward the
+lockout: a resubmitted sign-in form is not a guess, and two enrolled devices
+whose clocks differ inside the drift window would otherwise lock the account out
+with codes that were correct when they were shown.
+
+Turning 2FA off clears the consumed counter with the secret it counted, and a
+stored counter that this clock could not have produced is ignored — otherwise a
+host whose clock ran fast and was then corrected refused every code until real
+time caught up, with no way back through the product.
 
 **Brute force** is blunted twice over:
 
@@ -151,11 +172,23 @@ guard, and `rm -r` then took the whole workspace.
 **`additionalDirectories`** — the per-workspace setting that widens a run's
 filesystem scope — is validated on save *and* again on every run. An entry must
 live under the workspaces root, must not be the root itself, and must neither be
-nor contain the data directory. Unvalidated it was a straight escalation: `/`
-hands the agent the container, and the data directory hands it the database
-(session and password hashes, the sealed vault) plus `master.key`. None of it
-would raise an approval prompt, because from the CLI's point of view the
-directory is simply in scope.
+nor contain the data directory. Every one of those tests runs against the
+**resolved** path: they compare places on disk, not spellings, so a symlink
+named like a workspace cannot stand in for the directory it points at.
+Unvalidated it was a straight escalation: `/` hands the agent the container, and
+the data directory hands it the database (session and password hashes, the
+sealed vault) plus `master.key`. None of it would raise an approval prompt,
+because from the CLI's point of view the directory is simply in scope.
+
+What this **cannot** bound is a symlink the agent creates *inside* a directory
+it was already granted. Any such link postdates every check, so no path-based
+validation could see it; the same is true of the agent's own workspace, which is
+why this is a property of directory grants rather than a gap in the check.
+`security/directories.test.ts` asserts that limit explicitly rather than
+implying a defence that does not exist. Grant a directory only if you would be
+content for the agent to reach anything reachable *from* it, and note that the
+shipped image places the workspaces root inside the data directory — so on that
+layout the containing directory holds `master.key` and the database.
 
 ---
 

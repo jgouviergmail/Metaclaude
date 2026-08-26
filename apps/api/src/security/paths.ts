@@ -88,8 +88,12 @@ function assertNoBlockedSegment(root: string, target: string, requested: string)
 /**
  * `realpathSync` that walks up to the closest existing ancestor instead of
  * throwing on a path that does not exist yet.
+ *
+ * Exported because `security/directories.ts` needs the same treatment for the
+ * paths it grants: a check on the lexical path is a check on a name, and a name
+ * is not where the file is.
  */
-function safeRealpath(target: string): string {
+export function safeRealpath(target: string): string {
   let current = resolve(target);
   const suffixes: string[] = [];
 

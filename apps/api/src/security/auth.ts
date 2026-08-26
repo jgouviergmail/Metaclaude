@@ -31,7 +31,6 @@ import {
   TOTP_PERIOD_SECONDS,
   TOTP_WINDOW,
   totpUri,
-  verifyTotp,
 } from './totp.js';
 
 /** Idle timeout: a session unused for this long is dead. */
@@ -230,21 +229,50 @@ export class AuthService {
       return { status: 'invalid' };
     }
 
-    if (toBool(row.totp_enabled)) {
-      if (!input.totp) return { status: 'totp_required' };
-      if (!this.consumeSecondFactor(row, input.totp)) {
-        this.recordFailure(row, now);
-        return { status: 'invalid' };
-      }
-    }
-
-    // Opportunistically upgrade a hash produced with older scrypt parameters.
+    // The opportunistic rehash moved above the second factor deliberately: it
+    // is the only `await` left in this stretch, and better-sqlite3 transactions
+    // cannot span one. With it out of the way, spending the factor and issuing
+    // the session are a single atomic step (below), so a factor is never burned
+    // for a login that did not happen.
     if (needsRehash(row.password_hash)) {
       const upgraded = await hashPassword(input.password);
       this.db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(upgraded, row.id);
     }
 
-    const session = this.createSession(row.id, input.userAgent ?? null, input.ipAddress ?? null);
+    const secondFactor = input.totp;
+    if (toBool(row.totp_enabled) && !secondFactor) return { status: 'totp_required' };
+
+    // Spending the factor and issuing the session are one transaction. A code
+    // is single-use, so burning one for a login that then failed to produce a
+    // session would cost the operator that code for nothing — they would
+    // re-enter the same digits and be refused. Rolled back together, the retry
+    // works.
+    const attempt = tx(this.db, () => {
+      if (toBool(row.totp_enabled) && secondFactor) {
+        const outcome = this.consumeSecondFactor(row, secondFactor);
+        // Nothing was written on either failure — both branches commit their
+        // decision through a conditional UPDATE that matched no rows — so
+        // returning here leaves the transaction empty rather than partial.
+        if (outcome !== 'ok') return { factor: outcome, session: null };
+      }
+      return {
+        factor: 'ok' as const,
+        session: this.createSession(row.id, input.userAgent ?? null, input.ipAddress ?? null),
+      };
+    });
+
+    const { factor, session } = attempt;
+    if (factor !== 'ok') {
+      // A spent factor is not a guess. Charging it to the lockout budget meant
+      // a resubmitted sign-in form — the response was lost, the code is still
+      // on screen, the operator taps again — cost an attempt, and with two
+      // enrolled devices whose clocks differ inside the ±1 window, the slower
+      // one could be refused several codes it had never shown and lock the
+      // account for its trouble. The code was correct; only its turn had passed.
+      if (factor === 'invalid') this.recordFailure(row, now);
+      return { status: 'invalid' };
+    }
+    if (!session) throw new Error('the login transaction produced no session');
 
     this.db
       .prepare('UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = ? WHERE id = ?')
@@ -271,43 +299,61 @@ export class AuthService {
    * Check a TOTP code, falling back to single-use recovery codes.
    * A consumed recovery code is removed from the stored list immediately.
    */
-  private consumeSecondFactor(row: UserRow, code: string): boolean {
+  /**
+   * Check a second factor and *consume* it, atomically.
+   *
+   * The consumption is the check. Both branches used to read `row` — a snapshot
+   * taken before the ~100 ms scrypt that verifies the password — decide against
+   * it, and then write unconditionally. Two logins submitted together therefore
+   * both read "not yet used" and both succeeded: measured here, two concurrent
+   * requests with one TOTP code returned two sessions, and two with one recovery
+   * code returned two sessions while consuming a single code. Single-use was a
+   * property of the sequential case only, and the comments claiming otherwise —
+   * including the migration's — were wrong about the recovery codes too.
+   *
+   * So neither branch trusts the snapshot. Each writes with the condition in the
+   * `WHERE`, and `changes === 0` means someone else got there first, which is
+   * indistinguishable from a replay and is treated as one.
+   *
+   * Returns `'invalid'` for a wrong factor and `'spent'` for one that was
+   * genuinely valid but already used — the caller charges the lockout budget
+   * only for the first, because a resubmitted form is not a guess.
+   */
+  private consumeSecondFactor(row: UserRow, code: string): 'ok' | 'invalid' | 'spent' {
     if (row.totp_secret) {
-      // The matched counter, not just "did it match": verification allows ±1
-      // period of drift, so one code is valid for around ninety seconds, and
-      // nothing recorded that it had been spent. An observed
-      // (username, password, code) triple could be replayed inside that window
-      // for a second, independent session — while the recovery codes below have
-      // always been strictly single-use.
       const step = matchTotpCounter(row.totp_secret, code);
       if (step !== null) {
         // A stored step this clock cannot reach is evidence of a clock change,
-        // not of a replay, so it is ignored rather than obeyed. Without this, a
-        // login accepted while the host's clock ran fast — a wrong RTC, a
-        // restored snapshot, the hours before chrony steps it back — wrote a
-        // counter far in the future and locked the account out for the whole
-        // skew, with no route back through the product. `matchTotpCounter`
-        // never returns more than `floor(now/period) + window`, so anything
-        // above that came from a different clock.
+        // not of a replay, so it does not block. Without this, a login accepted
+        // while the host's clock ran fast — a wrong RTC, a restored snapshot,
+        // the hours before chrony steps it back — wrote a counter far in the
+        // future and locked the account out for the whole skew, with no route
+        // back through the product.
         const reachable = Math.floor(Date.now() / (TOTP_PERIOD_SECONDS * 1000)) + TOTP_WINDOW;
-        const consumed =
-          row.totp_last_step !== null && row.totp_last_step <= reachable ? row.totp_last_step : null;
-        if (consumed !== null && step <= consumed) return false;
-        this.db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, row.id);
-        return true;
+        const claimed = this.db
+          .prepare(
+            `UPDATE users SET totp_last_step = ?
+              WHERE id = ?
+                AND (totp_last_step IS NULL OR totp_last_step < ? OR totp_last_step > ?)`,
+          )
+          .run(step, row.id, step, reachable).changes;
+        return claimed > 0 ? 'ok' : 'spent';
       }
     }
 
     const normalised = code.trim().toUpperCase();
     const codes = JSON.parse(row.recovery_codes) as string[];
     const index = codes.findIndex((candidate) => timingSafeEqual(candidate, normalised));
-    if (index < 0) return false;
+    if (index < 0) return 'invalid';
 
-    codes.splice(index, 1);
-    this.db
-      .prepare('UPDATE users SET recovery_codes = ? WHERE id = ?')
-      .run(JSON.stringify(codes), row.id);
-    return true;
+    const remaining = [...codes];
+    remaining.splice(index, 1);
+    // Compare-and-swap on the stored list: if it changed under us, another
+    // login consumed a code from the same snapshot and this one loses.
+    const claimed = this.db
+      .prepare('UPDATE users SET recovery_codes = ? WHERE id = ? AND recovery_codes = ?')
+      .run(JSON.stringify(remaining), row.id, row.recovery_codes).changes;
+    return claimed > 0 ? 'ok' : 'spent';
   }
 
   /* ---------------------------------------------------------------------- */

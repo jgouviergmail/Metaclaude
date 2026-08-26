@@ -136,6 +136,34 @@ restates the code is noise; one that records a decision or a trap is not.
 - **A ratchet that greps text cannot tell code from prose.** Writing
   `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
   raw-palette ratchet. Say `bg-gray-<n>`.
+- **A read-then-decide-then-write on the user row is a race, not a check.**
+  `login()` verifies the password with scrypt — ~100 ms — and everything after
+  it decides against the row snapshot taken *before* that. Two concurrent
+  logins with one TOTP code both got sessions, and two with one recovery code
+  both got sessions while consuming a single code; "strictly single-use" was a
+  property of the sequential case only. `consumeSecondFactor` now makes the
+  write *be* the check, with the condition in the `WHERE` and `changes === 0`
+  meaning someone else got there first.
+- **A relevance gate relative to the best hit fails when everything is noise.**
+  fts5 clamps a term's IDF at 1e-6, so a query of nothing but stopwords scores
+  every row at ~0 — and `best * fraction` is ~0 too, admitting the whole corpus.
+  It also drops genuine matches for being *long* rather than irrelevant, and the
+  cut moves when unrelated rows shift the average document length. The lexical
+  arm uses an absolute floor (`MIN_ABSOLUTE_BM25`); the four-orders-of-magnitude
+  gap it relies on is the clamp, not the corpus.
+- **Undoing an EMA step algebraically assumes nothing happened in between.**
+  `(c' - lr·rp)/(1 - lr)` is the exact inverse only if the memory has not moved
+  since; six other reinforcements later it over-corrects, and `clamp01` on that
+  intermediate value erases the history outright. `reinforce` moves by the
+  *change in reward* instead, which agrees with the inverse wherever nothing
+  clamps and is bounded by `lr` everywhere else.
+- **A path check is a check on a name.** `reviewAdditionalDirectories` compared
+  lexical paths, so a symlink named like a workspace granted the agent the
+  directory it pointed at — the master key included. Both roots and the
+  candidate go through `safeRealpath` now. What no path check can bound is a
+  link the agent creates *inside* a directory it was already granted; that is a
+  property of directory grants, `security/directories.test.ts` asserts it as a
+  limit rather than pretending otherwise, and docs/SECURITY.md says so.
 - **The web app's `maxPayload` is the frame-size control, not the app check.**
   `server.ts` sets ws's own limit, so an oversized frame closes with the
   standard 1009 and the `raw.length > 64 * 1024` branch in `ws.ts` is a backstop

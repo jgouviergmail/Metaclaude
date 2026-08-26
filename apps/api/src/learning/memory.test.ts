@@ -356,6 +356,58 @@ describe('search', () => {
     expect(titles).not.toContain('Piano');
   });
 
+  it('returns nothing when every match is a stopword, however large the corpus', async () => {
+    // The failure a ratio-to-the-best gate cannot see. fts5 clamps a common
+    // term's IDF at 1e-6, so when *every* match is noise the best hit is ~0 and
+    // `best * fraction` is ~0 too — the test admits everything it was meant to
+    // exclude. Measured before the fix: 21 rows matched, 21 kept.
+    await seedNoise();
+    for (let i = 0; i < 18; i += 1) {
+      await store.remember({
+        workspaceId: null,
+        kind: 'semantic',
+        title: `Filler ${i}`,
+        content: `The thing number ${i} is in the cupboard and the kettle is beside it.`,
+      });
+    }
+
+    expect(await store.search('the', { minSimilarity: 1 })).toEqual([]);
+  });
+
+  it('keeps a genuine identifier match that is merely in a long document', async () => {
+    // The other end of the same mistake. Two memories each containing the
+    // identifier once scored -2.74 and -0.45 purely from BM25 length
+    // normalisation — a ratio of 0.16 — so a relative gate discarded the longer
+    // one, in the arm whose whole job is exact identifiers. Adding unrelated
+    // memories moved that cut too, by shifting the average document length.
+    //
+    // The surrounding corpus is not decoration. BM25's IDF is relative to it,
+    // and fts5 clamps the term's weight to ~0 when it appears in *every*
+    // document — so with only the two memories below, the identifier carries no
+    // discriminative power and the lexical arm rightly says nothing. That is
+    // BM25 working, not the gate failing; in production the dense arm covers
+    // that case, and here `minSimilarity: 1` deliberately does not.
+    await seedNoise();
+    await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Runbook',
+      content: 'When HX7Q_SENTINEL fires, restart the worker and check the queue depth.',
+    });
+    await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Long runbook',
+      content: `HX7Q_SENTINEL ${'padding words to make this document long. '.repeat(40)}`,
+    });
+
+    const titles = (await store.search('HX7Q_SENTINEL', { minSimilarity: 1 })).map(
+      (entry) => entry.memory.title,
+    );
+    expect(titles).toContain('Runbook');
+    expect(titles).toContain('Long runbook');
+  });
+
   it('respects the requested limit and filters by kind', async () => {
     await seedCorpus();
     // A query that genuinely matches more than one memory, capped to one.
