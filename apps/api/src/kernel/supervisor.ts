@@ -242,7 +242,7 @@ const EMPTY_USAGE: RunUsage = {
 export class AgentSupervisor {
   constructor(private readonly deps: SupervisorDeps) {}
 
-  /** Build the SDK options for a run. Exported shape is covered by tests. */
+  /** Build the SDK options for a run. See the `buildOptions` describe in supervisor.test.ts. */
   buildOptions(request: RunRequest): Options {
     const { workspace, policy } = request;
     const settings = workspace.settings;

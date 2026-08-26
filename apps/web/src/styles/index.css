@@ -57,6 +57,25 @@
   --mc-warning-soft: oklch(95% 0.05 75);
   --mc-danger: oklch(56% 0.21 25);
   --mc-danger-soft: oklch(95% 0.04 25);
+
+  /*
+   * Text *on* a filled success/danger surface, chosen per theme the way
+   * --mc-accent-text already is.
+   *
+   * These were a hard-coded `text-white`, which fails WCAG AA on three of the
+   * four combinations: white measures 3.97:1 on the light green, 2.33:1 on the
+   * dark green and 3.13:1 on the dark red, against the 4.5:1 normal text needs
+   * — and the Allow and Deny buttons on a permission prompt are `size="sm"`,
+   * so none of it is large text. Only light danger passed, at 5.18:1.
+   *
+   * The ratchet that bans raw palette classes could not see this and was never
+   * meant to: it exists because a raw palette class such as `bg-gray-<n>` breaks the *light* theme, and
+   * three of these four failures are in the dark one.
+   *
+   * styles/contrast.test.ts measures every pair from this file.
+   */
+  --mc-success-text: oklch(14% 0.01 155);
+  --mc-danger-text: oklch(100% 0 0);
   --mc-info: oklch(60% 0.14 240);
   --mc-info-soft: oklch(95% 0.03 240);
 
@@ -99,6 +118,11 @@
   --mc-warning-soft: oklch(28% 0.05 75);
   --mc-danger: oklch(68% 0.18 25);
   --mc-danger-soft: oklch(27% 0.06 25);
+
+  /* Both flip to ink here: the dark surfaces are light enough that white
+     measures 2.33:1 and 3.13:1, while ink reaches 8.55:1 and 6.37:1. */
+  --mc-success-text: oklch(14% 0.01 155);
+  --mc-danger-text: oklch(14% 0.01 25);
   --mc-info: oklch(72% 0.12 240);
   --mc-info-soft: oklch(26% 0.05 240);
 
@@ -131,10 +155,12 @@
   --color-accent-ink: var(--mc-accent-text);
   --color-success: var(--mc-success);
   --color-success-soft: var(--mc-success-soft);
+  --color-success-ink: var(--mc-success-text);
   --color-warning: var(--mc-warning);
   --color-warning-soft: var(--mc-warning-soft);
   --color-danger: var(--mc-danger);
   --color-danger-soft: var(--mc-danger-soft);
+  --color-danger-ink: var(--mc-danger-text);
   --color-info: var(--mc-info);
   --color-info-soft: var(--mc-info-soft);
   --color-thinking: var(--mc-thinking);

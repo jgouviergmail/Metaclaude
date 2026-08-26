@@ -33,8 +33,8 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
     'bg-raised text-ink hover:bg-line border border-line active:scale-[0.98]',
   outline: 'border border-line-strong text-ink hover:bg-raised active:scale-[0.98]',
   ghost: 'text-muted hover:text-ink hover:bg-raised',
-  danger: 'bg-danger text-white hover:brightness-110 active:scale-[0.98]',
-  success: 'bg-success text-white hover:brightness-110 active:scale-[0.98]',
+  danger: 'bg-danger text-danger-ink hover:brightness-110 active:scale-[0.98]',
+  success: 'bg-success text-success-ink hover:brightness-110 active:scale-[0.98]',
 };
 
 /**

@@ -74,9 +74,34 @@ export function reviewAdditionalDirectories(
       rejected.push({ path: raw, reason: 'is the workspaces root itself' });
       continue;
     }
-    // Covers a data directory nested under the workspaces root, in either
-    // direction: the grant must not reach it and must not contain it.
-    if (isInside(dataRoot, target) || isInside(target, dataRoot)) {
+    // The grant must neither reach the data directory nor contain it.
+    //
+    // The first half is conditional, and that is the whole subtlety: the
+    // shipped image puts the workspaces root *inside* the data directory —
+    // METACLAUDE_DATA_DIR=/var/lib/metaclaude,
+    // METACLAUDE_WORKSPACES_DIR=/var/lib/metaclaude/workspaces — so every legal
+    // candidate is under `dataRoot` by construction. A blanket refusal
+    // therefore rejected all of them and left the feature inert in the only
+    // configuration that actually ships, while every test here used a layout
+    // where the two are siblings and never noticed.
+    //
+    // Which exemption applies depends on which directory contains which, and
+    // both layouts are real:
+    //
+    //   data/workspaces   (shipped)  every legal candidate is under dataRoot,
+    //                                so only one *outside* workspacesRoot is
+    //                                reaching for something it should not
+    //   workspaces/.data  (nested)   dataRoot is below workspacesRoot, so being
+    //                                under dataRoot is disqualifying outright
+    //
+    // Getting this backwards is how the shipped layout came to reject
+    // everything — and exempting the workspaces subtree unconditionally would
+    // hand out the vault under the nested one.
+    const workspacesUnderData = workspacesRoot !== dataRoot && isInside(dataRoot, workspacesRoot);
+    const reachesData = workspacesUnderData
+      ? isInside(dataRoot, target) && !isInside(workspacesRoot, target)
+      : isInside(dataRoot, target);
+    if (reachesData || isInside(target, dataRoot)) {
       rejected.push({ path: raw, reason: 'would expose the Metaclaude data directory' });
       continue;
     }

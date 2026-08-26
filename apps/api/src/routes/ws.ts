@@ -210,6 +210,13 @@ export function registerWebSocket(app: App, context: AppContext): void {
         return;
       }
       // A single oversized frame is never legitimate on this protocol.
+      //
+      // A backstop, not the control: `server.ts` sets ws's own
+      // `maxPayload: 64 * 1024`, which refuses the frame before it is
+      // assembled and closes with the standard 1009. That is the better place
+      // for it — the bytes are never buffered — so this branch only becomes
+      // reachable if `maxPayload` is ever raised above the figure here. Keep
+      // the two in step.
       if (raw.length > 64 * 1024) {
         fail(CLOSE_CODES.BAD_FRAME, 'Frame too large');
         return;

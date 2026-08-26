@@ -3,6 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
 import { AuthService, WeakPasswordError, assertPasswordStrength } from './auth.js';
+import { hashToken } from './crypto.js';
+
+const DAY = 86_400_000;
 import { totpCode } from './totp.js';
 
 /**
@@ -331,6 +334,80 @@ describe('sessions', () => {
     // Revoking twice is harmless.
     expect(() => auth.revokeSession(outcome.sessionId)).not.toThrow();
   }, 30_000);
+
+  it('refuses a session past the 90-day absolute cap, however recently it was used', () => {
+    // Two windows guard a session: a sliding 14-day idle timeout, and a hard
+    // 90-day ceiling from creation that no amount of activity extends. Every
+    // session test wrote `created_at = now`, so `now - created_at` was ~0 and
+    // the ceiling clause was never entered — deleting it was invisible to the
+    // suite, on code that `authenticate` runs for every request.
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO auth_sessions
+         (id, user_id, token_hash, csrf_hash, created_at, last_seen_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'as_ancient',
+      user.id,
+      hashToken('ancient-token'),
+      'csrf-ancient',
+      now - 91 * DAY,
+      // Used a minute ago and good for another hour: only the ceiling can
+      // refuse this one.
+      now - 60_000,
+      now + 3_600_000,
+    );
+
+    expect(auth.authenticate('ancient-token')).toBeNull();
+
+    // And it is revoked, not merely refused — otherwise every later request
+    // pays the same lookup to reach the same answer.
+    const row = db
+      .prepare<[string], { revoked_at: number | null }>(
+        'SELECT revoked_at FROM auth_sessions WHERE id = ?',
+      )
+      .get('as_ancient');
+    expect(row?.revoked_at).not.toBeNull();
+  });
+
+  it('slides the idle window at most once a minute', () => {
+    // The write is throttled because `authenticate` runs on every authenticated
+    // request and a write per request would dominate the WAL. Both halves were
+    // untested: sessions were always written with `last_seen_at = now`, so the
+    // `> 60_000` branch was never entered either.
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO auth_sessions
+         (id, user_id, token_hash, csrf_hash, created_at, last_seen_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'as_sliding',
+      user.id,
+      hashToken('sliding-token'),
+      'csrf-sliding',
+      now - DAY,
+      now - 120_000,
+      now + 3_600_000,
+    );
+
+    expect(auth.authenticate('sliding-token')).not.toBeNull();
+
+    const read = () =>
+      db
+        .prepare<[string], { last_seen_at: number; expires_at: number }>(
+          'SELECT last_seen_at, expires_at FROM auth_sessions WHERE id = ?',
+        )
+        .get('as_sliding')!;
+
+    const slid = read();
+    expect(slid.last_seen_at).toBeGreaterThan(now - 60_000);
+    // Pushed out to a fresh idle window, not left at the hour it had.
+    expect(slid.expires_at).toBeGreaterThan(now + 13 * DAY);
+
+    // Immediately again: inside the minute, so nothing is written.
+    expect(auth.authenticate('sliding-token')).not.toBeNull();
+    expect(read()).toEqual(slid);
+  });
 
   it('revokeAllSessions can spare the current session', () => {
     const create = db.prepare(

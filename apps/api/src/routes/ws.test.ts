@@ -125,6 +125,11 @@ class TestClient {
     this.socket.send(JSON.stringify(frame));
   }
 
+  /** Bytes the way a hostile client would send them, bypassing JSON.stringify. */
+  sendRaw(payload: string): void {
+    this.socket.send(payload);
+  }
+
   /** Wait for the first frame of a given type, or fail after a moment. */
   async waitFor<T extends ServerFrame['type']>(
     type: T,
@@ -522,5 +527,70 @@ describe('viewer role', () => {
     });
     // 403, not the 404 an operator would get for an unknown approval id.
     expect(response.status).toBe(403);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Abuse                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The guards below the handshake.
+ *
+ * `TokenBucket` and `ClientFrame` are each tested as units, so what was missing
+ * is the wiring: nothing asserted that the socket consults either. All five
+ * paths were unexercised, on the one surface that accepts unauthenticated bytes
+ * before it accepts anything else.
+ */
+describe('frame guards', () => {
+  it('answers a malformed JSON frame without closing the socket', async () => {
+    // Deliberately not a close: a client that sends one bad frame is far more
+    // likely to be a bug than an attack, and dropping the socket would take the
+    // transcript with it.
+    const client = await TestClient.connect();
+    client.send({ type: 'hello', csrfToken });
+    await client.waitFor('ready');
+
+    client.sendRaw('{ not json');
+    const error = await client.waitFor('error');
+    expect(error.code).toBe('bad_json');
+    expect(client.closeCode).toBeNull();
+    client.close();
+  });
+
+  it('answers a well-formed frame of an unknown type', async () => {
+    const client = await TestClient.connect();
+    client.send({ type: 'hello', csrfToken });
+    await client.waitFor('ready');
+
+    client.send({ type: 'not-a-real-frame' });
+    const error = await client.waitFor('error');
+    expect(error.code).toBe('bad_frame');
+    client.close();
+  });
+
+  it('closes on an oversized frame, before assembling it', async () => {
+    // 1009 (`message too big`), not the application's own 4400: `server.ts`
+    // sets ws's `maxPayload` to the same 64 KiB, so the library refuses the
+    // frame before the handler ever sees the bytes — which is the better place
+    // for it, and makes the check in `ws.ts` a backstop against `maxPayload`
+    // being raised rather than the control. Asserting 4400 here would pin a
+    // code that cannot occur while the two figures agree.
+    const client = await TestClient.connect();
+    client.send({ type: 'hello', csrfToken });
+    await client.waitFor('ready');
+
+    client.sendRaw(JSON.stringify({ type: 'ping', t: 1, pad: 'x'.repeat(70 * 1024) }));
+    expect(await client.waitForClose()).toBe(1009);
+  });
+
+  it('closes a socket that floods it', async () => {
+    // The bucket is 120 with a 20/s refill, so this needs to be brisk.
+    const client = await TestClient.connect();
+    client.send({ type: 'hello', csrfToken });
+    await client.waitFor('ready');
+
+    for (let i = 0; i < 200; i += 1) client.send({ type: 'ping', t: i });
+    expect(await client.waitForClose()).toBe(CLOSE_CODES.RATE_LIMITED);
   });
 });

@@ -1055,3 +1055,125 @@ describe('a run the operator stopped is never recorded as a success', () => {
       });
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* The options handed to the SDK                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `buildOptions` is where every SDK-level safety setting is decided, and two
+ * comments in the source claimed it was covered while `grep buildOptions` over
+ * the tests returned nothing. It *ran* on the execute path, but the only
+ * assertions on `control.opened[0]` were about `resume`, `cwd` and
+ * `enableFileCheckpointing` — so `managedSettings`, `settingSources` and
+ * `maxBudgetUsd` were executed and never checked, and the `additionalDirectories`
+ * branch was not even entered.
+ */
+describe('buildOptions', () => {
+  it('pins the three managed-settings locks a cloned repository could otherwise defeat', () => {
+    // Loading `settingSources: ['project']` means a cloned repo's
+    // `.claude/settings.json` is read. Left alone it could pre-approve tools,
+    // register hooks or add MCP servers, silently defeating the approval flow.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(options.managedSettings).toEqual({
+      allowManagedPermissionRulesOnly: true,
+      allowManagedHooksOnly: true,
+      allowManagedMcpServersOnly: true,
+    });
+  });
+
+  it('reads project settings and nothing above them', () => {
+    // `project` is required for CLAUDE.md and `.claude/skills` discovery, both
+    // of which this product writes. `user` and `local` would read the
+    // container's own home directory, which is not the operator's.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest()).settingSources).toEqual(['project']);
+  });
+
+  it('forwards a budget ceiling and omits it when there is none', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest()).maxBudgetUsd).toBeUndefined();
+
+    const capped = makeRequest();
+    capped.workspace = {
+      ...capped.workspace,
+      settings: { ...capped.workspace.settings, maxBudgetUsd: 2.5 },
+    };
+    expect(supervisor.buildOptions(capped).maxBudgetUsd).toBe(2.5);
+  });
+
+  it('omits empty tool lists rather than sending them', () => {
+    // An empty `allowedTools` is not "allow nothing" to the SDK, and sending
+    // one would be a different policy from sending none.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const bare = supervisor.buildOptions(makeRequest());
+    expect(bare.allowedTools).toBeUndefined();
+    expect(bare.disallowedTools).toBeUndefined();
+
+    const restricted = makeRequest();
+    restricted.workspace = {
+      ...restricted.workspace,
+      settings: {
+        ...restricted.workspace.settings,
+        allowedTools: ['Read'],
+        disallowedTools: ['Bash'],
+      },
+    };
+    const options = supervisor.buildOptions(restricted);
+    expect(options.allowedTools).toEqual(['Read']);
+    expect(options.disallowedTools).toEqual(['Bash']);
+  });
+
+  it('honours the thinking mode, both branches of it', () => {
+    // Neither branch had ever been entered: every fixture said `thinking: 'off'`,
+    // which is not a ThinkingMode member, so both fell through to the adaptive
+    // `else` and the two real modes were dead to the suite.
+    const supervisor = makeSupervisor(fakeQuery().query);
+
+    const off = makeRequest();
+    off.policy = { ...off.policy, thinking: 'disabled' };
+    expect(supervisor.buildOptions(off).thinking).toEqual({ type: 'disabled' });
+
+    const on = makeRequest();
+    on.policy = { ...on.policy, thinking: 'enabled', thinkingBudgetTokens: 8000 };
+    expect(supervisor.buildOptions(on).thinking).toEqual({ type: 'enabled', budgetTokens: 8000 });
+
+    const adaptive = makeRequest();
+    adaptive.policy = { ...adaptive.policy, thinking: 'adaptive' };
+    expect(supervisor.buildOptions(adaptive).thinking).toEqual({ type: 'adaptive' });
+  });
+
+  it('re-checks additional directories here, not only where they are saved', () => {
+    // The comment in the source says this is deliberate: this is the call that
+    // actually widens the agent's filesystem scope, so a row written before the
+    // rule existed must not slip through. The branch was never entered — the
+    // fixture's list is empty.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const widened = makeRequest();
+    widened.workspace = {
+      ...widened.workspace,
+      settings: {
+        ...widened.workspace.settings,
+        additionalDirectories: ['/etc', widened.workspace.path],
+      },
+    };
+
+    const options = supervisor.buildOptions(widened);
+    expect(options.additionalDirectories).not.toContain('/etc');
+  });
+
+  it('downgrades a stored bypass mode when the deployment forbids it', () => {
+    // The routes refuse the mode at every write, but a workspace default or an
+    // automation policy persisted *while the flag was on* reaches the supervisor
+    // unchallenged after it is turned off. This is the only thing that catches
+    // it, and it is the reason `canUseTool` must still be installed.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const reckless = makeRequest();
+    reckless.policy = { ...reckless.policy, permissionMode: 'bypassPermissions' };
+
+    const options = supervisor.buildOptions(reckless);
+    expect(options.permissionMode).toBe('default');
+  });
+});

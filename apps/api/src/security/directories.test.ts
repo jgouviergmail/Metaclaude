@@ -85,6 +85,30 @@ describe('reviewAdditionalDirectories', () => {
     expect(review.rejected[0]?.reason).toMatch(/data directory/);
   });
 
+  it('works under the layout the image actually ships', () => {
+    // Every case above puts `dataDir` beside the workspaces root or beneath it.
+    // `docker/Dockerfile` does the opposite: METACLAUDE_DATA_DIR is
+    // /var/lib/metaclaude and METACLAUDE_WORKSPACES_DIR is
+    // /var/lib/metaclaude/workspaces — the data directory is the *parent*.
+    //
+    // Under that layout every candidate is inside `dataRoot` by construction,
+    // so a blanket "is inside the data directory" refusal rejected all of them
+    // and the feature could not work at all in the shipped image. Being under
+    // the data root is only disqualifying when the target is not also under the
+    // workspaces root, which is the part the operator is allowed to reach.
+    const shipped = {
+      workspacesDir: '/var/lib/metaclaude/workspaces',
+      dataDir: '/var/lib/metaclaude',
+    };
+    const review = reviewAdditionalDirectories(
+      ['/var/lib/metaclaude/workspaces/shared-lib', '/var/lib/metaclaude', '/etc'],
+      shipped,
+    );
+
+    expect(review.allowed).toEqual(['/var/lib/metaclaude/workspaces/shared-lib']);
+    expect(review.rejected).toHaveLength(2);
+  });
+
   it('refuses a directory that would contain the data directory', () => {
     const nested = { workspacesDir: '/srv/mc', dataDir: '/srv/mc/inner/data' };
     // Granting `/srv/mc/inner` grants the data directory beneath it.
