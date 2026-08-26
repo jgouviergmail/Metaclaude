@@ -450,4 +450,26 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE users ADD COLUMN totp_last_step INTEGER;
     `,
   },
+  {
+    version: 8,
+    name: 'marketplaces',
+    sql: /* sql */ `
+      -- Plugin marketplaces, the CLI-native kind: sources handed to the CLI as
+      -- extraKnownMarketplaces so the CLI itself fetches and installs from
+      -- them. Global by design — a marketplace is a trust decision about a
+      -- publisher, made once by the owner; which of its plugins run where is
+      -- per-workspace (workspaces.settings.enabledPlugins).
+      --
+      -- The source is stored whole as JSON for the same reason the plugin
+      -- manifest is: its shape is the CLI's, and shredding it into columns
+      -- would silently discard whatever field the CLI adds next.
+      CREATE TABLE marketplaces (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL UNIQUE,
+        source     TEXT NOT NULL,
+        enabled    INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
+      );
+    `,
+  },
 ];

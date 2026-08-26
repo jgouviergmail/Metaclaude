@@ -207,6 +207,11 @@ afterwards. Per the specification a broken component never stops the rest
 loading, so the Plugins screen shows warnings *beside* a working plugin rather
 than replacing it with an error.
 
+And **marketplaces** — the CLI-native store. Add a source by GitHub repo or
+`marketplace.json` URL, browse its catalogue, and enable plugins per workspace;
+the CLI fetches and installs them itself at the start of a run, narrated in the
+transcript. Owner-only to add, because a marketplace is a trust decision.
+
 ---
 
 ## Security
@@ -249,7 +254,7 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 1264 unit + integration tests, ~20s
+pnpm test:run    # 1291 unit + integration tests, ~20s
 pnpm typecheck
 pnpm build
 ```

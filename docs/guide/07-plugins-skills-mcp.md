@@ -24,6 +24,26 @@ per-component: a malformed piece produces a warning attached to the plugin,
 never a broken install. Plugin state lives apart from plugin code, and a
 plugin's declared paths cannot reach outside its own directory.
 
+## Marketplaces
+
+A marketplace is a published catalogue of plugins that the Claude CLI installs
+from directly — Metaclaude stores only the source. Add one under **Plugins →
+Add marketplace**, by GitHub repository (`owner/repo`) or by a direct
+`marketplace.json` URL (https only). The card shows the catalogue as the
+marketplace itself describes it; a source that fails to load shows the error
+in its own words.
+
+Which plugins actually run is chosen **per workspace**, under Workspace
+settings → Marketplace plugins. At the start of a run the CLI installs
+whatever is enabled but not yet present, and the transcript narrates the
+install. Disabling or removing a marketplace severs its plugins everywhere at
+once — a plugin left enabled from a removed source stays visible in the
+workspace settings, marked, so it can be switched off.
+
+Adding a marketplace is a trust decision — its plugins bring skills, hooks and
+MCP servers into the agent, so treat a new source as you would a new
+dependency. Only the owner account can add or remove one.
+
 ## MCP servers
 
 MCP connects the agent to external systems — databases, browsers, trackers,

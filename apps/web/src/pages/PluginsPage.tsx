@@ -13,12 +13,13 @@
  * therefore first-class here rather than an error state that replaces the card.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Plug, Plus, Server, Sparkles, Trash2 } from 'lucide-react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, Plug, Plus, Server, Sparkles, Store, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type { PluginRecord } from '@metaclaude/shared';
+import type { Marketplace, MarketplaceCatalogue, PluginRecord } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { MarketplaceList } from '@/components/registry/MarketplaceList';
 import { Switch } from '@/components/ui/controls';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
@@ -38,6 +39,8 @@ export function PluginsPage() {
   const [installing, setInstalling] = useState(false);
   const [source, setSource] = useState('');
   const [removing, setRemoving] = useState<PluginRecord | null>(null);
+  const [addingMarketplace, setAddingMarketplace] = useState(false);
+  const [removingMarketplace, setRemovingMarketplace] = useState<Marketplace | null>(null);
 
   const query = useQuery({ queryKey: ['plugins'], queryFn: () => api.plugins.list() });
   const invalidate = (): void => {
@@ -47,6 +50,58 @@ export function PluginsPage() {
   const fail = (error: unknown, fallback: string): void => {
     toast.error(error instanceof ApiError ? error.message : fallback);
   };
+
+  /* -- Marketplaces ------------------------------------------------------- */
+
+  const marketplacesQuery = useQuery({
+    queryKey: ['marketplaces'],
+    queryFn: () => api.marketplaces.list(),
+  });
+  const marketplaces = marketplacesQuery.data?.marketplaces ?? [];
+
+  // One catalogue query per marketplace, so a slow or broken source delays
+  // only its own card.
+  const catalogueQueries = useQueries({
+    queries: marketplaces.map((marketplace) => ({
+      queryKey: ['marketplace-catalogue', marketplace.id],
+      queryFn: () => api.marketplaces.catalogue(marketplace.id),
+    })),
+  });
+  const catalogues: Record<string, MarketplaceCatalogue | undefined> = {};
+  marketplaces.forEach((marketplace, index) => {
+    catalogues[marketplace.id] = catalogueQueries[index]?.data;
+  });
+
+  const invalidateMarketplaces = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['marketplaces'] });
+  };
+
+  const addMarketplace = useMutation({
+    mutationFn: (input: Parameters<typeof api.marketplaces.add>[0]) => api.marketplaces.add(input),
+    onSuccess: (result) => {
+      invalidateMarketplaces();
+      setAddingMarketplace(false);
+      toast.success(`Marketplace ${result.marketplace.name} added.`);
+    },
+    onError: (error) => fail(error, 'That marketplace could not be added.'),
+  });
+
+  const toggleMarketplace = useMutation({
+    mutationFn: (marketplace: Marketplace) =>
+      api.marketplaces.setEnabled(marketplace.id, !marketplace.enabled),
+    onSuccess: invalidateMarketplaces,
+    onError: (error) => fail(error, 'That marketplace could not be changed.'),
+  });
+
+  const removeMarketplace = useMutation({
+    mutationFn: (marketplace: Marketplace) => api.marketplaces.remove(marketplace.id),
+    onSuccess: () => {
+      invalidateMarketplaces();
+      setRemovingMarketplace(null);
+      toast.success('Marketplace removed.');
+    },
+    onError: (error) => fail(error, 'That marketplace could not be removed.'),
+  });
 
   const install = useMutation({
     mutationFn: (path: string) => api.plugins.install(path),
@@ -85,7 +140,7 @@ export function PluginsPage() {
     <AppShell>
       <ContentHeader
         title="Plugins"
-        subtitle="Agent Plugins 1.0.0 — skills and MCP servers in one package"
+        subtitle="Marketplaces the CLI installs from, and Agent Plugins installed by path"
         actions={
           <Button variant="primary" size="sm" onClick={() => setInstalling(true)}>
             <Plus className="size-4" />
@@ -93,6 +148,40 @@ export function PluginsPage() {
           </Button>
         }
       />
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <Store className="size-4 text-muted" aria-hidden />
+            Marketplaces
+          </h2>
+          <Button variant="secondary" size="sm" onClick={() => setAddingMarketplace(true)}>
+            <Plus className="size-4" aria-hidden />
+            Add marketplace
+          </Button>
+        </div>
+        <p className="text-[12.5px] leading-relaxed text-muted">
+          The CLI fetches these sources itself and installs from them at the start of a run.
+          Which plugins actually run is chosen per workspace, under Workspace settings.
+        </p>
+        {marketplacesQuery.isLoading ? (
+          <div className="flex justify-center py-6">
+            <Spinner />
+          </div>
+        ) : (
+          <MarketplaceList
+            marketplaces={marketplaces}
+            catalogues={catalogues}
+            onToggle={(marketplace) => toggleMarketplace.mutate(marketplace)}
+            onRemove={setRemovingMarketplace}
+          />
+        )}
+      </section>
+
+      <h2 className="flex items-center gap-2 pt-2 text-sm font-semibold text-ink">
+        <Plug className="size-4 text-muted" aria-hidden />
+        Installed by path
+      </h2>
 
       {query.isLoading ? (
         <div className="flex justify-center py-10">
@@ -250,6 +339,104 @@ export function PluginsPage() {
           if (removing) remove.mutate(removing);
         }}
       />
+
+      <AddMarketplaceModal
+        open={addingMarketplace}
+        onOpenChange={setAddingMarketplace}
+        onAdd={(input) => addMarketplace.mutate(input)}
+        pending={addMarketplace.isPending}
+      />
+
+      <ConfirmDialog
+        open={removingMarketplace !== null}
+        onOpenChange={(open) => !open && setRemovingMarketplace(null)}
+        title={`Remove ${removingMarketplace?.name ?? 'this marketplace'}?`}
+        description="Runs stop seeing this source, and every plugin enabled from it stops loading. Nothing already installed by the CLI is deleted."
+        confirmLabel="Remove"
+        danger
+        onConfirm={() => {
+          if (removingMarketplace) removeMarketplace.mutate(removingMarketplace);
+        }}
+      />
     </AppShell>
+  );
+}
+
+/**
+ * One field for the source, not a kind selector: an `https://` value is a
+ * marketplace.json URL and anything else is `owner/repo`. The distinction is
+ * mechanical, so the form makes it rather than asking.
+ */
+function AddMarketplaceModal({
+  open,
+  onOpenChange,
+  onAdd,
+  pending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAdd: (input: { name: string; source: Marketplace['source'] }) => void;
+  pending: boolean;
+}) {
+  const [name, setName] = useState('');
+  const [source, setSource] = useState('');
+
+  const submit = (): void => {
+    const trimmed = source.trim();
+    onAdd({
+      name: name.trim(),
+      source: trimmed.startsWith('https://')
+        ? { source: 'url', url: trimmed }
+        : { source: 'github', repo: trimmed },
+    });
+  };
+  const ready = name.trim().length > 0 && source.trim().length > 0;
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add a marketplace"
+      description="Plugins from it bring skills, hooks and MCP servers into the agent — add sources you trust as you would a dependency."
+    >
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="marketplace-name">Name</Label>
+          <Input
+            id="marketplace-name"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="anthropic-tools"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <p className="text-[12px] text-muted">
+            Plugins are enabled as <code className="font-mono">plugin@{name.trim() || 'name'}</code>.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="marketplace-source">Source</Label>
+          <Input
+            id="marketplace-source"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="owner/repo, or https://…/marketplace.json"
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && ready) submit();
+            }}
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" disabled={!ready} loading={pending} onClick={submit}>
+            Add
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

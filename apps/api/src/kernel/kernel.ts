@@ -15,6 +15,7 @@
 
 import type {
   ApprovalRequest,
+  MarketplaceSource,
   RewindResult,
   Run,
   RunPolicy,
@@ -54,6 +55,11 @@ export interface RuntimeContext {
   mcpServers: Record<string, unknown>;
   /** Custom agents available to the run. */
   agents: Record<string, { description: string; prompt: string; tools?: string[]; model?: string }>;
+  /**
+   * Enabled plugin marketplaces, keyed by name. Optional because most
+   * providers have none; the kernel normalises absence to an empty record.
+   */
+  marketplaces?: Record<string, { source: MarketplaceSource }>;
 }
 
 /** Supplies per-workspace runtime configuration. Implemented by the services layer. */
@@ -406,6 +412,7 @@ export class Kernel {
       systemPromptAppend,
       mcpServers: runtime.mcpServers,
       agents: runtime.agents,
+      marketplaces: runtime.marketplaces ?? {},
       abortSignal: controller.signal,
     };
 

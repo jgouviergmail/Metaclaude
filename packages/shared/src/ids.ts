@@ -30,6 +30,7 @@ export const ID_PREFIXES = {
   policyArm: 'pol',
   plugin: 'plg',
   exemplar: 'exm',
+  marketplace: 'mkt',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

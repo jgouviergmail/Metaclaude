@@ -5,7 +5,7 @@
 import type { App } from '../http/types.js';
 import { AutomationTrigger, EffortLevel, McpTransport, ModelSelector, PermissionMode } from '@metaclaude/shared';
 import { z } from 'zod';
-import { InstallPluginRequest } from '@metaclaude/shared';
+import { InstallPluginRequest, MarketplaceInput } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import {
   assertPermissionModeAllowed,
@@ -361,6 +361,78 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       detail: parsed.data.claudeSessionId,
     });
     return reply.status(201).send({ session });
+  });
+
+  /* ----------------------------- Marketplaces ---------------------------- */
+
+  /**
+   * Plugin marketplaces — sources the CLI itself installs from.
+   *
+   * Reading the list and a catalogue changes nothing and is operator-level;
+   * adding or removing a source is a trust decision about a publisher whose
+   * plugins bring skills, hooks and MCP servers into the agent, so mutations
+   * are owner-only — the same authority as installing a plugin by path.
+   */
+  app.get('/api/marketplaces', async (request, reply) => {
+    requireOperator(request);
+    return reply.send({ marketplaces: context.marketplaces.list() });
+  });
+
+  app.get<{ Params: { id: string } }>(
+    '/api/marketplaces/:id/catalogue',
+    async (request, reply) => {
+      requireOperator(request);
+      const query = request.query as { refresh?: string };
+      return reply.send(
+        await context.marketplaces.catalogue(request.params.id, {
+          force: query.refresh === 'true',
+        }),
+      );
+    },
+  );
+
+  app.post('/api/marketplaces', async (request, reply) => {
+    const user = requireOwner(request);
+    const input = MarketplaceInput.parse(request.body);
+    const marketplace = context.marketplaces.add(input);
+    context.audit.record({
+      actor: user.username,
+      action: 'marketplace.add',
+      target: marketplace.id,
+      ipAddress: requestIp(context, request),
+      detail: `${marketplace.name} ← ${JSON.stringify(marketplace.source)}`,
+    });
+    return reply.status(201).send({ marketplace });
+  });
+
+  app.patch<{ Params: { id: string } }>('/api/marketplaces/:id', async (request, reply) => {
+    const user = requireOwner(request);
+    const body = z.object({ enabled: z.boolean() }).parse(request.body);
+    if (!context.marketplaces.setEnabled(request.params.id, body.enabled)) {
+      throw new HttpError(404, 'That marketplace does not exist.');
+    }
+    context.audit.record({
+      actor: user.username,
+      action: 'marketplace.update',
+      target: request.params.id,
+      ipAddress: requestIp(context, request),
+      detail: body.enabled ? 'enabled' : 'disabled',
+    });
+    return reply.send({ marketplace: context.marketplaces.get(request.params.id) });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/marketplaces/:id', async (request, reply) => {
+    const user = requireOwner(request);
+    if (!context.marketplaces.remove(request.params.id)) {
+      throw new HttpError(404, 'That marketplace does not exist.');
+    }
+    context.audit.record({
+      actor: user.username,
+      action: 'marketplace.remove',
+      target: request.params.id,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send({ ok: true });
   });
 
   /* ------------------------------- Plugins ------------------------------- */

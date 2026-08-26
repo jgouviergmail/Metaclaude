@@ -32,6 +32,7 @@ import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { CatalogueCache } from './services/claude-catalogue.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
+import { MarketplacesService } from './services/marketplaces.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
@@ -53,6 +54,7 @@ export interface AppContext {
   plugins: PluginRegistry;
   claudeCatalogue: CatalogueCache;
   claudeSessions: ClaudeSessions;
+  marketplaces: MarketplacesService;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -261,6 +263,21 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     sessions: sessionRepo,
   });
 
+  // The catalogue read is bounded in time and size: it is a convenience view
+  // of a third-party file, and neither a slow host nor a huge body may hold a
+  // request handler hostage. The install path never uses this fetch — the CLI
+  // does its own.
+  const marketplaces = new MarketplacesService({
+    db,
+    fetchText: async (url) => {
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const body = await response.text();
+      if (body.length > 2_000_000) throw new Error('marketplace.json larger than 2 MB');
+      return body;
+    },
+  });
+
   // Declared before the kernel because the kernel's completion hook feeds it.
   let schedulerRef: Scheduler | null = null;
 
@@ -275,7 +292,14 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     classifier,
     policy,
     reflexion,
-    contextProvider: registry,
+    // The registry resolves per-workspace context; the marketplace sources are
+    // global and composed in here rather than taught to the registry.
+    contextProvider: {
+      resolve: (workspace) => ({
+        ...registry.resolve(workspace),
+        marketplaces: marketplaces.settingsPayload(),
+      }),
+    },
     supervisor,
     maxConcurrentRuns: config.maxConcurrentRuns,
     // Every finished run is offered, not only automation-triggered ones: a human
@@ -317,6 +341,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     plugins,
     claudeCatalogue,
     claudeSessions,
+    marketplaces,
     workspaceRepo,
     sessionRepo,
     runRepo,

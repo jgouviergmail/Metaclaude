@@ -13,6 +13,16 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ### Added
 
+- **Plugin marketplaces.** The CLI-native plugin store, inside the product:
+  add a marketplace by GitHub repo or marketplace.json URL, browse its
+  catalogue as the marketplace itself describes it, and enable plugins per
+  workspace. The CLI does the fetching and installing itself — the sources
+  ride each run's settings at the flag tier, which a cloned repository's own
+  settings.json cannot override, and headless installs are narrated in the
+  transcript. Disabling a marketplace severs its plugins everywhere at once;
+  a plugin orphaned by a removed source stays visible in workspace settings,
+  marked, so it can be switched off. Owner-only to add or remove — a
+  marketplace is a trust decision about a publisher.
 - **Adopt the CLI's own sessions.** The workspace page can now list every
   conversation the Claude CLI holds for that directory — terminal sessions
   included — and adopt one into Metaclaude, after which resuming, steering

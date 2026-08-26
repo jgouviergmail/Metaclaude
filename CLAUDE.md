@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1264 tests, ~20s
+pnpm test:run                            # 1291 tests, ~20s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```

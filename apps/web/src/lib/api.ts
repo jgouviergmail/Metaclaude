@@ -30,6 +30,9 @@ import {
   type PolicyArm,
   type ClaudeCatalogue,
   type ClaudeCliSession,
+  type Marketplace,
+  type MarketplaceCatalogue,
+  type MarketplaceInput,
   type LoginResponse,
   type RewindResult,
   type Run,
@@ -498,6 +501,21 @@ export const api = {
     setEnabled: (id: string, enabled: boolean) =>
       request<PluginRecord>(`/api/plugins/${id}`, { method: 'PATCH', body: { enabled } }),
     remove: (id: string) => request<void>(`/api/plugins/${id}`, { method: 'DELETE' }),
+  },
+
+  /** Plugin marketplaces — sources the CLI itself installs from. */
+  marketplaces: {
+    list: () => request<{ marketplaces: Marketplace[] }>('/api/marketplaces'),
+    add: (input: MarketplaceInput) =>
+      request<{ marketplace: Marketplace }>('/api/marketplaces', { method: 'POST', body: input }),
+    setEnabled: (id: string, enabled: boolean) =>
+      request<{ marketplace: Marketplace }>(`/api/marketplaces/${id}`, {
+        method: 'PATCH',
+        body: { enabled },
+      }),
+    remove: (id: string) => request<{ ok: boolean }>(`/api/marketplaces/${id}`, { method: 'DELETE' }),
+    catalogue: (id: string, refresh = false) =>
+      request<MarketplaceCatalogue>(`/api/marketplaces/${id}/catalogue${qs({ refresh })}`),
   },
 
   claudeCredential: {

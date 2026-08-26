@@ -186,6 +186,12 @@ export const WorkspaceSettings = z.object({
   reflexionEnabled: z.boolean().default(true),
   /** Enable file checkpointing so runs can be rewound. */
   checkpointing: z.boolean().default(true),
+  /**
+   * Marketplace plugins enabled here, keyed `plugin@marketplace` — the CLI's
+   * own `enabledPlugins` format. A key without its marketplace half would be
+   * meaningless to the CLI, so the shape refuses it at the edge.
+   */
+  enabledPlugins: z.record(z.string().regex(/^[^@\s]+@[^@\s]+$/), z.boolean()).default({}),
 });
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettings>;
 
@@ -1166,3 +1172,84 @@ export const InstallPluginRequest = z
   })
   .strict();
 export type InstallPluginRequest = z.infer<typeof InstallPluginRequest>;
+
+/**
+ * A plugin marketplace — a source the Claude CLI itself fetches plugins from.
+ *
+ * The shape mirrors the CLI's own `extraKnownMarketplaces` settings key, kept
+ * to the two source kinds an operator can point at from a browser: a GitHub
+ * repository or a direct `marketplace.json` URL. Adding one is owner-level:
+ * a marketplace supplies skills, hooks and MCP servers the agent will run.
+ */
+export const MarketplaceSource = z.discriminatedUnion('source', [
+  z
+    .object({
+      source: z.literal('github'),
+      /**
+       * `owner/repo`, one repository exactly. The owner-wildcard form
+       * (`owner/*`) is meaningful only in managed policy lists; everywhere
+       * else the CLI takes the `*` literally and the clone fails, so it is
+       * refused here rather than stored broken.
+       */
+      repo: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+      /** Branch or tag; the repository default when absent. */
+      ref: z.string().min(1).max(120).optional(),
+      /** Path to marketplace.json when it is not at the CLI's default. */
+      path: z.string().min(1).max(300).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      source: z.literal('url'),
+      /** https only: this file names code the agent will execute. */
+      url: z.string().url().startsWith('https://').max(500),
+    })
+    .strict(),
+]);
+export type MarketplaceSource = z.infer<typeof MarketplaceSource>;
+
+export const MarketplaceInput = z
+  .object({
+    /**
+     * The marketplace id: the `extraKnownMarketplaces` key, and the suffix of
+     * every `plugin@marketplace` entry — so no spaces and no `@`.
+     */
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/),
+    source: MarketplaceSource,
+  })
+  .strict();
+export type MarketplaceInput = z.infer<typeof MarketplaceInput>;
+
+export const Marketplace = MarketplaceInput.extend({
+  id: z.string(),
+  enabled: z.boolean(),
+  createdAt: Millis,
+});
+export type Marketplace = z.infer<typeof Marketplace>;
+
+/**
+ * One plugin as a marketplace's own `marketplace.json` describes it. Parsed
+ * leniently: the catalogue exists to be browsed, and a marketplace that adds
+ * fields tomorrow must not stop listing today.
+ */
+export const MarketplacePlugin = z.object({
+  name: z.string(),
+  description: z.string().nullable().default(null),
+  version: z.string().nullable().default(null),
+  author: z.string().nullable().default(null),
+});
+export type MarketplacePlugin = z.infer<typeof MarketplacePlugin>;
+
+export const MarketplaceCatalogue = z.object({
+  marketplaceId: z.string(),
+  name: z.string(),
+  fetchedAt: Millis,
+  plugins: z.array(MarketplacePlugin),
+  /** The fetch or parse failure, verbatim, when the catalogue could not load. */
+  error: z.string().nullable().default(null),
+});
+export type MarketplaceCatalogue = z.infer<typeof MarketplaceCatalogue>;

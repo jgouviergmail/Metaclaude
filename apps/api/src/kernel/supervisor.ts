@@ -23,6 +23,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
   ClaudeCatalogue,
+  MarketplaceSource,
   RewindResult,
   RunPolicy,
   RunUsage,
@@ -66,6 +67,8 @@ export interface RunRequest {
   mcpServers: Record<string, unknown>;
   /** Custom agents available to this run. */
   agents: Record<string, { description: string; prompt: string; tools?: string[]; model?: string }>;
+  /** Enabled plugin marketplaces, keyed by name — the extraKnownMarketplaces value. */
+  marketplaces: Record<string, { source: MarketplaceSource }>;
   abortSignal: AbortSignal;
 }
 
@@ -251,6 +254,18 @@ export class AgentSupervisor {
     const { workspace, policy } = request;
     const settings = workspace.settings;
 
+    // Marketplace plugins. Enablement keeps only entries switched on *and*
+    // whose marketplace half names a known source: disabling or removing a
+    // marketplace severs its plugins rather than leaving enabledPlugins
+    // naming a source the CLI cannot resolve. Entries switched off are
+    // omitted, not sent as false — absence is neutral, false is an override.
+    const enabledPlugins = Object.fromEntries(
+      Object.entries(settings.enabledPlugins).filter(
+        ([key, on]) => on && request.marketplaces[key.split('@')[1] ?? ''] !== undefined,
+      ),
+    );
+    const wantsPlugins = Object.keys(enabledPlugins).length > 0;
+
     // The last line of defence, and the only one that sees a mode persisted
     // *before* the deployment turned bypass off — a workspace default or an
     // automation policy the routes gated when it was written and cannot gate
@@ -275,8 +290,16 @@ export class AgentSupervisor {
       // of an opaque "Task" tool call.
       forwardSubagentText: true,
       agentProgressSummaries: true,
-      env: this.deps.env,
+      // The sync-install flag lets a headless session install what is enabled
+      // but not yet present; the CLI narrates it as plugin_install messages.
+      env: wantsPlugins
+        ? { ...this.deps.env, CLAUDE_CODE_SYNC_PLUGIN_INSTALL: '1' }
+        : this.deps.env,
 
+      // The settings payload rides the flag tier, which project settings
+      // cannot override — so a cloned repository's own settings.json can
+      // smuggle neither orchestration nor plugin sources past the owner.
+      //
       // Ultracode: the CLI's standing multi-agent orchestration — xhigh effort
       // plus dynamic workflows by default. Session-scoped in the CLI, so it is
       // handed over at open time rather than through a mid-turn control
@@ -284,7 +307,17 @@ export class AgentSupervisor {
       // rather than `{ ultracode: false }` when off: an explicit false is
       // still a settings payload for the CLI to merge, and every run that
       // never asked must stay byte-identical to before the field existed.
-      ...(policy.ultracode ? { settings: { ultracode: true } } : {}),
+      // The same absence rule covers the plugin keys.
+      ...(policy.ultracode || wantsPlugins
+        ? {
+            settings: {
+              ...(policy.ultracode ? { ultracode: true } : {}),
+              ...(wantsPlugins
+                ? { extraKnownMarketplaces: request.marketplaces, enabledPlugins }
+                : {}),
+            },
+          }
+        : {}),
 
       // `project` is required for the CLI to discover `CLAUDE.md` and the
       // workspace's `.claude/skills/` — both of which Metaclaude actively

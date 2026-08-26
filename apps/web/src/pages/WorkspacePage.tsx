@@ -5,7 +5,7 @@
  * the operator came here to talk to the agent, not to press "new" first.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, Loader2, Plus, Settings2, TerminalSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -18,6 +18,7 @@ import {
 } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { CliSessionList } from '@/components/workspace/CliSessionList';
+import { MarketplacePluginToggles } from '@/components/workspace/MarketplacePluginToggles';
 import { SessionList } from '@/components/workspace/SessionList';
 import { CheckboxField } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
@@ -362,6 +363,30 @@ function WorkspaceSettingsModal({
     }
   }, [open, settings, name, description]);
 
+  // What the enabled marketplaces offer, as plugin@marketplace keys. Only
+  // fetched while the dialog is open — this is the one screen that needs it.
+  const marketplacesQuery = useQuery({
+    queryKey: ['marketplaces'],
+    queryFn: () => api.marketplaces.list(),
+    enabled: open,
+  });
+  const enabledMarketplaces = (marketplacesQuery.data?.marketplaces ?? []).filter(
+    (marketplace) => marketplace.enabled,
+  );
+  const catalogueQueries = useQueries({
+    queries: enabledMarketplaces.map((marketplace) => ({
+      queryKey: ['marketplace-catalogue', marketplace.id],
+      queryFn: () => api.marketplaces.catalogue(marketplace.id),
+      enabled: open,
+    })),
+  });
+  const availablePlugins = enabledMarketplaces.flatMap((marketplace, index) =>
+    (catalogueQueries[index]?.data?.plugins ?? []).map((plugin) => ({
+      key: `${plugin.name}@${marketplace.name}`,
+      description: plugin.description,
+    })),
+  );
+
   const save = useMutation({
     mutationFn: () =>
       api.updateWorkspace(workspaceId, {
@@ -523,6 +548,23 @@ function WorkspaceSettingsModal({
             onChange={(value) => update('checkpointing', value)}
             label="File checkpointing"
             hint="Track file changes so a run can be rewound."
+          />
+        </fieldset>
+
+        <MenuSeparator />
+
+        <fieldset className="space-y-2">
+          <legend className="text-[13px] font-semibold text-ink">Marketplace plugins</legend>
+          <p className="text-[12px] text-muted">
+            Plugins the CLI installs from the marketplaces added under Plugins. Enabled ones load
+            into every run of this workspace.
+          </p>
+          <MarketplacePluginToggles
+            available={availablePlugins}
+            enabled={draft.enabledPlugins}
+            onChange={(key, on) =>
+              update('enabledPlugins', { ...draft.enabledPlugins, [key]: on })
+            }
           />
         </fieldset>
 

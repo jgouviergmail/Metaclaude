@@ -44,6 +44,7 @@ const workspace: Workspace = {
     autoPolicyEnabled: false,
     reflexionEnabled: false,
     checkpointing: true,
+    enabledPlugins: {},
   },
   createdAt: 0,
   updatedAt: 0,
@@ -69,6 +70,7 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
     systemPromptAppend: '',
     mcpServers: {},
     agents: {},
+    marketplaces: {},
     abortSignal: new AbortController().signal,
     ...overrides,
   };
@@ -1282,5 +1284,65 @@ describe('buildOptions — ultracode', () => {
     // must stay byte-identical for every run that never asked.
     const supervisor = makeSupervisor(fakeQuery().query);
     expect(supervisor.buildOptions(makeRequest()).settings).toBeUndefined();
+  });
+});
+
+describe('buildOptions — marketplace plugins', () => {
+  const marketplaces = { tools: { source: { source: 'github' as const, repo: 'a/b' } } };
+
+  const withPlugins = (
+    enabledPlugins: Record<string, boolean>,
+    requestMarketplaces = marketplaces,
+  ): RunRequest =>
+    makeRequest({
+      workspace: { ...workspace, settings: { ...workspace.settings, enabledPlugins } },
+      marketplaces: requestMarketplaces,
+    });
+
+  it('hands sources and enablement to the CLI, with headless sync install switched on', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(
+      withPlugins({ 'formatter@tools': true, 'linter@tools': false }),
+    );
+
+    // The flag tier — the same channel as ultracode — so a cloned repo's own
+    // settings.json cannot smuggle sources past the owner's list. An entry
+    // switched off is omitted rather than sent as false: absence is the
+    // neutral statement, false is an instruction to override lower tiers.
+    expect(options.settings).toEqual({
+      extraKnownMarketplaces: marketplaces,
+      enabledPlugins: { 'formatter@tools': true },
+    });
+    expect((options.env as Record<string, string>).CLAUDE_CODE_SYNC_PLUGIN_INSTALL).toBe('1');
+  });
+
+  it('drops a plugin whose marketplace is not among the known sources', () => {
+    // Disabling or removing a marketplace must sever its plugins, not leave
+    // enabledPlugins naming a source the CLI cannot resolve.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(withPlugins({ 'formatter@gone': true }));
+
+    expect(options.settings).toBeUndefined();
+    expect((options.env as Record<string, string>).CLAUDE_CODE_SYNC_PLUGIN_INSTALL).toBeUndefined();
+  });
+
+  it('sends nothing when no plugin is enabled, keeping the run byte-identical', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(withPlugins({}));
+
+    expect(options.settings).toBeUndefined();
+    expect((options.env as Record<string, string>).CLAUDE_CODE_SYNC_PLUGIN_INSTALL).toBeUndefined();
+  });
+
+  it('composes with ultracode in one settings payload', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const request = withPlugins({ 'formatter@tools': true });
+    request.policy = { ...request.policy, ultracode: true };
+
+    expect(supervisor.buildOptions(request).settings).toEqual({
+      ultracode: true,
+      extraKnownMarketplaces: marketplaces,
+      enabledPlugins: { 'formatter@tools': true },
+    });
   });
 });
