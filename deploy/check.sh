@@ -1000,20 +1000,40 @@ section "Uninstalling keeps its promises"
 # phrase, so a reflexive "y<enter>" cannot destroy the database. Rehearsed
 # against a real daemon rather than read, because the failure that matters is
 # a docker flag, not a typo.
-if docker info >/dev/null 2>&1; then
+# The script insists on root — it deletes system paths and writes under /root —
+# so the rehearsal must be root too. Locally that tends to be true already; on
+# a CI runner it is not, and the first version of this section learned that the
+# hard way: the script refused to run, one assertion failed on the surviving
+# directory, and two others passed *because nothing had happened* — the volume
+# was never touched and /root was simply unwritable. A rehearsal that cannot
+# tell "the guard held" from "the script never ran" proves nothing, so this one
+# escalates explicitly or says it skipped.
+if [ "$(id -u)" -eq 0 ]; then
+  as_root() { env "$@"; }
+elif sudo -n true 2>/dev/null; then
+  as_root() { sudo -n env "$@"; }
+else
+  as_root() { return 127; }
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  skip "uninstall rehearsal" "docker not available"
+elif ! as_root true 2>/dev/null; then
+  skip "uninstall rehearsal" "needs root or passwordless sudo, and this shell has neither"
+else
   fake_app="$(mktemp -d)"
   mkdir -p "$fake_app/releases"
   printf 'METACLAUDE_MASTER_KEY=cafe\n' > "$fake_app/.env"
   docker volume create mccheck_data >/dev/null
 
-  APP_DIR="$fake_app" COMPOSE_PROJECT=mccheck "$REPO_ROOT/deploy/uninstall.sh" --yes \
+  as_root APP_DIR="$fake_app" COMPOSE_PROJECT=mccheck "$REPO_ROOT/deploy/uninstall.sh" --yes \
     >/dev/null 2>&1 || true
   if docker volume ls -q | grep -q '^mccheck_data$'; then
     ok "without --purge-data, the volumes survive"
   else
     bad "uninstall deleted a volume it promised to keep" "mccheck_data is gone"
   fi
-  if ls /root/metaclaude-env-*.bak >/dev/null 2>&1 || ! [ -w /root ]; then
+  if as_root sh -c 'ls /root/metaclaude-env-*.bak' >/dev/null 2>&1; then
     ok "the .env is saved outside the deleted tree"
   else
     bad "the .env was not saved" "the master key would be lost with the tree"
@@ -1022,7 +1042,7 @@ if docker info >/dev/null 2>&1; then
     || bad "the application directory survived" "$fake_app still exists"
 
   mkdir -p "$fake_app"
-  if printf 'y\n' | APP_DIR="$fake_app" COMPOSE_PROJECT=mccheck \
+  if printf 'y\n' | as_root APP_DIR="$fake_app" COMPOSE_PROJECT=mccheck \
        "$REPO_ROOT/deploy/uninstall.sh" --purge-data >/dev/null 2>&1; then
     bad "--purge-data accepted a bare \"y\"" "the confirmation phrase is not enforced"
   else
@@ -1032,9 +1052,8 @@ if docker info >/dev/null 2>&1; then
   fi
 
   docker volume rm mccheck_data >/dev/null 2>&1 || true
-  rm -rf "$fake_app"; rm -f /root/metaclaude-env-*.bak 2>/dev/null || true
-else
-  skip "uninstall rehearsal" "docker not available"
+  rm -rf "$fake_app"
+  as_root sh -c 'rm -f /root/metaclaude-env-*.bak' 2>/dev/null || true
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
