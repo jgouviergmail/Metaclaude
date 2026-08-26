@@ -211,6 +211,26 @@ export const CreateWorkspaceRequest = z.object({
 });
 export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequest>;
 
+/**
+ * Attaching a repository to a workspace that already exists.
+ *
+ * `gitUrl` omitted means "track this directory locally" — `git init` and
+ * nothing else — which is the honest option for work that has no remote yet.
+ */
+export const ConnectRepositoryRequest = z.object({
+  gitUrl: z.string().url().max(500).nullable().default(null),
+});
+export type ConnectRepositoryRequest = z.infer<typeof ConnectRepositoryRequest>;
+
+export const ConnectRepositoryResult = z.object({
+  /** cloned: the directory was empty. fetched: files were already there, so the
+   *  remote was added and fetched without touching the working tree.
+   *  initialised: a local repository with no remote. */
+  mode: z.enum(['cloned', 'fetched', 'initialised']),
+  branch: z.string().nullable(),
+});
+export type ConnectRepositoryResult = z.infer<typeof ConnectRepositoryResult>;
+
 /* -------------------------------------------------------------------------- */
 /* Sessions & runs                                                             */
 /* -------------------------------------------------------------------------- */

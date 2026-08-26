@@ -25,6 +25,8 @@ import {
   Badge,
   Button,
   EmptyState,
+  Input,
+  Label,
   Spinner,
   Textarea,
   Tooltip,
@@ -165,21 +167,28 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
     );
   }
 
-  if (status.isError || !data?.isRepo) {
+  if (status.isError) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         {header}
         <EmptyState
           icon={<GitBranch />}
-          title={status.isError ? 'Git status is unavailable' : 'Not a git repository'}
+          title="Git status is unavailable"
           description={
-            status.isError
-              ? status.error instanceof ApiError
-                ? status.error.message
-                : 'The repository status could not be read.'
-              : 'This workspace has no git repository, so there is nothing to review or commit. Run `git init` in the workspace to start tracking changes.'
+            status.error instanceof ApiError
+              ? status.error.message
+              : 'The repository status could not be read.'
           }
         />
+      </div>
+    );
+  }
+
+  if (!data?.isRepo) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {header}
+        <ConnectRepository workspaceId={workspaceId} onConnected={invalidate} />
       </div>
     );
   }
@@ -419,5 +428,96 @@ function RecentCommits({
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * Connecting a repository, from the panel that noticed there wasn't one.
+ *
+ * This screen used to be a dead end that said "run `git init` in the
+ * workspace" — advice that requires the shell this product exists to replace.
+ * Cloning was possible exactly once, in a field inside the create-workspace
+ * modal, and never again.
+ */
+function ConnectRepository({
+  workspaceId,
+  onConnected,
+}: {
+  workspaceId: string;
+  onConnected: () => void;
+}) {
+  const [url, setUrl] = useState('');
+
+  const connect = useMutation({
+    mutationFn: (gitUrl: string | null) => api.connectRepository(workspaceId, gitUrl),
+    onSuccess: (result) => {
+      onConnected();
+      if (result.mode === 'cloned') {
+        toast.success(`Cloned${result.branch ? ` — on ${result.branch}` : ''}.`);
+      } else if (result.mode === 'initialised') {
+        toast.success('Now tracking this workspace with git.');
+      } else {
+        // Deliberately not a plain success: the working tree was left alone and
+        // the owner needs to know that before they go looking for the files.
+        toast.info('Remote added and fetched. Your existing files were left untouched.');
+      }
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not connect that repository.'),
+  });
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-6 text-center">
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+        <GitBranch className="size-6" aria-hidden />
+      </div>
+
+      <div className="space-y-1">
+        <h3 className="text-[15px] font-semibold text-ink">No repository yet</h3>
+        <p className="max-w-sm text-[13px] text-muted">
+          Clone one into this workspace, or start tracking the files that are already here.
+        </p>
+      </div>
+
+      <div className="w-full max-w-sm space-y-2 text-left">
+        <Label htmlFor="git-connect-url">Repository URL</Label>
+        <Input
+          id="git-connect-url"
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="https://github.com/owner/repo.git"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && url.trim()) connect.mutate(url.trim());
+          }}
+        />
+        <p className="text-[12px] text-subtle">
+          https or ssh. A private repository needs its credentials already on the server.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!url.trim()}
+          loading={connect.isPending && connect.variables !== null}
+          onClick={() => connect.mutate(url.trim())}
+        >
+          Clone into this workspace
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          loading={connect.isPending && connect.variables === null}
+          onClick={() => connect.mutate(null)}
+        >
+          Just track it locally
+        </Button>
+      </div>
+    </div>
   );
 }

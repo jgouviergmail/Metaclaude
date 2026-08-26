@@ -13,6 +13,7 @@ import {
   type ApprovalRequest,
   type AuditEntry,
   type ClaudeCredentialStatus,
+  type ConnectRepositoryResult,
   type Automation,
   type AutomationTrigger,
   type CreateMemoryRequest,
@@ -456,6 +457,12 @@ export const api = {
 
   /* ------------------------------ System ------------------------------ */
   system: () => request<SystemHealth>('/api/system'),
+
+  connectRepository: (workspaceId: string, gitUrl: string | null) =>
+    request<ConnectRepositoryResult>(`/api/workspaces/${workspaceId}/git/connect`, {
+      method: 'POST',
+      body: { gitUrl },
+    }),
 
   claudeCredential: {
     get: () => request<ClaudeCredentialStatus>('/api/claude/credential'),

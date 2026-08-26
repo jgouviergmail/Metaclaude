@@ -7,6 +7,7 @@
 
 import type { App } from '../http/types.js';
 import { z } from 'zod';
+import { ConnectRepositoryRequest } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOperator } from '../http/guards.js';
 import { queryIntOr, spreadInt } from '../http/query.js';
@@ -118,6 +119,31 @@ export function registerFileRoutes(app: App, context: AppContext): void {
   );
 
   /* --------------------------------- Git -------------------------------- */
+
+  /**
+   * Attach a repository to a workspace that already exists.
+   *
+   * Cloning used to be possible only while creating a workspace, in a field
+   * inside a modal on one screen. A workspace that started empty could never be
+   * connected to anything afterwards, and the Git panel's only suggestion was
+   * to open a shell — on a deployment built so that a shell is never needed.
+   */
+  app.post<{ Params: { id: string } }>('/api/workspaces/:id/git/connect', async (request, reply) => {
+    const user = requireOperator(request);
+    const workspace = mustGetWorkspace(request.params.id);
+    const input = ConnectRepositoryRequest.parse(request.body ?? {});
+
+    const result = await context.workspaces.connectRepository(workspace.id, input.gitUrl);
+    context.audit.record({
+      actor: user.username,
+      action: 'workspace.git.connect',
+      target: workspace.id,
+      outcome: 'success',
+      ipAddress: requestIp(context, request),
+      detail: input.gitUrl ?? 'local',
+    });
+    return reply.send(result);
+  });
 
   app.get<{ Params: { id: string } }>('/api/workspaces/:id/git/status', async (request, reply) => {
     const workspace = mustGetWorkspace(request.params.id);
