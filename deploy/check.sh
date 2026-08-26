@@ -106,7 +106,13 @@ section "Compose, under every TLS mode"
 # ─────────────────────────────────────────────────────────────────────────────
 
 if docker compose version >/dev/null 2>&1; then
-  for mode in internal acme-dns acme-ip file; do
+  # Derived from the directory rather than listed here. compose will mount any
+  # `docker/tls/<name>.caddy` an operator names in METACLAUDE_TLS_MODE, so a
+  # hand-maintained list means a new mode ships unvalidated — which is the state
+  # `acme-dns-staging` would have arrived in.
+  modes="$(cd "$REPO_ROOT/docker/tls" && ls -1 ./*.caddy 2>/dev/null | sed 's|^\./||; s|\.caddy$||')"
+  [ -n "$modes" ] || bad "enumerating the TLS modes" "docker/tls holds no .caddy snippet"
+  for mode in $modes; do
     snippet="$REPO_ROOT/docker/tls/$mode.caddy"
     if [ ! -f "$snippet" ]; then
       bad "TLS mode $mode" "docker/tls/$mode.caddy does not exist, but compose can be pointed at it"

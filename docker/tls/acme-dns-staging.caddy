@@ -1,0 +1,43 @@
+# A rehearsal of `acme-dns`, against Let's Encrypt's staging directory.
+#
+# ── Why this mode exists ──────────────────────────────────────────────────────
+#
+# Production Let's Encrypt allows five *duplicate* certificates per week for the
+# same exact set of names, with no override and no appeal. Five is generous
+# right up until it is not: a reinstall that discards the `caddy-data` volume
+# asks for a fresh certificate every time, so an afternoon of "wipe it and try
+# again" spends the week's quota and then locks the name out until it rolls off
+# — a wait measured in days, on the address the whole deployment answers at.
+#
+# Staging has no meaningful limit. Use it to prove the whole chain works — DNS
+# resolves here, port 80 is reachable, the challenge completes, the app answers
+# through the proxy — and only then switch to `acme-dns` for a real one.
+#
+# ── The cost, and it is the entire point ──────────────────────────────────────
+#
+# Staging is signed by an untrusted root, so **every browser will warn**, and
+# because the origin is not secure the app genuinely does not work: no Secure
+# cookie, no service worker. Verify with `curl -k` and read the Caddy log; do
+# not judge this mode from a browser.
+#
+# ── Switching to the real certificate ─────────────────────────────────────────
+#
+#   METACLAUDE_TLS_MODE=acme-dns   in .env, then `docker compose up -d`
+#
+# Caddy keys stored certificates by issuer URL, so changing the directory makes
+# it request a fresh one from production rather than reusing the staging cert.
+# Nothing needs clearing by hand.
+#
+# ── Why not a variable on acme-dns ────────────────────────────────────────────
+#
+# `tls <email>` uses Caddy's *default issuer pair*, which falls back to a second
+# CA when the first refuses. Naming `issuer acme` to make the directory
+# configurable would silently drop that fallback from the production path in
+# exchange for a knob only ever used while rehearsing. A separate mode keeps
+# `acme-dns` exactly as it is.
+tls {
+	issuer acme {
+		dir https://acme-staging-v02.api.letsencrypt.org/directory
+		email {$METACLAUDE_TLS_EMAIL}
+	}
+}

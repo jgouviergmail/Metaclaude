@@ -139,6 +139,40 @@ Two things to know before choosing this long-term:
 The ordinary case. Point a name at the server, set `METACLAUDE_TLS_MODE=acme-dns`
 and `METACLAUDE_TLS_EMAIL`, and nothing else changes.
 
+Nothing else changes because nothing else is asked of you: Caddy requests the
+certificate itself at first start, proves control of the name by answering a
+challenge Let's Encrypt fetches over port 80, and renews at about two-thirds of
+the 90-day lifetime. There is no command to run and no cron to add. What the
+email is for is expiry warnings, and it is never shown to visitors.
+
+Three things have to hold, and all three fail loudly in the Caddy log:
+
+1. the name resolves to this server;
+2. ports 80 **and** 443 are reachable from the internet — 80 carries the
+   challenge even though the site itself redirects away from it;
+3. nothing terminates TLS in front (the grey cloud, not the orange one).
+
+**The one limit worth knowing before you iterate.** Production allows five
+*duplicate* certificates per week for the same set of names, with no override
+and no appeal. A reinstall that discards the `caddy-data` volume asks for a
+fresh one every time, so a few rounds of "wipe it and try again" spend the
+quota and lock the name out for days. Two defences, and they compose:
+
+- back up `caddy-data` with the other volumes and restore it, which reuses the
+  certificate instead of asking for another;
+- rehearse on `METACLAUDE_TLS_MODE=acme-dns-staging`, which is the same mode
+  against Let's Encrypt's staging directory — effectively unlimited, and
+  untrusted, so browsers warn and the app genuinely does not work there. Prove
+  the chain with `curl -k` and the log, then switch to `acme-dns` and restart.
+  Caddy keys stored certificates by issuer URL, so the switch requests a real
+  one rather than reusing the staging cert; nothing needs clearing by hand.
+
+Staging is a separate mode rather than a variable on this one because `tls
+<email>` uses Caddy's default *issuer pair* — Let's Encrypt with a ZeroSSL
+fallback. Naming a single issuer to make the directory configurable would drop
+that fallback from the production path in exchange for a knob only used while
+rehearsing.
+
 > **Not chosen:** `sslip.io`/`nip.io` gives you a name, but it is not on the
 > Public Suffix List, so you share one rate-limit bucket with the whole
 > internet, and a volunteer DNS service becomes a hard dependency of your
