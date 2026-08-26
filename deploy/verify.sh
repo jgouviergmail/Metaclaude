@@ -136,6 +136,11 @@ expect_open() {
 expect_shut() {
   if probe_port "$1" "$2" "$3"; then bad "$4 $3 is OPEN" "nothing should answer here"; else ok "$4 $3 shut"; fi
 }
+# Neither state is a failure — the check is that you know which one you have.
+# Used for HTTPS over v6, where both answers are legitimate deployments.
+report_state() {
+  if probe_port "$1" "$2" "$3"; then note "$4 $3 answers — $5"; else note "$4 $3 does not answer — $6"; fi
+}
 
 expect_open -4 "$HOST" "$SSH_PORT" "v4"
 if [ "$MODE" = "public" ]; then
@@ -160,9 +165,29 @@ if [ -n "$IPV6" ]; then
   # iptables and in Docker; a perfect v4 firewall next to an unmanaged v6 one
   # reads as "firewalled" and is not.
   expect_open -6 "$IPV6" "$SSH_PORT" "v6"
+
+  # HTTPS over v6 is reported, not asserted, and that is a correction rather
+  # than a softening.
+  #
+  # compose publishes `${METACLAUDE_BIND}:443:443`, and METACLAUDE_BIND holds
+  # one address. Set to 0.0.0.0 — which is what bootstrap.sh writes in public
+  # mode, and the only value that makes sense there — the host side of that
+  # mapping is an IPv4 wildcard, so Docker binds v4 and nothing else. Asserting
+  # the port *open* on v6 therefore failed on every correctly deployed public
+  # host, and a check that always fails is a check people learn to skip.
+  #
+  # It is also not what this section is for. The gap it exists to catch is an
+  # unmanaged v6 ruleset leaving something exposed — the loop below — not a
+  # missing HTTPS listener. Serving over v6 is a deployment choice: it needs a
+  # v6-capable publish *and* an AAAA record, and a name with only an A record
+  # is never reached over v6 whatever the server binds.
   if [ "$MODE" = "public" ]; then
-    expect_open -6 "$IPV6" 443 "v6"
+    report_state -6 "$IPV6" 443 "v6" \
+      "the stack is published on v6 as well" \
+      "v4 only, which is what METACLAUDE_BIND=0.0.0.0 gives you; fine unless the name has an AAAA record"
   else
+    # In VPN mode the public v6 address must not serve the application at all,
+    # and that *is* an assertion: it is the whole point of the mode.
     expect_shut -6 "$IPV6" 443 "v6"
   fi
   for port in 2375 5432 6379 8080 8787; do

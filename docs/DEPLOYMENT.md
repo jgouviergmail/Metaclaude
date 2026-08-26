@@ -376,6 +376,10 @@ nmap -Pn -p-       <ip>      # public mode: 22, 80, 443 — nothing else
 nmap -6 -Pn -p-    <ipv6>    # do not skip this
 ```
 
+Pass the host's v6 **address**, not the /64 prefix your provider shows you.
+`2a01:db8:1:2::/64` is the allocation; the machine holds one address inside it,
+usually `…::1`. `ip -6 addr show scope global` on the box is the authority.
+
 IPv6 is the most-missed gap: ufw, iptables and Docker keep entirely separate v6
 rulesets, so a host with a global v6 address is reachable over it whether or not
 anyone configured it. provision.sh handles this symmetrically — it turns on
@@ -383,6 +387,15 @@ ufw's v6 support, mirrors the `DOCKER-USER` block into `/etc/ufw/after6.rules`,
 and prints what is actually listening on v6 at the end. Verify it from outside
 anyway; a v4 firewall beside an unmanaged v6 one reads as "firewalled" and is
 not.
+
+**HTTPS over v6 is reported, not required.** compose publishes
+`${METACLAUDE_BIND}:443:443`, and that variable holds one address; set to
+`0.0.0.0` — what bootstrap.sh writes in public mode, and the only value that
+makes sense there — the host side is an IPv4 wildcard, so Docker binds v4 and
+nothing else. Serving over v6 as well is a deliberate change and needs an `AAAA`
+record to be worth anything: a name with only an `A` record is never reached
+over v6 whatever the server binds. What the v6 section does assert is SSH, and
+that nothing unexpected answers — which is the gap it exists for.
 
 To see the bypass this defends against, on a scratch machine:
 
