@@ -243,15 +243,37 @@ export const SubagentEvent = memo(function SubagentEvent({
 /* System notes                                                                */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * When a rate limit lifts, if this note is one that carries the answer.
+ *
+ * `data` is `z.unknown()` on the wire, so everything about it is checked rather
+ * than assumed. A note that rendered `1970` — or `resets in -3h` on a transcript
+ * read the next morning — would be worse than one that said nothing.
+ */
+function resetsIn(data: unknown, now: number): string | null {
+  const at = (data as { resetsAt?: unknown } | null)?.resetsAt;
+  if (typeof at !== 'number' || !Number.isFinite(at)) return null;
+  const remaining = at - now;
+  return remaining > 0 ? formatDuration(remaining) : null;
+}
+
 export const SystemNote = memo(function SystemNote({
   event,
+  now = Date.now(),
 }: {
   event: Extract<TranscriptEvent, { kind: 'system' }>;
+  /** Injectable so the countdown is testable without freezing the clock. */
+  now?: number;
 }) {
   const Icon = event.level === 'error' ? AlertCircle : event.level === 'warn' ? TriangleAlert : Info;
+  const resets = resetsIn(event.data, now);
 
   return (
     <div
+      // An error here is a subscription limit or a failed login — the reason
+      // nothing else is going to work, not an aside. Announcing it is the
+      // difference between reading it and scrolling past it.
+      role={event.level === 'error' ? 'alert' : undefined}
       className={cn(
         'flex items-start gap-2 rounded-lg border px-3 py-2 text-[12.5px] leading-relaxed',
         event.level === 'error' && 'border-danger/25 bg-danger-soft/40 text-ink',
@@ -268,7 +290,14 @@ export const SystemNote = memo(function SystemNote({
         )}
         aria-hidden
       />
-      <span className="min-w-0 break-words">{event.message}</span>
+      <span className="min-w-0 break-words">
+        {event.message}
+        {resets ? (
+          <span className="ml-1.5 whitespace-nowrap tabular-nums text-muted">
+            Resets in {resets}.
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 });

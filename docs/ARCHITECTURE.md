@@ -115,6 +115,42 @@ A crash leaves runs marked `running` and sessions marked busy. Both repositories
 expose `recoverOrphaned()`, called once at boot, which marks them interrupted.
 History stays truthful and the UI does not show a phantom live run.
 
+### What the CLI says about itself
+The SDK's message union has around forty members. The supervisor translates
+five of them into transcript events; the rest used to reach `default: return {}`
+and disappear.
+
+That was not a small omission, because the dropped messages are the ones that
+*explain* a run. A run sitting still for thirty seconds is an API retry. An
+agent that forgets what it was doing has been compacted. A session where
+everything suddenly fails has an expired login. A model that changes mid-session
+has fallen back after a refusal. And on a subscription, a run that stops working
+has hit a rate limit. Every one of those looked like a fault in Metaclaude,
+because Metaclaude said nothing.
+
+`kernel/sdk-narrator.ts` maps each message to a sentence and a structured
+payload — the payload matters: a rate limit's reset time is what lets the UI
+render "resets in 2h 14m" instead of forcing it to parse English back into a
+timestamp. It is a pure function with no SDK dependency, so the whole mapping is
+tested without a CLI.
+
+The other half is `IGNORED_SDK_MESSAGES`, which names what is deliberately *not*
+recorded, and for two distinct reasons. Some messages arrive many times a second
+— `tool_progress` is a heartbeat, `thinking_tokens` a running total — and one
+row each would make a long run's transcript unreadable and grow the database
+without bound. Others are state synchronisation for a client that keeps its own
+model of the session, which Metaclaude does not: it renders from its own
+transcript.
+
+A test reads the `SDKMessage` union out of the installed SDK's `.d.ts` and
+requires every member to be either narrated or named in the ignore list. That is
+what stops the original bug recurring: dropping messages was never a decision
+anyone made, it was a `default:` branch quietly absorbing whatever the SDK added
+next. An upgrade that introduces a message type now fails that test by name.
+(The test also asserts it parsed a plausible number of members, so a
+reformat that broke the regex cannot turn it into a no-op that reports success
+forever.)
+
 ### Rewind
 A workspace with file checkpointing on can undo a run's file changes after the
 fact.

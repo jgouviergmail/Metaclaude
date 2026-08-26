@@ -33,6 +33,7 @@ import { createHash } from 'node:crypto';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import type { PermissionBroker } from './permissions.js';
+import { narrate } from './sdk-narrator.js';
 
 /* -------------------------------------------------------------------------- */
 /* Public surface                                                              */
@@ -702,8 +703,38 @@ export class StreamState {
       case 'result':
         return this.handleResult(message);
       default:
-        return {};
+        // Everything else the CLI says about itself. This used to be a bare
+        // `return {}`, which is how a run that stalled on an API retry, lost
+        // its context to a compaction, or stopped working because a
+        // subscription limit was reached all looked like faults in Metaclaude:
+        // the explanation arrived and was thrown away. `narrate` decides what
+        // is worth a line and what is a heartbeat.
+        return this.narrateAside(message);
     }
+  }
+
+  /**
+   * Record an out-of-band CLI message, if it says anything.
+   *
+   * Shared by the `default` branch and by `handleSystem`, because the CLI puts
+   * most of these behind `type: 'system'` with a distinct subtype rather than
+   * at the top level.
+   */
+  private narrateAside(message: SDKMessage): Captured {
+    const note = narrate(message);
+    if (!note) return {};
+
+    this.emit({
+      kind: 'system',
+      id: newId('event'),
+      runId: this.request.runId,
+      seq: this.seq++,
+      at: Date.now(),
+      level: note.level,
+      message: note.message,
+      ...(note.data ? { data: note.data } : {}),
+    });
+    return {};
   }
 
   /* ------------------------------------------------------------------ */
@@ -732,8 +763,12 @@ export class StreamState {
           message: `${denied.tool_name} was denied: ${denied.message}`,
         });
       }
+      return {};
     }
-    return {};
+    // Every other system subtype — retries, compaction, refusals, hooks,
+    // background tasks. `init` and `permission_denied` are handled above and
+    // are on the narrator's ignore list, so they cannot be reported twice.
+    return this.narrateAside(message);
   }
 
   private handleAssistant(message: Extract<SDKMessage, { type: 'assistant' }>): Captured {

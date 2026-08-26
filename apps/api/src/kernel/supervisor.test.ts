@@ -606,3 +606,134 @@ describe('rewinding a finished run', () => {
     expect(result.error).toContain('ENOENT');
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Out-of-band CLI messages                                                    */
+/* -------------------------------------------------------------------------- */
+
+describe('the transcript explains what the CLI was doing', () => {
+  /** The system events the run recorded, in order. */
+  const notes = (callbacks: { events: unknown[] }) =>
+    callbacks.events.filter(
+      (event): event is { kind: string; level: string; message: string; data?: unknown } =>
+        (event as { kind?: string }).kind === 'system',
+    );
+
+  it('records an API retry rather than leaving the run looking hung', async () => {
+    // This is the whole point of the lot: these messages used to reach
+    // `default: return {}` and vanish, so a run that sat still for thirty
+    // seconds looked like a bug in Metaclaude.
+    const { query, control } = fakeQuery();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit({
+      type: 'system',
+      subtype: 'api_retry',
+      attempt: 2,
+      max_retries: 5,
+      retry_delay_ms: 3000,
+      error_status: 529,
+      uuid: 'u',
+      session_id: 's',
+    });
+    control.finish();
+    await run;
+
+    const note = notes(callbacks).find((event) => event.message.includes('529'));
+    expect(note).toBeTruthy();
+    expect(note?.level).toBe('warn');
+  });
+
+  it('carries the structured payload, not only the sentence', async () => {
+    // A rate limit's reset time is what the UI needs to render a countdown; a
+    // prose-only note would force it to parse English back into a timestamp.
+    const { query, control } = fakeQuery();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit({
+      type: 'rate_limit_event',
+      rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 1_800_000_000 },
+      uuid: 'u',
+      session_id: 's',
+    });
+    control.finish();
+    await run;
+
+    const note = notes(callbacks).find((event) => event.level === 'error');
+    expect((note?.data as { resetsAt?: number })?.resetsAt).toBe(1_800_000_000_000);
+  });
+
+  it('stays silent about the heartbeats', async () => {
+    // `tool_progress` arrives every few seconds for the life of a tool call.
+    // One row each would make a long run's transcript unreadable and grow the
+    // database without bound.
+    const { query, control } = fakeQuery();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    for (let i = 0; i < 20; i += 1) {
+      control.emit({
+        type: 'tool_progress',
+        tool_use_id: 't',
+        tool_name: 'Bash',
+        parent_tool_use_id: null,
+        elapsed_time_seconds: i,
+        uuid: `u${i}`,
+        session_id: 's',
+      });
+    }
+    control.finish();
+    await run;
+
+    expect(notes(callbacks)).toEqual([]);
+  });
+
+  it('ignores a message type invented after this build', async () => {
+    // Forward compatibility: a newer CLI must not be able to put arbitrary text
+    // into the transcript through a type nobody has reviewed.
+    const { query, control } = fakeQuery();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit({ type: 'something_invented_later', text: 'inject me', uuid: 'u', session_id: 's' });
+    control.finish();
+    await run;
+
+    expect(notes(callbacks)).toEqual([]);
+  });
+
+  it('does not double-report a denied tool as a note as well', async () => {
+    // `permission_denied` already has a handler that attaches the denial to the
+    // tool call it belongs to. Narrating it too would say it twice, once
+    // without the context that makes it useful.
+    const { query, control } = fakeQuery();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.emit({
+      type: 'system',
+      subtype: 'permission_denied',
+      tool_name: 'Bash',
+      message: 'not allowed',
+      tool_use_id: 'nonexistent',
+      uuid: 'u',
+      session_id: 's',
+    });
+    control.finish();
+    await run;
+
+    expect(notes(callbacks)).toHaveLength(1);
+  });
+});

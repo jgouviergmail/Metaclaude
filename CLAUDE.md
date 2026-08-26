@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 939 tests, ~13s
+pnpm test:run                            # 975 tests, ~13s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -61,6 +61,12 @@ restates the code is noise; one that records a decision or a trap is not.
   server destroys its credentials.
 - **CSP is `script-src 'self'`.** No inline scripts in `index.html`; put them in
   `apps/web/public/` and reference by path.
+- **A `default:` branch over an SDK union silently absorbs whatever ships next.**
+  Five of the SDK's ~40 message types were translated and the rest vanished,
+  including every message that explains a run's behaviour. `sdk-narrator.ts`
+  now requires each one to be narrated or named in `IGNORED_SDK_MESSAGES`, and
+  a test reads the union out of the installed `.d.ts` to enforce it. When the
+  SDK is upgraded, expect that test to name what is new.
 - **`aria-describedby` does not take text *out* of the accessible name.** The
   name of a labelled control is its `<label>`'s text content, so a hint nested
   inside the label is announced as part of the name however it is described.
