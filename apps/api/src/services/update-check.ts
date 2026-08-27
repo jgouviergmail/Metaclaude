@@ -67,29 +67,91 @@ export class UpdateChecker {
 
     let result: UpdateCheck;
     try {
-      const body = await this.deps.fetchText(
-        `https://api.github.com/repos/${this.deps.repo}/releases/latest`,
-      );
-      const release = JSON.parse(body) as { tag_name?: string; html_url?: string };
-      const latest = release.tag_name ?? null;
-      const latestParsed = latest ? parseVersion(latest) : null;
-      const currentParsed = parseVersion(current);
-
-      result = {
-        ...base,
-        latest,
-        releaseUrl: release.html_url ?? null,
-        updateAvailable:
-          latestParsed && currentParsed ? isNewer(latestParsed, currentParsed) : null,
-      };
+      result = this.compare(base, await this.latestRelease());
     } catch (error) {
-      // A 404 usually means no release has been published yet (or the repo is
-      // private to this server). Said in the answer, never thrown: the screen
-      // renders the fact.
-      result = { ...base, error: error instanceof Error ? error.message : String(error) };
+      // 404 here is about the *release*, not the repository: a repo that only
+      // ever gets tagged (as this project's pipeline does) has no "latest
+      // release" to answer with. The tags are the truth to fall back to.
+      // Anything else — GitHub down, rate-limited — is not "no releases",
+      // so no fallback: the error is the answer.
+      if (!is404(error)) {
+        result = { ...base, error: describe(error) };
+      } else {
+        try {
+          const fromTag = await this.latestTag();
+          result = fromTag
+            ? this.compare(base, fromTag)
+            : { ...base, error: NOTHING_PUBLISHED };
+        } catch (tagError) {
+          result = { ...base, error: is404(tagError) ? NOTHING_PUBLISHED : describe(tagError) };
+        }
+      }
     }
 
     this.cached = result;
     return result;
   }
+
+  private compare(
+    base: UpdateCheck,
+    found: { latest: string | null; releaseUrl: string | null },
+  ): UpdateCheck {
+    const latestParsed = found.latest ? parseVersion(found.latest) : null;
+    const currentParsed = parseVersion(base.current);
+    return {
+      ...base,
+      ...found,
+      updateAvailable:
+        latestParsed && currentParsed ? isNewer(latestParsed, currentParsed) : null,
+    };
+  }
+
+  private async latestRelease(): Promise<{ latest: string | null; releaseUrl: string | null }> {
+    const body = await this.deps.fetchText(
+      `https://api.github.com/repos/${this.deps.repo}/releases/latest`,
+    );
+    const release = JSON.parse(body) as { tag_name?: string; html_url?: string };
+    return { latest: release.tag_name ?? null, releaseUrl: release.html_url ?? null };
+  }
+
+  /**
+   * The newest version-shaped tag, by semver — never by list order, which
+   * the GitHub tags API does not promise anything about.
+   */
+  private async latestTag(): Promise<{ latest: string; releaseUrl: string } | null> {
+    const body = await this.deps.fetchText(
+      `https://api.github.com/repos/${this.deps.repo}/tags?per_page=100`,
+    );
+    const tags = JSON.parse(body) as { name?: string }[];
+
+    let best: { name: string; parsed: [number, number, number] } | null = null;
+    for (const tag of tags) {
+      const parsed = tag.name ? parseVersion(tag.name) : null;
+      if (parsed && (!best || isNewer(parsed, best.parsed))) {
+        best = { name: tag.name as string, parsed };
+      }
+    }
+    if (!best) return null;
+    return {
+      latest: best.name,
+      releaseUrl: `https://github.com/${this.deps.repo}/releases/tag/${best.name}`,
+    };
+  }
+}
+
+const NOTHING_PUBLISHED =
+  'GitHub answered 404 for both releases and tags — nothing published there yet, ' +
+  'or the repository is private and invisible to this server.';
+
+/**
+ * The injected fetch throws `"<status> <statusText>"` (see context.ts) — a
+ * deliberate contract, matched here rather than by exception type so the
+ * checker stays testable with a plain function.
+ */
+function is404(error: unknown): boolean {
+  return error instanceof Error && /^404\b/.test(error.message);
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

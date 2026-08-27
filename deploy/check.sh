@@ -1165,6 +1165,32 @@ else
   bad "version-guard.sh comparison is wrong" "the CI guard would wave through a version that did not increase"
 fi
 
+# A bare tag is not a release: the in-app update check asks /releases/latest,
+# and a repository that is only ever tagged answers 404 there forever — which
+# is exactly the bug this guards against returning.
+if ! grep -q 'gh release create' "$REPO_ROOT/.github/workflows/ci.yml"; then
+  bad "ci.yml never publishes a GitHub release" \
+      "the in-app update check asks /releases/latest, and a tag alone answers 404"
+elif ! grep -q -- '--verify-tag' "$REPO_ROOT/.github/workflows/ci.yml"; then
+  bad "the release step does not verify its tag" \
+      "a release created before the tag exists would point at nothing"
+else
+  ok "ci.yml publishes a verified GitHub release for each version tag"
+fi
+
+# The release notes come from the changelog by the same extraction the job
+# runs; prove it finds the current version's section on the real file.
+release_notes="$(awk -v v="$app_version" '
+  $0 ~ "^## \\[" v "\\]" { on=1; next }
+  on && /^## \[/ { exit }
+  on { print }
+' "$REPO_ROOT/CHANGELOG.md")"
+if [ -n "$release_notes" ]; then
+  ok "the changelog carries a section for $app_version — the release will have notes"
+else
+  bad "no changelog section for $app_version" "the published release would say nothing"
+fi
+
 # The user guide names environment variables; a renamed variable must take its
 # documentation with it. Scoped to docs/guide/ — the trap list in CLAUDE.md
 # legitimately discusses names that no longer exist.

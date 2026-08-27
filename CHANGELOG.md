@@ -11,6 +11,25 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-08-27
+
+### Fixed
+
+- **The update check no longer answers "404 Not Found".** It asks GitHub for
+  the latest *release* — but the pipeline only ever pushed *tags*, and a
+  repository with tags and no formal release answers 404 on that endpoint
+  forever, which the Settings screen then displayed raw. Two-sided fix: CI
+  now publishes a real GitHub release for every version tag, with that
+  version's changelog section as the notes (asserted by `check.sh`, and the
+  extraction is proven against the real changelog on every run); and the
+  checker itself falls back to the newest version *tag* — semver maximum,
+  never API order — when the release endpoint answers 404, so servers
+  running ahead of the first published release still get a real answer.
+  A 404 on both now reads as the sentence it means ("nothing published
+  there yet, or the repository is private to this server") instead of a
+  status code, and a non-404 failure (GitHub down, rate-limited) is
+  reported as such rather than misread as "no releases".
+
 ## [0.8.0] — 2026-08-27
 
 ### Added

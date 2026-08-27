@@ -423,6 +423,30 @@ jobs:
           git tag "v$version" "$GITHUB_SHA"
           git push origin "refs/tags/v$version"
           echo "tagged v$version at $GITHUB_SHA"
+      # A bare tag is not a *release*: /releases/latest answers 404 on a repo
+      # that only ever gets tagged, which is exactly what the in-app update
+      # check asks. Publishing the release here, with the changelog section as
+      # its notes, is what makes "you are behind" answerable. Independent of
+      # the tag step on purpose — a re-run whose tag exists may still owe the
+      # release.
+      - name: Publish the GitHub release for the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(grep -oE "APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'" packages/shared/src/constants.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+          [ -n "$version" ] || { echo "::error::could not read APP_VERSION"; exit 1; }
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release v$version already exists — nothing to publish"; exit 0
+          fi
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on=1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          [ -s /tmp/release-notes.md ] || echo "See CHANGELOG.md." > /tmp/release-notes.md
+          gh release create "v$version" --repo "$GITHUB_REPOSITORY" \
+            --title "v$version" --notes-file /tmp/release-notes.md --verify-tag
+          echo "published release v$version"
       - name: Dispatch the deploy (only when METACLAUDE_AUTO_DEPLOY=true)
         if: vars.METACLAUDE_AUTO_DEPLOY == 'true'
         env:
