@@ -11,6 +11,44 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-27
+
+### Added
+
+- **The agents on the board.** The board's other half. Open a card and
+  **Send to the agent**: its title, description, discussion and sub-tasks
+  become the prompt of a run in a session named after the card, the card
+  slides to *In progress* under agent hands with a live pulsing marker, and
+  the drawer links straight to the session. When the run ends the loop
+  closes on the card itself — success moves it to **Review** with a comment
+  (never to Done: done is the operator's word), failure or interruption
+  blocks the card with the reason where the board can read it, and a card
+  the agent already moved holds its place, on failure as on success.
+  **Send back to the agent** resumes the same session, context intact, after
+  review feedback; a card already being worked refuses a second press.
+- **Board tools in every run.** An in-process `metaclaude_board` MCP server
+  rides along on every run — card runs, chat, automations, even delegated
+  runs: `board_list`, `board_get`, `board_create`, `board_update`,
+  `board_move`, `board_comment`, `board_decompose`. Strictly scoped to the
+  run's own workspace — a foreign card gets the same "no such task" as a
+  missing one — and everything an agent does lands in the card history under
+  its run's name. Like the delegation server, it cannot be excluded from the
+  composer's Tools picker: kernel machinery, not a workspace server.
+- **The board in the morning brief.** One line with the counts that need
+  eyes — in review, blocked, being worked, due soon — linking to the board,
+  and review cards now break the "quiet day" headline.
+- **Filters and counts on the board.** All / Yours / Agent chips narrow the
+  columns to one pair of hands; the header states the board's own numbers
+  (cards, being worked, in review, blocked) unfiltered.
+
+### Fixed
+
+- **Deleting a decomposed card left ghosts on open boards.** The rows died
+  by `ON DELETE CASCADE`, but only the root's removal was published; every
+  descendant now gets its own removal frame through the board gateway — the
+  one mutation surface the routes, the agent tools and the run-outcome hook
+  all share, so a forgotten publication can no longer regress per call site.
+
 ## [0.6.0] — 2026-08-27
 
 ### Added

@@ -95,6 +95,16 @@ describe('BoardColumn', () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
   });
 
+  it('marks a card the agent is working, and only that combination', () => {
+    renderColumn([
+      task({ id: 'a', title: 'live one', runId: 'run_1', status: 'in_progress', assignee: 'agent' }),
+      task({ id: 'b', title: 'idle one', assignee: 'agent' }),
+    ]);
+
+    expect(screen.getByLabelText('Agent working')).toBeTruthy();
+    expect(screen.getAllByLabelText('Agent')).toHaveLength(1);
+  });
+
   it('offers the quick add with the column preset', () => {
     const { onQuickAdd } = renderColumn([]);
     fireEvent.click(screen.getByRole('button', { name: /add a task to to do/i }));

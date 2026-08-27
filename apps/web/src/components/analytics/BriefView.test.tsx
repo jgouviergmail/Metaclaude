@@ -46,6 +46,7 @@ const brief = (over: Partial<Brief> = {}): Brief => ({
   doctor: { status: 'ok', checks: [], version: '0.1.0', ranAt: 1_000 },
   quota: null,
   newInsights: 2,
+  board: { inReview: 0, blocked: 0, inFlight: 0, dueSoon: 0 },
   ...over,
 });
 
@@ -67,6 +68,26 @@ describe('BriefView', () => {
   it('names the automations the failure guard switched off', () => {
     render(<BriefView brief={brief()} />);
     expect(screen.getByText(/runaway-loop/)).toBeDefined();
+  });
+
+  it('links the board line when cards need eyes, and says which', () => {
+    render(
+      <BriefView
+        brief={brief({ board: { inReview: 2, blocked: 1, inFlight: 3, dueSoon: 0 } })}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: /board:/i });
+    expect(link.getAttribute('href')).toBe('/board');
+    expect(link.textContent).toContain('2 in review');
+    expect(link.textContent).toContain('1 blocked');
+    expect(link.textContent).toContain('3 being worked');
+    expect(link.textContent).not.toContain('due soon');
+  });
+
+  it('keeps the board line off an empty board', () => {
+    render(<BriefView brief={brief()} />);
+    expect(screen.queryByRole('link', { name: /board:/i })).toBeNull();
   });
 
   it('stays calm on a quiet day', () => {

@@ -11,7 +11,7 @@
 import { Bot, CircleAlert, GripVertical, MoreVertical, User as UserIcon } from 'lucide-react';
 import { memo } from 'react';
 import type { BoardTask, TaskStatus } from '@metaclaude/shared';
-import { TASK_COLUMNS } from '@/lib/board';
+import { isWorkedByAgent, TASK_COLUMNS } from '@/lib/board';
 import { Menu, MenuItem, MenuLabel } from '@/components/ui/Menu';
 import { Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
@@ -36,6 +36,7 @@ export const TaskCard = memo(function TaskCard({
   onDropAfter: (draggedTaskId: string) => void;
 }) {
   const overdue = task.dueAt !== null && task.dueAt < Date.now() && task.status !== 'done';
+  const working = isWorkedByAgent(task);
 
   return (
     <div
@@ -93,9 +94,30 @@ export const TaskCard = memo(function TaskCard({
           <span className={cn('inline-block size-2 rounded-full', PRIORITY_TONE[task.priority])} aria-label={`Priority ${task.priority}`} />
         </Tooltip>
         {task.assignee ? (
-          <Tooltip content={task.assignee === 'agent' ? 'Assigned to the agent' : 'Assigned to you'}>
+          <Tooltip
+            content={
+              working
+                ? 'The agent is working this card'
+                : task.assignee === 'agent'
+                  ? 'Assigned to the agent'
+                  : 'Assigned to you'
+            }
+          >
             <span className="inline-flex items-center gap-1">
-              {task.assignee === 'agent' ? <Bot className="size-3.5" aria-label="Agent" /> : <UserIcon className="size-3.5" aria-label="You" />}
+              {task.assignee === 'agent' ? (
+                <Bot
+                  className={cn('size-3.5', working && 'text-accent')}
+                  aria-label={working ? 'Agent working' : 'Agent'}
+                />
+              ) : (
+                <UserIcon className="size-3.5" aria-label="You" />
+              )}
+              {working ? (
+                <span className="relative flex size-1.5" aria-hidden>
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
+                </span>
+              ) : null}
             </span>
           </Tooltip>
         ) : null}

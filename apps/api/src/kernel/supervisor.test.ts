@@ -345,7 +345,7 @@ function fakeQuery() {
 function makeSupervisor(
   query: unknown,
   broker?: { request: () => Promise<unknown> },
-  extra: { delegate?: () => Promise<never> } = {},
+  extra: { delegate?: () => Promise<never>; board?: unknown } = {},
 ) {
   return new AgentSupervisor({
     broker: () => (broker ?? { request: async () => ({ behavior: 'allow' }) }) as never,
@@ -357,6 +357,7 @@ function makeSupervisor(
     log: () => {},
     query: query as never,
     ...(extra.delegate ? { delegate: extra.delegate as never } : {}),
+    ...(extra.board ? { board: extra.board as never } : {}),
   });
 }
 
@@ -1622,6 +1623,49 @@ describe('buildOptions — the delegation tool', () => {
     );
 
     expect(Object.keys(options.mcpServers ?? {}).sort()).toEqual(['github', 'metaclaude']);
+  });
+});
+
+describe('buildOptions — the board tools', () => {
+  // Never called while options are merely built; mounting is what is under test.
+  const board = {};
+
+  it('mounts metaclaude_board when the board is wired', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { board });
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude_board');
+  });
+
+  it('mounts it for delegated runs too — the board is how delegated work reports', () => {
+    // Unlike `delegate`, which enforces depth one by absence, the board has no
+    // depth rule: a delegated run updating the cards it works is the point.
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { board });
+    const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'delegation' }));
+
+    expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude_board');
+  });
+
+  it('offers nothing when the board is not wired', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude_board');
+  });
+
+  it('cannot be stripped by the tools picker', () => {
+    // Kernel machinery, like the delegation server: merged after the exclusion
+    // filter, so a composer exclusion silently does nothing.
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { board });
+    const request = makeRequest();
+    request.policy = {
+      ...request.policy,
+      toolControls: { requiredSkills: [], excludedMcpServers: ['metaclaude_board'], preferredMcpServers: [] },
+    };
+
+    expect(Object.keys(supervisor.buildOptions(request).mcpServers ?? {})).toContain(
+      'metaclaude_board',
+    );
   });
 });
 

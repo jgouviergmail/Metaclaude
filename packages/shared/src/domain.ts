@@ -1285,6 +1285,19 @@ export interface Brief {
   quota: ClaudeUsage | null;
   /** Insights the reflexion pass added in the period. */
   newInsights: number;
+  /** The kanban board's pulse — active cards only, across every workspace. */
+  board: BriefBoard;
+}
+
+export interface BriefBoard {
+  /** Cards waiting on the operator's word — the agent never moves past review. */
+  inReview: number;
+  /** Cards flagged blocked, by the agent or the operator. */
+  blocked: number;
+  /** Cards a live run is working right now. */
+  inFlight: number;
+  /** Cards due within 48 hours (or overdue) and not done. */
+  dueSoon: number;
 }
 
 /**

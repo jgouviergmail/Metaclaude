@@ -42,3 +42,36 @@ single click.
 Every open board converges in real time: a card moved on your phone slides
 across the screen of the desktop showing the same workspace — and when an
 agent works the board, its moves appear the same way, as they happen.
+
+## Sending a card to the agent
+
+Open a card and press **Send to the agent**. The card's title, description,
+discussion and sub-tasks become the prompt of a run in a session named after
+the card, the card slides to *In progress* with agent hands, and the pulsing
+marker on it means exactly that: a live run is working this card. While it
+runs, the drawer links straight to the session so you can watch — or steer —
+like any other run.
+
+When the run ends, the loop closes on the card itself. Success moves it to
+**Review** with a comment — never to *Done*: done is your word, the agent
+stops at review. Failure (or an interruption) blocks the card with the
+reason where the board can read it, and the agent's comment says the same.
+A card the agent already moved holds its place — its moves win over the
+bookkeeping.
+
+Press **Send back to the agent** after leaving review feedback in the
+comments: the same session resumes, context intact, so the agent picks up
+exactly where its last attempt ended. A card already being worked refuses a
+second press until you interrupt the run.
+
+## What the agent can do on the board
+
+Every run carries board tools scoped to its own workspace — `board_list`,
+`board_get`, `board_create`, `board_update`, `board_move`, `board_comment`
+and `board_decompose` — so any session, not only card runs, can capture
+follow-ups as cards, break work into sub-tasks, comment progress, and move
+what it works. Cards from another workspace's board are invisible to it,
+and everything it does lands in the card history under its run's name.
+
+The morning brief keeps the score: cards in review, blocked, being worked
+and due soon — one line, linking here.

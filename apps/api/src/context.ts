@@ -37,6 +37,7 @@ import { ClaudeCredentials } from './services/claude-credentials.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { AttachmentService } from './services/attachments.js';
 import { BoardService } from './services/board.js';
+import { BoardGateway } from './services/board-gateway.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
@@ -88,7 +89,7 @@ export interface AppContext {
   workspaces: WorkspaceService;
   files: FileService;
   attachments: AttachmentService;
-  board: BoardService;
+  board: BoardGateway;
   git: GitService;
   analytics: AnalyticsService;
   scheduler: Scheduler;
@@ -253,6 +254,11 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     plugins,
   );
 
+  // The board's one mutation surface — routes, the agent's board tools and the
+  // kernel's run-outcome hook all write through it, so every change reaches
+  // every open board as a frame.
+  const board = new BoardGateway(new BoardService(db), bus);
+
   // Declared before the kernel and resolved lazily by the supervisor, since the
   // two reference each other.
   let kernelRef: Kernel | null = null;
@@ -273,6 +279,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       if (!kernelRef) throw new Error('The kernel is not ready yet.');
       return kernelRef.delegate(input);
     },
+    board,
   });
 
   // What the CLI itself offers, per workspace. Behind a short-lived cache
@@ -342,8 +349,16 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     // pressing "Run now" produces a `user` run against the automation's session,
     // and its outcome still belongs in that automation's status.
     // `recordOutcome` no-ops for a session that has no automation.
-    onRunFinished: (run) =>
-      schedulerRef?.recordOutcome(run.sessionId, run.status, run.triggeredBy === 'user'),
+    onRunFinished: (run) => {
+      schedulerRef?.recordOutcome(run.sessionId, run.status, run.triggeredBy === 'user');
+      // Close the loop on any board card this run was working; a board failure
+      // must never disturb the kernel's own finish path.
+      try {
+        board.applyRunOutcome(run);
+      } catch (error) {
+        log.warn({ err: error, runId: run.id }, 'could not apply the run outcome to its board card');
+      }
+    },
     log: kernelLog,
   });
   kernelRef = kernel;
@@ -467,7 +482,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     workspaces,
     files: new FileService(),
     attachments,
-    board: new BoardService(db),
+    board,
     git: new GitService(),
     analytics,
     scheduler,

@@ -41,6 +41,7 @@ import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
+import { buildBoardServer, type BoardFacade } from './board-tools.js';
 import type { PermissionBroker } from './permissions.js';
 import { resolvePermissionMode } from './permissions.js';
 import { narrate } from './sdk-narrator.js';
@@ -147,6 +148,12 @@ export interface SupervisorDeps {
     target: string;
     prompt: string;
   }) => Promise<{ status: Run['status']; finalText: string; error: string | null }>;
+  /**
+   * The workspace's kanban board, when the deployment wires one in. Every run
+   * gets the tools, scoped to its own workspace — including delegated runs,
+   * which report their progress through the board like any other.
+   */
+  board?: BoardFacade;
 }
 
 /**
@@ -499,6 +506,17 @@ export class AgentSupervisor {
       this.deps.delegate && request.triggeredBy !== 'delegation'
         ? { metaclaude: this.buildDelegationServer(request) }
         : {};
+    // The board tools, scoped to this run's workspace and signing as this run.
+    // No depth rule here, unlike delegation: a delegated run updating the
+    // cards it works is exactly what the board is for.
+    const boardServer: NonNullable<Options['mcpServers']> = this.deps.board
+      ? {
+          metaclaude_board: buildBoardServer(this.deps.board, {
+            workspaceId: workspace.id,
+            runId: request.runId,
+          }),
+        }
+      : {};
     // The Tools picker's hard lever: an excluded server is simply not
     // mounted for this run. Filtered before the delegation server merges,
     // so kernel machinery cannot be cut from the composer — it has its own
@@ -508,10 +526,15 @@ export class AgentSupervisor {
     const mountedServers = Object.fromEntries(
       Object.entries(request.mcpServers).filter(([name]) => !excluded.has(name)),
     );
-    if (Object.keys(mountedServers).length > 0 || Object.keys(delegationServer).length > 0) {
+    if (
+      Object.keys(mountedServers).length > 0 ||
+      Object.keys(delegationServer).length > 0 ||
+      Object.keys(boardServer).length > 0
+    ) {
       options.mcpServers = {
         ...(mountedServers as Options['mcpServers']),
         ...delegationServer,
+        ...boardServer,
       };
     }
     if (Object.keys(request.agents).length > 0) {

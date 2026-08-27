@@ -22,8 +22,22 @@ import { Menu, MenuItem } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
 import { Button, EmptyState, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { groupByColumn, TASK_COLUMNS, upsertTask } from '@/lib/board';
+import {
+  boardCounts,
+  filterByAssignee,
+  groupByColumn,
+  TASK_COLUMNS,
+  upsertTask,
+  type AssigneeFilter,
+} from '@/lib/board';
 import { socket } from '@/lib/socket';
+import { cn } from '@/lib/utils';
+
+const WHO_FILTERS: Array<{ value: AssigneeFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'user', label: 'Yours' },
+  { value: 'agent', label: 'Agent' },
+];
 
 export function BoardPage() {
   const queryClient = useQueryClient();
@@ -103,7 +117,10 @@ export function BoardPage() {
     onError,
   });
 
-  const columns = useMemo(() => groupByColumn(boardQuery.data?.tasks ?? []), [boardQuery.data]);
+  const [who, setWho] = useState<AssigneeFilter>('all');
+  const tasks = boardQuery.data?.tasks ?? [];
+  const counts = useMemo(() => boardCounts(tasks), [tasks]);
+  const columns = useMemo(() => groupByColumn(filterByAssignee(tasks, who)), [tasks, who]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -151,7 +168,38 @@ export function BoardPage() {
           description="Create a workspace first — its board comes with it."
         />
       ) : (
-        <div className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto p-4 sm:snap-none sm:p-6">
+        <>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2 sm:px-6">
+            <div className="flex gap-1.5" role="group" aria-label="Filter by assignee">
+              {WHO_FILTERS.map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  aria-pressed={who === filter.value}
+                  onClick={() => setWho(filter.value)}
+                  className={cn(
+                    'rounded-lg px-2.5 py-1 text-[12.5px]',
+                    who === filter.value
+                      ? 'bg-accent-soft font-medium text-accent'
+                      : 'border border-line text-muted hover:text-ink',
+                  )}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            <p className="ml-auto text-[12px] text-muted">
+              {counts.total} card{counts.total === 1 ? '' : 's'}
+              {counts.working > 0 ? (
+                <span className="text-accent"> · {counts.working} being worked</span>
+              ) : null}
+              {counts.inReview > 0 ? <span> · {counts.inReview} in review</span> : null}
+              {counts.blocked > 0 ? (
+                <span className="text-warning"> · {counts.blocked} blocked</span>
+              ) : null}
+            </p>
+          </div>
+          <div className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto p-4 sm:snap-none sm:p-6">
           {TASK_COLUMNS.map((column) => (
             <BoardColumn
               key={column.status}
@@ -164,7 +212,8 @@ export function BoardPage() {
               onQuickAdd={(status) => setCreating(status)}
             />
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       <TaskDrawer taskId={drawerTask} onClose={() => setDrawerTask(null)} />

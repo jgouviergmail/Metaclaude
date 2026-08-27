@@ -10,8 +10,9 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArchiveRestore, Bot, History, Trash2, User as UserIcon } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRight, Bot, History, Trash2, User as UserIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { BoardTask, TaskPriority } from '@metaclaude/shared';
 import { api, ApiError } from '@/lib/api';
 import { columnLabel } from '@/lib/board';
@@ -22,6 +23,9 @@ import { toast } from 'sonner';
 import { cn, formatRelative } from '@/lib/utils';
 
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
+
+/** A run in any of these states is holding the card. */
+const ACTIVE_RUN = new Set(['queued', 'running', 'waiting_approval']);
 
 export function TaskDrawer({
   taskId,
@@ -105,6 +109,17 @@ export function TaskDrawer({
     },
     onError,
   });
+  const runTask = useMutation({
+    mutationFn: () => api.runTask(taskId as string),
+    onSuccess: () => {
+      toast.success('Sent to the agent — the card comes back in review.');
+      refresh();
+    },
+    onError,
+  });
+
+  const run = detail.data?.run ?? null;
+  const working = run !== null && ACTIVE_RUN.has(run.status);
 
   const dirty = task !== undefined && (title !== task.title || description !== task.description);
 
@@ -239,6 +254,54 @@ export function TaskDrawer({
               </Badge>
             ) : null}
           </div>
+
+          {task.archivedAt === null ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-raised/50 px-3 py-2.5">
+              {run && working ? (
+                <>
+                  <span className="inline-flex items-center gap-2 text-[13px] font-medium text-ink">
+                    <span className="relative flex size-2" aria-hidden>
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60" />
+                      <span className="relative inline-flex size-2 rounded-full bg-accent" />
+                    </span>
+                    <Bot className="size-4 text-accent" aria-hidden />
+                    The agent is working this card
+                  </span>
+                  <Link
+                    to={`/w/${task.workspaceId}/s/${run.sessionId}`}
+                    className="inline-flex items-center gap-1 text-[12.5px] text-accent hover:underline"
+                  >
+                    Watch the session
+                    <ArrowRight className="size-3.5" aria-hidden />
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={runTask.isPending}
+                    onClick={() => runTask.mutate()}
+                  >
+                    <Bot className="size-3.5" aria-hidden />
+                    {run ? 'Send back to the agent' : 'Send to the agent'}
+                  </Button>
+                  <span className="text-[12px] text-muted">
+                    Runs this card in its own session; done stays your call.
+                  </span>
+                  {run ? (
+                    <Link
+                      to={`/w/${task.workspaceId}/s/${run.sessionId}`}
+                      className="inline-flex items-center gap-1 text-[12.5px] text-accent hover:underline"
+                    >
+                      Last session
+                      <ArrowRight className="size-3.5" aria-hidden />
+                    </Link>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
 
           <div className="space-y-1.5">
             <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">Sub-tasks</h3>

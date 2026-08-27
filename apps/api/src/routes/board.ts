@@ -9,34 +9,22 @@
  */
 
 import type { App } from '../http/types.js';
-import { TaskPriority, TaskStatus, workspaceTopic } from '@metaclaude/shared';
-import type { BoardTask, TaskComment } from '@metaclaude/shared';
+import { TaskPriority, TaskStatus } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, mustGetWorkspace, requestIp, requireOperator } from '../http/guards.js';
 import { spreadInt } from '../http/query.js';
+import { startTaskRun } from '../services/board-run.js';
 
 const Assignee = z.enum(['user', 'agent']).nullable();
 
 export function registerBoardRoutes(app: App, context: AppContext): void {
-  const publishTask = (task: BoardTask): void => {
-    const topic = workspaceTopic(task.workspaceId);
-    context.bus.publish(topic, { type: 'board_task', topic, task });
-  };
-  const publishRemoval = (workspaceId: string, taskId: string): void => {
-    const topic = workspaceTopic(workspaceId);
-    context.bus.publish(topic, { type: 'board_task_removed', topic, taskId });
-  };
-  const publishComment = (workspaceId: string, comment: TaskComment): void => {
-    const topic = workspaceTopic(workspaceId);
-    context.bus.publish(topic, { type: 'board_comment', topic, comment });
-  };
 
   /* -------------------------------- Reads ------------------------------- */
 
   app.get<{ Params: { id: string } }>('/api/workspaces/:id/board', async (request, reply) => {
     const workspace = mustGetWorkspace(context, request.params.id);
-    return reply.send({ tasks: context.board.board(workspace.id) });
+    return reply.send({ tasks: context.board.list(workspace.id) });
   });
 
   app.get<{
@@ -52,7 +40,7 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
     const status = TaskStatus.safeParse(request.query.status);
     const assignee = z.enum(['user', 'agent']).safeParse(request.query.assignee);
     return reply.send({
-      tasks: context.board.list({
+      tasks: context.board.listAll({
         ...(request.query.workspaceId ? { workspaceId: request.query.workspaceId } : {}),
         ...(status.success ? { status: status.data } : {}),
         ...(assignee.success ? { assignee: assignee.data } : {}),
@@ -68,6 +56,9 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
     if (!task) throw new HttpError(404, 'Task not found.');
     return reply.send({
       task,
+      // The linked run in full, so the drawer can tell "being worked right
+      // now" from "was worked once" without a second round trip.
+      run: task.runId ? context.runRepo.get(task.runId) : null,
       comments: context.board.comments(task.id),
       activity: context.board.activity(task.id),
       children: context.board.children(task.id),
@@ -98,7 +89,6 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
       { workspaceId: workspace.id, createdBy: `user:${actor.username}`, ...parsed.data },
       `user:${actor.username}`,
     );
-    publishTask(task);
     context.audit.record({
       actor: actor.username,
       action: 'task.create',
@@ -124,7 +114,6 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
     if (!parsed.success) throw new HttpError(400, 'Invalid update.');
 
     const task = context.board.update(request.params.id, parsed.data, `user:${actor.username}`);
-    publishTask(task);
     return reply.send({ task });
   });
 
@@ -139,7 +128,6 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
     if (!parsed.success) throw new HttpError(400, 'Invalid move.');
 
     const task = context.board.move(request.params.id, parsed.data, `user:${actor.username}`);
-    publishTask(task);
     context.audit.record({
       actor: actor.username,
       action: 'task.move',
@@ -153,8 +141,6 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
   app.post<{ Params: { id: string } }>('/api/tasks/:id/archive', async (request, reply) => {
     const actor = requireOperator(request);
     const task = context.board.archive(request.params.id, `user:${actor.username}`);
-    // An archived card leaves the board, so the frame that travels is removal.
-    publishRemoval(task.workspaceId, task.id);
     context.audit.record({
       actor: actor.username,
       action: 'task.archive',
@@ -167,17 +153,12 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
   app.post<{ Params: { id: string } }>('/api/tasks/:id/restore', async (request, reply) => {
     const actor = requireOperator(request);
     const task = context.board.restore(request.params.id, `user:${actor.username}`);
-    publishTask(task);
     return reply.send({ task });
   });
 
   app.delete<{ Params: { id: string } }>('/api/tasks/:id', async (request, reply) => {
     const actor = requireOperator(request);
-    const task = context.board.get(request.params.id);
-    if (!task) throw new HttpError(404, 'Task not found.');
-
-    context.board.delete(task.id);
-    publishRemoval(task.workspaceId, task.id);
+    const task = context.board.delete(request.params.id);
     context.audit.record({
       actor: actor.username,
       action: 'task.delete',
@@ -186,6 +167,40 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
       detail: task.title.slice(0, 120),
     });
     return reply.send({ ok: true });
+  });
+
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/run', async (request, reply) => {
+    const actor = requireOperator(request);
+    const task = context.board.get(request.params.id);
+    if (!task) throw new HttpError(404, 'Task not found.');
+    const workspace = mustGetWorkspace(context, task.workspaceId);
+
+    // Skills live in the database but the CLI discovers them on disk, so they
+    // are written out immediately before the run that will use them.
+    await context.registry.materialiseSkills(workspace).catch((error: Error) => {
+      context.log.warn({ err: error.message }, 'could not materialise skills');
+    });
+
+    const started = await startTaskRun(
+      {
+        board: context.board,
+        runs: context.runRepo,
+        sessions: context.sessionRepo,
+        workspaces: context.workspaceRepo,
+        submit: (input) => context.kernel.submit(input),
+      },
+      task.id,
+      actor.username,
+    );
+
+    context.audit.record({
+      actor: actor.username,
+      action: 'task.run',
+      target: task.id,
+      ipAddress: requestIp(context, request),
+      detail: `${workspace.name}: ${task.title.slice(0, 120)}`,
+    });
+    return reply.status(202).send({ run: started.run, task: started.task });
   });
 
   app.post<{ Params: { id: string } }>('/api/tasks/:id/comments', async (request, reply) => {
@@ -198,11 +213,6 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
       `user:${actor.username}`,
       parsed.data.body,
     );
-    const task = context.board.get(request.params.id);
-    if (task) {
-      publishComment(task.workspaceId, comment);
-      publishTask(task);
-    }
     return reply.status(201).send({ comment });
   });
 }

@@ -214,6 +214,14 @@ export class BoardService {
       }));
   }
 
+  /** The card a run is working, if any. */
+  byRun(runId: string): BoardTask | null {
+    const row = this.db
+      .prepare<[string], TaskRow>('SELECT * FROM tasks WHERE run_id = ? LIMIT 1')
+      .get(runId);
+    return row ? toTask(row) : null;
+  }
+
   children(taskId: string): BoardTask[] {
     return this.db
       .prepare<[string], TaskRow>('SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at')

@@ -124,6 +124,48 @@ describe('composition', () => {
   });
 });
 
+describe('the board section', () => {
+  const seedTask = (id: string, over: Record<string, unknown> = {}) => {
+    const row = {
+      status: 'todo',
+      blocked_reason: null,
+      run_id: null,
+      due_at: null,
+      archived_at: null,
+      ...over,
+    };
+    db.prepare(
+      `INSERT INTO tasks (id, workspace_id, title, status, order_key, blocked_reason, run_id, due_at,
+                          archived_at, created_by, created_at, updated_at)
+       VALUES (?, 'ws_1', ?, ?, 'i', ?, ?, ?, ?, 'user:jules', 0, 0)`,
+    ).run(id, id, row.status, row.blocked_reason, row.run_id, row.due_at, row.archived_at);
+  };
+
+  it('counts review, blocked, in-flight and due-soon cards — active ones only', async () => {
+    seedRun('run_live', 'ws_1', 'running', NOW - HOUR);
+    seedRun('run_dead', 'ws_1', 'failed', NOW - HOUR);
+    seedTask('tsk_review', { status: 'review' });
+    seedTask('tsk_blocked', { blocked_reason: 'stuck' });
+    seedTask('tsk_live', { status: 'in_progress', run_id: 'run_live' });
+    seedTask('tsk_settled', { status: 'in_progress', run_id: 'run_dead' });
+    seedTask('tsk_due', { due_at: NOW + 24 * HOUR });
+    seedTask('tsk_due_far', { due_at: NOW + 200 * HOUR });
+    seedTask('tsk_due_done', { status: 'done', due_at: NOW + HOUR });
+    // Archived cards are off the board, whatever else they are.
+    seedTask('tsk_ghost', { status: 'review', blocked_reason: 'stuck', archived_at: NOW });
+
+    const brief = await makeService().generate();
+    expect(brief.board).toEqual({ inReview: 1, blocked: 1, inFlight: 1, dueSoon: 1 });
+  });
+
+  it('review cards break the quiet-day headline', async () => {
+    seedTask('tsk_review', { status: 'review' });
+    const brief = await makeService().generate();
+    expect(brief.headline).not.toMatch(/quiet/i);
+    expect(brief.headline).toMatch(/review/);
+  });
+});
+
 describe('the headline', () => {
   it('says what needs attention when something does', async () => {
     seedRun('run_2', 'ws_1', 'failed', NOW - HOUR, 'boom');

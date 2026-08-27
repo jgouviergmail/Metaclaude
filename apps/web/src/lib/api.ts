@@ -299,10 +299,14 @@ export const api = {
   task: (id: string) =>
     request<{
       task: BoardTask;
+      run: Run | null;
       comments: TaskComment[];
       activity: TaskActivity[];
       children: BoardTask[];
     }>(`/api/tasks/${id}`),
+
+  runTask: (id: string) =>
+    request<{ run: Run; task: BoardTask }>(`/api/tasks/${id}/run`, { method: 'POST' }),
 
   createTask: (
     workspaceId: string,

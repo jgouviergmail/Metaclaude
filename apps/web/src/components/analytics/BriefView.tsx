@@ -7,11 +7,21 @@
  * dashboard being where a silently stopped loop finally gets seen.
  */
 
-import { AlertTriangle, ArrowRight, Lightbulb, Timer } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Lightbulb, SquareKanban, Timer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Brief } from '@metaclaude/shared';
 import { Badge } from '@/components/ui/primitives';
 import { formatRelative, formatTokens } from '@/lib/utils';
+
+/** The board line's fragments, in the order the operator triages them. */
+function boardParts(board: Brief['board']): string[] {
+  const parts: string[] = [];
+  if (board.inReview > 0) parts.push(`${board.inReview} in review`);
+  if (board.blocked > 0) parts.push(`${board.blocked} blocked`);
+  if (board.inFlight > 0) parts.push(`${board.inFlight} being worked`);
+  if (board.dueSoon > 0) parts.push(`${board.dueSoon} due soon`);
+  return parts;
+}
 
 export function BriefView({ brief }: { brief: Brief }) {
   const quotaWorst = brief.quota
@@ -44,6 +54,20 @@ export function BriefView({ brief }: { brief: Brief }) {
           </span>
         ) : null}
       </div>
+
+      {brief.board && boardParts(brief.board).length > 0 ? (
+        <Link
+          to="/board"
+          className="group flex items-center gap-2 text-[12.5px] text-muted hover:text-ink"
+        >
+          <SquareKanban className="size-3.5 shrink-0 text-accent" aria-hidden />
+          <span>Board: {boardParts(brief.board).join(' · ')}</span>
+          <ArrowRight
+            className="size-3.5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5"
+            aria-hidden
+          />
+        </Link>
+      ) : null}
 
       {brief.failures.length > 0 ? (
         <ul className="divide-y divide-[var(--mc-border)]">

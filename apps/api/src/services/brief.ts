@@ -9,7 +9,7 @@
  * brief: the quota is the usual casualty and arrives as null.
  */
 
-import type { Brief, BriefFailure, ClaudeUsage, DoctorReport } from '@metaclaude/shared';
+import type { Brief, BriefBoard, BriefFailure, ClaudeUsage, DoctorReport } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import type { AnalyticsService } from './analytics.js';
 
@@ -86,6 +86,24 @@ export class BriefService {
         .prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM insights WHERE created_at >= ?')
         .get(since)?.n ?? 0;
 
+    // The board's pulse: what waits on the operator, what is stuck, what is
+    // being worked this minute, what the calendar is about to call.
+    const board: BriefBoard = this.deps.db
+      .prepare<[number], BriefBoard>(
+        `SELECT
+           SUM(CASE WHEN t.status = 'review' THEN 1 ELSE 0 END) AS inReview,
+           SUM(CASE WHEN t.blocked_reason IS NOT NULL THEN 1 ELSE 0 END) AS blocked,
+           SUM(CASE WHEN r.status IN ('queued','running','waiting_approval') THEN 1 ELSE 0 END) AS inFlight,
+           SUM(CASE WHEN t.due_at IS NOT NULL AND t.due_at <= ? AND t.status != 'done' THEN 1 ELSE 0 END) AS dueSoon
+         FROM tasks t LEFT JOIN runs r ON r.id = t.run_id
+         WHERE t.archived_at IS NULL`,
+      )
+      .get(now + 48 * 3_600_000) ?? { inReview: 0, blocked: 0, inFlight: 0, dueSoon: 0 };
+    // SUM over zero rows is NULL, not 0 — normalise before anything reads it.
+    for (const key of Object.keys(board) as (keyof BriefBoard)[]) {
+      board[key] = board[key] ?? 0;
+    }
+
     const doctor = await this.deps.doctor.run();
 
     let quota: ClaudeUsage | null;
@@ -100,7 +118,7 @@ export class BriefService {
     return {
       since,
       generatedAt: now,
-      headline: this.headline(activity.totalRuns, failures.length, pendingApprovals, doctor),
+      headline: this.headline(activity.totalRuns, failures.length, pendingApprovals, doctor, board),
       activity,
       failures,
       pendingApprovals,
@@ -111,6 +129,7 @@ export class BriefService {
       doctor,
       quota,
       newInsights,
+      board,
     };
   }
 
@@ -120,8 +139,9 @@ export class BriefService {
     failures: number,
     approvals: number,
     doctor: DoctorReport,
+    board: BriefBoard,
   ): string {
-    if (runs === 0 && approvals === 0 && doctor.status === 'ok') {
+    if (runs === 0 && approvals === 0 && doctor.status === 'ok' && board.inReview === 0) {
       return 'A quiet day — no runs in the last 24 hours, and every self-check passes.';
     }
 
@@ -129,6 +149,9 @@ export class BriefService {
     parts.push(runs === 0 ? 'No runs in the last 24 hours' : `${runs} run${runs === 1 ? '' : 's'} in the last 24 hours`);
     if (failures > 0) parts.push(`${failures} failure${failures === 1 ? '' : 's'} worth a look`);
     if (approvals > 0) parts.push(`${approvals} approval${approvals === 1 ? '' : 's'} waiting on you`);
+    if (board.inReview > 0) {
+      parts.push(`${board.inReview} card${board.inReview === 1 ? '' : 's'} waiting for review`);
+    }
     if (doctor.status !== 'ok') parts.push(`the doctor reports ${doctor.status}`);
     return `${parts.join(', ')}.`;
   }
