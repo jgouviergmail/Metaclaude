@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import type { PolicyArm } from '@metaclaude/shared';
 import { QuotaPanel } from '@/components/analytics/QuotaPanel';
 import { WorkspaceUsageBars } from '@/components/analytics/WorkspaceUsageBars';
+import { BetaCurve } from '@/components/analytics/BetaCurve';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog } from '@/components/ui/Modal';
@@ -646,7 +647,7 @@ function PolicyCard({
               <th className="px-4 py-2 font-semibold">Model</th>
               <th className="px-4 py-2 font-semibold">Effort</th>
               <th className="px-4 py-2 text-right font-semibold">Trials</th>
-              <th className="px-4 py-2 font-semibold">Posterior mean</th>
+              <th className="px-4 py-2 font-semibold">Posterior</th>
               <th className="px-4 py-2 text-right font-semibold">Cost</th>
               <th className="px-4 py-2 text-right font-semibold">Duration</th>
             </tr>
@@ -661,19 +662,17 @@ function PolicyCard({
                   <td className="px-4 py-2 text-right tabular-nums text-muted">{arm.trials}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-sunken"
-                        role="img"
-                        aria-label={`Posterior mean ${formatPercent(mean)}`}
-                      >
-                        <div
-                          className={cn(
-                            'h-full rounded-full',
-                            mean >= 0.7 ? 'bg-success' : mean >= 0.4 ? 'bg-warning' : 'bg-danger',
-                          )}
-                          style={{ width: `${Math.round(mean * 100)}%` }}
-                        />
-                      </div>
+                      {/* The full density, not just its mean: a broad hump is
+                          an arm the learner is still unsure about, and that
+                          width is why it keeps getting occasional trials. */}
+                      <BetaCurve
+                        alpha={arm.alpha}
+                        beta={arm.beta}
+                        width={80}
+                        height={24}
+                        tone={mean >= 0.7 ? 'success' : mean >= 0.4 ? 'warning' : 'danger'}
+                        label={`Posterior: ${formatPercent(mean)} expected over ${arm.trials} trials`}
+                      />
                       <span className="tabular-nums text-[12px] text-muted">
                         {formatPercent(mean)}
                       </span>

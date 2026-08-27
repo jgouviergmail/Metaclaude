@@ -387,6 +387,20 @@
     animation: mc-fade-up 0.22s var(--ease-out-quint) both;
   }
 
+  /* The genesis strip's cascade: the segments of a decision appear one after
+     another, only on the run working right now. Decorative timing — the
+     content exists from the first frame for assistive tech, and any motion
+     preference turns the theatre off entirely. */
+  .genesis-step {
+    animation: mc-fade-up 0.32s var(--ease-out-quint) both;
+    animation-delay: calc(var(--step, 0) * 240ms);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .genesis-step {
+      animation: none;
+    }
+  }
+
   /* Unified-diff colouring. */
   .diff-line-add {
     background: var(--mc-diff-add);

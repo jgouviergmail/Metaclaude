@@ -8,6 +8,7 @@
 
 import type { App } from '../http/types.js';
 import { CreateMemoryRequest, MemoryKind } from '@metaclaude/shared';
+import type { RunGenesis } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, mustGetWorkspace, requestIp, requireOperator } from '../http/guards.js';
@@ -284,6 +285,36 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       detail: `${arms} arms, ${exemplars} exemplars`,
     });
     return reply.send({ arms, exemplars });
+  });
+
+  /**
+   * Why one run was shaped the way it was: the classifier's verdict, the
+   * exact policy arm it stood on (when one matches), and the memories that
+   * were actually injected. Immutable once the run has started, which is why
+   * the client may cache it forever — except that recall is recorded just
+   * before execution, so a run still queued answers with an empty list that
+   * fills in moments later.
+   */
+  app.get<{ Params: { id: string } }>('/api/runs/:id/genesis', async (request, reply) => {
+    const run = context.runRepo.get(request.params.id);
+    if (!run) throw new HttpError(404, 'Run not found.');
+
+    const arms = run.category ? context.policy.list(run.workspaceId, run.category) : [];
+    const arm =
+      arms.find(
+        (candidate) =>
+          String(candidate.model) === String(run.policy.model) &&
+          candidate.effort === run.policy.effort,
+      ) ?? null;
+
+    const genesis: RunGenesis = {
+      category: run.category,
+      source: run.policy.source,
+      memories: context.memory.recalledFor(run.id),
+      arm,
+      explanation: run.category ? context.policy.explain(run.workspaceId, run.category) : '',
+    };
+    return reply.send(genesis);
   });
 
   /**

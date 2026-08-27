@@ -25,6 +25,7 @@ import {
   McpTransport,
   Memory,
   MemoryKind,
+  RunPolicy,
   Millis,
   ModelSelector,
   PluginSkill,
@@ -479,6 +480,24 @@ export const SkillDefinition = z.object({
   updatedAt: Millis,
 });
 export type SkillDefinition = z.infer<typeof SkillDefinition>;
+
+/**
+ * Why one run was shaped the way it was, as GET /api/runs/:id/genesis serves
+ * it — the classifier's verdict, the arm the policy stood on, and the
+ * memories that were actually injected. A plain type for the same reason as
+ * LibraryListingEntry below: every field is server-derived from rows the
+ * schemas already validate, so a runtime schema here would be dead weight.
+ */
+export type RunGenesis = {
+  category: string | null;
+  source: RunPolicy['source'];
+  /** Best-first, with the rank-normalised retrieval score in [0, 1]. */
+  memories: Array<{ id: string; title: string; kind: MemoryKind; confidence: number; score: number }>;
+  /** The (category, model, effort) arm this run stood on; null when none matches. */
+  arm: PolicyArm | null;
+  /** The learner's own sentence about this category, empty when unlearned. */
+  explanation: string;
+};
 
 /**
  * A proposal the advisor left in the inbox — a skill, agent, MCP server or

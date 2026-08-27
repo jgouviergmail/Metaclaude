@@ -467,4 +467,26 @@ export const fr: Record<string, string> = {
   Dismiss: 'Écarter',
   'Accept “{name}”': 'Accepter « {name} »',
   'Dismiss “{name}”': 'Écarter « {name} »',
+
+  /* La boucle rendue visible */
+  'chosen from experience': "choisi par l'expérience",
+  'workspace default': 'défaut du workspace',
+  'your choice': 'votre choix',
+  'Why this run was shaped this way': 'Pourquoi ce run a pris cette forme',
+  'Posterior for this arm — {pct} expected over {n} trials':
+    'A posteriori de ce bras — {pct} attendus sur {n} essais',
+  'The learner expects {pct} from this arm, over {n} trials here.':
+    "L'apprentissage attend {pct} de ce bras, sur {n} essais ici.",
+  'You chose this configuration yourself; the learner watches and records the outcome.':
+    "Vous avez choisi cette configuration vous-même ; l'apprentissage observe et enregistre le résultat.",
+  'No learned arm matches this run yet — its outcome is what teaches the first one.':
+    "Aucun bras appris ne correspond encore à ce run — son résultat est ce qui enseignera le premier.",
+  'Retrieval strength {pct}': 'Force de rappel {pct}',
+  'Recalling memory…': 'Rappel de la mémoire…',
+  'Nothing recalled — this run started from the prompt alone.':
+    'Rien de rappelé — ce run est parti du prompt seul.',
+  'The story of this run could not be read.': "L'histoire de ce run n'a pas pu être lue.",
+  semantic: 'sémantique',
+  episodic: 'épisodique',
+  procedural: 'procédurale',
 };

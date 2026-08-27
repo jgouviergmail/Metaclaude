@@ -549,6 +549,26 @@ describe('recordUsage and reinforce', () => {
     expect(links).toEqual([{ memory_id: result.memory.id, score: 1 }]);
   });
 
+  it('reads back what a run recalled, best-first, with live titles', async () => {
+    const first = await remembered();
+    const { memory: second } = await store.remember({
+      workspaceId: null,
+      kind: 'procedural',
+      title: 'How deploys run',
+      content: 'The pipeline gates on health.',
+      confidence: 0.9,
+    });
+    store.recordUsage(runId, [first, { memory: second, score: 0.25 }]);
+
+    const recalled = store.recalledFor(runId);
+    expect(recalled.map((entry) => entry.title)).toEqual(['Ordinary fact', 'How deploys run']);
+    expect(recalled[0]).toMatchObject({ kind: 'semantic', score: 1 });
+    expect(recalled[1]?.score).toBeCloseTo(0.5);
+    expect(recalled[1]?.confidence).toBeCloseTo(0.9);
+    // A run that recalled nothing answers empty, not an error.
+    expect(store.recalledFor('run_none')).toEqual([]);
+  });
+
   it('is a no-op for an empty result set', () => {
     expect(() => store.recordUsage(runId, [])).not.toThrow();
     expect(

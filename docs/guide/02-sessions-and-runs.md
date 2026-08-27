@@ -157,3 +157,17 @@ attribution of what has been consuming the quota — behaviours like heavy
 sub-agent use, and the agents, skills, plugins and MCP servers involved. That
 attribution is approximate by its own admission: it reads this machine's
 transcripts, so other devices and claude.ai are not counted.
+
+## Why the run took this shape
+
+Between your message and the answer sits a small strip — the loop, narrated
+where it ran. At a glance: the category the classifier assigned, the model
+and effort the policy chose, and who chose them (the learner, the workspace
+default, or you). On the run working right now its segments appear one after
+another; on history it sits quiet. Open it and the evidence unfolds — the
+memories that were actually injected, each with its retrieval strength; the
+Beta posterior of the exact arm the choice stood on, drawn as a curve whose
+width is the learner's remaining doubt; and the learner's own sentence about
+this category. Nothing recalled says so, plainly: "this run started from the
+prompt alone." A self-modifying system you cannot read is not one you should
+trust — this strip is where you read it.

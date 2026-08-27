@@ -52,3 +52,12 @@ procedures are handed to one cheap model call that either drafts a coherent,
 reusable skill from them or answers that they do not cohere — refusal being
 the common, correct case. A draft lands in the same review queue as every
 other proposal: nothing changes the agent's behaviour until you accept it.
+
+## Reading the posteriors
+
+The Analytics screen draws each arm's Beta posterior as a curve, not a bar,
+because the mean is the least interesting thing a posterior knows. A narrow
+spike is an arm the learner has settled on; a broad hump is one it is still
+unsure about — and that width is exactly why a trailing arm keeps getting
+occasional trials. Watch a curve sharpen over a week of runs and you are
+watching the system learn.

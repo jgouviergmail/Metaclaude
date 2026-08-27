@@ -457,6 +457,29 @@ export class MemoryStore {
    * every time — the top hit and a marginal one were credited identically, and
    * the effective learning rate was five times smaller than intended.
    */
+  /**
+   * What was recalled into one run, best-first — the transcript's "why did
+   * it answer this way" reads from here. Titles and kinds are joined live so
+   * an edited memory shows its current name, and a deleted one simply drops
+   * out (the usage row cascades away with it).
+   */
+  recalledFor(runId: string): Array<{
+    id: string;
+    title: string;
+    kind: MemoryKind;
+    confidence: number;
+    score: number;
+  }> {
+    return this.db
+      .prepare<[string], { id: string; title: string; kind: string; confidence: number; score: number }>(
+        `SELECT m.id, m.title, m.kind, m.confidence, u.score
+         FROM memory_usages u JOIN memories m ON m.id = u.memory_id
+         WHERE u.run_id = ? ORDER BY u.score DESC`,
+      )
+      .all(runId)
+      .map((row) => ({ ...row, kind: row.kind as MemoryKind }));
+  }
+
   recordUsage(runId: string, results: MemorySearchResult[]): void {
     if (results.length === 0) return;
     const best = Math.max(...results.map((result) => result.score), Number.EPSILON);

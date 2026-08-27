@@ -11,6 +11,27 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-08-27
+
+### Added
+
+- **The loop, made visible.** Every exchange in a transcript now carries a
+  small strip between your message and the answer: the category the
+  classifier assigned, the model and effort the policy chose, and who chose
+  them — the learner, the workspace default, or you. On the run working
+  right now the segments cascade in one after another (and hold still for
+  anyone who prefers reduced motion); open the strip and the evidence
+  unfolds: the memories actually injected with their retrieval strength,
+  the Beta posterior of the exact arm the choice stood on, and the
+  learner's own sentence. A run that recalled nothing says so plainly. The
+  transcript pays nothing for history — the detail is fetched only when
+  opened.
+- **Posteriors drawn as curves.** Analytics now draws each policy arm's
+  Beta distribution instead of a bar: a narrow spike is a settled belief, a
+  broad hump is doubt — and that width is why a trailing arm still gets
+  occasional trials. Two arms with the same mean finally look as different
+  as they are.
+
 ## [0.22.2] — 2026-08-27
 
 ### Fixed

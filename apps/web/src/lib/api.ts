@@ -23,6 +23,7 @@ import {
   type ClaudePairingStart,
   type ClaudePairingState,
   type PushStatus,
+  type RunGenesis,
   type PushSubscriptionInput,
   type ConnectRepositoryResult,
   type PluginRecord,
@@ -621,6 +622,9 @@ export const api = {
         confidence: number;
       }>;
     }>('/api/policy/preview', { method: 'POST', body }),
+
+  /** Why one run was shaped as it was. Immutable once the run has started. */
+  runGenesis: (runId: string) => request<RunGenesis>(`/api/runs/${runId}/genesis`),
 
   /* ------------------------------ Advisor ------------------------------ */
   askAdvisor: (workspaceId: string) =>

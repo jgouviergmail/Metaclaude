@@ -11,13 +11,14 @@
  */
 
 import { ArrowDown, Sparkles } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ApprovalRequest, Run, TranscriptEvent } from '@metaclaude/shared';
 import { useT } from '@/lib/i18n';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import type { StreamingBlock } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { ApprovalCard } from './ApprovalCard';
+import { RunGenesis } from './RunGenesis';
 import { DelegationStrip } from './Delegation';
 import { AssistantText, ThinkingBlock, TranscriptItem } from './TranscriptItem';
 
@@ -151,19 +152,26 @@ export function MessageStream({
                   nothing, which is most runs. */}
               <DelegationStrip events={group.events} />
 
-              {group.events.map((event) => (
-                <TranscriptItem
-                  key={event.id}
-                  event={event}
-                  run={group.run ?? null}
-                  rating={group.run?.rating ?? null}
-                  onRate={onRate}
-                  // Only a run that recorded an anchor can be undone. Offering
-                  // the action on one that cannot is a button that exists to
-                  // fail.
-                  canRewind={Boolean(group.run?.rewindPoint)}
-                  onRewind={onRewind}
-                />
+              {group.events.map((event, index) => (
+                <Fragment key={event.id}>
+                  <TranscriptItem
+                    event={event}
+                    run={group.run ?? null}
+                    rating={group.run?.rating ?? null}
+                    onRate={onRate}
+                    // Only a run that recorded an anchor can be undone. Offering
+                    // the action on one that cannot is a button that exists to
+                    // fail.
+                    canRewind={Boolean(group.run?.rewindPoint)}
+                    onRewind={onRewind}
+                  />
+                  {/* The loop, narrated between the question and the answer:
+                      how this run was classified, what the policy stood on,
+                      what memory was recalled. */}
+                  {index === 0 && event.kind === 'user_message' && group.run ? (
+                    <RunGenesis run={group.run} />
+                  ) : null}
+                </Fragment>
               ))}
             </section>
           ))}
