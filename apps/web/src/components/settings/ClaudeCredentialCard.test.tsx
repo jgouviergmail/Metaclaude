@@ -121,6 +121,50 @@ describe('the guided pairing wizard', () => {
   });
 });
 
+describe('the CLI account sign-in', () => {
+  const LOGIN = {
+    full: true,
+    scopes: ['user:profile', 'user:inference', 'user:sessions:claude_code'],
+    subscriptionType: 'max',
+    expiresAt: null,
+  };
+
+  it('says runs use the sign-in when nothing overrides it', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'cli-login',
+      hint: null,
+      cliLogin: LOGIN,
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    expect(await screen.findByText(/signed in with a claude account/i)).toBeTruthy();
+    expect(screen.getByText(/full scope/i)).toBeTruthy();
+  });
+
+  it('says when a paired token is shadowing the sign-in, and what removes it', async () => {
+    // Removing a token is sometimes the upgrade — without this note it reads
+    // as a downgrade, and the full-scope sign-in stays shadowed forever.
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'stored',
+      hint: '…AAAA',
+      cliLogin: LOGIN,
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    expect(await screen.findByText(/overrides it/i)).toBeTruthy();
+    expect(screen.getByText(/remove the token/i)).toBeTruthy();
+  });
+
+  it('stays silent when the CLI store holds no sign-in', async () => {
+    renderWithProviders(<ClaudeCredentialCard />);
+    await screen.findByRole('button', { name: /start pairing/i });
+    expect(screen.queryByText(/signed in with a claude account/i)).toBeNull();
+    expect(screen.queryByText(/overrides it/i)).toBeNull();
+  });
+});
+
 describe('the manual fallback', () => {
   it('still pairs by pasting a token directly', async () => {
     apiMock.claudeCredential.save.mockResolvedValue({

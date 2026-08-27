@@ -89,6 +89,42 @@ same CLI conversation can never end up behind two doors.
 Only sessions the CLI itself lists for this workspace's directory are offered
 or accepted — an id from anywhere else is refused.
 
+## Syncing with claude.ai
+
+The CLI can bridge sessions to your claude.ai account: mirror local
+sessions there as view-only, hand a terminal session to claude.ai to steer
+(**Remote Control**), and pull a claude.ai/code cloud session down to
+continue it locally (`claude --teleport <session-id>`).
+
+All of it hangs on one fact about credentials. Those features need a *full*
+account sign-in — the scopes behind session sync — and Anthropic limits
+long-lived tokens (`claude setup-token`, `CLAUDE_CODE_OAUTH_TOKEN`) to
+inference only, server-side, on purpose. A paired token is therefore enough
+for everything Metaclaude does by itself, and never enough for claude.ai
+sync. The CLI states it in as many words when asked.
+
+The supported way to a full sign-in is the CLI's own login, run once inside
+the container:
+
+    cd /opt/metaclaude && sudo docker compose exec app claude auth login
+
+That sign-in lands in the CLI's home volume, survives restarts and
+redeployments, and the CLI refreshes it by itself. One more fact matters:
+an injected token **overrides** it. Metaclaude therefore treats the sign-in
+as its last-resort credential — with no token paired here and none in
+`.env`, runs use the account sign-in, and the credentials card in Settings
+shows which of the two is live and when a token is shadowing a full-scope
+sign-in you may prefer.
+
+Two honest caveats. Signing the server in as your full account hands every
+agent run whatever the account can reach — weigh that against the
+inference-only token, whose narrowness is a feature on a machine that works
+unattended. And whether claude.ai lists sessions the server ran headlessly
+is Anthropic's side of the bridge; the teleport direction — pull a cloud
+session into a workspace directory from a container shell, then **Adopt**
+it from the workspace page — is the one that composes entirely from pieces
+you can see here.
+
 ## Cost
 
 Each run shows its tokens and, where the CLI reports one, its cost. Analytics

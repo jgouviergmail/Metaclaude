@@ -112,7 +112,7 @@ describe('completing the exchange', () => {
 
     const status = await pairing.complete(`the-code#${url.searchParams.get('state')}`);
 
-    expect(status).toEqual({ mode: 'subscription', source: 'stored', hint: '…DDDD' });
+    expect(status).toEqual({ mode: 'subscription', source: 'stored', hint: '…DDDD', cliLogin: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(TOKEN);
 
     expect(calls).toHaveLength(1);

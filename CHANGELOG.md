@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-08-27
+
+### Added
+
+- **The CLI's own account sign-in is a first-class credential.** claude.ai
+  session sync — mirroring, Remote Control, `--teleport` — needs a full
+  account sign-in, and Anthropic limits long-lived tokens to inference
+  only, server-side; an injected token moreover *overrides* a sign-in. All
+  three facts now live in the product instead of in the dark: with nothing
+  paired and nothing in `.env`, runs fall through to the sign-in `claude
+  auth login` leaves in the container (persisted by the home volume, kept
+  fresh by the CLI itself), the status reports `cli-login` as its source,
+  and the credentials card says when runs use the sign-in — and when a
+  paired token is shadowing a full-scope sign-in, with the remedy. The
+  guide's sessions chapter documents the whole bridge, including the
+  teleport-then-adopt path that brings a claude.ai/code session into a
+  workspace.
+
 ## [0.11.0] — 2026-08-27
 
 ### Added

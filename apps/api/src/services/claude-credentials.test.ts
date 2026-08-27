@@ -36,14 +36,14 @@ const NOTHING = { oauthToken: null, apiKey: null };
 describe('where the credential comes from', () => {
   it('uses the environment when nothing has been paired', () => {
     const { env, credentials } = build({ oauthToken: TOKEN, apiKey: null });
-    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'environment', hint: '…AAAA' });
+    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'environment', hint: '…AAAA', cliLogin: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(TOKEN);
   });
 
   it('prefers a paired credential over the environment', () => {
     const { env, credentials } = build({ oauthToken: TOKEN, apiKey: null });
     credentials.save(OTHER_TOKEN);
-    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…BBBB' });
+    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…BBBB', cliLogin: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(OTHER_TOKEN);
   });
 
@@ -57,7 +57,7 @@ describe('where the credential comes from', () => {
 
   it('reports none when there is nothing anywhere', () => {
     const { env, credentials } = build(NOTHING);
-    expect(credentials.status()).toEqual({ mode: 'none', source: null, hint: null });
+    expect(credentials.status()).toEqual({ mode: 'none', source: null, hint: null, cliLogin: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
@@ -67,7 +67,7 @@ describe('where the credential comes from', () => {
     first.credentials.save(TOKEN);
 
     const second = build(NOTHING);
-    expect(second.credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…AAAA' });
+    expect(second.credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…AAAA', cliLogin: null });
     expect(second.env.CLAUDE_CODE_OAUTH_TOKEN).toBe(TOKEN);
   });
 });
@@ -154,5 +154,58 @@ describe('the credential does not leak', () => {
     // And it really is recoverable — an unreadable secret would pass the check
     // above for the wrong reason.
     expect(vault.get('global', 'claude.oauth_token')).toBe(TOKEN);
+  });
+});
+
+describe('the CLI’s own sign-in', () => {
+  const LOGIN = {
+    full: true,
+    scopes: ['user:profile', 'user:inference', 'user:sessions:claude_code'],
+    subscriptionType: 'max' as string | null,
+    expiresAt: 1_900_000_000_000 as number | null,
+  };
+
+  /** Like build(), plus a CLI store holding a sign-in. */
+  function buildWithLogin(fromEnvironment: { oauthToken: string | null; apiKey: string | null }) {
+    const env: Record<string, string> = {};
+    const credentials = new ClaudeCredentials({
+      vault,
+      env,
+      fromEnvironment,
+      cliLogin: () => LOGIN,
+    });
+    return { env, credentials };
+  }
+
+  it('is the fallback when nothing is injected — and injects nothing itself', () => {
+    // The CLI reads its own store exactly when no token variable is set; an
+    // injected token would override the sign-in. Empty env IS the handover.
+    const { env, credentials } = buildWithLogin(NOTHING);
+    expect(credentials.status()).toEqual({
+      mode: 'subscription',
+      source: 'cli-login',
+      hint: null,
+      cliLogin: LOGIN,
+    });
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it('is shadowed by any injected token, and the status says both halves', () => {
+    const { env, credentials } = buildWithLogin({ oauthToken: TOKEN, apiKey: null });
+    const status = credentials.status();
+    expect(status.source).toBe('environment');
+    expect(status.cliLogin).toEqual(LOGIN);
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(TOKEN);
+  });
+
+  it('takes over when the shadowing credential is removed', () => {
+    const { env, credentials } = buildWithLogin(NOTHING);
+    credentials.save(TOKEN);
+    expect(credentials.status().source).toBe('stored');
+
+    credentials.clear();
+    expect(credentials.status().source).toBe('cli-login');
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
   });
 });

@@ -9,7 +9,8 @@
 
 import { execFile } from 'node:child_process';
 import { statfs } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudeUsage } from '@metaclaude/shared';
@@ -33,6 +34,7 @@ import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
+import { readCliLogin } from './services/claude-cli-login.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { ClaudePairing } from './services/claude-pairing.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
@@ -225,6 +227,10 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     vault,
     env: claudeEnv,
     fromEnvironment: { oauthToken: config.claude.oauthToken, apiKey: config.claude.apiKey },
+    // The CLI's own store, where `claude auth login` run in the container
+    // leaves a sign-in the metaclaude-home volume persists. Same resolution
+    // the CLI applies: an explicit config dir first, else ~/.claude.
+    cliLogin: () => readCliLogin(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')),
     log: (level, message) => log[level](message),
   });
 

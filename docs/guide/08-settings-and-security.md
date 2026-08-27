@@ -33,6 +33,12 @@ a `sk-ant-api…` key for per-token Console billing — Metaclaude tells them
 apart on its own. The **System** card shows what is actually live: CLI
 version, authentication mode, and where the credential came from.
 
+A third source exists: the CLI's own account sign-in (`claude auth login`,
+run once in the container), which is what claude.ai session sync requires —
+see the sessions chapter. The card reports it, says when runs are using it,
+and warns when a paired token is overriding it, because removing a token is
+sometimes the upgrade.
+
 ## Appearance
 
 Light, dark, or follow the system. The whole interface is built on one token

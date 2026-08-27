@@ -1003,7 +1003,7 @@ export const SystemHealth = z.object({
      * the vault. The distinction matters to the person deciding whether they
      * still need a shell to change it.
      */
-    authSource: z.enum(['stored', 'environment']).nullable(),
+    authSource: z.enum(['stored', 'environment', 'cli-login']).nullable(),
     /** Last four characters. Enough to tell two credentials apart, never enough to use one. */
     authHint: z.string().nullable(),
   }),
@@ -1028,10 +1028,31 @@ export const ClaudeCredentialInput = z.object({
 });
 export type ClaudeCredentialInput = z.infer<typeof ClaudeCredentialInput>;
 
+/**
+ * A claude.ai account sign-in held by the CLI itself (`claude auth login`,
+ * run in the container). Distinct from a paired token: the CLI maintains and
+ * refreshes it on its own, and its scopes decide what the account can do —
+ * `full` means it carries the session-sync scopes a setup token never has.
+ */
+export const ClaudeCliLoginInfo = z.object({
+  full: z.boolean(),
+  scopes: z.array(z.string()),
+  subscriptionType: z.string().nullable(),
+  expiresAt: z.number().nullable(),
+});
+export type ClaudeCliLoginInfo = z.infer<typeof ClaudeCliLoginInfo>;
+
 export const ClaudeCredentialStatus = z.object({
   mode: z.enum(['subscription', 'api_key', 'none']),
-  source: z.enum(['stored', 'environment']).nullable(),
+  /**
+   * Which credential actually applies. `stored` and `environment` are tokens
+   * Metaclaude injects; `cli-login` means it injects nothing and the CLI uses
+   * its own account sign-in — which an injected token would override.
+   */
+  source: z.enum(['stored', 'environment', 'cli-login']).nullable(),
   hint: z.string().nullable(),
+  /** The CLI's own sign-in, whether or not it is what applies. */
+  cliLogin: ClaudeCliLoginInfo.nullable().default(null),
 });
 export type ClaudeCredentialStatus = z.infer<typeof ClaudeCredentialStatus>;
 

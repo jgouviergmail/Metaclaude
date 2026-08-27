@@ -14,10 +14,21 @@
  *   2. an API key stored from the interface
  *   3. CLAUDE_CODE_OAUTH_TOKEN from the environment
  *   4. ANTHROPIC_API_KEY from the environment
+ *   5. the CLI's own account sign-in (`claude auth login` in the container)
  *
  * The stored value wins because it is the one the owner set most recently and
  * most deliberately; the environment remains the way to bootstrap a machine
  * that has never been signed in to.
+ *
+ * The fifth source is different in kind: Metaclaude injects *nothing* for it.
+ * The CLI reads its own credentials store precisely when no token variable is
+ * set — an injected token overrides the sign-in, the CLI says so itself — so
+ * falling back here means leaving both variables unset on purpose. It is also
+ * the only credential Anthropic grants the session-sync scopes to (mirroring
+ * to claude.ai, Remote Control, teleport): long-lived tokens are limited to
+ * inference server-side. The status always carries what the CLI store holds,
+ * so the interface can tell the owner when a paired token is shadowing a
+ * full-scope sign-in they may actually want.
  *
  * The environment object handed to the supervisor is mutated in place rather
  * than rebuilt. The supervisor reads it once per run, so a credential set from
@@ -25,21 +36,12 @@
  * the entire point of being able to set it from a phone.
  */
 
+import type { ClaudeCliLoginInfo, ClaudeCredentialStatus } from '@metaclaude/shared';
 import type { Vault } from '../security/vault.js';
 
 /** Vault slots. Global scope: the credential is the deployment's, not a workspace's. */
 const TOKEN_KEY = 'claude.oauth_token';
 const API_KEY_KEY = 'claude.api_key';
-
-export type ClaudeAuthMode = 'subscription' | 'api_key' | 'none';
-export type ClaudeAuthSource = 'stored' | 'environment' | null;
-
-export interface ClaudeCredentialStatus {
-  mode: ClaudeAuthMode;
-  source: ClaudeAuthSource;
-  /** Enough to recognise which credential is in use; never enough to use it. */
-  hint: string | null;
-}
 
 export interface ClaudeCredentialsDeps {
   vault: Vault;
@@ -47,6 +49,8 @@ export interface ClaudeCredentialsDeps {
   env: Record<string, string>;
   /** Values read from the process environment at boot. */
   fromEnvironment: { oauthToken: string | null; apiKey: string | null };
+  /** The CLI's own sign-in, when its store holds one. See claude-cli-login.ts. */
+  cliLogin?: () => ClaudeCliLoginInfo | null;
   log?: (level: 'info' | 'warn', message: string) => void;
 }
 
@@ -93,24 +97,41 @@ export class ClaudeCredentials {
     const { token, apiKey } = this.stored();
     delete this.deps.env.CLAUDE_CODE_OAUTH_TOKEN;
     delete this.deps.env.ANTHROPIC_API_KEY;
+    const cliLogin = this.deps.cliLogin?.() ?? null;
 
     if (token) {
       this.deps.env.CLAUDE_CODE_OAUTH_TOKEN = token;
-      return { mode: 'subscription', source: 'stored', hint: hint(token) };
+      return { mode: 'subscription', source: 'stored', hint: hint(token), cliLogin };
     }
     if (apiKey) {
       this.deps.env.ANTHROPIC_API_KEY = apiKey;
-      return { mode: 'api_key', source: 'stored', hint: hint(apiKey) };
+      return { mode: 'api_key', source: 'stored', hint: hint(apiKey), cliLogin };
     }
     if (this.deps.fromEnvironment.oauthToken) {
       this.deps.env.CLAUDE_CODE_OAUTH_TOKEN = this.deps.fromEnvironment.oauthToken;
-      return { mode: 'subscription', source: 'environment', hint: hint(this.deps.fromEnvironment.oauthToken) };
+      return {
+        mode: 'subscription',
+        source: 'environment',
+        hint: hint(this.deps.fromEnvironment.oauthToken),
+        cliLogin,
+      };
     }
     if (this.deps.fromEnvironment.apiKey) {
       this.deps.env.ANTHROPIC_API_KEY = this.deps.fromEnvironment.apiKey;
-      return { mode: 'api_key', source: 'environment', hint: hint(this.deps.fromEnvironment.apiKey) };
+      return {
+        mode: 'api_key',
+        source: 'environment',
+        hint: hint(this.deps.fromEnvironment.apiKey),
+        cliLogin,
+      };
     }
-    return { mode: 'none', source: null, hint: null };
+    if (cliLogin) {
+      // Nothing injected, on purpose: the CLI reads its own store exactly
+      // when no token variable is set, and setting one would override the
+      // sign-in this branch exists to hand over to.
+      return { mode: 'subscription', source: 'cli-login', hint: null, cliLogin };
+    }
+    return { mode: 'none', source: null, hint: null, cliLogin: null };
   }
 
   status(): ClaudeCredentialStatus {

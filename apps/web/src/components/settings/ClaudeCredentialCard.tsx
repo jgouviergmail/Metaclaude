@@ -108,6 +108,28 @@ export function ClaudeCredentialCard() {
         description="What every agent run authenticates with. Stored encrypted, never written to a file."
       />
       <div className="space-y-5 px-4 pb-4">
+        {/* ---------------------- The CLI's own sign-in --------------------- */}
+        {/* `claude auth login` run in the container is the one credential
+            Anthropic grants the session-sync scopes to — and any token
+            Metaclaude injects overrides it. Both facts belong where the
+            tokens are managed, or removing a token looks like a downgrade
+            when it is sometimes the upgrade. */}
+        {status.data?.source === 'cli-login' ? (
+          <p className="rounded-lg bg-accent-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-ink">
+            The CLI is signed in with a Claude account
+            {status.data.cliLogin?.subscriptionType ? ` (${status.data.cliLogin.subscriptionType})` : ''}
+            {status.data.cliLogin?.full ? ', full scope' : ', inference only'} — runs use that
+            sign-in. Pairing a token below would override it.
+          </p>
+        ) : status.data?.cliLogin ? (
+          <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-[12.5px] leading-relaxed text-muted">
+            A CLI account sign-in also exists
+            {status.data.cliLogin.full ? ' (full scope — claude.ai session sync)' : ''}, but the{' '}
+            {status.data.source === 'stored' ? 'paired' : 'environment'} token overrides it.
+            Remove the token to let the account sign-in take over.
+          </p>
+        ) : null}
+
         {/* ------------------------- Guided pairing ------------------------- */}
         <div className="space-y-3">
           <h3 className="text-[13px] font-semibold text-ink">Pair with your Claude account</h3>

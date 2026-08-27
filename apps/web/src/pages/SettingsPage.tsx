@@ -739,7 +739,11 @@ function SystemCard() {
               ) : null}
               {data.claudeCli.authSource ? (
                 <span className="text-[12px] text-subtle">
-                  {data.claudeCli.authSource === 'stored' ? 'paired here' : 'from the environment'}
+                  {data.claudeCli.authSource === 'stored'
+                    ? 'paired here'
+                    : data.claudeCli.authSource === 'cli-login'
+                      ? 'CLI account sign-in'
+                      : 'from the environment'}
                 </span>
               ) : null}
             </div>
