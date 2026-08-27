@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-08-27
+
+### Fixed
+
+- **The board was outside the shell.** The one screen in the app that never
+  wrapped itself in the application shell: no icon rail on desktop, and on a
+  phone no tab bar at all — the browser's Back button was the only way out
+  of `/board`. It now renders inside the shell like every other page, and a
+  test pins the rail and tab bar to the page so it cannot ship without them
+  again.
+- **Five sections had no touch entry point.** On a phone the icon rail is
+  hidden and the tab bar only holds the five primary sections, which left
+  Memory, Agents & skills, Plugins, Analytics and Help reachable only by
+  URL or the command palette. The tab bar gains a **More** tab opening a
+  bottom sheet with the rest — one tap, closes on navigation, tinted when
+  you are standing on one of its sections. The account menu (theme, sign
+  out) joins the phone header too; it only ever lived in the hidden rail.
+
 ## [0.8.1] — 2026-08-27
 
 ### Fixed

@@ -21,11 +21,12 @@ import {
   LayoutDashboard,
   Menu as MenuIcon,
   MessageSquare,
+  MoreHorizontal,
   Settings,
   SquareKanban,
   Timer,
 } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
@@ -64,13 +65,19 @@ export function AppShell({
 }) {
   const { sidebarOpen, setSidebar } = useUiStore();
   const location = useLocation();
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // On a phone the sidebar is an overlay; navigating must dismiss it, or the
-  // user lands on a new screen still covered by the old panel.
+  // user lands on a new screen still covered by the old panel. The More
+  // sheet follows the same rule for the same reason.
   useEffect(() => {
     if (window.matchMedia('(max-width: 1023px)').matches) setSidebar(false);
+    setMoreOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
+
+  const secondary = NAV.filter((entry) => !entry.primary);
+  const onSecondary = secondary.some((entry) => location.pathname.startsWith(entry.to));
 
   return (
     <div className="flex h-full overflow-hidden bg-bg text-ink">
@@ -145,6 +152,42 @@ export function AppShell({
       {/* Main content. `min-w-0` stops long code blocks from stretching the grid. */}
       <main className="flex min-w-0 flex-1 flex-col pb-14 sm:pb-0">{children}</main>
 
+      {/* The sections the tab bar cannot hold, one tap behind "More". */}
+      {moreOpen ? (
+        <div className="fixed inset-0 z-40 sm:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMoreOpen(false)}
+            aria-label="Close sections"
+          />
+          <div
+            className="animate-in-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-line bg-surface p-2 shadow-[var(--mc-shadow-lg)]"
+            style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
+            role="menu"
+            aria-label="More sections"
+          >
+            {secondary.map((entry) => (
+              <NavLink
+                key={entry.to}
+                to={entry.to}
+                onClick={() => setMoreOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-medium',
+                    '[&>svg]:size-[18px]',
+                    isActive ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-raised',
+                  )
+                }
+              >
+                {entry.icon}
+                {entry.label}
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {/* Phone tab bar */}
       <nav
         className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-line bg-surface/95 backdrop-blur sm:hidden"
@@ -168,6 +211,22 @@ export function AppShell({
             {entry.label.split(' ')[0]}
           </NavLink>
         ))}
+        <button
+          type="button"
+          onClick={() => setMoreOpen((current) => !current)}
+          aria-label="More sections"
+          aria-expanded={moreOpen}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium',
+            '[&>svg]:size-[19px]',
+            // Standing on one of the sheet's sections tints the tab that leads
+            // to it, exactly as a primary tab would be tinted.
+            moreOpen || onSecondary ? 'text-accent' : 'text-subtle',
+          )}
+        >
+          <MoreHorizontal />
+          More
+        </button>
       </nav>
     </div>
   );
@@ -221,6 +280,7 @@ export function ContentHeader({
       <div className="flex items-center gap-1 sm:hidden">
         <ConnectionBadge />
         <NotificationBell />
+        <UserMenu />
       </div>
     </header>
   );

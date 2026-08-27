@@ -17,7 +17,7 @@ import { workspaceTopic, type BoardTask, type TaskPriority, type TaskStatus } fr
 import { toast } from 'sonner';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { TaskDrawer } from '@/components/board/TaskDrawer';
-import { ContentHeader } from '@/components/layout/AppShell';
+import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
 import { Button, EmptyState, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
@@ -123,6 +123,7 @@ export function BoardPage() {
   const columns = useMemo(() => groupByColumn(filterByAssignee(tasks, who)), [tasks, who]);
 
   return (
+    <AppShell>
     <div className="flex h-full min-h-0 flex-col">
       <ContentHeader
         title="Board"
@@ -292,5 +293,6 @@ export function BoardPage() {
         </form>
       </Modal>
     </div>
+    </AppShell>
   );
 }
