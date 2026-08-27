@@ -86,11 +86,13 @@ for snippet in "$REPO_ROOT"/docker/tls/*.caddy; do
   install -m 0644 -o root -g root "$snippet" "$APP_DIR/docker/tls/$(basename "$snippet")"
 done
 install -m 0755 -o root -g root "$REPO_ROOT/deploy/bin/metaclaude-deploy" "$APP_DIR/bin/metaclaude-deploy"
+install -m 0755 -o root -g root "$REPO_ROOT/deploy/bin/metaclaude-updater" "$APP_DIR/bin/metaclaude-updater"
 
 info "compose.yml        $(sha256sum "$APP_DIR/compose.yml" | cut -c1-16)  root:root 0644"
 info "docker/Caddyfile   $(sha256sum "$APP_DIR/docker/Caddyfile" | cut -c1-16)  root:root 0644"
 info "docker/tls/        $(ls -1 "$APP_DIR/docker/tls" | tr '\n' ' ')"
 info "bin/metaclaude-deploy                   root:root 0755 — deploy cannot write it"
+info "bin/metaclaude-updater                  root:root 0755 — consumes in-app update requests"
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -120,6 +122,55 @@ CONF
 chown root:"$DEPLOY_USER" "$APP_DIR/deploy.conf"
 chmod 0640 "$APP_DIR/deploy.conf"
 info "images restricted to $IMAGE_PREFIX*"
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+step "In-app updates"
+
+# The exchange directory of the in-app update button. The container (uid
+# 10001) writes request.json into it; the updater unit, running as the deploy
+# account, consumes the request and writes status.json back. Group-writable
+# and nothing more — neither side can touch the other's binaries or config.
+install -d -m 0770 -o 10001 -g "$DEPLOY_USER" "$APP_DIR/updates"
+
+if [ -d /run/systemd/system ]; then
+  # Generated rather than shipped so APP_DIR and DEPLOY_USER are the real
+  # ones, the same way deploy.conf is written.
+  cat > /etc/systemd/system/metaclaude-updater.service <<UNIT
+# Written by Metaclaude's deploy/install-app.sh — do not edit; re-run it instead.
+[Unit]
+Description=Metaclaude in-app update consumer
+
+[Service]
+Type=oneshot
+User=$DEPLOY_USER
+Environment=METACLAUDE_APP_DIR=$APP_DIR
+ExecStart=$APP_DIR/bin/metaclaude-updater
+UNIT
+  cat > /etc/systemd/system/metaclaude-updater.path <<UNIT
+# Written by Metaclaude's deploy/install-app.sh — do not edit; re-run it instead.
+[Unit]
+Description=Watch for Metaclaude in-app update requests
+
+[Path]
+PathExists=$APP_DIR/updates/request.json
+Unit=metaclaude-updater.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now metaclaude-updater.path
+  # The marker is what tells the app the button may be offered: the compose
+  # bind mount creates the directory on any host, but only this install
+  # leaves a consumer behind it.
+  : > "$APP_DIR/updates/.updater-installed"
+  chown 10001:"$DEPLOY_USER" "$APP_DIR/updates/.updater-installed"
+  info "updates/ exchange directory ready; metaclaude-updater.path enabled"
+else
+  rm -f "$APP_DIR/updates/.updater-installed"
+  warn "no systemd on this host — the in-app update button stays unavailable"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 

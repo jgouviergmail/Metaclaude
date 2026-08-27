@@ -11,6 +11,27 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-27
+
+### Added
+
+- **Apply the update from the app.** The Updates card grows the button the
+  check always implied: on a server whose installer set up the updater,
+  **Apply vX.Y.Z** runs the real deploy — pull, switch, health gate, and an
+  automatic rollback if the new version does not serve. The app itself is
+  handed no power over the host: it writes a bare version into an exchange
+  directory, and a host-side systemd path unit composes the image from the
+  server's own pinned repository and drives `metaclaude-deploy`, the same
+  executor CI uses. Even a fully compromised app could only pick which
+  published version of the allowed repository runs. The page rides out its
+  own restart and reloads on the new version; a failed attempt stays
+  visible on the card with the updater's reason. Owner-only, audited,
+  confirmed in a dialog, and one request at a time — a second press while a
+  deploy is in flight is refused. `deploy/check.sh` rehearses the updater
+  against a stub deploy and proves a malformed request never reaches
+  Docker; without the host updater the card stays informational and says
+  how to add it.
+
 ## [0.8.3] — 2026-08-27
 
 ### Fixed

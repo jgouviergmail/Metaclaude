@@ -1318,6 +1318,19 @@ export interface UpdateCheck {
   checkedAt: number;
 }
 
+/**
+ * The apply half — what the host updater's handshake directory says. A type
+ * for the same reason as UpdateCheck above.
+ */
+export interface UpdateApplyStatus {
+  /** False when this host never installed the updater unit. */
+  available: boolean;
+  state: 'idle' | 'requested' | 'running' | 'succeeded' | 'failed';
+  version: string | null;
+  message: string | null;
+  at: number | null;
+}
+
 export const ClaudeUsage = z.object({
   /** 'pro', 'max', … — null for API-key or third-party-provider sessions. */
   subscriptionType: z.string().nullable(),

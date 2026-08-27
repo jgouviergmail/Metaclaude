@@ -37,9 +37,17 @@ off. Each check answers with a verdict and its evidence, and nothing is
 changed by running it.
 
 **Updates** compares this version against the latest published release
-(`METACLAUDE_UPDATE_REPO`; set it empty to disable the check). It is
-informational by design: applying an update stays the tag-driven,
-health-gated deploy pipeline, and no button here can trigger one.
+(`METACLAUDE_UPDATE_REPO`; set it empty to disable the check) — and, on a
+server whose installer set up the updater, an **Apply** button runs it.
+Applying never gives the app any power over the host: it writes the bare
+version into an exchange directory, and a host-side systemd unit composes
+the image from the server's own pinned repository and runs the same
+health-gated, auto-rolling-back deploy the CI path uses. The app restarts
+mid-deploy — the page rides out the gap and reloads itself on the new
+version — and a deploy that does not go healthy rolls back by itself, with
+the failure shown on the card. Without the host updater (re-run
+`deploy/install-app.sh` to add it) the card stays informational, exactly
+as before.
 
 ## What protects you (the short version)
 

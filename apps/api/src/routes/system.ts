@@ -7,8 +7,9 @@ import { statfs } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import type { App } from '../http/types.js';
 import { APP_VERSION, ClaudeCredentialInput, type SystemHealth } from '@metaclaude/shared';
+import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { requireOwner } from '../http/guards.js';
+import { HttpError, requestIp, requireOwner } from '../http/guards.js';
 import { queryIntOr, spreadInt, spreadTimestamp } from '../http/query.js';
 
 const execFileAsync = promisify(execFile);
@@ -194,5 +195,27 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
     }
     const query = request.query as { refresh?: string };
     return reply.send(await context.updateChecker.check({ force: query.refresh === 'true' }));
+  });
+
+  app.get('/api/system/update-apply', async (request, reply) => {
+    requireOwner(request);
+    return reply.send(await context.updateApplier.status());
+  });
+
+  app.post('/api/system/update-apply', async (request, reply) => {
+    const actor = requireOwner(request);
+    const parsed = z.object({ version: z.string().min(1).max(64) }).safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'Which version? Pass { version: "vX.Y.Z" }.');
+
+    await context.updateApplier.request(parsed.data.version, actor.username);
+    context.audit.record({
+      actor: actor.username,
+      action: 'system.update_apply',
+      target: parsed.data.version,
+      ipAddress: requestIp(context, request),
+    });
+    // 202: the host updater takes it from here — this container is about to
+    // be replaced mid-flight, which is the success path, not an error.
+    return reply.status(202).send({ ok: true });
   });
 }

@@ -133,6 +133,16 @@ fi
 
 # ── 2. Save the secrets, then remove the application files ────────────────────
 
+# The in-app updater units go with the files they point at — leaving a path
+# unit watching a directory this script is about to delete would fire on
+# nothing forever, or worse, on a future unrelated install.
+if [ -d /run/systemd/system ]; then
+  systemctl disable --now metaclaude-updater.path >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/metaclaude-updater.service /etc/systemd/system/metaclaude-updater.path
+  systemctl daemon-reload
+  info "removed the metaclaude-updater systemd units"
+fi
+
 if [ -f "$APP_DIR/.env" ]; then
   # Outside $APP_DIR, mode 0600, because the master key inside it is the one
   # value that cannot be regenerated. Deleting it with the tree turns a clean

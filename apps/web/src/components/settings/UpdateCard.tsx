@@ -1,0 +1,170 @@
+/**
+ * The Updates card: check, and — where the host installed the updater — apply.
+ *
+ * Applying hands a version to the host's updater unit and nothing more; the
+ * pull, the switch, the health gate and the automatic rollback are the same
+ * deploy path CI uses. The container this page is served from is replaced
+ * mid-flight, so the card expects to lose the server for a while: it keeps
+ * polling through the gap and reloads itself once the new version answers.
+ */
+
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { ArrowUpCircle, TriangleAlert } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ui/Modal';
+import { Badge, Button, Card, CardHeader, Spinner } from '@/components/ui/primitives';
+import { api, ApiError } from '@/lib/api';
+
+export function UpdateCard() {
+  const updateQuery = useQuery({
+    queryKey: ['update-check'],
+    queryFn: () => api.updateCheck(),
+    enabled: false,
+  });
+  const applyStatus = useQuery({
+    queryKey: ['update-apply'],
+    queryFn: () => api.updateApplyStatus(),
+    // While a deploy is in flight the server goes away and comes back; keep
+    // asking through the gap — the last data stands in during errors.
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return state === 'requested' || state === 'running' ? 3000 : false;
+    },
+    retry: false,
+  });
+
+  const [confirming, setConfirming] = useState(false);
+  const apply = useMutation({
+    mutationFn: (version: string) => api.applyUpdate(version),
+    onSuccess: () => void applyStatus.refetch(),
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : 'The update could not be requested.'),
+  });
+
+  const result = updateQuery.data;
+  // The endpoint answers { disabled: true } when the check is switched off;
+  // everything past the banner works on the narrowed shape.
+  const check = result && !('disabled' in result) ? result : null;
+  const status = applyStatus.data;
+  const applying = status?.state === 'requested' || status?.state === 'running';
+
+  // status.json survives across deploys, so "succeeded" alone may be old
+  // news. Only a success this page watched happen triggers the reload.
+  const sawInFlight = useRef(false);
+  useEffect(() => {
+    if (applying) sawInFlight.current = true;
+    if (status?.state === 'succeeded' && sawInFlight.current) {
+      sawInFlight.current = false;
+      toast.success(`Updated to ${status.version ?? 'the new version'} — reloading…`);
+      const timer = setTimeout(() => window.location.reload(), 1500);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [applying, status?.state, status?.version]);
+
+  const canApply =
+    status?.available === true && check?.updateAvailable === true && check.latest !== null && !applying;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Updates"
+        description="Compares this version against the latest published release. Applying runs the same health-gated, auto-rolling-back deploy as CI."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={updateQuery.isFetching}
+              onClick={() => void updateQuery.refetch()}
+            >
+              Check
+            </Button>
+            {canApply ? (
+              <Button variant="primary" size="sm" onClick={() => setConfirming(true)}>
+                <ArrowUpCircle className="size-3.5" aria-hidden />
+                Apply {check?.latest}
+              </Button>
+            ) : null}
+          </div>
+        }
+      />
+      <div className="space-y-2 px-4 pb-4 text-[12.5px]">
+        {!result ? (
+          <p className="text-subtle">Not checked yet.</p>
+        ) : 'disabled' in result ? (
+          <p className="text-muted">The update check is switched off for this deployment.</p>
+        ) : result.error ? (
+          <p className="text-muted">
+            No release visible: <span className="font-mono">{result.error}</span>
+          </p>
+        ) : result.updateAvailable === true ? (
+          <p className="text-ink">
+            <Badge tone="warning" className="mr-2">
+              update
+            </Badge>
+            {result.latest} is published; this server runs {result.current}.{' '}
+            {result.releaseUrl ? (
+              <a
+                className="text-accent underline"
+                href={result.releaseUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Release notes
+              </a>
+            ) : null}
+          </p>
+        ) : result.updateAvailable === false ? (
+          <p className="text-muted">Up to date — {result.current} is the latest release.</p>
+        ) : (
+          <p className="text-muted">
+            The latest tag ({result.latest ?? 'none'}) is not a version, so no comparison is
+            possible.
+          </p>
+        )}
+
+        {applying ? (
+          <p className="flex items-center gap-2 text-ink" role="status">
+            <Spinner className="size-3.5" />
+            Updating to {status?.version ?? '…'} — the app restarts during this; the page
+            reconnects and reloads itself.
+          </p>
+        ) : status?.state === 'failed' ? (
+          <p className="flex items-start gap-2 text-[12px] text-warning">
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <span>
+              The last update{status.version ? ` (${status.version})` : ''} did not go healthy
+              {status.message ? ` — ${status.message}` : '.'}
+            </span>
+          </p>
+        ) : null}
+
+        {check?.updateAvailable === true && status?.available === false ? (
+          <p className="text-[12px] text-muted">
+            Applying from here needs the host updater — re-run <code>deploy/install-app.sh</code>{' '}
+            on the server to add it.
+          </p>
+        ) : null}
+      </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Update to ${check?.latest ?? ''}?`}
+        description={
+          <>
+            The server pulls the new image, restarts, and must pass the health gate — otherwise it
+            rolls back to the current version by itself. Runs in flight are interrupted, and this
+            page will lose the server for a minute before reloading on the new version.
+          </>
+        }
+        confirmLabel="Update now"
+        onConfirm={() => {
+          if (check?.latest) apply.mutate(check.latest);
+        }}
+      />
+    </Card>
+  );
+}

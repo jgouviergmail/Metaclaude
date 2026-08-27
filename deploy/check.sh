@@ -1178,6 +1178,66 @@ else
   ok "ci.yml publishes a verified GitHub release for each version tag"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+section "The in-app update button reaches a consumer that cannot be steered"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The app's apply button writes a version into updates/; the host's updater
+# composes the image from its own pinned prefix. Rehearsed here with a stub
+# deploy that records what it was asked to run — the rehearsal must prove the
+# updater executed, not merely that nothing exploded (the uninstall lesson).
+updater_dir="$(mktemp -d)"
+mkdir -p "$updater_dir/updates" "$updater_dir/bin"
+cat > "$updater_dir/bin/stub-deploy" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/../deploy-calls.log"
+exit 0
+STUB
+chmod +x "$updater_dir/bin/stub-deploy"
+printf 'ALLOWED_IMAGE_PREFIX="ghcr.io/example/metaclaude"\n' > "$updater_dir/deploy.conf"
+
+run_updater() {
+  METACLAUDE_APP_DIR="$updater_dir" \
+  METACLAUDE_DEPLOY_BIN="$updater_dir/bin/stub-deploy" \
+    "$REPO_ROOT/deploy/bin/metaclaude-updater"
+}
+
+printf '{"version":"v1.2.3","requestedBy":"check","at":1}\n' > "$updater_dir/updates/request.json"
+run_updater
+if grep -q '^deploy ghcr.io/example/metaclaude:v1.2.3$' "$updater_dir/deploy-calls.log" 2>/dev/null \
+  && grep -q '"state":"succeeded"' "$updater_dir/updates/status.json" \
+  && [ ! -f "$updater_dir/updates/request.json" ]; then
+  ok "a well-formed request deploys the pinned repository at that version, once"
+else
+  bad "the updater rehearsal did not deploy as expected" \
+      "calls: $(cat "$updater_dir/deploy-calls.log" 2>/dev/null || echo none); status: $(cat "$updater_dir/updates/status.json" 2>/dev/null || echo none)"
+fi
+
+# A request naming an image instead of a version must never reach the deploy:
+# the version field is the only input, and the regex is the parser.
+: > "$updater_dir/deploy-calls.log"
+printf '{"version":"ghcr.io/evil/image:latest"}\n' > "$updater_dir/updates/request.json"
+run_updater
+if [ ! -s "$updater_dir/deploy-calls.log" ] \
+  && grep -q '"state":"failed"' "$updater_dir/updates/status.json"; then
+  ok "a request that is not a bare vX.Y.Z is refused without touching docker"
+else
+  bad "the updater accepted a malformed request" \
+      "calls: $(cat "$updater_dir/deploy-calls.log" 2>/dev/null || echo none)"
+fi
+rm -rf "$updater_dir"
+
+if ! grep -q 'updates:/var/lib/metaclaude-updates' "$REPO_ROOT/compose.yml"; then
+  bad "compose.yml does not mount the updates exchange directory" \
+      "the app cannot hand a request to the host updater without it"
+elif ! grep -q 'METACLAUDE_UPDATES_DIR' "$REPO_ROOT/compose.yml"; then
+  bad "compose.yml does not tell the app where the exchange directory is"
+elif ! grep -q 'metaclaude-updater' "$REPO_ROOT/deploy/install-app.sh"; then
+  bad "install-app.sh never installs the updater" "the button would write requests nobody consumes"
+else
+  ok "compose mounts the exchange directory and install-app.sh installs its consumer"
+fi
+
 # The release notes come from the changelog by the same extraction the job
 # runs; prove it finds the current version's section on the real file.
 release_notes="$(awk -v v="$app_version" '

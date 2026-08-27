@@ -42,6 +42,7 @@ import {
   type ClaudeUsage,
   type DoctorReport,
   type Marketplace,
+  type UpdateApplyStatus,
   type UpdateCheck,
   type MarketplaceCatalogue,
   type MarketplaceInput,
@@ -386,6 +387,11 @@ export const api = {
   brief: () => request<Brief>('/api/brief'),
 
   /** Is a newer release published? Informational only — deploys stay tag-driven. */
+  updateApplyStatus: () => request<UpdateApplyStatus>('/api/system/update-apply'),
+
+  applyUpdate: (version: string) =>
+    request<{ ok: boolean }>('/api/system/update-apply', { method: 'POST', body: { version } }),
+
   updateCheck: (refresh = false) =>
     request<UpdateCheck | { disabled: true }>(`/api/system/update-check${qs({ refresh })}`),
 

@@ -45,6 +45,7 @@ services:
       METACLAUDE_EMBEDDING_MODEL: ${METACLAUDE_EMBEDDING_MODEL:-Xenova/all-MiniLM-L6-v2}
       METACLAUDE_ALLOW_BYPASS_PERMISSIONS: ${METACLAUDE_ALLOW_BYPASS_PERMISSIONS:-}
       METACLAUDE_UPDATE_REPO: ${METACLAUDE_UPDATE_REPO:-jgouviergmail/Metaclaude}
+      METACLAUDE_UPDATES_DIR: /var/lib/metaclaude-updates
 
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -66,6 +67,13 @@ services:
       # Metaclaude resumes those sessions by id. On tmpfs they would vanish on
       # every restart and every existing conversation would start cold.
       - metaclaude-home:/home/metaclaude
+      # The in-app update handshake: the app writes request.json here, the
+      # host's metaclaude-updater unit consumes it and writes status.json
+      # back. A bind mount on purpose — a named volume would be invisible to
+      # the host unit. On a machine that never ran install-app.sh the
+      # directory appears empty and the app reports the feature absent (the
+      # installer's .updater-installed marker is the signal).
+      - ./updates:/var/lib/metaclaude-updates
 
     networks:
       # `internal` reaches the proxy. `public` is what lets this container reach

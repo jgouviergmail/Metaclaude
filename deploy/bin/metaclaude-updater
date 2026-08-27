@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#
+# The host half of the in-app update button.
+#
+# The app writes updates/request.json — a bare version, nothing else — and a
+# systemd path unit runs this to consume it. The image is composed HERE, from
+# the host's own pinned ALLOWED_IMAGE_PREFIX, never taken from the request:
+# even a fully compromised app can only pick which published version of the
+# allowed repository runs. The deploy itself is bin/metaclaude-deploy — the
+# same pull → switch → health gate → automatic rollback the CI path uses.
+#
+# One request is one attempt: the file is consumed before deploying, so a
+# request that fails does not retry forever, and the outcome lands in
+# updates/status.json where the app reads it back after its own restart.
+# Every exit is 0 on purpose — a bad request is an outcome to report, not a
+# failed unit for systemd to alarm on.
+
+set -Eeuo pipefail
+
+APP_DIR="${METACLAUDE_APP_DIR:-/opt/metaclaude}"
+UPDATES="$APP_DIR/updates"
+DEPLOY_BIN="${METACLAUDE_DEPLOY_BIN:-$APP_DIR/bin/metaclaude-deploy}"
+REQUEST="$UPDATES/request.json"
+LOG="$UPDATES/updater.log"
+
+[ -d "$UPDATES" ] || exit 0
+
+# One updater at a time. Not blocking: the path unit fires again while the
+# request file exists, so a run skipped here is not a run lost.
+exec 9>"$UPDATES/.updater.lock"
+flock -n 9 || exit 0
+
+[ -f "$REQUEST" ] || exit 0
+
+# shellcheck source=/dev/null
+[ -f "$APP_DIR/deploy.conf" ] && . "$APP_DIR/deploy.conf"
+
+# All three values are safe to interpolate by construction: state and message
+# are literals from this script, version matched ^v[0-9.]+$ below.
+status() {
+  printf '{"state":"%s","version":"%s","message":"%s","at":%s000}\n' \
+    "$1" "$2" "$3" "$(date +%s)" > "$UPDATES/.status.json.tmp"
+  mv "$UPDATES/.status.json.tmp" "$UPDATES/status.json"
+}
+
+raw="$(cat "$REQUEST")"
+rm -f "$REQUEST"
+
+# The regex IS the parser: anything that is not exactly a version field with a
+# vX.Y.Z value is refused whole. No jq dependency, no eval, no surprises.
+# `|| true` because a non-matching grep exits 1, and under `set -e -o pipefail`
+# that would kill the script here — after the request was consumed, before any
+# status was written, which reads as an updater that silently ate a request.
+version="$(printf '%s' "$raw" \
+  | grep -oE '"version"[[:space:]]*:[[:space:]]*"v[0-9]+\.[0-9]+\.[0-9]+"' \
+  | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+
+if [ -z "$version" ]; then
+  status failed "" "the request did not carry a well-formed version"
+  exit 0
+fi
+if [ -z "${ALLOWED_IMAGE_PREFIX:-}" ]; then
+  status failed "$version" "no ALLOWED_IMAGE_PREFIX on this host - re-run deploy/install-app.sh"
+  exit 0
+fi
+
+status running "$version" "pulling and switching - the app restarts during this"
+if "$DEPLOY_BIN" deploy "$ALLOWED_IMAGE_PREFIX:$version" >>"$LOG" 2>&1; then
+  status succeeded "$version" "deployed and healthy"
+else
+  status failed "$version" "the deploy did not go healthy - an automatic rollback was attempted; see updates/updater.log"
+fi
+exit 0

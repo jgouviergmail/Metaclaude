@@ -42,6 +42,7 @@ import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { UpdateChecker } from './services/update-check.js';
+import { UpdateApplier } from './services/update-apply.js';
 import { BriefService } from './services/brief.js';
 import { SkillSynthesizer, SYNTHESIS_SCHEMA, SYNTHESIS_SYSTEM_PROMPT, type SynthesisOutput } from './learning/synthesis.js';
 import { structuredCall } from './learning/structured-call.js';
@@ -73,6 +74,8 @@ export interface AppContext {
   synthesizer: SkillSynthesizer;
   /** Null when METACLAUDE_UPDATE_REPO is set empty. */
   updateChecker: UpdateChecker | null;
+  /** Unavailable (dir null) unless the host installed the updater. */
+  updateApplier: UpdateApplier;
 
   workspaceRepo: WorkspaceRepo;
   sessionRepo: SessionRepo;
@@ -469,6 +472,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     brief,
     synthesizer,
     updateChecker,
+    updateApplier: new UpdateApplier({ dir: config.updatesDir }),
     workspaceRepo,
     sessionRepo,
     runRepo,

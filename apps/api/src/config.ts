@@ -69,6 +69,7 @@ const EnvSchema = z.object({
   // Where the update check looks for published releases. The public
   // repository by default; empty disables the check.
   METACLAUDE_UPDATE_REPO: z.string().default('jgouviergmail/Metaclaude'),
+  METACLAUDE_UPDATES_DIR: z.string().optional(),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
@@ -105,6 +106,8 @@ export interface Config {
   pluginsDir: string;
   /** GitHub owner/repo the update check asks; null when disabled. */
   updateRepo: string | null;
+  /** Exchange directory for the host updater; null = no in-app apply. */
+  updatesDir: string | null;
 }
 
 /**
@@ -250,6 +253,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     },
     logLevel: env.LOG_LEVEL,
     updateRepo: env.METACLAUDE_UPDATE_REPO.trim() === '' ? null : env.METACLAUDE_UPDATE_REPO.trim(),
+    updatesDir: env.METACLAUDE_UPDATES_DIR?.trim() ? env.METACLAUDE_UPDATES_DIR.trim() : null,
     databasePath: resolve(dataDir, 'metaclaude.db'),
     artifactsDir,
     uploadsDir,
