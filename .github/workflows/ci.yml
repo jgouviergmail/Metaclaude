@@ -198,6 +198,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The `type=semver` entries below only ever fire on a *tag* event — and
+      # the version tag is pushed by release-tag with GITHUB_TOKEN, whose
+      # pushes deliberately trigger no workflows. So the version-tagged image
+      # nobody was building is derived here instead, from the checkout's own
+      # APP_VERSION: every green main push publishes ghcr…:v<version>, which
+      # is exactly the reference the in-app Apply button composes.
+      - name: Read the app version
+        id: appver
+        run: |
+          version="$(grep -oE "APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'" packages/shared/src/constants.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+          [ -n "$version" ] || { echo "::error::could not read APP_VERSION"; exit 1; }
+          echo "version=v$version" >> "$GITHUB_OUTPUT"
+
       - name: Derive tags
         id: meta
         uses: docker/metadata-action@v5
@@ -210,6 +223,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=long
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.appver.outputs.version }},enable={{is_default_branch}}
 
       - name: Build and push
         id: build

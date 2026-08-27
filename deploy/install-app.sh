@@ -131,7 +131,12 @@ step "In-app updates"
 # 10001) writes request.json into it; the updater unit, running as the deploy
 # account, consumes the request and writes status.json back. Group-writable
 # and nothing more — neither side can touch the other's binaries or config.
-install -d -m 0770 -o 10001 -g "$DEPLOY_USER" "$APP_DIR/updates"
+#
+# chown, not `install -o`: uid 10001 exists only inside the image, and
+# install refuses an owner /etc/passwd cannot name — which aborted this whole
+# script on a real host. chown takes the raw id.
+install -d -m 0770 "$APP_DIR/updates"
+chown 10001:"$DEPLOY_USER" "$APP_DIR/updates"
 
 if [ -d /run/systemd/system ]; then
   # Generated rather than shipped so APP_DIR and DEPLOY_USER are the real

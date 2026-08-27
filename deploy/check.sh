@@ -1227,6 +1227,26 @@ else
 fi
 rm -rf "$updater_dir"
 
+# The Apply button composes ghcr…:v<version> — an image tag only the CI
+# container job publishes (release-tag's GITHUB_TOKEN pushes trigger no
+# workflows, so nothing else ever will). Found on a real host as "not found".
+if grep -q 'steps.appver.outputs.version' "$REPO_ROOT/.github/workflows/ci.yml" \
+  && grep -q 'Read the app version' "$REPO_ROOT/.github/workflows/ci.yml"; then
+  ok "CI tags the container image with the app version on main pushes"
+else
+  bad "ci.yml never tags the image with v<version>" \
+      "the in-app Apply button would compose an image reference nobody pushes"
+fi
+
+# `install -o 10001` aborts on any host whose passwd cannot name the
+# container uid — which is every host. The numeric chown is the one that works.
+if grep -qE 'install .*-o 10001' "$REPO_ROOT/deploy/install-app.sh"; then
+  bad "install-app.sh sets ownership via install -o with a raw uid" \
+      "install refuses a uid /etc/passwd cannot name; use chown"
+else
+  ok "install-app.sh assigns the container uid with chown, not install -o"
+fi
+
 if ! grep -q 'updates:/var/lib/metaclaude-updates' "$REPO_ROOT/compose.yml"; then
   bad "compose.yml does not mount the updates exchange directory" \
       "the app cannot hand a request to the host updater without it"

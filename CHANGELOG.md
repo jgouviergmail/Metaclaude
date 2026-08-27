@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-08-27
+
+### Fixed
+
+- **The version-tagged image was never published — found by a real deploy.**
+  `deploy ghcr.io/…:v0.10.0` answered "not found": the CI entries that tag
+  images by semver only fire on a *tag* event, and the version tag is pushed
+  with `GITHUB_TOKEN`, whose pushes deliberately trigger no workflows — so
+  only `latest` and `sha-…` ever existed. The container job now reads
+  `APP_VERSION` out of the checkout and tags `v<version>` on every green
+  main push — the exact reference the in-app Apply button composes, which
+  would otherwise never have worked. `check.sh` asserts the wiring.
+- **install-app.sh died on a real host at `install -o 10001`.** The
+  container uid exists only inside the image, and `install` refuses an
+  owner `/etc/passwd` cannot name — aborting the script before the updater
+  units were installed. The ownership is now a numeric `chown`, which takes
+  the raw id; asserted by `check.sh` so the shape cannot return.
+
 ## [0.10.0] — 2026-08-27
 
 ### Added
