@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+#
+# Back up — and put back — everything this server cannot regenerate.
+#
+#   metaclaude-backup backup             stop the app, archive the volumes, restart, prune
+#   metaclaude-backup restore <archive> --yes
+#   metaclaude-backup list               what exists, and what the app believes
+#   metaclaude-backup prune              apply the retention policy now
+#
+# Installed by deploy/install-app.sh together with a nightly systemd timer;
+# run it by hand before anything risky. Everything is overridable from
+# $APP_DIR/deploy.conf: METACLAUDE_BACKUP_DIR, METACLAUDE_BACKUP_KEEP.
+#
+# ── What goes in the archive, and what stays out ──────────────────────────────
+#
+# The four named volumes: the database and sealed vault (metaclaude-data), the
+# agent's files (metaclaude-workspaces), the CLI's own transcripts without
+# which no old session can be resumed (metaclaude-home), and Caddy's CA
+# (caddy-data) — losing that one means every browser that ever recorded HSTS
+# gets a non-bypassable interstitial from the replacement.
+#
+# `.env` is deliberately NOT included. It holds METACLAUDE_MASTER_KEY, and a
+# key that travels with the ciphertext it opens is a formality, not a key —
+# docs/DEPLOYMENT.md says so. Keep .env (or at least the master key) somewhere
+# that is not this disk and not these archives; uninstall.sh saves a copy to
+# /root for the same reason.
+#
+# ── Why the shape is what it is ───────────────────────────────────────────────
+#
+# The app is stopped around the copy because SQLite under WAL is three files
+# in flight; a hot copy is a lottery ticket, and the whole point of a backup
+# is to stop gambling. The proxy stays up (its volume is certificates, static
+# between renewals), so the outage is the seconds tar needs for the data.
+#
+# Archives land OUTSIDE $APP_DIR — uninstall.sh deletes that tree, and an
+# uninstall that keeps the volumes but silently shreds every backup would be
+# a trap. The lock is shared with metaclaude-deploy: a backup taken while a
+# deploy is mid-switch would archive a half-written stack.
+#
+# After every completed archive, backup-marker.json is written into the data
+# volume, where the app's doctor reads it: a timer that quietly stops firing
+# becomes a visible warning in the UI within a day.
+
+set -Eeuo pipefail
+
+APP_DIR="${METACLAUDE_APP_DIR:-/opt/metaclaude}"
+RELEASES="$APP_DIR/releases"
+LOCK="$RELEASES/.lock"
+IMAGE_ENV="$RELEASES/.env.image"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-metaclaude}"
+VOLUMES=(metaclaude-data metaclaude-workspaces metaclaude-home caddy-data)
+
+# shellcheck source=/dev/null
+[ -f "$APP_DIR/deploy.conf" ] && . "$APP_DIR/deploy.conf"
+
+BACKUP_DIR="${METACLAUDE_BACKUP_DIR:-/var/backups/metaclaude}"
+KEEP="${METACLAUDE_BACKUP_KEEP:-14}"
+
+log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+die() { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'USAGE'
+Usage: metaclaude-backup backup
+       metaclaude-backup restore <archive> --yes
+       metaclaude-backup list
+       metaclaude-backup prune
+USAGE
+}
+
+cd "$APP_DIR" 2>/dev/null || die "no $APP_DIR on this host"
+[ -d "$RELEASES" ] || die \
+  "$RELEASES is missing — this host is not fully set up; re-run deploy/install-app.sh"
+[ -f "$IMAGE_ENV" ] || : > "$IMAGE_ENV"
+
+ACTION="${1:-}"
+case "$ACTION" in
+  backup|restore|list|prune) ;;
+  -h|--help|'') usage; exit 0 ;;
+  *) usage >&2; die "unknown command: $ACTION" ;;
+esac
+
+compose() {
+  docker compose --project-directory "$APP_DIR" \
+    --env-file "$APP_DIR/.env" \
+    --env-file "$IMAGE_ENV" "$@"
+}
+
+# Where the bytes of a named volume actually live. Asked of docker rather than
+# assembled from /var/lib/docker/volumes by hand, so a relocated docker root
+# does not silently make every backup empty.
+mountpoint_of() {
+  local mnt
+  mnt="$(docker volume inspect --format '{{ .Mountpoint }}' "${COMPOSE_PROJECT}_$1" 2>/dev/null)" \
+    || return 1
+  [ -d "$mnt" ] || return 1
+  printf '%s' "$mnt"
+}
+
+marker_path() {
+  local data_mnt
+  data_mnt="$(mountpoint_of metaclaude-data)" || return 1
+  printf '%s/backup-marker.json' "$data_mnt"
+}
+
+prune_archives() {
+  # Newest $KEEP survive. `ls -t` because the timestamp is in the name only
+  # for humans; mtime is what a restored or copied archive actually carries.
+  local n=0 f
+  while IFS= read -r f; do
+    n=$((n + 1))
+    if [ "$n" -gt "$KEEP" ]; then
+      rm -f -- "$f"
+      log "pruned $(basename "$f")"
+    fi
+  done < <(ls -1t "$BACKUP_DIR"/metaclaude-backup-*.tar.gz 2>/dev/null)
+  # A crashed run's leftovers, once they are old enough to be certainly dead.
+  find "$BACKUP_DIR" -maxdepth 1 \( -name '*.partial' -o -name '.stage.*' \) \
+    -mmin +1440 -exec rm -rf {} + 2>/dev/null || true
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# list — read-only, no lock
+# ─────────────────────────────────────────────────────────────────────────────
+
+if [ "$ACTION" = "list" ]; then
+  if ls "$BACKUP_DIR"/metaclaude-backup-*.tar.gz >/dev/null 2>&1; then
+    ls -lht "$BACKUP_DIR"/metaclaude-backup-*.tar.gz | awk '{print $5, $NF}'
+  else
+    echo "no archives in $BACKUP_DIR"
+  fi
+  if mp="$(marker_path)" && [ -f "$mp" ]; then
+    printf 'marker: %s\n' "$(cat "$mp")"
+  else
+    echo "marker: none — no backup has completed on this host"
+  fi
+  exit 0
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Everything below mutates: one at a time, and never during a deploy
+# ─────────────────────────────────────────────────────────────────────────────
+
+exec 9>"$LOCK"
+flock -w 600 9 || die "a deployment or another backup is in progress and did not finish within 10 minutes"
+
+if [ "$ACTION" = "prune" ]; then
+  prune_archives
+  log "kept the newest $KEEP archives in $BACKUP_DIR"
+  exit 0
+fi
+
+# Resolve every volume before touching anything: a backup that silently
+# archives three volumes out of four looks complete right up until the restore
+# that needed the fourth.
+declare -A MOUNT
+for vol in "${VOLUMES[@]}"; do
+  MOUNT[$vol]="$(mountpoint_of "$vol")" \
+    || die "volume ${COMPOSE_PROJECT}_$vol does not exist — is the stack installed? (docker compose up creates it)"
+done
+
+APP_STOPPED=0
+STAGE=""
+cleanup() {
+  [ -n "$STAGE" ] && rm -rf "$STAGE"
+  if [ "$APP_STOPPED" = 1 ]; then
+    log "starting the app again"
+    if [ "$ACTION" = "restore" ]; then compose start || true; else compose start app || true; fi
+    APP_STOPPED=0
+  fi
+}
+trap cleanup EXIT
+
+# ─────────────────────────────────────────────────────────────────────────────
+# backup
+# ─────────────────────────────────────────────────────────────────────────────
+
+if [ "$ACTION" = "backup" ]; then
+  install -d -m 0700 "$BACKUP_DIR"
+  STAMP="$(date -u +%Y%m%d-%H%M%SZ)"
+  ARCHIVE="$BACKUP_DIR/metaclaude-backup-$STAMP.tar.gz"
+  # Second-resolution names collide only when two backups start inside one
+  # second; refusing beats silently replacing an archive that already exists.
+  [ ! -e "$ARCHIVE" ] || die "$ARCHIVE already exists — wait a second and rerun"
+
+  # The archive is assembled through a directory of symlinks so one tar
+  # invocation (-h follows them) produces one file whose top-level entries are
+  # the volume names — restore then addresses volumes by name, whatever paths
+  # docker used on either host.
+  STAGE="$(mktemp -d "$BACKUP_DIR/.stage.XXXXXX")"
+  for vol in "${VOLUMES[@]}"; do
+    ln -s "${MOUNT[$vol]}" "$STAGE/$vol"
+  done
+  vols_json="$(printf '"%s",' "${VOLUMES[@]}")"
+  printf '{"format":1,"at":"%s","volumes":[%s]}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${vols_json%,}" > "$STAGE/manifest.json"
+
+  log "stopping the app for a consistent copy"
+  # The flag flips before the stop: if the stop itself dies halfway, the trap
+  # still runs `start`, and starting an already-running service is a no-op.
+  APP_STOPPED=1
+  compose stop app
+
+  # rc 1 is "a file changed while we read it" — expected of caddy-data, whose
+  # proxy deliberately stays up. rc 2 is a real failure.
+  set +e
+  tar -czf "$ARCHIVE.partial" --numeric-owner --warning=no-file-changed -h -C "$STAGE" .
+  rc=$?
+  set -e
+  [ "$rc" -le 1 ] || { rm -f "$ARCHIVE.partial"; die "tar failed (exit $rc) — no archive was recorded"; }
+
+  chmod 0600 "$ARCHIVE.partial"
+  mv "$ARCHIVE.partial" "$ARCHIVE"
+
+  cleanup   # restart the app now; the marker and the pruning can happen while it serves
+  trap - EXIT
+
+  # The marker attests a COMPLETED archive — written after the mv, so a backup
+  # that died mid-tar never advances the doctor's clock. Atomic for the same
+  # reason: the app may be reading it.
+  SIZE="$(stat -c %s "$ARCHIVE")"
+  MARKER="${MOUNT[metaclaude-data]}/backup-marker.json"
+  printf '{"at":%s,"archive":"%s","sizeBytes":%s}\n' \
+    "$(( $(date -u +%s) * 1000 ))" "$(basename "$ARCHIVE")" "$SIZE" > "$MARKER.tmp"
+  chmod 0644 "$MARKER.tmp"
+  mv "$MARKER.tmp" "$MARKER"
+
+  prune_archives
+  log "backed up $(basename "$ARCHIVE") ($SIZE bytes); copy it off this machine — and keep the master key elsewhere"
+  exit 0
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# restore
+# ─────────────────────────────────────────────────────────────────────────────
+
+ARCHIVE="${2:-}"
+CONFIRM="${3:-}"
+[ -n "$ARCHIVE" ] || die "restore needs an archive path (see: metaclaude-backup list)"
+[ -f "$ARCHIVE" ] || die "no such archive: $ARCHIVE"
+if [ "$CONFIRM" != "--yes" ]; then
+  die "restore REPLACES the current database, workspaces, CLI sessions and CA with the archive's. Nothing was touched. Rerun with --yes to proceed"
+fi
+
+tar -tzf "$ARCHIVE" ./manifest.json >/dev/null 2>&1 \
+  || die "$ARCHIVE does not look like a metaclaude backup (no manifest.json)"
+
+# Restore the volumes the archive has; refuse one that has none of ours.
+RESTORING=()
+for vol in "${VOLUMES[@]}"; do
+  if tar -tzf "$ARCHIVE" "./$vol" >/dev/null 2>&1; then RESTORING+=("$vol"); fi
+done
+[ "${#RESTORING[@]}" -gt 0 ] || die "$ARCHIVE contains none of the expected volumes"
+
+log "stopping the stack"
+APP_STOPPED=1
+compose stop
+
+for vol in "${RESTORING[@]}"; do
+  mnt="${MOUNT[$vol]}"
+  log "restoring $vol"
+  find "$mnt" -mindepth 1 -delete
+  tar -xzf "$ARCHIVE" --numeric-owner -C "$mnt" --strip-components=2 "./$vol"
+done
+
+cleanup   # brings the whole stack back
+trap - EXIT
+
+log "restored ${RESTORING[*]} from $(basename "$ARCHIVE")"
+log "now verify the vault opened: docker compose logs app | grep -i 'could not decrypt' (no output is good)"

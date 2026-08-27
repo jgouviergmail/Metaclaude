@@ -8,10 +8,22 @@ the repository's deployment guide; this page is the view from the interface.
 
 Before hunting a specific symptom, **Settings → System → Doctor → Run checks**
 (owner only). It runs every self-check the system knows — database integrity,
-the audit chain, the secrets vault, disk space on both volumes, the Claude CLI
-and its credential, and any automation the failure guard switched off — and
-answers with a verdict per check plus the evidence. It reads and reports;
-nothing is changed.
+the audit chain, the secrets vault, disk space on both volumes, the age of
+the last completed backup, the Claude CLI and its credential, and any
+automation the failure guard switched off — and answers with a verdict per
+check plus the evidence. It reads and reports; nothing is changed.
+
+## "The doctor warns about backups"
+
+The server backs itself up nightly: a host-side timer stops the app for a
+few seconds, archives the database, workspaces, CLI sessions and the TLS
+authority, restarts, and leaves a marker the doctor reads. The warning means
+that marker is missing or more than a day old — backups have stopped, or
+were never set up. On a server installed before this existed, re-running
+`deploy/install-app.sh` from the repository adds the timer; the operator
+detail (where archives land, retention, restoring one) is in the
+repository's `docs/DEPLOYMENT.md`. The one thing no nightly job can do for
+you: keep a copy of the master key somewhere that is not this server.
 
 ## "A run is stuck on Working"
 

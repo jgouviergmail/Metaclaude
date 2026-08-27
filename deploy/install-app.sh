@@ -87,12 +87,14 @@ for snippet in "$REPO_ROOT"/docker/tls/*.caddy; do
 done
 install -m 0755 -o root -g root "$REPO_ROOT/deploy/bin/metaclaude-deploy" "$APP_DIR/bin/metaclaude-deploy"
 install -m 0755 -o root -g root "$REPO_ROOT/deploy/bin/metaclaude-updater" "$APP_DIR/bin/metaclaude-updater"
+install -m 0755 -o root -g root "$REPO_ROOT/deploy/bin/metaclaude-backup" "$APP_DIR/bin/metaclaude-backup"
 
 info "compose.yml        $(sha256sum "$APP_DIR/compose.yml" | cut -c1-16)  root:root 0644"
 info "docker/Caddyfile   $(sha256sum "$APP_DIR/docker/Caddyfile" | cut -c1-16)  root:root 0644"
 info "docker/tls/        $(ls -1 "$APP_DIR/docker/tls" | tr '\n' ' ')"
 info "bin/metaclaude-deploy                   root:root 0755 — deploy cannot write it"
 info "bin/metaclaude-updater                  root:root 0755 — consumes in-app update requests"
+info "bin/metaclaude-backup                   root:root 0755 — nightly volume backups"
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -118,6 +120,11 @@ ALLOWED_IMAGE_PREFIX="$IMAGE_PREFIX"
 
 # How long a new container may take to report healthy before it is rolled back.
 HEALTH_TIMEOUT_SECONDS=180
+
+# Read by bin/metaclaude-backup. Archives deliberately live outside the app
+# directory (uninstall.sh deletes that tree, and backups must survive it).
+# METACLAUDE_BACKUP_DIR=/var/backups/metaclaude
+# METACLAUDE_BACKUP_KEEP=14
 CONF
 chown root:"$DEPLOY_USER" "$APP_DIR/deploy.conf"
 chmod 0640 "$APP_DIR/deploy.conf"
@@ -175,6 +182,49 @@ UNIT
 else
   rm -f "$APP_DIR/updates/.updater-installed"
   warn "no systemd on this host — the in-app update button stays unavailable"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+step "Backups"
+
+# A nightly stop-copy-start of the four named volumes, into /var/backups by
+# default — outside $APP_DIR on purpose, because uninstall.sh deletes that
+# tree and an uninstall that keeps the volumes but shreds every backup would
+# be a trap. Root, not $DEPLOY_USER: the copy reads the volumes' bytes under
+# /var/lib/docker, which no group membership grants.
+if [ -d /run/systemd/system ]; then
+  cat > /etc/systemd/system/metaclaude-backup.service <<UNIT
+# Written by Metaclaude's deploy/install-app.sh — do not edit; re-run it instead.
+[Unit]
+Description=Metaclaude volume backup
+
+[Service]
+Type=oneshot
+Environment=METACLAUDE_APP_DIR=$APP_DIR
+ExecStart=$APP_DIR/bin/metaclaude-backup backup
+UNIT
+  cat > /etc/systemd/system/metaclaude-backup.timer <<UNIT
+# Written by Metaclaude's deploy/install-app.sh — do not edit; re-run it instead.
+[Unit]
+Description=Nightly Metaclaude backup
+
+[Timer]
+OnCalendar=daily
+# The spread keeps a fleet from stopping in the same second; the doctor's
+# staleness threshold (26h) assumes daily + at most this hour of delay.
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now metaclaude-backup.timer
+  info "metaclaude-backup.timer enabled — nightly, archives in /var/backups/metaclaude"
+  info "run one now:   sudo $APP_DIR/bin/metaclaude-backup backup"
+else
+  warn "no systemd on this host — schedule '$APP_DIR/bin/metaclaude-backup backup' yourself (cron)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -35,6 +35,10 @@ system around it:
 - **Push notifications, self-hosted.** The phone buzzes when a run waits on
   your approval or when a run you started ends — end-to-end encrypted, keys
   generated on your server, and the app icon badges while decisions wait.
+- **Backups that take themselves.** A nightly host-side timer stops the app
+  for seconds, archives every volume, and leaves a marker the in-app doctor
+  watches — so backups that quietly stop become a visible warning, and
+  `metaclaude-backup restore` puts everything back.
 
 It runs on **your Claude Pro or Max subscription**. The Agent SDK spawns the real
 `claude` binary, so everything your plan includes — models, skills, plugins,

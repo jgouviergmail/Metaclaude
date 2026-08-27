@@ -8,7 +8,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { statfs } from 'node:fs/promises';
+import { readFile, statfs } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -497,6 +497,17 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     credentialMode: () => claudeCredentials.status().mode,
     activeRuns: () => kernel.activeCount,
     queuedRuns: () => kernel.queuedCount,
+    // Written by deploy/bin/metaclaude-backup on the host, into the volume
+    // this process sees as its data directory. Absent is a real state — a
+    // deployment whose nightly timer has not run yet — and the doctor judges
+    // it; only "the file is not there" becomes null here.
+    readBackupMarker: async () => {
+      try {
+        return await readFile(join(config.dataDir, 'backup-marker.json'), 'utf8');
+      } catch {
+        return null;
+      }
+    },
   });
 
   const analytics = new AnalyticsService(db);

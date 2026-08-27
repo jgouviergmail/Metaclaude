@@ -461,18 +461,29 @@ next `ufw reload` and on every `systemctl restart docker`.
 
 ## Backups
 
-Four volumes and one file, in order of how much it hurts to lose them:
+`install-app.sh` leaves a nightly systemd timer behind
+(`metaclaude-backup.timer`) that runs the tool it installed:
 
 ```bash
-docker run --rm -v metaclaude_metaclaude-data:/d -v "$PWD:/out" \
-  alpine tar czf /out/metaclaude-data.tgz -C /d .
-docker run --rm -v metaclaude_metaclaude-workspaces:/d -v "$PWD:/out" \
-  alpine tar czf /out/metaclaude-workspaces.tgz -C /d .
-docker run --rm -v metaclaude_metaclaude-home:/d -v "$PWD:/out" \
-  alpine tar czf /out/metaclaude-home.tgz -C /d .
-docker run --rm -v metaclaude_caddy-data:/d -v "$PWD:/out" \
-  alpine tar czf /out/caddy-data.tgz -C /d .
+sudo /opt/metaclaude/bin/metaclaude-backup backup    # take one now
+sudo /opt/metaclaude/bin/metaclaude-backup list      # what exists, and what the app believes
+sudo /opt/metaclaude/bin/metaclaude-backup prune     # apply retention now
 ```
+
+Each run stops the app (seconds — the proxy stays up), archives the four
+named volumes into one timestamped `tar.gz` under `/var/backups/metaclaude`,
+restarts, writes a marker into the data volume, and keeps the newest 14
+archives. The marker is what **Settings → System → Doctor** reads: a timer
+that quietly stops firing becomes a visible warning in the app within a day.
+Destination and retention are `METACLAUDE_BACKUP_DIR` and
+`METACLAUDE_BACKUP_KEEP` in `/opt/metaclaude/deploy.conf`. Archives live
+outside `/opt/metaclaude` on purpose — `uninstall.sh` deletes that tree, and
+backups must survive it.
+
+The four volumes, in order of how much it hurts to lose them: the database
+and sealed vault (`metaclaude-data`), the agent's files
+(`metaclaude-workspaces`), the CLI's transcripts (`metaclaude-home`), and
+Caddy's CA (`caddy-data`).
 
 `metaclaude-home` is the one that looks skippable and is not. It holds the
 Claude CLI's own session transcripts, and a session row without them cannot be
@@ -481,11 +492,32 @@ no fallback for an id the CLI no longer knows. Nothing the *operator* wrote is
 lost — the database holds every session, run and transcript event, and the
 workspaces volume holds the files — but every pre-restore conversation stops
 being continuable, and it fails at the next run rather than at restore time.
+And losing `caddy-data` under `internal` TLS costs the CA every browser has
+recorded HSTS against — see the table above.
 
-Plus `METACLAUDE_MASTER_KEY`, which must **not** live in the same place as the
-data — that is what makes it a key rather than a formality.
+Two things the archive deliberately does **not** contain, because a backup
+of them next to the data would defeat them:
 
-Restore by stopping the stack, untarring into the volumes, and starting again.
+- `METACLAUDE_MASTER_KEY` (and `.env` generally). A key that travels with
+  the ciphertext it opens is a formality, not a key. Keep the key in your
+  password manager; `uninstall.sh` also saves `.env` to `/root` on its way
+  out for the same reason.
+- The machine itself. Copy archives **off the server** —
+  `rsync -a /var/backups/metaclaude/ elsewhere:` — or a dead disk takes the
+  backups with the data they back up.
+
+### Restoring
+
+```bash
+sudo /opt/metaclaude/bin/metaclaude-backup restore \
+  /var/backups/metaclaude/metaclaude-backup-<stamp>.tar.gz --yes
+```
+
+It refuses without `--yes`, stops the whole stack, replaces the volumes'
+contents with the archive's, and starts everything again. On a fresh host,
+run `install-app.sh`, restore `.env` (the saved copy, or rewrite it with the
+*original* master key), start the stack once so the volumes exist, then
+restore.
 
 Then verify the vault actually came back, with the check the code performs:
 

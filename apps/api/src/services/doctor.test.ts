@@ -19,6 +19,8 @@ let vault: Vault;
 
 const GB = 1024 ** 3;
 
+const NOW = 100 * 3_600_000; // an arbitrary "now", far enough from zero for ages to subtract
+
 function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
   return new Doctor({
     db,
@@ -31,7 +33,9 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     credentialMode: () => 'oauth',
     activeRuns: () => 1,
     queuedRuns: () => 0,
-    now: () => 1_000,
+    readBackupMarker: async () =>
+      JSON.stringify({ at: NOW - 3_600_000, archive: 'metaclaude-backup-x.tar.gz' }),
+    now: () => NOW,
     ...overrides,
   });
 }
@@ -59,6 +63,7 @@ describe('a healthy system', () => {
       'vault',
       'disk:data',
       'disk:workspaces',
+      'backup',
       'claude-cli',
       'runs',
       'automations',
@@ -108,6 +113,48 @@ describe('escalations', () => {
 
     const unauth = await makeDoctor({ credentialMode: () => 'none' }).run();
     expect(unauth.checks.find((entry) => entry.name === 'claude-cli')?.status).toBe('warn');
+  });
+
+  it('warns when no backup has ever been recorded', async () => {
+    const report = await makeDoctor({ readBackupMarker: async () => null }).run();
+    const check = report.checks.find((entry) => entry.name === 'backup');
+
+    expect(check?.status).toBe('warn');
+    expect(check?.summary).toMatch(/no backup/i);
+    expect(report.status).toBe('warn');
+  });
+
+  it('warns when the last backup is older than the timer could explain', async () => {
+    // The daily timer plus its randomised delay can stretch the gap to 25h;
+    // 27h means at least one scheduled run did not happen.
+    const report = await makeDoctor({
+      readBackupMarker: async () =>
+        JSON.stringify({ at: NOW - 27 * 3_600_000, archive: 'metaclaude-backup-old.tar.gz' }),
+    }).run();
+    const check = report.checks.find((entry) => entry.name === 'backup');
+
+    expect(check?.status).toBe('warn');
+    expect(check?.summary).toMatch(/27 hours/);
+    expect(check?.detail).toContain('metaclaude-backup-old.tar.gz');
+  });
+
+  it('accepts a fresh backup and names the archive', async () => {
+    const report = await makeDoctor().run();
+    const check = report.checks.find((entry) => entry.name === 'backup');
+
+    expect(check?.status).toBe('ok');
+    expect(check?.summary).toMatch(/1 hour/);
+    expect(check?.detail).toContain('metaclaude-backup-x.tar.gz');
+  });
+
+  it('warns rather than trusting a marker it cannot parse', async () => {
+    const garbage = await makeDoctor({ readBackupMarker: async () => 'not json' }).run();
+    expect(garbage.checks.find((entry) => entry.name === 'backup')?.status).toBe('warn');
+
+    const wrongShape = await makeDoctor({
+      readBackupMarker: async () => JSON.stringify({ archive: 'x' }),
+    }).run();
+    expect(wrongShape.checks.find((entry) => entry.name === 'backup')?.status).toBe('warn');
   });
 
   it('warns about automations the failure guard has switched off, by name', async () => {

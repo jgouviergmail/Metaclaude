@@ -138,10 +138,17 @@ fi
 # nothing forever, or worse, on a future unrelated install.
 if [ -d /run/systemd/system ]; then
   systemctl disable --now metaclaude-updater.path >/dev/null 2>&1 || true
-  rm -f /etc/systemd/system/metaclaude-updater.service /etc/systemd/system/metaclaude-updater.path
+  systemctl disable --now metaclaude-backup.timer >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/metaclaude-updater.service /etc/systemd/system/metaclaude-updater.path \
+        /etc/systemd/system/metaclaude-backup.service /etc/systemd/system/metaclaude-backup.timer
   systemctl daemon-reload
-  info "removed the metaclaude-updater systemd units"
+  info "removed the metaclaude-updater and metaclaude-backup systemd units"
 fi
+
+# Where the backup archives live — read from deploy.conf before the tree
+# holding it is deleted, so the closing summary can name the right place.
+BACKUP_DIR="$(sed -n 's/^METACLAUDE_BACKUP_DIR=//p' "$APP_DIR/deploy.conf" 2>/dev/null | tail -1)"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/metaclaude}"
 
 if [ -f "$APP_DIR/.env" ]; then
   # Outside $APP_DIR, mode 0600, because the master key inside it is the one
@@ -182,4 +189,6 @@ cat <<REMAINS
     Undoing that safely means reinstalling the OS image from your provider.
   - any clone of the repository under a home directory (remove it yourself).
 $( [ "$PURGE_DATA" -ne 1 ] && echo '  - the named volumes: your data survives, and a reinstall resumes from it.' )
+$( [ -d "$BACKUP_DIR" ] && echo "  - the backup archives in $BACKUP_DIR — they outlive even --purge-data;" \
+   && echo '    delete them yourself once you are sure.' )
 REMAINS

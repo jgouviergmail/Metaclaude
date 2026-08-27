@@ -1057,6 +1057,145 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "A backup is a stopped app, a complete archive, and a fresh marker"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# bin/metaclaude-backup is rehearsed end to end — the real script, real tar,
+# real archives — against a stub `docker` that resolves volume mountpoints to
+# scratch directories and logs every call. No daemon, no root: everything the
+# daemon would do is the stub's, everything the script does is real.
+#
+# The ordering proof is stateful rather than read from a log: the stub's
+# `stop app` plants a file in the fake data volume and `start app` removes it,
+# so the archive contains that file if and only if tar ran while the app was
+# stopped. And per the uninstall lesson above, the first check is that the
+# script ran at all — every later assertion would pass on the inert outcome.
+bk_stub="$WORK/bk-stub"; bk_vols="$WORK/bk-vols"; bk_calls="$WORK/bk-calls.log"
+bk_app="$WORK/bk-app"; bk_dir="$WORK/bk-archives"
+mkdir -p "$bk_stub" "$bk_app/releases" \
+  "$bk_vols/metaclaude-data" "$bk_vols/metaclaude-workspaces" \
+  "$bk_vols/metaclaude-home" "$bk_vols/caddy-data"
+: > "$bk_app/.env"; : > "$bk_calls"
+echo "the-database" > "$bk_vols/metaclaude-data/db.sentinel"
+echo "a-workspace-file" > "$bk_vols/metaclaude-workspaces/ws.sentinel"
+echo "a-cli-transcript" > "$bk_vols/metaclaude-home/home.sentinel"
+echo "the-private-ca" > "$bk_vols/caddy-data/ca.sentinel"
+
+cat > "$bk_stub/docker" <<'STUB'
+#!/usr/bin/env bash
+printf 'docker %s\n' "$*" >> "$MC_CALLS"
+if [ "${1:-}" = "volume" ] && [ "${2:-}" = "inspect" ]; then
+  name="${*: -1}"; d="$MC_VOLS/${name#metaclaude_}"
+  [ -d "$d" ] || exit 1
+  printf '%s' "$d"; exit 0
+fi
+case "$*" in
+  *" stop app"|*" stop") touch "$MC_VOLS/metaclaude-data/stopped-while-copying" ;;
+  *" start app"|*" start") rm -f "$MC_VOLS/metaclaude-data/stopped-while-copying" ;;
+esac
+exit 0
+STUB
+chmod +x "$bk_stub/docker"
+
+run_backup() {
+  PATH="$bk_stub:$PATH" MC_CALLS="$bk_calls" MC_VOLS="$bk_vols" \
+  METACLAUDE_APP_DIR="$bk_app" METACLAUDE_BACKUP_DIR="$bk_dir" \
+  METACLAUDE_BACKUP_KEEP="${1:-14}" \
+    "$REPO_ROOT/deploy/bin/metaclaude-backup" "${@:2}"
+}
+
+if run_backup 14 backup >/dev/null 2>&1; then
+  ok "a backup runs to completion against a stubbed daemon"
+else
+  bad "the backup script did not run" "everything below would pass on the inert outcome"
+fi
+
+bk_archive="$(ls -1t "$bk_dir"/metaclaude-backup-*.tar.gz 2>/dev/null | head -1)"
+bk_listing="$(tar -tzf "$bk_archive" 2>/dev/null)"
+
+bk_missing=""
+for want in ./manifest.json ./metaclaude-data/db.sentinel ./metaclaude-workspaces/ws.sentinel \
+            ./metaclaude-home/home.sentinel ./caddy-data/ca.sentinel; do
+  printf '%s\n' "$bk_listing" | grep -qx "$want" || bk_missing="$bk_missing $want"
+done
+[ -z "$bk_missing" ] && ok "the archive carries all four volumes and the manifest" \
+  || bad "the archive is incomplete" "missing:$bk_missing"
+
+if printf '%s\n' "$bk_listing" | grep -qx "./metaclaude-data/stopped-while-copying"; then
+  ok "the volumes are copied while the app is stopped"
+else
+  bad "the copy did not happen between stop and start" "the database can be caught mid-write"
+fi
+
+if grep -qE '"archive":"'"$(basename "$bk_archive")"'"' "$bk_vols/metaclaude-data/backup-marker.json" 2>/dev/null \
+   && grep -qE '"at":[0-9]+' "$bk_vols/metaclaude-data/backup-marker.json"; then
+  ok "the marker the doctor reads names the archive it attests"
+else
+  bad "backup-marker.json is wrong or absent" "the doctor would warn forever — or never"
+fi
+
+# Archive names carry second resolution, so consecutive runs need a beat.
+sleep 1; run_backup 2 backup >/dev/null 2>&1
+sleep 1; run_backup 2 backup >/dev/null 2>&1
+bk_count="$(ls -1 "$bk_dir"/metaclaude-backup-*.tar.gz 2>/dev/null | wc -l)"
+[ "$bk_count" -eq 2 ] && ok "retention keeps the newest 2 of 3" \
+  || bad "retention did not prune" "expected 2 archives, found $bk_count"
+
+mv "$bk_vols/caddy-data" "$bk_vols/caddy-data.gone"
+: > "$bk_calls"
+if run_backup 14 backup >/dev/null 2>&1; then
+  bad "a backup with a missing volume claimed success" "a restore would need what it silently skipped"
+else
+  grep -q " stop" "$bk_calls" \
+    && bad "a doomed backup still stopped the app" "volumes must resolve before anything is touched" \
+    || ok "a missing volume refuses before the app is touched"
+fi
+mv "$bk_vols/caddy-data.gone" "$bk_vols/caddy-data"
+
+bk_archive="$(ls -1t "$bk_dir"/metaclaude-backup-*.tar.gz | head -1)"
+: > "$bk_calls"
+if run_backup 14 restore "$bk_archive" >/dev/null 2>&1; then
+  bad "restore without --yes proceeded" "a mistyped verb would replace the database"
+else
+  if [ "$(cat "$bk_vols/metaclaude-data/db.sentinel")" = "the-database" ] \
+     && ! grep -q " stop" "$bk_calls"; then
+    ok "restore without --yes refuses and touches nothing"
+  else
+    bad "the refusal still touched something" "guard ran too late"
+  fi
+fi
+
+echo "corrupted" > "$bk_vols/metaclaude-data/db.sentinel"
+echo "junk" > "$bk_vols/metaclaude-data/extra-file"
+: > "$bk_calls"
+run_backup 14 restore "$bk_archive" --yes >/dev/null 2>&1
+bk_rc=$?
+if [ "$bk_rc" -eq 0 ] \
+   && [ "$(cat "$bk_vols/metaclaude-data/db.sentinel")" = "the-database" ] \
+   && [ ! -e "$bk_vols/metaclaude-data/extra-file" ] \
+   && [ "$(cat "$bk_vols/caddy-data/ca.sentinel")" = "the-private-ca" ]; then
+  ok "restore --yes replaces the volumes with the archive's bytes, extras included"
+else
+  bad "restore --yes did not faithfully restore" "rc=$bk_rc"
+fi
+grep -q " stop$" "$bk_calls" && ok "restore stops the whole stack, not just the app" \
+  || bad "restore stopped only part of the stack" "caddy would hold its CA open while it is replaced"
+
+# The script exists on servers because install-app.sh puts it there, nightly
+# because it leaves a timer, and gone when uninstall.sh removes the units.
+if grep -q "deploy/bin/metaclaude-backup" "$REPO_ROOT/deploy/install-app.sh" \
+   && grep -q "metaclaude-backup.timer" "$REPO_ROOT/deploy/install-app.sh"; then
+  ok "install-app.sh ships the script and enables the nightly timer"
+else
+  bad "install-app.sh does not install the backup tooling" "servers would have no backups at all"
+fi
+if grep -q "metaclaude-backup.timer" "$REPO_ROOT/deploy/uninstall.sh"; then
+  ok "uninstall.sh removes the backup units with the tree they point at"
+else
+  bad "uninstall.sh leaves the backup timer behind" "it would fire against a deleted tree forever"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "A container probed through docker exec has something to reap the probe"
 # ─────────────────────────────────────────────────────────────────────────────
 

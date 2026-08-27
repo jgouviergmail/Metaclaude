@@ -21,6 +21,14 @@ const GB = 1024 ** 3;
 const DISK_WARN_BYTES = 2 * GB;
 const DISK_FAIL_BYTES = 0.5 * GB;
 
+const HOUR = 3_600_000;
+/**
+ * The host's backup timer runs daily with up to an hour of randomised delay,
+ * so 25 hours is the longest gap a working timer can produce. Anything past
+ * 26 means a scheduled backup did not happen.
+ */
+const BACKUP_STALE_MS = 26 * HOUR;
+
 export interface DoctorDeps {
   db: Db;
   audit: {
@@ -33,6 +41,13 @@ export interface DoctorDeps {
   diskFree: (path: string) => Promise<number>;
   /** The CLI's version string, or null when it cannot be spawned. */
   cliVersion: () => Promise<string | null>;
+  /**
+   * Raw content of the marker `deploy/bin/metaclaude-backup` writes into the
+   * data volume after each completed archive, or null when there is none.
+   * Injected as text, not as a path: the judgement about what the content
+   * means belongs here, where it is testable.
+   */
+  readBackupMarker: () => Promise<string | null>;
   credentialMode: () => string;
   activeRuns: () => number;
   queuedRuns: () => number;
@@ -66,6 +81,7 @@ export class Doctor {
     await examine('vault', () => this.vault());
     await examine('disk:data', () => this.disk('disk:data', this.deps.dataDir));
     await examine('disk:workspaces', () => this.disk('disk:workspaces', this.deps.workspacesDir));
+    await examine('backup', () => this.backup());
     await examine('claude-cli', () => this.claudeCli());
     await examine('runs', () => this.runs());
     await examine('automations', () => this.automations());
@@ -140,6 +156,54 @@ export class Doctor {
       return { name, status: 'warn', summary: 'Disk space is getting low.', detail: label };
     }
     return { name, status: 'ok', summary: label, detail: null };
+  }
+
+  private async backup(): Promise<DoctorCheck> {
+    const raw = await this.deps.readBackupMarker();
+    if (raw === null) {
+      return {
+        name: 'backup',
+        status: 'warn',
+        summary:
+          'No backup has ever been recorded — a disk failure today loses everything.',
+        detail:
+          'install-app.sh sets up a nightly metaclaude-backup timer; its first run writes the marker this check reads.',
+      };
+    }
+
+    let marker: { at?: unknown; archive?: unknown };
+    try {
+      marker = JSON.parse(raw) as { at?: unknown; archive?: unknown };
+    } catch {
+      marker = {};
+    }
+    if (typeof marker.at !== 'number' || !Number.isFinite(marker.at)) {
+      return {
+        name: 'backup',
+        status: 'warn',
+        summary: 'The backup marker exists but cannot be read — the last backup may not have completed.',
+        detail: raw.slice(0, 200),
+      };
+    }
+
+    const now = this.deps.now?.() ?? Date.now();
+    const age = Math.max(0, now - marker.at);
+    const hours = Math.round(age / HOUR);
+    const archive = typeof marker.archive === 'string' ? marker.archive : 'unnamed archive';
+    if (age > BACKUP_STALE_MS) {
+      return {
+        name: 'backup',
+        status: 'warn',
+        summary: `The last backup finished ${hours} hours ago — the nightly timer is not keeping up.`,
+        detail: archive,
+      };
+    }
+    return {
+      name: 'backup',
+      status: 'ok',
+      summary: `Last backup ${hours <= 1 ? '1 hour' : `${hours} hours`} ago.`,
+      detail: archive,
+    };
   }
 
   private async claudeCli(): Promise<DoctorCheck> {

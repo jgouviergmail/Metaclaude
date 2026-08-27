@@ -11,6 +11,28 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-08-27
+
+### Added
+
+- **Backups that take themselves — and say so when they stop.** The
+  installer now leaves a nightly systemd timer running
+  `metaclaude-backup`: it stops the app for the seconds a consistent copy
+  needs (the proxy stays up), archives all four volumes — database and
+  sealed vault, workspaces, the CLI's own transcripts, Caddy's certificate
+  authority — into one timestamped archive under `/var/backups/metaclaude`,
+  restarts, and keeps the newest 14. The archive deliberately excludes
+  `.env`: a master key that travels with the ciphertext it opens is a
+  formality, not a key. `restore <archive> --yes` puts every byte back
+  (and refuses without the `--yes`); `list` and `prune` do what they say.
+  After each completed archive the tool writes a marker into the data
+  volume, and the **doctor** grew a check that reads it: no backup ever, or
+  none for more than a day, is a warning in Settings → System — so a timer
+  that quietly stops firing becomes visible news instead of a discovery
+  made the day the disk dies. The whole tool is rehearsed by CI against a
+  stubbed daemon: stop-copy-start ordering, archive completeness, the
+  marker, retention, and both restore guards.
+
 ## [0.16.1] — 2026-08-27
 
 ### Changed
