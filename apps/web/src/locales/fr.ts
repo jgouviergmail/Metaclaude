@@ -496,4 +496,13 @@ export const fr: Record<string, string> = {
   'size = confidence · centre = recently recalled · ring = pinned':
     'taille = confiance · centre = rappelé récemment · anneau = épinglé',
   '{n} fainter ones not drawn': '{n} plus pâles non dessinées',
+
+  /* Le pouls du système */
+  '{n} run(s) working right now': '{n} run(s) au travail en ce moment',
+  '{n} decision(s) waiting on you': '{n} décision(s) vous attendent',
+  'All quiet — the last run finished {when}.': 'Tout est calme — le dernier run a fini {when}.',
+  'All quiet. Send a message, or fill the board and let it work.':
+    'Tout est calme. Envoyez un message, ou remplissez le board et laissez-le travailler.',
+  '{n} runs over the last 24 hours': '{n} runs sur les dernières 24 heures',
+  '{n} failed': '{n} en échec',
 };

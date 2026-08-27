@@ -11,6 +11,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-08-27
+
+### Added
+
+- **The dashboard opens on the system's pulse.** One line answers "what is
+  my agent OS doing right now?" — runs in flight, the queue, decisions
+  waiting — beside a 24-hour heartbeat: one bar per hour, green for what
+  succeeded, red capping what failed, quiet hours drawn as ticks because an
+  empty hour is information too. The current hour breathes while runs are
+  in flight, and the whole thing holds still under reduced motion.
+
 ## [0.24.0] — 2026-08-27
 
 ### Added

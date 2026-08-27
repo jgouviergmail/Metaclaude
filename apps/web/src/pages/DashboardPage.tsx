@@ -25,6 +25,7 @@ import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { BriefView } from '@/components/analytics/BriefView';
 import { AdvisorCard } from '@/components/dashboard/AdvisorCard';
+import { SystemPulse } from '@/components/dashboard/SystemPulse';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
@@ -223,6 +224,15 @@ export function DashboardPage() {
           {/* The advisor's inbox — proposals waiting on a decision, and the
               button that asks for a fresh analysis. */}
           <AdvisorCard />
+
+          {/* The opening line: what the OS is doing right now, and its
+              24-hour heartbeat. */}
+          <SystemPulse
+            activeRuns={activeRuns.length}
+            queuedRuns={system?.queuedRuns ?? 0}
+            approvals={approvals.length}
+            lastFinishedAt={runs.find((run) => run.finishedAt !== null)?.finishedAt ?? null}
+          />
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat

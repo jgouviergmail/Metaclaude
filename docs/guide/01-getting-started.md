@@ -35,6 +35,14 @@ composer, the memory the system accumulates about your projects, the
 automations that run without you. The rest of this guide takes them one at a
 time.
 
+## The pulse
+
+The Dashboard opens on one line — what the OS is doing right now: runs in
+flight, the queue, decisions waiting on you — beside a 24-hour heartbeat,
+one bar per hour, green for what succeeded, red for what failed, quiet
+hours drawn as ticks. When runs are working, the current hour breathes.
+It is the whole system's state at a glance, before you read anything else.
+
 ## The brief
 
 For the owner, the dashboard opens with **The brief** — one card answering
