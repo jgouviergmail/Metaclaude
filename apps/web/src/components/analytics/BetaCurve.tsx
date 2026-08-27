@@ -14,6 +14,8 @@
  * produces, while the log form never does.
  */
 
+import { useId } from 'react';
+
 const SAMPLES = 48;
 
 /**
@@ -47,8 +49,6 @@ export function betaAreaPath(alpha: number, beta: number, width: number, height:
   const line = points.map((p) => `L${p.x.toFixed(2)},${p.y.toFixed(2)}`).join('');
   return `M0,${height}${line}L${width},${height}Z`;
 }
-
-import { useId } from 'react';
 
 export function BetaCurve({
   alpha,

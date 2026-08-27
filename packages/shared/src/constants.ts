@@ -1,7 +1,7 @@
 /** Constants shared by the API and the web app. */
 
 export const APP_NAME = 'Metaclaude';
-export const APP_VERSION = '0.26.2';
+export const APP_VERSION = '0.27.0';
 
 /** Name of the httpOnly session cookie. Never readable from JavaScript. */
 export const SESSION_COOKIE = 'mc_session';

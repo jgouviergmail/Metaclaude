@@ -702,8 +702,16 @@ export interface Attachment {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Where a skill or agent belongs on the shelf. `general` exists on purpose:
- * a taxonomy without an "everything else" drawer forces bad filing.
+ * Where a skill or agent belongs on the shelf.
+ *
+ * Two halves, in this order: the domains of work, then the domains of a life.
+ * The second half exists because nothing in this system is specific to code —
+ * the memory, the policy and the board serve a house move or a week of meals
+ * exactly as they serve a refactor — and a library that only spoke of
+ * engineering quietly said otherwise.
+ *
+ * `general` stays last on purpose: a taxonomy without an "everything else"
+ * drawer forces bad filing.
  */
 export const LibraryCategory = z.enum([
   'engineering',
@@ -712,6 +720,11 @@ export const LibraryCategory = z.enum([
   'ops',
   'research',
   'product',
+  'home',
+  'health',
+  'money',
+  'learning',
+  'travel',
   'general',
 ]);
 export type LibraryCategory = z.infer<typeof LibraryCategory>;

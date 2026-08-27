@@ -427,6 +427,11 @@ export const fr: Record<string, string> = {
   Data: 'Données',
   Research: 'Recherche',
   Product: 'Produit',
+  Home: 'Maison',
+  Health: 'Santé',
+  Money: 'Argent',
+  Learning: 'Apprentissage',
+  Travel: 'Voyage',
   General: 'Général',
   'A starter shelf of skills and subagents, curated in this repository and versioned with it. Installing copies one into the global registry, disabled — switch it on when you want runs to see it, edit it like anything you wrote yourself.':
     "Une étagère de départ de skills et de sous-agents, sélectionnée dans ce dépôt et versionnée avec lui. Installer en copie une dans le registre global, désactivée — activez-la quand vous voulez que les runs la voient, modifiez-la comme tout ce que vous auriez écrit vous-même.",

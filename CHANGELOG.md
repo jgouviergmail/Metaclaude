@@ -11,6 +11,30 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-08-27
+
+### Added
+
+- **The library grows a second half: everyday life.** Nothing in this system
+  was ever specific to code — the memory, the learned policy and the board
+  serve a house move exactly as they serve a refactor — so the shelf now
+  holds eight subagents and twelve skills for the rest of a week. A meal
+  planner that starts from what the kitchen already holds and ends with the
+  shopping list; a trip planner that puts travel time in the plan and names
+  the one booking that ruins the week; an administrative navigator that finds
+  the form, the evidence and the deadline and drafts what to send; a budget
+  coach; a tutor; a home-project planner; a fitness coach; a week planner.
+  Beside them, procedures for shopping lists, cooking from the cupboard,
+  formal letters, packing, decluttering, hosting, auditing subscriptions,
+  deciding a big purchase, revising for an exam, practising a language,
+  preparing a medical appointment, and the household inventory an insurance
+  claim needs. Five new categories shelve them — **home, health, money,
+  learning, travel** — placed between the work domains and the general
+  drawer. Where a domain belongs to a professional the entry says so in its
+  own working rules (the fitness plan and the budget are explicitly not
+  medical or financial advice, and prepare you for that appointment instead),
+  and a test enforces it so the rule cannot quietly lapse.
+
 ## [0.26.2] — 2026-08-27
 
 ### Fixed

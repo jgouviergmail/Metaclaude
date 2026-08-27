@@ -63,6 +63,29 @@ describe('the built-in library catalogue', () => {
     }
   });
 
+  it('makes every health and money entry state its limit', () => {
+    // The life half of the shelf touches domains where a confident agent is a
+    // dangerous one. An entry filed under health or money must say, in the
+    // text the model actually reads, that it is not professional advice —
+    // otherwise a future contributor adds a symptom-checker and nothing
+    // objects. (admin-navigator carries the same sentence for legal advice;
+    // it is filed under home, so this rule cannot reach it — its own prompt
+    // is where that guard lives.)
+    const DISCLAIMER: Partial<Record<string, RegExp>> = {
+      health: /not medical advice/i,
+      money: /not financial advice/i,
+    };
+
+    for (const entry of LIBRARY) {
+      const required = DISCLAIMER[entry.category];
+      if (!required) continue;
+      // Line breaks are wrapping, not content: a reader sees one sentence, so
+      // the assertion should too.
+      const text = (entry.kind === 'agent' ? entry.prompt : entry.body).replace(/\s+/g, ' ');
+      expect(text, `${entry.name} (${entry.category}) must state its limit`).toMatch(required);
+    }
+  });
+
   it('writes every skill as a markdown procedure with a definition of done', () => {
     for (const entry of LIBRARY) {
       if (entry.kind !== 'skill') continue;

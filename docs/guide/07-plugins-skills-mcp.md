@@ -19,11 +19,33 @@ in the composer, or let runs delegate to them.
 ## The library
 
 You do not have to start from a blank page. The **Library** tab under
-Agents & skills is a starter shelf of skills and subagents — a code
-reviewer, a test writer, a debugger, a security auditor, a postmortem
-procedure, an SQL review checklist and more — written for the way this
-system delegates: each description tells the main agent *when* to reach for
-the entry, each prompt states working rules rather than personality.
+Agents & skills is a starter shelf of skills and subagents, in two halves.
+
+The first is the work of building software: a code reviewer, a test writer,
+a debugger, a security auditor, a postmortem procedure, an SQL review
+checklist and more.
+
+The second is everything else a week contains — because nothing in this
+system is specific to code. The memory, the learned policy and the board
+serve a house move exactly as they serve a refactor. So the shelf also holds
+a meal planner that writes the shopping list, a trip planner that leaves
+slack in the day, an administrative navigator that drafts the letter and
+names the deadline, a budget coach, a tutor, a home-project planner, a
+fitness coach and a week planner — with procedures beside them for shopping
+lists, cooking from the cupboard, formal letters, packing, decluttering,
+hosting, auditing subscriptions, deciding a big purchase, revising for an
+exam, practising a language, preparing a medical appointment and building
+the household inventory an insurance claim needs.
+
+Each entry is written for the way this system delegates: the description
+tells the main agent *when* to reach for it, and the prompt states working
+rules rather than personality.
+
+Where a domain belongs to a professional, the entry says so in its own text
+and says what to bring to that appointment instead. The health and money
+entries state plainly that they are not medical or financial advice — not as
+a disclaimer bolted on, but as a working rule the agent follows: it will
+prepare your questions for the doctor and refuse to play one.
 
 The shelf is curated **in the repository**, not fetched from a store: what
 you see has been read, versioned and reviewed like any other code in your
@@ -35,11 +57,16 @@ so a deleted copy can always be installed again.
 
 ## Categories
 
-Skills and subagents carry a **category** — engineering, writing, data,
-ops, research, product, or general for what fits nowhere else. The library
-filters by them, list entries wear them as badges, and both editors let you
-file your own definitions the same way. They are labels for finding things,
-nothing more: a category never changes what a skill or agent may do.
+Skills and subagents carry a **category**, in two groups. The domains of
+work: engineering, writing, data, ops, research, product. The domains of a
+life: home, health, money, learning, travel. And **general** for what fits
+nowhere else — a taxonomy without an "everything else" drawer forces bad
+filing.
+
+The library filters by them, list entries wear them as badges, and both
+editors let you file your own definitions the same way. They are labels for
+finding things, nothing more: a category never changes what a skill or agent
+may do.
 
 ## Plugins
 

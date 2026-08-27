@@ -63,6 +63,11 @@ const CATEGORY_LABELS: Record<LibraryCategory, string> = {
   ops: 'Ops',
   research: 'Research',
   product: 'Product',
+  home: 'Home',
+  health: 'Health',
+  money: 'Money',
+  learning: 'Learning',
+  travel: 'Travel',
   general: 'General',
 };
 
