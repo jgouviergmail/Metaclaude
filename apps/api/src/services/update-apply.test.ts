@@ -9,7 +9,7 @@
  * never a crash.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -45,6 +45,41 @@ describe('requesting', () => {
   it('refuses a second request while one is pending', async () => {
     await applier.request('v1.2.3', 'jules');
     await expect(applier.request('v1.2.4', 'jules')).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('admits exactly one of many simultaneous requests — the write is the check', async () => {
+    // Read-then-decide-then-write is a race, not a check (the login lesson):
+    // every contender below passes the status read before any of them has
+    // written, so only an exclusive create can keep the count at one.
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 10 }, (_, index) => applier.request(`v1.0.${index}`, 'jules')),
+    );
+    const admitted = outcomes.filter((outcome) => outcome.status === 'fulfilled');
+    expect(admitted).toHaveLength(1);
+    for (const refused of outcomes.filter((outcome) => outcome.status === 'rejected')) {
+      expect((refused as PromiseRejectedResult).reason).toMatchObject({ statusCode: 409 });
+    }
+    // And the one that won is the one on disk, whole.
+    const request = JSON.parse(readFileSync(join(dir, 'request.json'), 'utf8'));
+    expect(request.version).toMatch(/^v1\.0\.\d$/);
+  });
+
+  it('does not stay locked behind a stale write that never completed', async () => {
+    // A crash between claiming the lock file and renaming it would otherwise
+    // brick the button until someone shells in and deletes a hidden file.
+    // Staleness compares wall-clock mtimes, so the fixture backdates the file.
+    const lock = join(dir, '.request.json.tmp');
+    writeFileSync(lock, 'half-written');
+    const past = (Date.now() - 120_000) / 1000;
+    utimesSync(lock, past, past);
+
+    await applier.request('v2.0.0', 'jules');
+    expect(JSON.parse(readFileSync(join(dir, 'request.json'), 'utf8')).version).toBe('v2.0.0');
+  });
+
+  it('treats a fresh half-written lock as a writer in progress, not as free', async () => {
+    writeFileSync(join(dir, '.request.json.tmp'), 'half-written');
+    await expect(applier.request('v2.0.0', 'jules')).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('refuses while the updater reports a deploy in flight', async () => {

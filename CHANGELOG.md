@@ -11,6 +11,25 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-08-27
+
+### Fixed
+
+- **The apply request is race-proof now, and the reload rule is pinned.**
+  An adversarial pass over v0.9.0's handshake closed two seams. Requesting
+  an update was read-then-decide-then-write — every concurrent press could
+  pass the "already pending" check before any had written (the same family
+  as the login race this project was bitten by) — so the write is now the
+  check: an exclusive lock-file creation admits exactly one of any number
+  of simultaneous requests, with a stale lock left by a crash swept after a
+  minute rather than bricking the button. And the page-reload decision
+  ("only on a success this page watched happen") moved into a pure,
+  directly-tested function — a stale success from last week can provably
+  never refresh anyone's screen. The whole loop is now simulated with both
+  real processes: the HTTP server on one side, the actual updater script on
+  the other, including the app's own restart in the middle and two
+  simultaneous presses admitting exactly one request.
+
 ## [0.9.0] — 2026-08-27
 
 ### Added

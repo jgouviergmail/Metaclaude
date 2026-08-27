@@ -15,7 +15,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { UpdateApplyStatus } from '@metaclaude/shared';
 
@@ -35,6 +35,12 @@ export class UpdateApplyError extends Error {
 const VERSION_SHAPE = /^v\d+\.\d+\.\d+$/;
 
 const ACTIVE = new Set(['requested', 'running']);
+
+/**
+ * How old a leftover lock file must be before it is judged a crash artefact
+ * rather than a writer in progress. A real write is two syscalls.
+ */
+const STALE_LOCK_MS = 60_000;
 
 export class UpdateApplier {
   constructor(private readonly deps: { dir: string | null; now?: () => number }) {}
@@ -68,16 +74,40 @@ export class UpdateApplier {
       );
     }
 
-    // Atomic: the host's path unit fires on the final name only, so it can
-    // never read a half-written request.
+    // Atomic AND exclusive. The status read above is advisory — every
+    // concurrent caller can pass it before any of them has written — so the
+    // fixed-name lock file is the real check: `wx` admits exactly one writer
+    // (read-then-decide-then-write is a race, not a check — the login
+    // lesson), and the rename publishes the request in one operation, so the
+    // host's path unit can never read a half-written file.
     const body = JSON.stringify({
       version,
       requestedBy: actor,
       at: this.deps.now ? this.deps.now() : Date.now(),
     });
-    const tmp = join(dir, '.request.json.tmp');
-    await writeFile(tmp, body, 'utf8');
-    await rename(tmp, join(dir, 'request.json'));
+    const lock = join(dir, '.request.json.tmp');
+    try {
+      await writeFile(lock, body, { encoding: 'utf8', flag: 'wx' });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      // Wall-clock against wall-clock: mtimes are real time, so the injected
+      // test clock deliberately plays no part in the staleness judgement.
+      const mtime = await stat(lock).then(
+        (stats) => stats.mtimeMs,
+        () => 0,
+      );
+      if (Date.now() - mtime < STALE_LOCK_MS) {
+        throw new UpdateApplyError(
+          'Another update request is being written this instant — try again.',
+          409,
+        );
+      }
+      // A crash left the lock behind. Sweep it and take one more swing; a
+      // loser here is a genuine concurrent writer and stays refused.
+      await rm(lock, { force: true });
+      await writeFile(lock, body, { encoding: 'utf8', flag: 'wx' });
+    }
+    await rename(lock, join(dir, 'request.json'));
   }
 
   async status(): Promise<UpdateApplyStatus> {

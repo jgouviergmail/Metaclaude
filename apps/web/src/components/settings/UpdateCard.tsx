@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { Badge, Button, Card, CardHeader, Spinner } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { nextUpdateWatch, type UpdateWatch } from '@/lib/update-watch';
 
 export function UpdateCard() {
   const updateQuery = useQuery({
@@ -49,19 +50,19 @@ export function UpdateCard() {
   const status = applyStatus.data;
   const applying = status?.state === 'requested' || status?.state === 'running';
 
-  // status.json survives across deploys, so "succeeded" alone may be old
-  // news. Only a success this page watched happen triggers the reload.
-  const sawInFlight = useRef(false);
+  // The transition rule lives in nextUpdateWatch (tested pure): only a
+  // success this page watched happen triggers the reload — status.json
+  // survives across deploys, so "succeeded" alone may be old news.
+  const watch = useRef<UpdateWatch>({ sawInFlight: false, reload: false });
   useEffect(() => {
-    if (applying) sawInFlight.current = true;
-    if (status?.state === 'succeeded' && sawInFlight.current) {
-      sawInFlight.current = false;
-      toast.success(`Updated to ${status.version ?? 'the new version'} — reloading…`);
+    watch.current = nextUpdateWatch(watch.current, status?.state);
+    if (watch.current.reload) {
+      toast.success(`Updated to ${status?.version ?? 'the new version'} — reloading…`);
       const timer = setTimeout(() => window.location.reload(), 1500);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [applying, status?.state, status?.version]);
+  }, [status?.state, status?.version]);
 
   const canApply =
     status?.available === true && check?.updateAvailable === true && check.latest !== null && !applying;
