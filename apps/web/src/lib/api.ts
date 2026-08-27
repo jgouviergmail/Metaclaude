@@ -20,6 +20,11 @@ import {
   type AuthSessionInfo,
   type Automation,
   type AutomationTrigger,
+  type BoardTask,
+  type TaskActivity,
+  type TaskComment,
+  type TaskPriority,
+  type TaskStatus,
   type CreateMemoryRequest,
   type FileEntry,
   type GitStatus,
@@ -276,6 +281,67 @@ export const api = {
       attachmentIds?: string[];
     },
   ) => request<{ run: Run }>(`/api/sessions/${sessionId}/runs`, { method: 'POST', body }),
+
+  /* ------------------------------- Board ------------------------------- */
+
+  board: (workspaceId: string) =>
+    request<{ tasks: BoardTask[] }>(`/api/workspaces/${workspaceId}/board`),
+
+  tasks: (params: {
+    workspaceId?: string;
+    status?: TaskStatus;
+    assignee?: 'user' | 'agent';
+    archived?: boolean;
+    limit?: number;
+    offset?: number;
+  }) => request<{ tasks: BoardTask[] }>(`/api/tasks${qs(params)}`),
+
+  task: (id: string) =>
+    request<{
+      task: BoardTask;
+      comments: TaskComment[];
+      activity: TaskActivity[];
+      children: BoardTask[];
+    }>(`/api/tasks/${id}`),
+
+  createTask: (
+    workspaceId: string,
+    body: {
+      title: string;
+      description?: string;
+      status?: TaskStatus;
+      priority?: TaskPriority;
+      parentId?: string | null;
+      assignee?: 'user' | 'agent' | null;
+      dueAt?: number | null;
+    },
+  ) => request<{ task: BoardTask }>(`/api/workspaces/${workspaceId}/tasks`, { method: 'POST', body }),
+
+  updateTask: (
+    id: string,
+    body: {
+      title?: string;
+      description?: string;
+      priority?: TaskPriority;
+      assignee?: 'user' | 'agent' | null;
+      dueAt?: number | null;
+      blockedReason?: string | null;
+    },
+  ) => request<{ task: BoardTask }>(`/api/tasks/${id}`, { method: 'PATCH', body }),
+
+  moveTask: (id: string, body: { status: TaskStatus; afterId?: string | null }) =>
+    request<{ task: BoardTask }>(`/api/tasks/${id}/move`, { method: 'POST', body }),
+
+  archiveTask: (id: string) =>
+    request<{ task: BoardTask }>(`/api/tasks/${id}/archive`, { method: 'POST' }),
+
+  restoreTask: (id: string) =>
+    request<{ task: BoardTask }>(`/api/tasks/${id}/restore`, { method: 'POST' }),
+
+  deleteTask: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}`, { method: 'DELETE' }),
+
+  commentTask: (id: string, body: string) =>
+    request<{ comment: TaskComment }>(`/api/tasks/${id}/comments`, { method: 'POST', body: { body } }),
 
   uploadAttachment: (sessionId: string, body: { name: string; mime: string; data: string }) =>
     request<{ attachment: Attachment }>(`/api/sessions/${sessionId}/attachments`, {

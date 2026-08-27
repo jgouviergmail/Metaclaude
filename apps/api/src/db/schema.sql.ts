@@ -518,4 +518,62 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_attachments_hash ON attachments(workspace_id, sha256);
     `,
   },
+  {
+    version: 11,
+    name: 'board',
+    sql: /* sql */ `
+      -- The board: tasks the operator and the agents share. Three tables —
+      -- the cards, their comments, and an append-only history that is what
+      -- makes concurrent human/agent edits auditable instead of mysterious.
+      --
+      -- order_key is a fractional position within (workspace, status): the
+      -- server computes a key between two neighbours on every move, so
+      -- ordering never needs a renumbering sweep and two clients moving
+      -- cards at once cannot corrupt each other's positions.
+      --
+      -- archived_at is a timestamp, not a status: an archived card keeps the
+      -- column it died in, which is what a restore should restore. Every
+      -- foreign key cascades — the attachments table taught that lesson.
+      CREATE TABLE tasks (
+        id             TEXT PRIMARY KEY,
+        workspace_id   TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        parent_id      TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+        title          TEXT NOT NULL,
+        description    TEXT NOT NULL DEFAULT '',
+        status         TEXT NOT NULL DEFAULT 'todo',
+        priority       TEXT NOT NULL DEFAULT 'normal',
+        assignee       TEXT,
+        run_id         TEXT REFERENCES runs(id) ON DELETE SET NULL,
+        due_at         INTEGER,
+        order_key      TEXT NOT NULL,
+        blocked_reason TEXT,
+        created_by     TEXT NOT NULL,
+        created_at     INTEGER NOT NULL,
+        updated_at     INTEGER NOT NULL,
+        archived_at    INTEGER
+      );
+      CREATE INDEX idx_tasks_board ON tasks(workspace_id, status, order_key);
+      CREATE INDEX idx_tasks_parent ON tasks(parent_id);
+      CREATE INDEX idx_tasks_run ON tasks(run_id);
+
+      CREATE TABLE task_comments (
+        id         TEXT PRIMARY KEY,
+        task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        author     TEXT NOT NULL,
+        body       TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX idx_task_comments ON task_comments(task_id, created_at);
+
+      CREATE TABLE task_events (
+        id      TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        actor   TEXT NOT NULL,
+        kind    TEXT NOT NULL,
+        detail  TEXT NOT NULL DEFAULT '',
+        at      INTEGER NOT NULL
+      );
+      CREATE INDEX idx_task_events ON task_events(task_id, at);
+    `,
+  },
 ];

@@ -15,9 +15,11 @@ import {
   ApprovalDecision,
   ApprovalRequest,
   Automation,
+  BoardTask,
   Millis,
   Run,
   Session,
+  TaskComment,
   TranscriptEvent,
 } from './domain.js';
 
@@ -114,6 +116,11 @@ export const ServerFrame = z.discriminatedUnion('type', [
     approved: z.boolean(),
   }),
   z.object({ type: z.literal('automation'), topic: Topic, automation: Automation }),
+  // Board updates ride the workspace topic: one frame per changed card, and
+  // an explicit removal frame — a client cannot infer deletion from silence.
+  z.object({ type: z.literal('board_task'), topic: Topic, task: BoardTask }),
+  z.object({ type: z.literal('board_task_removed'), topic: Topic, taskId: z.string() }),
+  z.object({ type: z.literal('board_comment'), topic: Topic, comment: TaskComment }),
   z.object({
     type: z.literal('notification'),
     topic: Topic,

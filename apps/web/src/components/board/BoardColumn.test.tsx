@@ -1,0 +1,103 @@
+/**
+ * The column's two drop targets, and the card's badges.
+ *
+ * Dropping on the column body appends after the last card; dropping on a
+ * card lands right after it. Those are the only two placement rules the
+ * client has — the server re-reads neighbours anyway — so both are pinned
+ * here with a stubbed DataTransfer.
+ */
+
+import { fireEvent, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import type { BoardTask } from '@metaclaude/shared';
+import { renderWithProviders } from '@/test/render';
+import { BoardColumn } from './BoardColumn';
+
+const task = (over: Partial<BoardTask>): BoardTask => ({
+  id: 'tsk_1',
+  workspaceId: 'ws_1',
+  parentId: null,
+  title: 'A task',
+  description: '',
+  status: 'todo',
+  priority: 'normal',
+  assignee: null,
+  runId: null,
+  dueAt: null,
+  orderKey: 'i',
+  blockedReason: null,
+  createdBy: 'user:jules',
+  createdAt: 0,
+  updatedAt: 0,
+  archivedAt: null,
+  ...over,
+});
+
+function renderColumn(tasks: BoardTask[]) {
+  const onMove = vi.fn();
+  const onOpen = vi.fn();
+  const onQuickAdd = vi.fn();
+  renderWithProviders(
+    <BoardColumn
+      status="todo"
+      label="To do"
+      hint="Committed, waiting to start"
+      tasks={tasks}
+      onOpen={onOpen}
+      onMove={onMove}
+      onQuickAdd={onQuickAdd}
+    />,
+  );
+  return { onMove, onOpen, onQuickAdd };
+}
+
+const dataTransfer = (taskId: string) =>
+  ({ getData: (type: string) => (type === 'text/task-id' ? taskId : ''), setData: vi.fn() }) as unknown as DataTransfer;
+
+describe('BoardColumn', () => {
+  it('appends a card dropped on the column body after the last card', () => {
+    const { onMove } = renderColumn([task({ id: 'a', title: 'first' }), task({ id: 'b', title: 'last' })]);
+
+    fireEvent.drop(screen.getByRole('region', { name: /to do column/i }).querySelector('[class*="overflow-y"]') as Element, {
+      dataTransfer: dataTransfer('tsk_dragged'),
+    });
+
+    expect(onMove).toHaveBeenCalledWith('tsk_dragged', 'todo', 'b');
+  });
+
+  it('drops onto an empty column at the top', () => {
+    const { onMove } = renderColumn([]);
+    fireEvent.drop(screen.getByText(/committed, waiting/i).parentElement as Element, {
+      dataTransfer: dataTransfer('tsk_dragged'),
+    });
+    expect(onMove).toHaveBeenCalledWith('tsk_dragged', 'todo', null);
+  });
+
+  it('lands a card dropped on another right after it', () => {
+    const { onMove } = renderColumn([task({ id: 'a', title: 'target card' })]);
+
+    fireEvent.drop(screen.getByRole('button', { name: 'target card' }), {
+      dataTransfer: dataTransfer('tsk_dragged'),
+    });
+
+    expect(onMove).toHaveBeenCalledWith('tsk_dragged', 'todo', 'a');
+  });
+
+  it('opens a card on click and surfaces its state badges', () => {
+    const { onOpen } = renderColumn([
+      task({ id: 'a', title: 'blocked one', blockedReason: 'waiting on the vault', assignee: 'agent' }),
+    ]);
+
+    expect(screen.getByText('blocked')).toBeTruthy();
+    expect(screen.getByLabelText('Agent')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'blocked one' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+  });
+
+  it('offers the quick add with the column preset', () => {
+    const { onQuickAdd } = renderColumn([]);
+    fireEvent.click(screen.getByRole('button', { name: /add a task to to do/i }));
+    expect(onQuickAdd).toHaveBeenCalledWith('todo');
+  });
+});

@@ -22,6 +22,7 @@ import {
   Menu as MenuIcon,
   MessageSquare,
   Settings,
+  SquareKanban,
   Timer,
 } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
@@ -44,7 +45,8 @@ interface NavEntry {
 const NAV: NavEntry[] = [
   { to: '/', label: 'Dashboard', icon: <LayoutDashboard />, primary: true },
   { to: '/workspaces', label: 'Workspaces', icon: <FolderGit2 />, primary: true },
-  { to: '/memory', label: 'Memory', icon: <Brain />, primary: true },
+  { to: '/board', label: 'Board', icon: <SquareKanban />, primary: true },
+  { to: '/memory', label: 'Memory', icon: <Brain /> },
   { to: '/automations', label: 'Automations', icon: <Timer />, primary: true },
   { to: '/agents', label: 'Agents & skills', icon: <Bot /> },
   { to: '/plugins', label: 'Plugins', icon: <Plug /> },

@@ -36,6 +36,7 @@ import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { AttachmentService } from './services/attachments.js';
+import { BoardService } from './services/board.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
 import { MarketplacesService } from './services/marketplaces.js';
@@ -87,6 +88,7 @@ export interface AppContext {
   workspaces: WorkspaceService;
   files: FileService;
   attachments: AttachmentService;
+  board: BoardService;
   git: GitService;
   analytics: AnalyticsService;
   scheduler: Scheduler;
@@ -465,6 +467,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     workspaces,
     files: new FileService(),
     attachments,
+    board: new BoardService(db),
     git: new GitService(),
     analytics,
     scheduler,

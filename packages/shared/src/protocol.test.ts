@@ -43,6 +43,28 @@ describe('parseWireFrame — what it accepts', () => {
     expect(parseWireFrame(pong)?.seq).toBeNull();
   });
 
+  it('accepts a board frame — the schema every open board trusts', () => {
+    const frame = {
+      type: 'board_task',
+      topic: 'workspace:ws_1',
+      task: {
+        id: 'tsk_1',
+        workspaceId: 'ws_1',
+        title: 'A card',
+        status: 'todo',
+        orderKey: 'i',
+        createdBy: 'user:jules',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+    const parsed = parseWireFrame(frame);
+    expect(parsed?.frame.type).toBe('board_task');
+    // Defaults must materialise: a card the server sent without optional
+    // fields still renders as a complete object.
+    expect(parsed?.frame.type === 'board_task' ? parsed.frame.task.priority : null).toBe('normal');
+  });
+
   it('refuses a sequence that is not a safe integer', () => {
     // A float or a value past 2^53 would compare wrongly against later ones,
     // and the replay cursor is a comparison.

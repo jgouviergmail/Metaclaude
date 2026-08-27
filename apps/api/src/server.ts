@@ -21,6 +21,7 @@ import type { AppContext } from './context.js';
 import type { App } from './http/types.js';
 import { authenticate, isPublicPath, requestIp, sendError, verifyCsrf } from './http/guards.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerBoardRoutes } from './routes/board.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerLearningRoutes } from './routes/learning.js';
 import { registerRegistryRoutes } from './routes/registry.js';
@@ -207,6 +208,7 @@ export async function buildServer(context: AppContext): Promise<App> {
   registerFileRoutes(app, context);
   registerLearningRoutes(app, context);
   registerRegistryRoutes(app, context);
+  registerBoardRoutes(app, context);
   registerWebSocket(app, context);
 
   /* ------------------------------- Static ------------------------------- */

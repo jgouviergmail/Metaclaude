@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-27
+
+### Added
+
+- **The board.** One kanban per workspace, shared by you and the agents:
+  Backlog → To do → In progress → Review → Done, with priorities, an
+  assignee (you or the workspace's agent), due dates, blocked markers whose
+  reason travels with them, comments, sub-tasks three levels deep, and an
+  append-only history on every card — a board worked by several hands must
+  stay explicable after the fact. Drag on desktop, the card's ⋮ menu on a
+  phone (swipe between columns), everything live over the socket: a card
+  moved anywhere slides across every open board. Ordering is fractional —
+  the server assigns each move a key between its neighbours, so concurrent
+  edits cannot corrupt positions and there is never a renumbering sweep.
+  Archiving keeps the column a card died in and restores exactly there;
+  deletion is deliberately two-step. The agent's half — picking cards up,
+  decomposing, reporting back — arrives with the delegation lot.
+
 ## [0.5.1] — 2026-08-27
 
 ### Changed

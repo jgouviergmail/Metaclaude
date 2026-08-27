@@ -898,6 +898,83 @@ export interface Attachment {
 }
 
 /* -------------------------------------------------------------------------- */
+/* The board — tasks the operator and the agents share                         */
+/* -------------------------------------------------------------------------- */
+
+export const TaskStatus = z.enum(['backlog', 'todo', 'in_progress', 'review', 'done']);
+export type TaskStatus = z.infer<typeof TaskStatus>;
+
+export const TaskPriority = z.enum(['low', 'normal', 'high', 'urgent']);
+export type TaskPriority = z.infer<typeof TaskPriority>;
+
+/**
+ * One card. A real schema, not a type: board updates ride the socket, so
+ * `parseWireFrame` genuinely reaches this at runtime.
+ *
+ * `orderKey` is a fractional position within (workspace, status) — the server
+ * assigns it on every move, so ordering survives concurrent edits without a
+ * renumbering sweep. `archivedAt` is a timestamp rather than a status: an
+ * archived card keeps the column it died in, which is what a restore should
+ * restore. `assignee` names who works it — the operator or this workspace's
+ * agent; the agent half becomes actionable in the delegation lot.
+ */
+export const BoardTask = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  /** Set when this card was decomposed out of a larger one. */
+  parentId: z.string().nullable().default(null),
+  title: z.string().min(1).max(300),
+  description: z.string().max(20_000).default(''),
+  status: TaskStatus,
+  priority: TaskPriority.default('normal'),
+  assignee: z.enum(['user', 'agent']).nullable().default(null),
+  /** The run currently (or last) working this card. */
+  runId: z.string().nullable().default(null),
+  dueAt: Millis.nullable().default(null),
+  orderKey: z.string(),
+  /** Why the card cannot advance — human-readable, cleared on movement. */
+  blockedReason: z.string().nullable().default(null),
+  /** 'user:<name>' or 'agent:<runId>' — who created it is part of the record. */
+  createdBy: z.string(),
+  createdAt: Millis,
+  updatedAt: Millis,
+  archivedAt: Millis.nullable().default(null),
+});
+export type BoardTask = z.infer<typeof BoardTask>;
+
+export const TaskComment = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  /** 'user:<name>' or 'agent:<runId>'. */
+  author: z.string(),
+  body: z.string().min(1).max(10_000),
+  createdAt: Millis,
+});
+export type TaskComment = z.infer<typeof TaskComment>;
+
+/**
+ * One entry of a card's history. A type, not a schema — same exception as
+ * `Brief`: the server writes these append-only and the drawer reads them
+ * over REST; nothing parses one at an edge.
+ */
+export interface TaskActivity {
+  id: string;
+  taskId: string;
+  actor: string;
+  kind:
+    | 'created'
+    | 'moved'
+    | 'updated'
+    | 'assigned'
+    | 'commented'
+    | 'run_linked'
+    | 'archived'
+    | 'restored';
+  detail: string;
+  at: number;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Analytics                                                                   */
 /* -------------------------------------------------------------------------- */
 
