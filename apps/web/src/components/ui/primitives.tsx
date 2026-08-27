@@ -27,8 +27,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 
 type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'icon' | 'icon-sm';
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary:
-    'bg-accent text-accent-ink hover:bg-accent-hover shadow-[var(--mc-shadow-sm)] active:scale-[0.98]',
+  primary: 'btn-primary text-accent-ink active:scale-[0.98]',
   secondary:
     'bg-raised text-ink hover:bg-line border border-line active:scale-[0.98]',
   outline: 'border border-line-strong text-ink hover:bg-raised active:scale-[0.98]',
@@ -234,7 +233,7 @@ export function Badge({
 export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-xl border border-line bg-surface', className)}
+      className={cn('mc-card rounded-xl border border-line bg-surface', className)}
       {...props}
     >
       {children}

@@ -94,7 +94,7 @@ export function RunGenesis({ run }: { run: Run }) {
       </button>
 
       {open ? (
-        <div className="mt-1 space-y-3 rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed">
+        <div className="mc-card mt-1 space-y-3 rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed">
           {genesis.isLoading ? (
             <Skeleton className="h-16 rounded-lg" />
           ) : genesis.data ? (
@@ -104,6 +104,8 @@ export function RunGenesis({ run }: { run: Run }) {
                   <BetaCurve
                     alpha={genesis.data.arm.alpha}
                     beta={genesis.data.arm.beta}
+                    width={120}
+                    height={36}
                     tone={run.policy.source === 'learned' ? 'accent' : 'success'}
                     label={t('Posterior for this arm — {pct} expected over {n} trials', {
                       pct: formatPercent(
@@ -133,6 +135,10 @@ export function RunGenesis({ run }: { run: Run }) {
               )}
 
               {genesis.data.memories.length > 0 ? (
+                <div className="space-y-1.5">
+                  <p className="text-[10.5px] font-semibold uppercase tracking-wider text-subtle">
+                    {t('Recalled into this run')}
+                  </p>
                 <ul className="space-y-1.5">
                   {genesis.data.memories.slice(0, 5).map((memory) => (
                     <li key={memory.id} className="flex items-center gap-2">
@@ -153,6 +159,7 @@ export function RunGenesis({ run }: { run: Run }) {
                     </li>
                   ))}
                 </ul>
+                </div>
               ) : (
                 <p className="text-subtle">
                   {active

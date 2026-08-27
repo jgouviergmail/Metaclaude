@@ -11,6 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-08-27
+
+### Changed
+
+- **An aesthetic pass, checked by eye.** A screenshot bench now boots the
+  real server, seeds a lived-in deployment and captures every key screen in
+  both themes — the pass was made against those images, not against
+  imagination. What changed: the interface gains light — two faint radial
+  glows fall from the top of every page, cards cast a soft shadow and, in
+  the dark theme, catch a one-pixel light along their top edge; the primary
+  button trades its flat paint for a lit sheen. The constellation becomes a
+  sky: a deep radial ground, a shared halo glowing around every star, and
+  rings that now sit at real durations — a day, a week, a month — so the
+  chart can be read as dates. The pulse's heartbeat bars take a vertical
+  gradient, and the pulse itself moves to the very top of the Dashboard,
+  where an opening line belongs. Posterior curves gain a gradient fill,
+  quartile ticks and a marked mean. Every change rides the existing theme
+  tokens, stays still under reduced motion, and costs the entry bundle
+  nothing.
+
 ## [0.25.0] — 2026-08-27
 
 ### Added

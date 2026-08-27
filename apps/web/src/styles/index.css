@@ -184,6 +184,28 @@
     height: 100%;
   }
 
+  /* Ambient light: two faint radial glows falling from the top of the
+     page, accent-left and info-right — atmosphere, never a pattern. Painted
+     on a fixed pseudo-element so scrolling content moves through the light
+     rather than dragging it along. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        60rem 34rem at 16% -10%,
+        color-mix(in oklch, var(--mc-accent), transparent 93%),
+        transparent 62%
+      ),
+      radial-gradient(
+        50rem 30rem at 92% -14%,
+        color-mix(in oklch, var(--mc-info), transparent 95%),
+        transparent 60%
+      );
+  }
+
   body {
     background: var(--mc-bg);
     color: var(--mc-text);
@@ -428,6 +450,35 @@
     .constellation-live {
       animation: none;
     }
+  }
+
+  /* Depth for every card: a soft drop shadow in both themes, plus — dark
+     only — a one-pixel catch-light along the top edge, which is what makes
+     a dark surface read as a surface instead of a hole. */
+  .mc-card {
+    box-shadow: var(--mc-shadow-sm);
+  }
+  .dark .mc-card {
+    box-shadow:
+      var(--mc-shadow-sm),
+      inset 0 1px 0 oklch(100% 0 0 / 0.05);
+  }
+
+  /* The primary button, lit: a vertical sheen and its own key light. The
+     flat bg-accent read as a paint chip against a lit interface. */
+  .btn-primary {
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--mc-accent), white 8%),
+      color-mix(in oklch, var(--mc-accent), black 10%)
+    );
+    box-shadow:
+      inset 0 1px 0 oklch(100% 0 0 / 0.18),
+      0 1px 3px color-mix(in oklch, var(--mc-accent), transparent 55%);
+    transition: filter 0.15s ease;
+  }
+  .btn-primary:hover {
+    filter: brightness(1.08);
   }
 
   /* Landing highlight when a constellation star brings you to its card. */

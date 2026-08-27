@@ -505,4 +505,8 @@ export const fr: Record<string, string> = {
     'Tout est calme. Envoyez un message, ou remplissez le board et laissez-le travailler.',
   '{n} runs over the last 24 hours': '{n} runs sur les dernières 24 heures',
   '{n} failed': '{n} en échec',
+  'Recalled into this run': 'Rappelé dans ce run',
+  'a day': 'un jour',
+  'a week': 'une semaine',
+  'a month': 'un mois',
 };

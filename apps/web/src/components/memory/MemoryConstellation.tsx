@@ -20,15 +20,15 @@
  * the rim IS the forgetting curve.
  */
 
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import type { Memory, MemoryKind } from '@metaclaude/shared';
 import { useT } from '@/lib/i18n';
 import { cn, formatPercent, formatRelative } from '@/lib/utils';
 
 /** Oldest age the radius resolves; beyond this everything sits at the rim. */
-const HORIZON_MS = 30 * 24 * 60 * 60_000;
+export const HORIZON_MS = 30 * 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
-const DAY_MS = 24 * HOUR_MS;
+export const DAY_MS = 24 * HOUR_MS;
 /** Cap the sky, honestly: the faintest stars drop and the legend says so. */
 const MAX_NODES = 240;
 
@@ -132,8 +132,9 @@ export function MemoryConstellation({
   onSelect?: (id: string) => void;
 }) {
   const t = useT();
+  const uid = useId();
   const width = 640;
-  const height = 320;
+  const height = 300;
 
   const { nodes, dropped } = useMemo(
     () => constellationLayout(memories, { width, height, now }),
@@ -144,7 +145,16 @@ export function MemoryConstellation({
 
   const cx = width / 2;
   const cy = height / 2;
+  const rMin = Math.min(width, height) * 0.08;
   const rMax = Math.min(width, height) * 0.46;
+  const ringRadius = (ms: number): number =>
+    rMin + recencyOf({ lastUsedAt: now - ms, createdAt: 0 }, now) * (rMax - rMin);
+  // Real durations on the log scale, so the rings can be read as dates.
+  const rings: Array<[number, string]> = [
+    [DAY_MS, t('a day')],
+    [7 * DAY_MS, t('a week')],
+    [HORIZON_MS, t('a month')],
+  ];
 
   return (
     <figure className="space-y-2">
@@ -154,55 +164,103 @@ export function MemoryConstellation({
         role="group"
         aria-label={t('The memory as a constellation — recent at the centre, fading toward the rim')}
       >
-        {/* Recency rings: a day, a week, the horizon. Ground, not data. */}
-        {[1 / 3, 2 / 3, 1].map((fraction) => (
-          <circle
-            key={fraction}
-            cx={cx}
-            cy={cy}
-            r={rMax * fraction * 0.98 + Math.min(width, height) * 0.08 * (1 - fraction)}
-            fill="none"
-            stroke="var(--mc-border)"
-            strokeDasharray="2 5"
-            opacity={0.6}
-          />
+        <defs>
+          {/* The sky: a touch deeper than the card, lifting at the centre —
+              the empty space becomes space, not blankness. */}
+          <radialGradient id={`${uid}-sky`} cx="50%" cy="50%" r="65%">
+            <stop offset="0%" stopColor="var(--mc-surface)" />
+            <stop offset="100%" stopColor="var(--mc-surface-sunken)" />
+          </radialGradient>
+          {/* One halo per kind, shared by every star of that kind. */}
+          {(Object.keys(KIND_VAR) as MemoryKind[]).map((kind) => (
+            <radialGradient key={kind} id={`${uid}-halo-${kind}`}>
+              <stop offset="0%" stopColor={KIND_VAR[kind]} stopOpacity={0.5} />
+              <stop offset="55%" stopColor={KIND_VAR[kind]} stopOpacity={0.12} />
+              <stop offset="100%" stopColor={KIND_VAR[kind]} stopOpacity={0} />
+            </radialGradient>
+          ))}
+        </defs>
+
+        <rect x={0} y={0} width={width} height={height} rx={12} fill={`url(#${uid}-sky)`} />
+
+        {rings.map(([ms, label]) => (
+          <g key={ms}>
+            <circle
+              cx={cx}
+              cy={cy}
+              r={ringRadius(ms)}
+              fill="none"
+              stroke="var(--mc-border)"
+              strokeDasharray="2 5"
+              opacity={0.7}
+            />
+            <text
+              x={cx}
+              y={cy - ringRadius(ms) - 4}
+              textAnchor="middle"
+              fontSize={9}
+              fill="var(--mc-text-subtle)"
+              opacity={0.8}
+            >
+              {label}
+            </text>
+          </g>
         ))}
 
         {nodes.map((node) => (
-          <circle
-            key={node.id}
-            cx={node.x}
-            cy={node.y}
-            r={node.size}
-            fill={KIND_VAR[node.kind]}
-            opacity={node.opacity}
-            stroke={node.pinned ? 'var(--mc-warning)' : 'none'}
-            strokeWidth={node.pinned ? 1.5 : 0}
-            className={cn(
-              'constellation-node',
-              node.live && 'constellation-live',
-              onSelect && 'cursor-pointer',
-            )}
-            tabIndex={onSelect ? 0 : undefined}
-            role={onSelect ? 'button' : undefined}
-            aria-label={`${node.title} — ${formatPercent(node.confidence)}`}
-            onClick={onSelect ? () => onSelect(node.id) : undefined}
-            onKeyDown={
-              onSelect
-                ? (event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onSelect(node.id);
+          <g key={node.id} className={cn(node.live && 'constellation-live')}>
+            {/* The glow first, the star on top of its own light. */}
+            <circle
+              cx={node.x}
+              cy={node.y}
+              r={node.size * 2.8}
+              fill={`url(#${uid}-halo-${node.kind})`}
+              opacity={node.opacity}
+              aria-hidden
+            />
+            {node.pinned ? (
+              <circle
+                cx={node.x}
+                cy={node.y}
+                r={node.size + 3}
+                fill="none"
+                stroke="var(--mc-warning)"
+                strokeWidth={1.25}
+                strokeDasharray="3 3"
+                opacity={0.9}
+                aria-hidden
+              />
+            ) : null}
+            <circle
+              cx={node.x}
+              cy={node.y}
+              r={node.size}
+              fill={KIND_VAR[node.kind]}
+              opacity={Math.min(1, node.opacity + 0.15)}
+              stroke={node.pinned ? 'var(--mc-warning)' : 'none'}
+              strokeWidth={node.pinned ? 1 : 0}
+              className={cn('constellation-node', onSelect && 'cursor-pointer')}
+              tabIndex={onSelect ? 0 : undefined}
+              role={onSelect ? 'button' : undefined}
+              aria-label={`${node.title} — ${formatPercent(node.confidence)}`}
+              onClick={onSelect ? () => onSelect(node.id) : undefined}
+              onKeyDown={
+                onSelect
+                  ? (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelect(node.id);
+                      }
                     }
-                  }
-                : undefined
-            }
-          >
-            <title>
-              {node.title} — {formatPercent(node.confidence)}
-              {node.lastUsedAt ? ` · ${formatRelative(node.lastUsedAt)}` : ''}
-            </title>
-          </circle>
+                  : undefined
+              }
+            >
+              <title>
+                {node.title} — {formatPercent(node.confidence)}
+                {node.lastUsedAt ? ` · ${formatRelative(node.lastUsedAt)}` : ''}
+              </title>
+            </circle>
+          </g>
         ))}
       </svg>
 

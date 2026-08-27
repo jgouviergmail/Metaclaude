@@ -44,7 +44,7 @@ describe('BetaCurve', () => {
     const svg = screen.getByRole('img', { name: 'engineering — 80% expected' });
     expect(svg.querySelectorAll('path')).toHaveLength(2);
     // Mean 0.8 of the default 88px width.
-    const marker = svg.querySelectorAll('line')[1] as SVGLineElement;
+    const marker = svg.querySelector('line[data-mean]') as SVGLineElement;
     expect(Number(marker.getAttribute('x1'))).toBeCloseTo(0.8 * 88, 1);
   });
 });

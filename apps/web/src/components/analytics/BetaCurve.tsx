@@ -48,6 +48,8 @@ export function betaAreaPath(alpha: number, beta: number, width: number, height:
   return `M0,${height}${line}L${width},${height}Z`;
 }
 
+import { useId } from 'react';
+
 export function BetaCurve({
   alpha,
   beta,
@@ -66,6 +68,7 @@ export function BetaCurve({
   label: string;
   className?: string;
 }) {
+  const uid = useId();
   const mean = alpha / (alpha + beta);
   const area = betaAreaPath(alpha, beta, width, height);
   const meanX = mean * width;
@@ -86,12 +89,38 @@ export function BetaCurve({
       aria-label={label}
       className={`${toneClass}${className ? ` ${className}` : ''}`}
     >
-      {/* The 0–100% ground line, faint, so the curve reads as a distribution. */}
+      <defs>
+        {/* The belief fades to the baseline instead of sitting on it flat. */}
+        <linearGradient id={`${uid}-fill`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="currentColor" stopOpacity={0.38} />
+          <stop offset="100%" stopColor="currentColor" stopOpacity={0.04} />
+        </linearGradient>
+      </defs>
+      {/* Quartile ticks so 0–100% is readable without labels. */}
+      {[0.25, 0.5, 0.75].map((fraction) => (
+        <line
+          key={fraction}
+          x1={fraction * width}
+          y1={height - 4}
+          x2={fraction * width}
+          y2={height}
+          stroke="var(--mc-border)"
+        />
+      ))}
       <line x1={0} y1={height - 0.5} x2={width} y2={height - 0.5} stroke="var(--mc-border)" />
-      <path d={area} fill="currentColor" opacity={0.18} />
+      <path d={area} fill={`url(#${uid}-fill)`} />
       <path d={area} fill="none" stroke="currentColor" strokeWidth={1.25} />
       {/* The mean, marked — the single number the old bar reduced this to. */}
-      <line x1={meanX} y1={4} x2={meanX} y2={height} stroke="currentColor" strokeDasharray="2 2" />
+      <line
+        data-mean
+        x1={meanX}
+        y1={4}
+        x2={meanX}
+        y2={height}
+        stroke="currentColor"
+        strokeDasharray="2 2"
+      />
+      <circle cx={meanX} cy={height - 0.5} r={2.2} fill="currentColor" />
     </svg>
   );
 }

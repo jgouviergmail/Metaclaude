@@ -13,6 +13,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { useId } from 'react';
 import type { UsagePoint } from '@metaclaude/shared';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -61,6 +62,7 @@ export function SystemPulse({
   now?: number;
 }) {
   const t = useT();
+  const uid = useId();
 
   const pulseQuery = useQuery({
     queryKey: ['analytics', 'pulse'],
@@ -92,10 +94,10 @@ export function SystemPulse({
   const H = 36;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-xl border border-line bg-surface px-4 py-3">
+    <div className="mc-card flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-xl border border-line bg-surface px-4 py-3.5">
       <p
         className={cn(
-          'min-w-0 text-[14px] font-medium leading-relaxed',
+          'min-w-0 text-[15px] font-medium leading-relaxed',
           activeRuns > 0 ? 'text-ink' : 'text-muted',
         )}
         role="status"
@@ -117,6 +119,16 @@ export function SystemPulse({
         aria-label={t('{n} runs over the last 24 hours', { n: total })}
         className="shrink-0"
       >
+        <defs>
+          <linearGradient id={`${uid}-ok`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--mc-success)" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="var(--mc-success)" stopOpacity={0.45} />
+          </linearGradient>
+          <linearGradient id={`${uid}-fail`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--mc-danger)" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="var(--mc-danger)" stopOpacity={0.5} />
+          </linearGradient>
+        </defs>
         {bars.map((bar, i) => {
           const x = i * 9 + 1;
           if (bar.runs === 0) {
@@ -136,8 +148,7 @@ export function SystemPulse({
                 width={7}
                 height={okHeight}
                 rx={1}
-                fill="var(--mc-success)"
-                opacity={0.85}
+                fill={`url(#${uid}-ok)`}
               />
               {bar.failed > 0 ? (
                 <rect
@@ -146,8 +157,7 @@ export function SystemPulse({
                   width={7}
                   height={height - okHeight}
                   rx={1}
-                  fill="var(--mc-danger)"
-                  opacity={0.85}
+                  fill={`url(#${uid}-fail)`}
                 />
               ) : null}
               <title>

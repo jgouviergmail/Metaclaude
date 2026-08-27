@@ -129,6 +129,15 @@ export function DashboardPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+          {/* The opening line: what the OS is doing right now, and its
+              24-hour heartbeat — before anything else on the page. */}
+          <SystemPulse
+            activeRuns={activeRuns.length}
+            queuedRuns={system?.queuedRuns ?? 0}
+            approvals={approvals.length}
+            lastFinishedAt={runs.find((run) => run.finishedAt !== null)?.finishedAt ?? null}
+          />
+
           <GettingStartedCard />
 
           {/* Credential warning: without this the first run just fails opaquely. */}
@@ -224,15 +233,6 @@ export function DashboardPage() {
           {/* The advisor's inbox — proposals waiting on a decision, and the
               button that asks for a fresh analysis. */}
           <AdvisorCard />
-
-          {/* The opening line: what the OS is doing right now, and its
-              24-hour heartbeat. */}
-          <SystemPulse
-            activeRuns={activeRuns.length}
-            queuedRuns={system?.queuedRuns ?? 0}
-            approvals={approvals.length}
-            lastFinishedAt={runs.find((run) => run.finishedAt !== null)?.finishedAt ?? null}
-          />
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat
