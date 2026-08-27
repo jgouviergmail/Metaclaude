@@ -30,9 +30,9 @@ import {
   type PermissionMode,
 } from '@metaclaude/shared';
 import { Button, Tooltip } from '@/components/ui/primitives';
-import { ATTACHMENT_ACCEPT, formatBytes, type PendingAttachment } from '@/lib/attachments';
+import { ATTACHMENT_ACCEPT, type PendingAttachment } from '@/lib/attachments';
 import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
-import { cn, isModifier } from '@/lib/utils';
+import { cn, formatBytes, isModifier } from '@/lib/utils';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 
 const MODES: PermissionMode[] = ['plan', 'default', 'acceptEdits', 'auto', 'dontAsk'];

@@ -50,6 +50,15 @@ export function startJanitor(context: AppContext): () => void {
         );
       }
 
+      // Uploads nobody ever sent: a closed tab leaves them pending forever.
+      // Async and self-contained — a failed unlink must not fail the sweep.
+      void context.attachments
+        .collectOrphans()
+        .then((orphans) => {
+          if (orphans > 0) context.log.info({ orphans }, 'janitor: reaped unsent attachments');
+        })
+        .catch((error) => context.log.warn({ err: error }, 'janitor: attachment sweep failed'));
+
       // Reclaim pages freed by deletes so the database file does not only grow.
       context.db.pragma('incremental_vacuum');
       context.db.pragma('wal_checkpoint(PASSIVE)');

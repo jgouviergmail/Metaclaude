@@ -210,6 +210,69 @@ describe('remove', () => {
   });
 });
 
+describe('cascade', () => {
+  it('deleting a session takes its attachment rows with it', async () => {
+    // The review found the first draft of this table without ON DELETE
+    // clauses: with foreign keys enforced, deleting any session that ever
+    // carried an attachment failed on the constraint — the feature made
+    // sessions undeletable. The ledger rows follow their session; the bytes
+    // stay, because attachments/ is ordinary workspace content.
+    insertRun('run_1', sessionId, workspace.id);
+    const sent = await service.save(workspace, sessionId, {
+      name: 'a.png',
+      mime: 'image/png',
+      data: Buffer.from('x'),
+    });
+    service.bind([sent.id], sessionId, 'run_1');
+
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+    expect(service.get(sent.id)).toBeNull();
+  });
+
+  it('deleting a workspace takes every attachment row with it', async () => {
+    const saved = await service.save(workspace, sessionId, {
+      name: 'b.png',
+      mime: 'image/png',
+      data: Buffer.from('y'),
+    });
+
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run(workspace.id);
+    expect(service.get(saved.id)).toBeNull();
+  });
+});
+
+describe('collectOrphans', () => {
+  it('reaps pending uploads past the grace period — bound and fresh ones stay', async () => {
+    insertRun('run_1', sessionId, workspace.id);
+    const abandoned = await service.save(workspace, sessionId, {
+      name: 'old.png',
+      mime: 'image/png',
+      data: Buffer.from('abandoned'),
+    });
+    const sent = await service.save(workspace, sessionId, {
+      name: 'sent.png',
+      mime: 'image/png',
+      data: Buffer.from('sent'),
+    });
+    service.bind([sent.id], sessionId, 'run_1');
+    // Age only the abandoned one past the grace period.
+    db.prepare('UPDATE attachments SET created_at = 0 WHERE id = ?').run(abandoned.id);
+    const fresh = await service.save(workspace, sessionId, {
+      name: 'fresh.png',
+      mime: 'image/png',
+      data: Buffer.from('fresh'),
+    });
+
+    const reaped = await service.collectOrphans(24 * 60 * 60 * 1000, Date.now());
+
+    expect(reaped).toBe(1);
+    expect(service.get(abandoned.id)).toBeNull();
+    expect(existsSync(join(root, abandoned.path))).toBe(false);
+    expect(service.get(sent.id)).not.toBeNull();
+    expect(service.get(fresh.id)).not.toBeNull();
+  });
+});
+
 describe('pending', () => {
   it('lists only what has not been sent, oldest first', async () => {
     insertRun('run_1', sessionId, workspace.id);

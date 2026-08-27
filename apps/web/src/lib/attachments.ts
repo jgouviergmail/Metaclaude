@@ -7,7 +7,7 @@
  * them unbound until submission; removing a chip deletes the pending upload.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ATTACHMENT_LIMITS, ATTACHMENT_MIME_TYPES } from '@metaclaude/shared';
 import { api } from './api.js';
 
@@ -29,12 +29,6 @@ export const ATTACHMENT_ACCEPT = [
   '.png', '.jpg', '.jpeg', '.webp', '.gif', '.pdf', '.txt', '.md', '.csv', '.html', '.json',
   '.zip', '.docx', '.xlsx',
 ].join(',');
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 /**
  * ArrayBuffer → base64 without blowing the argument limit: `btoa` takes a
@@ -61,6 +55,13 @@ export function usePendingAttachments(sessionId: string | undefined): {
 } {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const counter = useRef(0);
+
+  // The session page keeps this hook mounted across navigation between
+  // sessions; files picked for one conversation must not follow the user
+  // into the next — the server would refuse the bind, after the surprise.
+  useEffect(() => {
+    setAttachments([]);
+  }, [sessionId]);
 
   const patch = useCallback((key: string, changes: Partial<PendingAttachment>) => {
     setAttachments((current) =>

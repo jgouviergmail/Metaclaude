@@ -246,7 +246,29 @@ export class AttachmentService {
     if (row.run_id !== null) {
       throw new AttachmentError('This attachment was already sent and is part of the transcript.', 409);
     }
-    this.db.prepare('DELETE FROM attachments WHERE id = ?').run(id);
+    await this.deleteRowAndMaybeFile(row);
+  }
+
+  /**
+   * Reap pending uploads nobody ever sent.
+   *
+   * A closed tab leaves its uploads unbound forever; after a generous grace
+   * period they are junk with a byte cost. Bound rows are never touched —
+   * they are the transcript's record — and the grace period means a message
+   * someone is still composing cannot lose its files.
+   */
+  async collectOrphans(olderThanMs = 24 * 60 * 60 * 1000, now = Date.now()): Promise<number> {
+    const rows = this.db
+      .prepare<[number], AttachmentRow>(
+        'SELECT * FROM attachments WHERE run_id IS NULL AND created_at < ?',
+      )
+      .all(now - olderThanMs);
+    for (const row of rows) await this.deleteRowAndMaybeFile(row);
+    return rows.length;
+  }
+
+  private async deleteRowAndMaybeFile(row: AttachmentRow): Promise<void> {
+    this.db.prepare('DELETE FROM attachments WHERE id = ?').run(row.id);
 
     // Remove the file only when no other row still names it.
     const others = this.db

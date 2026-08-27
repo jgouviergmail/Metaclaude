@@ -11,7 +11,21 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
-## [0.4.0] — 2026-08-26
+## [0.4.1] — 2026-08-27
+
+### Fixed
+
+- **The attachments review, applied.** v0.4.0 never became a release — its CI
+  was red, which blocks both the tag and the deployable image — and the deep
+  review that followed found four things worth fixing before one exists:
+  attachment rows now cascade with their session, run and workspace (the
+  first draft's enforced foreign keys made any session that ever carried an
+  attachment undeletable); a janitor sweep reaps uploads nobody ever sent
+  after a day's grace; files picked in one session no longer follow a
+  navigation into another; and the attachment contract became a type instead
+  of a schema — nothing ever parses one at an edge, and the needless z.object
+  was exactly the kilobyte that pushed the entry bundle over its ratchet and
+  turned CI red.
 
 ### Added
 

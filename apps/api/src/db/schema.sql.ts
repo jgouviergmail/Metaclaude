@@ -494,11 +494,18 @@ export const MIGRATIONS: readonly Migration[] = [
       -- what, into which session, and which run consumed it. run_id is NULL
       -- from upload until the message is submitted; binding it is the
       -- write-is-the-check that stops one pending upload being sent twice.
+      -- All three references cascade. Without ON DELETE, enforced foreign
+      -- keys made any session that ever carried an attachment undeletable —
+      -- the review caught that before this migration reached any real
+      -- database (a red CI blocks both the tag and the deployable image, so
+      -- editing it in place was still safe). Rows follow their owners; the
+      -- bytes under attachments/ stay, because they are ordinary workspace
+      -- content the operator can see and manage.
       CREATE TABLE attachments (
         id           TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL REFERENCES workspaces(id),
-        session_id   TEXT NOT NULL REFERENCES sessions(id),
-        run_id       TEXT REFERENCES runs(id),
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        run_id       TEXT REFERENCES runs(id) ON DELETE CASCADE,
         name         TEXT NOT NULL,
         path         TEXT NOT NULL,
         mime         TEXT NOT NULL,

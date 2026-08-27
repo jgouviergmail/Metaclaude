@@ -7,8 +7,18 @@
  * change the answer.
  */
 
-import { describe, expect, it } from 'vitest';
-import { bufferToBase64, formatBytes } from './attachments';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { bufferToBase64, usePendingAttachments } from './attachments';
+
+vi.mock('./api.js', () => ({
+  api: {
+    uploadAttachment: vi.fn(async (_session: string, body: { name: string }) => ({
+      attachment: { id: `att_${body.name}`, mime: 'image/png' },
+    })),
+    deleteAttachment: vi.fn(async () => ({ ok: true })),
+  },
+}));
 
 describe('bufferToBase64', () => {
   it('matches btoa on something small', () => {
@@ -31,10 +41,33 @@ describe('bufferToBase64', () => {
   });
 });
 
-describe('formatBytes', () => {
-  it('speaks the unit a human expects', () => {
-    expect(formatBytes(512)).toBe('512 B');
-    expect(formatBytes(2048)).toBe('2 KB');
-    expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB');
+describe('usePendingAttachments', () => {
+  it('uploads a picked file and reports it ready', async () => {
+    const { result } = renderHook(() => usePendingAttachments('ses_1'));
+
+    act(() => {
+      result.current.attach([new File(['bytes'], 'shot.png', { type: 'image/png' })]);
+    });
+
+    await waitFor(() => expect(result.current.readyIds).toEqual(['att_shot.png']));
+    expect(result.current.uploading).toBe(false);
+  });
+
+  it('drops pending files when the user navigates to another session', async () => {
+    // The page keeps the hook mounted across session navigation; files picked
+    // for one conversation must not follow into the next — the server would
+    // refuse the bind, after the surprise.
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => usePendingAttachments(sessionId),
+      { initialProps: { sessionId: 'ses_1' } },
+    );
+
+    act(() => {
+      result.current.attach([new File(['bytes'], 'shot.png', { type: 'image/png' })]);
+    });
+    await waitFor(() => expect(result.current.attachments).toHaveLength(1));
+
+    rerender({ sessionId: 'ses_2' });
+    expect(result.current.attachments).toHaveLength(0);
   });
 });

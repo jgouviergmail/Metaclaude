@@ -844,22 +844,29 @@ export const ATTACHMENT_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ] as const;
 
-export const Attachment = z.object({
-  id: z.string(),
-  workspaceId: z.string(),
-  sessionId: z.string(),
+/**
+ * A type, not a schema, on purpose — same exception as `Brief` and
+ * `UpdateCheck`: the server produces attachments from its own ledger and
+ * nothing ever parses one at an edge (uploads are validated by their own
+ * request schema; the transcript's copy rides `TranscriptEvent`). A z.object
+ * here would ride the web entry chunk for nothing — which is exactly how the
+ * bundle ratchet caught its first draft.
+ */
+export interface Attachment {
+  id: string;
+  workspaceId: string;
+  sessionId: string;
   /** Bound when the message is submitted; null while still pending in the composer. */
-  runId: z.string().nullable().default(null),
+  runId: string | null;
   /** The name the user gave the file, for display. */
-  name: z.string(),
+  name: string;
   /** Workspace-relative path under `attachments/`, derived from the content hash. */
-  path: z.string(),
-  mime: z.string(),
-  bytes: z.number().int().nonnegative(),
-  sha256: z.string(),
-  createdAt: Millis,
-});
-export type Attachment = z.infer<typeof Attachment>;
+  path: string;
+  mime: string;
+  bytes: number;
+  sha256: string;
+  createdAt: number;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Analytics                                                                   */

@@ -29,7 +29,7 @@ import { attachmentUrl } from '@/lib/api';
 import { renderMarkdown } from '@/lib/markdown';
 import { RunMetaChips } from './RunMetaChips';
 import { useUiStore } from '@/lib/store';
-import { cn, formatCost, formatDuration, formatTokens } from '@/lib/utils';
+import { cn, formatBytes, formatCost, formatDuration, formatTokens } from '@/lib/utils';
 import { SubagentEvent } from './Delegation';
 import { ToolCallCard } from './ToolCallCard';
 import { DiffView } from './DiffView';
@@ -72,7 +72,7 @@ function MessageAttachment({
       <Paperclip className="size-3.5 shrink-0" aria-hidden />
       <span className="truncate">{attachment.name}</span>
       <span className="shrink-0 text-subtle">
-        {broken ? 'missing' : `${Math.max(1, Math.round(attachment.bytes / 1024))} KB`}
+        {broken ? 'missing' : formatBytes(attachment.bytes)}
       </span>
     </span>
   );

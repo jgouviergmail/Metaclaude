@@ -135,7 +135,7 @@ describe('attachments', () => {
     );
 
     expect(screen.getByText('plan.png')).toBeTruthy();
-    expect(screen.getByText('2 KB')).toBeTruthy();
+    expect(screen.getByText('2.0 KB')).toBeTruthy();
     expect(screen.getByText('Over 20 MB')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /remove plan\.png/i }));

@@ -57,7 +57,7 @@ describe('UserMessage attachments', () => {
 
     const link = screen.getByRole('link', { name: /report\.pdf/i });
     expect(link.getAttribute('href')).toBe('/api/attachments/att_2');
-    expect(screen.getByText('4 KB')).toBeTruthy();
+    expect(screen.getByText('4.0 KB')).toBeTruthy();
   });
 
   it('degrades an event persisted without an id to an unlinked chip', () => {
