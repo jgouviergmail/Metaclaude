@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1715 tests, ~30s
+pnpm test:run                            # 1733 tests, ~30s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -221,6 +221,35 @@ restates the code is noise; one that records a decision or a trap is not.
   `server.ts` sets ws's own limit, so an oversized frame closes with the
   standard 1009 and the `raw.length > 64 * 1024` branch in `ws.ts` is a backstop
   that only becomes reachable if the two figures diverge. Keep them in step.
+- **A fixed height and a safe-area padding on the same element fight, and the
+  padding wins.** With border-box sizing, `h-14` *plus*
+  `padding-bottom: env(safe-area-inset-bottom)` leaves 56 − ~34 = 22px of
+  content on a gesture-nav iPhone, and flexbox crushes the icons into it —
+  while every browser tab and every Android install (inset 0) looks perfect,
+  which is what made this ship broken twice. One layer per inset, never two:
+  the phone tab bar owns the bottom inset alone and paints the home-indicator
+  zone with its own surface, its inner row owns the height, `<main>` reserves
+  the total, and `body` pads only the notch and the sides. `AppShell.test.tsx`
+  pins both halves. A symptom that appears only in the installed app is nearly
+  always an inset that is 0 everywhere you tested.
+- **jsdom's CSSOM silently drops `env()`.** `style={{ paddingBottom:
+  'env(safe-area-inset-bottom)' }}` renders correctly in a browser and reads
+  back as `''` in a test, so the invariant cannot be asserted — which is how
+  the trap above survived a test suite. Express such values as Tailwind
+  classes (`pb-[env(safe-area-inset-bottom)]`), which are readable from
+  `className`. Same family: `import('…?raw')` returns empty and
+  `new URL(…, import.meta.url)` is an http URL under vitest — read a source
+  file with `readFileSync('src/…')`, relative to the package root.
+- **Radix activates on the pointer event, not on click.** Menus open on
+  `pointerdown`, tabs switch on `mousedown`. `fireEvent.click` alone does
+  nothing in jsdom; fire the pointer event first. Costs a red test that looks
+  like a broken component every single time.
+- **Two SVGs on one page share an id namespace.** A `<linearGradient
+  id="fill">` in a component rendered twice makes the second instance
+  reference the first's gradient — invisible until a page shows two arms or
+  two curves. Every gradient, mask and filter id goes through React's
+  `useId()`; the visual components do this already, so copy the pattern rather
+  than a literal id.
 
 ## Testing
 
@@ -252,6 +281,16 @@ reservation window and cancelling a not-yet-started run are observable at all.
 put the line back. Three of the kernel tests were written against code that
 already worked, and only a deliberate sabotage of each showed they were testing
 the thing they claimed to.
+
+`apps/api/scripts/shots.mjs` is the design bench, not a check: it boots the
+real server, seeds a lived-in deployment (memories with a history, a day of
+runs, policy arms with distinct posteriors, a full board) and screenshots
+every key screen in both themes and on a phone. Nothing asserts — the output
+is for eyes. Run `pnpm build`, then
+`PLAYWRIGHT_CHROMIUM=/opt/pw-browsers/chromium node scripts/shots.mjs <dir>`
+from `apps/api`. Any change to a visual is judged against those images before
+and after; the aesthetic pass in 0.26.0 was made entirely that way, and the
+first capture is what revealed the hero shipping below the fold.
 
 The two checks that *do* need a live agent live in `apps/api/scripts/` and are
 run by hand (`check:e2e`, `check:browser`). They boot the real server against a

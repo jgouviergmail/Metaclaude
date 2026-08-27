@@ -1,10 +1,12 @@
 # Roadmap
 
-What Metaclaude is becoming, and in what order. This file is a contract, not a
-wish list: every capability named here is grounded in a surface the installed
-Claude Agent SDK actually declares — the file cites them — and every lot ships
-under the same regime as the code that exists: TDD, the ratchets, an
-adversarial review, and documentation updated in the same commit.
+Where Metaclaude has got to, and what is genuinely left. This file is a
+contract, not a wish list: everything under **Shipped** exists in the product
+at the version named, and everything under **What remains** is grounded in a
+surface the installed Claude Agent SDK actually declares. Every lot ships
+under the regime of CLAUDE.md — TDD with each new test proved able to fail,
+the ratchets, an adversarial review, and the documentation updated in the
+same commit.
 
 ## The thesis: a meta-harness
 
@@ -15,126 +17,135 @@ itself, maintains itself, and puts the owner's whole toolchain behind one
 intelligent surface.
 
 Three laws bound everything below. They are not aspirations; the codebase
-already enforces the first two and the third is this file's reason to exist:
+enforces all three today:
 
 1. **Inspectable.** A self-modifying system you cannot read is not one you
    should trust. Every learned weight, every memory, every decision has a
-   screen, and a Reset.
+   screen, and a Reset — and since 0.23.0 the loop that shapes each run is
+   drawn *in the transcript where it ran*.
 2. **Self-modification is gated.** The agent never mutates its own host
    directly. Changes to Metaclaude travel the same road as a human's: a
    commit, a green CI, a health-gated deploy, an automatic rollback. The
-   sandbox exists precisely to make the shortcut impossible.
+   sandbox exists precisely to make the shortcut impossible. The advisor
+   (0.22.0) extends the same principle to proposals: what would *act* the
+   moment it existed waits in an inbox for a person.
 3. **Documented as shipped.** Docs, help and changelog are product surfaces,
-   regenerated with the change that invalidates them — and `check.sh` already
-   fails when a documented log line stops existing in the code.
+   regenerated with the change that invalidates them — and `check.sh` fails
+   when a documented log line stops existing in the code, or when the guide
+   sends a reader to a screen that does not.
 
 ---
 
-## v0.2 — The system that documents itself · *shipped in 0.1.0/0.2.0*
+## Shipped
 
-*The owner asked for online help, user documentation and a changelog, kept
-current by Metaclaude itself. This lot makes documentation a build output.*
+Grouped by what it does for the owner, with the version that delivered it.
+The changelog carries the detail; this is the map.
 
-- **In-app user guide.** A Help surface rendered from `docs/` and a new
-  `docs/guide/` written for users rather than operators — served by the API,
-  searchable with the retrieval stack that already exists (hybrid BM25 +
-  vectors is running; pointing it at the docs corpus is configuration, not
-  invention).
-- **Intelligent help.** "Ask Metaclaude about Metaclaude": a help agent whose
-  workspace is the product's own documentation and source, answering with
-  citations into the guide. Runs under `plan`-style read-only permissions; the
-  help agent can never mutate the host it explains.
-- **Changelog in the product.** `CHANGELOG.md` rendered in-app; a release is
-  not done until its entry exists. Enforced the way this repo enforces
-  everything: a check that fails when a tag lacks an entry, not a convention.
-- **Self-maintenance.** The docs-drift guard generalises: every UI screen name
-  cited in the guide must exist in the routes; every documented setting must
-  exist in `.env.example`. Metaclaude's own release automation regenerates the
-  derived pages and refuses to ship when prose and code disagree.
+### The system explains itself
+- **In-app guide, changelog and search**, rendered from this repository's own
+  `docs/` — plus *Ask Metaclaude about itself*, a plan-mode session seeded
+  with the guide that answers with citations and executes nothing. *(0.1.0,
+  0.2.0)*
+- **The loop, made visible.** Every exchange carries a strip naming the
+  category the classifier assigned, the model and effort the policy chose and
+  who chose them; opening it shows the memories actually injected, the Beta
+  posterior of the arm the choice stood on, and the learner's own sentence.
+  *(0.23.0)*
+- **The memory as a sky.** A constellation where a star's size is its
+  confidence and its drift toward the rim *is* the forgetting curve. *(0.24.0,
+  refined 0.26.0)*
+- **The system's pulse.** The Dashboard opens on what the OS is doing right
+  now beside a 24-hour heartbeat. *(0.25.0, moved to the top in 0.26.0)*
+- **Posteriors as curves**, not bars: width is doubt, and doubt is why a
+  trailing arm still gets trials. *(0.23.0, refined 0.26.0)*
 
-## v0.3 — The ecosystem · *largely shipped in 0.2.0*
+### The ecosystem
+- **Plugins (Agent Plugins 1.0.0) and marketplaces**, installed by the CLI
+  itself, enabled per workspace. *(0.2.0)*
+- **What Claude offers, asked rather than assumed** — models, commands,
+  subagents and live MCP connection status, read from the CLI. *(0.2.0)*
+- **Session convergence**: adopt a CLI session started in a terminal;
+  optionally mirror sessions to claude.ai. *(0.2.0, 0.13.0)*
+- **A built-in library** of eight subagents and twelve skills, curated and
+  versioned in this repository, installed disabled in one click — with
+  **categories** across the whole registry. *(0.21.0)*
 
-*Everything Claude ships, reachable from the interface; everything the owner
-already has, importable into it.*
+### Autonomy, gated
+- **The doctor**: every self-check in one read-only pass, including the age of
+  the last completed backup. *(0.2.0, backup check 0.17.0)*
+- **Self-update through the pipeline**: the app writes a version into an
+  exchange directory; a host unit runs the same health-gated, auto-rolling-back
+  deploy CI uses. *(0.9.0)*
+- **A board that works itself**: fill To do, switch the autopilot on, cards get
+  worked one at a time into Review, with a quota guard near the plan's ceiling
+  — and Review changes hands explicitly in both directions. *(0.15.0, 0.19.0)*
+- **The advisor**: on request or daily per workspace, a run studies recent
+  activity, the board and the registry, then creates backlog tickets and
+  *disabled* automations directly and files anything that would act into an
+  inbox. MCP proposals face a trusted-publisher allowlist enforced
+  server-side. *(0.22.0)*
 
-- **Plugin marketplaces.** The SDK takes marketplace declarations and plugin
-  installs through the same `Options.settings` channel ultracode opened
-  (`extraKnownMarketplaces`, `plugins:[...]`, SHA-256 digests, a headless
-  install-progress message to narrate). UI: browse a GitHub `owner/repo`
-  marketplace, inspect, install with digest verification, uninstall. The
-  Agent Plugins 1.0.0 loader already handles what arrives.
-- **Sessions everywhere.** The SDK exports `listSessions()` /
-  `getSessionInfo()` — every session in the container's home, enumerable with
-  metadata — and carries the cloud-session client underneath (default
-  environment ids, `session_`/`ses_` envelope ids, `/teleport` handoffs). In
-  order: (1) a browser for the CLI's own sessions with one-click resume into
-  a Metaclaude session; (2) import of transcripts carried from another
-  machine; (3) linking the owner's claude.ai cloud sessions as first-class
-  residents. The owner was right that remote access exists; this makes
-  Metaclaude the place it all converges.
-- **Visualisation, done properly.** The current charts are inventory, not
-  insight. v2 renders the learning system visibly: the bandit's posterior per
-  arm over time, retrieval heatmaps (which memories fire, which decay),
-  token-flow by workspace against the subscription's own windows — the CLI
-  reports its rate-limit buckets per model tier, so the chart shows *the
-  actual ceiling*, not a guess. One visual system, both themes, built on the
-  product's tokens.
+### The multiplier
+- **Skill synthesis** from recurring procedural lessons, reviewed before it
+  ships. *(0.2.0)*
+- **A society of sessions**: depth-one delegation with the transcript showing
+  the society. *(0.2.0)*
+- **The morning brief**, composed from runs, board, doctor and quota. *(0.2.0)*
+- **Ultracode** per message: the CLI's standing multi-agent orchestration,
+  offered only where the chosen model can do it. *(0.3.0)*
 
-## v0.4 — Guarded autonomy · *doctor and update check shipped in 0.2.0*
+### The machine around it
+- **Backups that take themselves**, with the doctor watching for silence.
+  *(0.17.0)*
+- **Passkeys** beside password + TOTP, honest about the domain-name limit.
+  *(0.18.0)*
+- **Self-hosted push notifications** and an icon badge for waiting approvals.
+  *(0.14.0)*
+- **French**, with the English string as the key and the dictionary in its own
+  lazy chunk. *(0.20.0)*
 
-*Self-knowing, self-healing — with the third law doing the steering.*
+---
 
-- **The doctor.** A diagnostic agent with a read-only surface over what the
-  operator already greps by hand: the boot self-checks, the audit chain, the
-  health endpoints, container state. "Why is the proxy unhealthy?" becomes a
-  question the product answers itself — with the evidence, in the UI. The
-  uninstall rehearsal's lesson applies: the doctor must distinguish "the
-  guard held" from "the thing never ran".
-- **Self-update, through the gate.** Metaclaude watches its own upstream,
-  reads the changelog it maintains, and *proposes* updates: a staged deploy
-  the owner approves from the phone, executed by the existing tag → CI →
-  health-gate → rollback pipeline. The agent drives the pipeline; only the
-  pipeline touches the host.
-- **Self-knowledge.** Metaclaude's own repository as a resident workspace,
-  with the doctor's read-only surface as context: the system can explain its
-  own architecture, cite its own traps (CLAUDE.md is written for exactly
-  this), and draft its own fixes as branches CI will judge.
+## What remains
 
-## v0.5 — The multiplier · *brief and synthesis shipped in 0.2.0, delegation next; budget orchestration and the advisor remain*
+Deliberately short. Each item names the surface it would stand on.
 
-*The visionary lot — each item grounded in a surface that already exists.*
-
-- **Skill synthesis.** Reflexion already extracts durable lessons from runs.
-  The step nobody ships: promote a recurring procedural lesson into a *drafted
-  skill* — written to the workspace's `.claude/skills/`, flagged for the
-  owner's review, measured afterwards by the same reward loop that judges
-  models. The system does not just remember how it solved something; it
-  packages the method, and the bandit tells you whether the package works.
-- **A society of sessions.** The protocol carries inter-session message
-  envelopes with linkable session ids. Metaclaude sessions that delegate to
-  each other — a research session feeding an implementation session feeding a
-  review session — with the transcript showing the society, not just the
-  soloist. Ultracode fans out inside one run; this composes *across* runs.
-- **The IT-director's morning.** Automations already run on cron with
-  accumulated context. Compose them into briefs: overnight CI across watched
-  repos, dependency advisories against the fleet's lockfiles, the capacity
-  picture from the usage buckets — delivered as one morning session the owner
-  interrogates, not a dashboard they decode.
 - **Budget-aware orchestration.** The CLI reports its rate-limit windows and
-  per-tier utilisation. The scheduler learns to spend them: heavy ultracode
-  work lands when the weekly window resets; routine automations degrade to
-  cheaper arms as a ceiling approaches; the owner sees the plan before it
-  spends. The learner already knows which arm is *good* — this teaches it
-  when an arm is *affordable*.
-- **The advisor.** The SDK exposes an advisor-model hook and prompt
-  suggestions. Wired into the composer, the system that has watched every run
-  starts suggesting the next one — including "this is a job for ultracode"
-  and, someday, "I have a skill for this; want me to use it?".
+  per-tier utilisation, and the board autopilot already consults them before
+  an automatic start (0.15.0). The step not taken: teaching the *scheduler*
+  to spend the windows — heavy ultracode work landing when the weekly window
+  resets, routine automations degrading to cheaper arms as a ceiling
+  approaches, with the plan shown before it spends. The learner knows which
+  arm is *good*; this would teach it when an arm is *affordable*.
+- **The advisor in the composer.** The advisor ships as an analysis run whose
+  proposals land on the board or in an inbox. The SDK also exposes an
+  advisor-model hook and prompt suggestions: the system that has watched every
+  run could suggest the *next* one, in the composer, including "this is a job
+  for ultracode" and "I have a skill for this — want me to use it?".
+- **French, all the way down.** The everyday surface is translated (0.20.0);
+  the composer's deeper controls, the workspace settings drawer and the
+  secondary pages still answer in English, as does anything the server or the
+  CLI produces.
+- **A wider docs-drift guard.** Two thirds of this exists: `check.sh` fails
+  when a documented log line vanishes from the code (0.2.0), and — since
+  0.26.1 — when the guide sends a reader to a Settings screen that is not
+  there. Both were written after a real drift: the second after an audit
+  found *two* chapters naming screens that had moved or never existed. What
+  remains is the rest of the family — every documented environment variable
+  existing in `.env.example`, every screen name in the guide resolving to a
+  route — so prose and code cannot disagree quietly anywhere, not just where
+  someone has already been bitten.
+- **Metaclaude as a resident workspace.** *Ask Metaclaude about itself*
+  answers from the guide. The fuller version — this repository as a workspace
+  with the doctor's read-only surface as context, so the system can cite its
+  own traps and draft its own fixes as branches CI judges — is the natural end
+  of law 2, and is not built.
 
 ---
 
-*Ordering is deliberate: documentation before ecosystem (growth without a
-manual multiplies support, not capability), ecosystem before autonomy (the
-doctor needs surfaces to read), autonomy before the multiplier (a system that
-proposes its own upgrades must first be one that knows itself). Within a lot,
-the TDD/ratchet/review regime of CLAUDE.md applies unchanged.*
+*Ordering has been deliberate throughout: documentation before ecosystem
+(growth without a manual multiplies support, not capability), ecosystem before
+autonomy (the doctor needs surfaces to read), autonomy before the multiplier
+(a system that proposes its own upgrades must first be one that knows itself),
+and — since 0.23.0 — making the intelligence legible before making it wider.
+Within a lot, the TDD/ratchet/review regime of CLAUDE.md applies unchanged.*

@@ -70,6 +70,38 @@ across asks. Depth is one by construction: a delegated run cannot delegate
 further, so chains cannot loop and every delegation traces back to a run a
 human started.
 
+## Its settings
+
+Every workspace carries the agent policy that applies inside it. Open the
+workspace and press the settings button in its header; the drawer holds four
+groups.
+
+**Learning** — whether retrieved memory is injected into runs, whether the
+learner may pick the model and effort, whether the reflexion pass runs after
+each run, and whether file checkpointing records the point a run started (the
+thing Rewind needs).
+
+**Autonomy** — two opt-ins, both off by default, because an agent that acts
+unprompted is a decision rather than a discovery:
+
+- **Work the board by itself.** When a card run ends, the top To do card
+  starts automatically — one at a time, success landing in Review, with the
+  quota guard pausing automatic starts near the plan's ceiling.
+- **Let the advisor study this workspace daily.** At most once a day an
+  advisor run reads recent runs, the board and the registry, creates backlog
+  tickets and *disabled* automations, and leaves anything that would act in
+  the Dashboard inbox. The manual **Ask the advisor** button works whether or
+  not this is on — see the advisor chapter.
+
+**claude.ai** — mirroring this workspace's sessions to your account, which
+only has an effect when the CLI's own account sign-in is the live credential.
+
+**Marketplace plugins** — which plugins from your configured marketplaces the
+CLI should install here at the start of a run.
+
+The defaults for a new workspace come from the shape above; nothing here
+changes another workspace.
+
 ## Archiving and deleting
 
 Archiving hides a workspace without touching files. Deleting asks separately

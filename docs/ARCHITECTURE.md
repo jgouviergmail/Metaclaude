@@ -287,6 +287,20 @@ calendar fields, never by stepping a cursor minute by minute, because stepping a
 
 ---
 
+## The built-in library
+
+`library/catalog.ts` is a versioned constant: eight subagents and twelve
+skills, each with a category from the shared `LibraryCategory` vocabulary.
+Curating them *in the repository* rather than fetching them is the whole
+trust story — what ships has been read and reviewed like any other code —
+and `library/catalog.test.ts` holds the shelf to it: names the registry will
+accept, unique across kinds (install is addressed by name), every category
+covered, substance minima, a definition of done in every skill.
+`library/service.ts` decorates the catalogue with an `installed` flag read
+from *global* scope only, and installing copies an entry into the registry
+**disabled**, where it becomes the operator's own record. The library keeps
+the original, so a deleted copy is installable again.
+
 ## The advisor
 
 `services/advisor.ts` is the part of the system that studies the system. It
@@ -323,6 +337,17 @@ There is no separate "message" table that could drift.
 
 `memories` carries its embedding as a `BLOB` of little-endian `Float32` and is
 mirrored into an FTS5 index by triggers. Retrieval reads both.
+
+`memory_usages` is written before a run executes and read back by
+`GET /api/runs/:id/genesis`, which is the one endpoint that crosses all three
+learning subsystems at once: the classifier's verdict and the policy's
+provenance from the run row, the arm the run stood on from `policy_arms`, and
+the memories actually injected from `memory_usages` joined live to
+`memories` (so an edited memory shows its current title and a deleted one
+simply drops out). It is immutable once a run has started, which is why the
+client caches it forever — with one exception the UI handles: recall is
+recorded moments before execution, so a still-queued run answers with an
+empty list that fills in.
 
 ---
 
@@ -444,6 +469,22 @@ it updates many times a second and must not invalidate query caches.
 The socket is owned by the app shell, not by a page. Notifications and run
 lifecycle keep arriving on every screen, which is the difference between a chat
 window and an OS.
+
+**The visual layer** is hand-written SVG on the theme's own tokens — no chart
+library, and nothing that costs the entry bundle. Three rules make it
+maintainable. *Every channel carries a datum*: in the memory constellation a
+star's sector is its kind, its radius the log-scaled time since it was last
+recalled, its size the confidence, its ring the pin. *Layout is a pure
+function*, exported and tested apart from the component
+(`constellationLayout`, `pulseBars`, `betaDensityPoints`) — the geometry is
+the behaviour, so that is what the tests pin. *Positions are deterministic*:
+the constellation seeds its jitter from a hash of the memory id rather than
+running a force simulation, so the sky is stable across refetches and only
+genuine reinforcement or decay moves a star — a simulation would spend a
+phone's battery computing positions that mean nothing. Density curves are
+sampled in log space (the direct Beta form overflows a float at trial counts
+a busy workspace reaches), gradient and mask ids go through `useId()`, and
+every animation is disabled under `prefers-reduced-motion`.
 
 Model output is rendered through a hand-written allow-list sanitiser: `marked`
 produces HTML, that HTML is parsed into a detached `<template>`, and the tree is

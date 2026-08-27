@@ -1496,6 +1496,73 @@ EOF
   fi
 fi
 
+section "Every screen the guide sends the reader to still exists"
+
+# The same family as the log-phrase check above, for the *other* half of the
+# product surface: prose that navigates. A chapter saying "Settings → MCP"
+# for a screen that lives under Agents & skills is not a typo — it is a
+# reader who cannot find the thing, and nothing in a test suite notices.
+#
+# Two such drifts shipped before this check existed: the advisor chapter sent
+# people to Settings for a toggle that lives in the workspace's own settings,
+# and the MCP chapter named a Settings screen that has never existed.
+#
+# Scope: the user guide and the README, which describe *this app's* UI.
+# docs/DEPLOYMENT.md is deliberately excluded — its "Settings → General →
+# About" paths are iOS and Android, not Metaclaude.
+#
+# The claim asserted is narrow on purpose: the first segment after
+# "Settings →" must appear somewhere in SettingsPage.tsx, tab label or card
+# title. That is enough to catch a screen that is not there at all, without
+# pretending to parse the route tree.
+paths="$(python3 - "$REPO_ROOT" <<'PY'
+import pathlib, re, sys
+
+root = pathlib.Path(sys.argv[1])
+sources = sorted((root / "docs" / "guide").glob("*.md")) + [root / "README.md"]
+seen = []
+cite = re.compile(r"Settings\s*→\s*([^*\n.;,)]+)")
+for doc in sources:
+    if not doc.exists():
+        continue
+    for raw in cite.findall(doc.read_text(encoding="utf-8")):
+        # "System → Doctor → Run checks" — only the first hop is a Settings
+        # screen; what it contains is that screen's business.
+        first = raw.split("→")[0].strip().rstrip("*").strip()
+        # Prose that continues past the screen name ("Security and turn on…").
+        first = re.split(r"\s+(?:and|then|to|for|which|where)\b", first)[0].strip()
+        if first:
+            seen.append(first)
+print("\n".join(dict.fromkeys(seen)))
+PY
+)"
+
+settings_page="$REPO_ROOT/apps/web/src/pages/SettingsPage.tsx"
+if [ ! -f "$settings_page" ]; then
+  bad "locating the settings screen" "$settings_page is missing"
+elif [ -z "$paths" ]; then
+  # Not a pass: the guide has always named at least one Settings screen, so
+  # finding none means the extractor broke, not that the prose got cleaner.
+  bad "extracting the documented Settings paths" "found none — the extractor is broken"
+else
+  missing_paths=""
+  path_count=0
+  while IFS= read -r screen; do
+    [ -n "$screen" ] || continue
+    path_count=$((path_count + 1))
+    grep -qF -- "$screen" "$settings_page" 2>/dev/null \
+      || missing_paths="$missing_paths
+    Settings → $screen"
+  done <<EOF
+$paths
+EOF
+  if [ -n "$missing_paths" ]; then
+    bad "the guide sends the reader to a Settings screen that does not exist" "$missing_paths"
+  else
+    ok "all $path_count documented Settings screens exist in SettingsPage.tsx"
+  fi
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 printf '\n%s%d passed, %d failed, %d skipped%s\n' "$BOLD" "$PASSED" "$FAILED" "$SKIPPED" "$OFF"

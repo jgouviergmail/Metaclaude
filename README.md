@@ -125,8 +125,11 @@ something else. Metaclaude closes that loop explicitly:
     └─▶ reflect ───────────▶ a cheap, tool-less pass extracts durable lessons
 ```
 
-Every one of those steps is inspectable and resettable from the UI. A
-self-modifying system you cannot read is not one you should trust.
+Every one of those steps is inspectable and resettable from the UI — and
+since 0.23.0 the loop is *drawn where it ran*: each exchange in a transcript
+carries the classification, the arm the policy stood on and the memories that
+were actually injected. A self-modifying system you cannot read is not one you
+should trust.
 
 Full detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** ·
 **[docs/LEARNING.md](docs/LEARNING.md)** · **[docs/SECURITY.md](docs/SECURITY.md)** ·
@@ -184,6 +187,20 @@ The Analytics screen shows the posterior for every arm in plain language:
 *"Across 34 runs, sonnet at high effort performs best (82% expected quality,
 $0.041 and 47s on average)."* And a Reset button, because unlearning must be as
 easy as learning.
+
+### The loop, on screen
+The intelligence is legible, not implied. A **genesis strip** between your
+message and the answer names the category, the model and effort, and who chose
+them — open it and you see the memories that were injected with their
+retrieval strength, plus the Beta posterior of the exact arm the choice stood
+on; on the run working right now, its segments cascade in as the decision is
+made. The Memory page opens on a **constellation** where a star's size is its
+confidence and its drift toward the rim *is* the forgetting curve. Analytics
+draws posteriors as **curves rather than bars**, because the width of a belief
+is why a trailing arm still gets trials. The Dashboard opens on the **system's
+pulse**: what is running right now, beside a 24-hour heartbeat. Every pixel
+encodes a datum the system genuinely holds; everything holds still under
+`prefers-reduced-motion`.
 
 ### Automations
 Cron or interval triggers, with a **continuous** mode that keeps one session
@@ -299,7 +316,7 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 1715 unit + integration tests, ~30s
+pnpm test:run    # 1733 unit + integration tests, ~30s
 pnpm typecheck
 pnpm build
 ```
@@ -324,8 +341,10 @@ packages/shared/    Zod contracts shared by the API and the web app
 apps/api/
   ├── kernel/       Run lifecycle, Agent SDK bridge, permissions, event bus
   ├── learning/     Embeddings, memory, bandit, classifier, reflexion
+  ├── library/      The built-in shelf of subagents and skills
   ├── security/     Auth, TOTP, crypto, vault, audit, path jailing
-  ├── services/     Workspaces, files, git, registry, scheduler, analytics
+  ├── services/     Workspaces, files, git, registry, scheduler, analytics, advisor
+  ├── scripts/      Live checks and the screenshot bench (run by hand)
   └── routes/       REST + WebSocket
 apps/web/           React PWA
 docker/             Dockerfile, Caddyfile, entrypoint

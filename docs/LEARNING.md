@@ -104,6 +104,16 @@ This is what keeps the corpus honest over years rather than accumulating
 sediment. Something genuinely useful is retrieved often enough that
 reinforcement outpaces decay. Everything else fades.
 
+**On screen.** The Memory page draws this as a constellation: a star's size is
+its confidence, its distance from the centre is the log-scaled time since a run
+last recalled it, and a ring marks the pinned memories decay cannot touch. A
+star drifting toward the rim is not an illustration of the forgetting curve —
+it *is* the curve, plotted from the same `last_used_at` the decay reads. And
+what a given run actually recalled is on the run itself: the genesis strip in
+the transcript lists the injected memories with the rank-normalised retrieval
+score that `recordUsage` stored, which is the same number the attribution term
+above uses.
+
 ---
 
 ## Loop 2 — Policy: which model for which kind of task?
@@ -194,6 +204,15 @@ The Analytics screen renders each posterior in plain language:
 
 with a Reset button beside it. A self-modifying policy the operator cannot read
 and cannot revert is not one they should trust.
+
+**On screen.** Beside that sentence each arm's posterior is drawn as its actual
+Beta density rather than a bar, because the mean is the least interesting thing
+a posterior knows: Beta(3,3) and Beta(30,30) share one, and only the width says
+which belief is settled. That width is also the honest picture of Thompson
+sampling — a broad, trailing hump is exactly an arm whose samples still
+sometimes win, which is why it keeps getting trials. The same curve appears in
+a transcript's genesis strip for the one arm that run stood on, so "why this
+model?" is answered where the question is asked.
 
 ---
 

@@ -44,8 +44,9 @@ in the vault, after accepting.
 
 ## Running it daily
 
-Per workspace, **Settings → Autonomy → Let the advisor study this workspace
-daily** opts in to one automatic analysis a day (off by default — an agent
+Per workspace — open the workspace, press its **settings** button in the
+header, and find **Autonomy → Let the advisor study this workspace daily** —
+you can opt in to one automatic analysis a day (off by default — an agent
 that studies your workspace unprompted is a decision, not a discovery). The
 manual button works either way. Every advisor run is pinned to the **Auto**
 permission mode: reads and web research flow, anything high-risk still asks

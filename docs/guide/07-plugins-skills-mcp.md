@@ -73,10 +73,10 @@ dependency. Only the owner account can add or remove one.
 
 MCP connects the agent to external systems — databases, browsers, trackers,
 your own tools. Configure servers globally or per workspace under
-**Settings → MCP**; credentials go into an encrypted vault and are merged into
-the server's environment only at run time. The interface never displays a
-stored secret back, and editing a server keeps the credentials you do not
-retype.
+**Agents & skills → MCP servers**; credentials go into an encrypted vault and
+are merged into the server's environment only at run time. The interface never
+displays a stored secret back, and editing a server keeps the credentials you
+do not retype.
 
 **From Claude** — the tab worth knowing about — shows what the CLI itself
 reports for a workspace rather than what Metaclaude assumes: the models your

@@ -11,6 +11,34 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.26.1] — 2026-08-27
+
+### Fixed
+
+- **Two chapters of the guide sent you to the wrong screen.** The advisor
+  chapter said its daily opt-in lived in Settings when it lives in the
+  workspace's own settings drawer, and the MCP chapter named a
+  "Settings → MCP" screen that has never existed — MCP servers are configured
+  under Agents & skills. Both are now right, and `check.sh` grew the guard
+  that would have caught them the day they were written: every
+  `Settings → …` path the guide or the README cites must resolve to something
+  that exists in the settings screen, or the deploy checks fail.
+
+### Changed
+
+- **The documentation caught up with the product.** The roadmap had stopped
+  five versions back — it still listed the advisor as future work — and is now
+  a map of what shipped, version by version, with an honestly short list of
+  what remains. The architecture document gained the built-in library, the
+  run-genesis endpoint and the rules behind the visual layer; the learning
+  document now shows what each loop *looks like* (the constellation is the
+  forgetting curve, the posterior's width is the doubt); the workspace chapter
+  documents the settings drawer including both autonomy opt-ins; and CLAUDE.md
+  records four traps this cycle taught — the border-box safe-area collision
+  that shipped broken twice, jsdom silently dropping `env()` values from the
+  CSSOM, Radix activating on pointer events rather than clicks, and SVG ids
+  colliding without `useId`.
+
 ## [0.26.0] — 2026-08-27
 
 ### Changed
