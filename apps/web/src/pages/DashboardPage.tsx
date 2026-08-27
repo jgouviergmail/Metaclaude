@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { BriefView } from '@/components/analytics/BriefView';
+import { AdvisorCard } from '@/components/dashboard/AdvisorCard';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
@@ -219,6 +220,10 @@ export function DashboardPage() {
           ) : null}
 
           {/* Metrics */}
+          {/* The advisor's inbox — proposals waiting on a decision, and the
+              button that asks for a fresh analysis. */}
+          <AdvisorCard />
+
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat
               label={t('Active runs')}

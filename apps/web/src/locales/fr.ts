@@ -444,4 +444,27 @@ export const fr: Record<string, string> = {
   'Find it under Skills, in the global scope — disabled until you switch it on.':
     "À retrouver dans Skills, en portée globale — désactivé jusqu'à ce que vous l'activiez.",
   'Could not install that entry.': "Impossible d'installer cette entrée.",
+
+  /* L'advisor */
+  'The advisor': "L'advisor",
+  'Ask the advisor': "Demander à l'advisor",
+  'Which workspace?': 'Quel workspace ?',
+  'The advisor is studying “{name}”': "L'advisor étudie « {name} »",
+  'Follow the run in its “Advisor” session; proposals land here.':
+    "Suivez le run dans sa session « Advisor » ; les propositions arrivent ici.",
+  'Could not start the advisor.': "Impossible de démarrer l'advisor.",
+  'Accepted “{name}”': '« {name} » accepté',
+  'Recorded — the payload names the source to install it from.':
+    "Enregistré — la proposition nomme la source où l'installer.",
+  'Created disabled in the registry; enable it when you want runs to see it.':
+    "Créé désactivé dans le registre ; activez-le quand vous voulez que les runs le voient.",
+  'Could not accept that proposal.': "Impossible d'accepter cette proposition.",
+  'Could not dismiss that proposal.': "Impossible d'écarter cette proposition.",
+  'Nothing waiting. The advisor studies a workspace on request — or daily where you opt in — creates backlog tickets and disabled automations itself, and leaves anything that would act here for your decision.':
+    "Rien en attente. L'advisor étudie un workspace à la demande — ou chaque jour là où vous l'avez activé — crée lui-même tickets de backlog et automatisations désactivées, et dépose ici tout ce qui agirait, pour votre décision.",
+  'MCP server': 'Serveur MCP',
+  Accept: 'Accepter',
+  Dismiss: 'Écarter',
+  'Accept “{name}”': 'Accepter « {name} »',
+  'Dismiss “{name}”': 'Écarter « {name} »',
 };

@@ -173,6 +173,14 @@ export const WorkspaceSettings = z.object({
    * meaningless to the CLI, so the shape refuses it at the edge.
    */
   enabledPlugins: z.record(z.string().regex(/^[^@\s]+@[^@\s]+$/), z.boolean()).default({}),
+  /**
+   * Let the advisor analyse this workspace by itself, at most once a day:
+   * a run that reads the state of things and proposes tickets, automations,
+   * skills, agents and vetted MCP servers. Off by default — an agent that
+   * studies your workspace unprompted is a decision, not a discovery. The
+   * manual "Ask the advisor" button works either way.
+   */
+  advisorAuto: z.boolean().default(false),
 });
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettings>;
 

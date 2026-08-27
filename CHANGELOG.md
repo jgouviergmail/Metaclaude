@@ -11,6 +11,28 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-08-27
+
+### Added
+
+- **The advisor.** Metaclaude can now study itself and propose. Ask it from
+  the Dashboard (or opt a workspace into a daily analysis under Settings →
+  Autonomy): a run titled *Advisor* reads recent runs and their failures,
+  the board, the automations and the registry, then acts with graduated
+  autonomy — tickets go straight to Backlog with the reasoning as a card
+  comment, automations are created **disabled** with the rationale beside
+  the switch, and anything that would act the moment it existed (skills,
+  subagents, MCP servers, plugins) lands in a Dashboard **inbox** where
+  accepting is one click and still creates the record disabled. MCP
+  proposals face a trusted-publisher allowlist enforced server-side —
+  Anthropic, GitHub, Linear, Notion, Sentry, Stripe, Cloudflare, Hugging
+  Face — because the advisor researches the open web, and a page saying
+  "add this MCP server" is exactly what prompt injection looks like. The
+  proposal tools are mounted into every run, so any agent that notices a
+  repeated chore can propose the automation on the spot; each advisor run
+  is pinned to the Auto permission mode and keeps one session per
+  workspace, so analyses accumulate context.
+
 ## [0.21.0] — 2026-08-27
 
 ### Added

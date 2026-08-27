@@ -481,6 +481,39 @@ export const SkillDefinition = z.object({
 export type SkillDefinition = z.infer<typeof SkillDefinition>;
 
 /**
+ * A proposal the advisor left in the inbox — a skill, agent, MCP server or
+ * plugin it believes this deployment should have, waiting for one click.
+ *
+ * Tickets and automations never appear here: the advisor creates tickets
+ * directly on the board (they are inert until worked) and automations
+ * directly but disabled (inert until enabled). What lands in the inbox is
+ * exactly what would *act* the moment it exists — so it does not exist until
+ * a person accepts it.
+ */
+export const AdvisorProposalKind = z.enum(['skill', 'agent', 'mcp', 'plugin']);
+export type AdvisorProposalKind = z.infer<typeof AdvisorProposalKind>;
+
+export const AdvisorProposal = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  /** The advisor run that proposed it; null when the run is gone. */
+  runId: z.string().nullable(),
+  kind: AdvisorProposalKind,
+  name: z.string().min(1).max(120),
+  /** One line: what this is. */
+  summary: z.string().min(1).max(500),
+  /** Why the advisor thinks you want it — shown beside the Accept button. */
+  rationale: z.string().min(1).max(4000),
+  /** Kind-specific creation payload, applied verbatim on accept. */
+  payload: z.record(z.string(), z.unknown()),
+  status: z.enum(['pending', 'accepted', 'dismissed']),
+  createdAt: Millis,
+  decidedAt: Millis.nullable(),
+  decidedBy: z.string().nullable(),
+});
+export type AdvisorProposal = z.infer<typeof AdvisorProposal>;
+
+/**
  * One entry of the built-in library as GET /api/library serves it.
  *
  * A plain type rather than a Zod schema on purpose: the catalogue is

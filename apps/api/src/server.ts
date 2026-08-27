@@ -20,6 +20,7 @@ import Fastify, { LogController, type FastifyRequest } from 'fastify';
 import type { AppContext } from './context.js';
 import type { App } from './http/types.js';
 import { authenticate, isPublicPath, requestIp, sendError, verifyCsrf } from './http/guards.js';
+import { registerAdvisorRoutes } from './routes/advisor.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerBoardRoutes } from './routes/board.js';
 import { registerFileRoutes } from './routes/files.js';
@@ -209,6 +210,7 @@ export async function buildServer(context: AppContext): Promise<App> {
   registerLearningRoutes(app, context);
   registerRegistryRoutes(app, context);
   registerBoardRoutes(app, context);
+  registerAdvisorRoutes(app, context);
   registerWebSocket(app, context);
 
   /* ------------------------------- Static ------------------------------- */

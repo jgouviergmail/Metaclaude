@@ -60,6 +60,7 @@ import { FileService } from './services/files.js';
 import { GitService } from './services/git.js';
 import { Registry } from './services/registry.js';
 import { LibraryService } from './library/service.js';
+import { AdvisorService } from './services/advisor.js';
 import { Scheduler } from './services/scheduler.js';
 import { relocateWorkspaces, WorkspaceService } from './services/workspaces.js';
 
@@ -103,6 +104,7 @@ export interface AppContext {
 
   registry: Registry;
   library: LibraryService;
+  advisor: AdvisorService;
   workspaces: WorkspaceService;
   files: FileService;
   attachments: AttachmentService;
@@ -309,6 +311,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   // Declared before the kernel and resolved lazily by the supervisor, since the
   // two reference each other.
   let kernelRef: Kernel | null = null;
+  let advisorRef: AdvisorService | null = null;
 
   const supervisor = new AgentSupervisor({
     broker: () => {
@@ -327,6 +330,19 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       return kernelRef.delegate(input);
     },
     board,
+    // Same lazy shape as the broker: the advisor needs the kernel's submit,
+    // so it is built after both — but its propose surface must be mountable
+    // into every run from the start.
+    advisor: {
+      propose: (input) => {
+        if (!advisorRef) throw new Error('The advisor is not ready yet.');
+        return advisorRef.propose(input);
+      },
+      proposeAutomation: (input) => {
+        if (!advisorRef) throw new Error('The advisor is not ready yet.');
+        return advisorRef.proposeAutomation(input);
+      },
+    },
   });
 
   // What the CLI itself offers, per workspace. Behind a short-lived cache
@@ -490,6 +506,27 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const autopilotTimer = setInterval(() => void autopilot.sweep(), 5 * 60_000);
   autopilotTimer.unref();
 
+  // The advisor: the dossier is composed from the same live services the
+  // routes read, and its run goes through the ordinary kernel — session,
+  // transcript, approvals and all.
+  const advisor = new AdvisorService({
+    db,
+    workspaces: workspaceRepo,
+    sessions: sessionRepo,
+    runs: runRepo,
+    registry,
+    scheduler,
+    library,
+    board: { list: (workspaceId) => board.list(workspaceId) },
+    submit: (input) => kernel.submit(input),
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+  advisorRef = advisor;
+  // Hourly is the beat, not the cadence: the sweep itself holds each
+  // workspace to at most one automatic analysis per day.
+  const advisorTimer = setInterval(() => void advisor.sweep(), 60 * 60_000);
+  advisorTimer.unref();
+
   // Read-only self-diagnosis. Probes are bound here so the doctor itself
   // stays testable against fakes; on demand only, so no caching.
   const doctor = new Doctor({
@@ -606,6 +643,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     reflexion,
     registry,
     library,
+    advisor,
     workspaces,
     files: new FileService(),
     attachments,

@@ -13,6 +13,7 @@ import type {
 } from '@simplewebauthn/browser';
 import {
   CSRF_COOKIE,
+  type AdvisorProposal,
   type AgentDefinitionRecord,
   type AnalyticsSummary,
   type ApprovalRequest,
@@ -620,6 +621,24 @@ export const api = {
         confidence: number;
       }>;
     }>('/api/policy/preview', { method: 'POST', body }),
+
+  /* ------------------------------ Advisor ------------------------------ */
+  askAdvisor: (workspaceId: string) =>
+    request<{ runId: string; sessionId: string }>('/api/advisor/ask', {
+      method: 'POST',
+      body: { workspaceId },
+    }),
+  advisorProposals: (workspaceId?: string) =>
+    request<{ proposals: AdvisorProposal[] }>(`/api/advisor/proposals${qs({ workspaceId })}`),
+  acceptAdvisorProposal: (id: string) =>
+    request<{ proposal: AdvisorProposal; appliedId: string | null }>(
+      `/api/advisor/proposals/${id}/accept`,
+      { method: 'POST' },
+    ),
+  dismissAdvisorProposal: (id: string) =>
+    request<{ proposal: AdvisorProposal }>(`/api/advisor/proposals/${id}/dismiss`, {
+      method: 'POST',
+    }),
 
   /* ----------------------------- Registry ----------------------------- */
   skills: (workspaceId?: string) =>

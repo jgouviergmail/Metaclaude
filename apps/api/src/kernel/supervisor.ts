@@ -41,6 +41,7 @@ import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
+import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
 import type { PermissionBroker } from './permissions.js';
 import { resolvePermissionMode } from './permissions.js';
@@ -154,6 +155,12 @@ export interface SupervisorDeps {
    * which report their progress through the board like any other.
    */
   board?: BoardFacade;
+  /**
+   * The proposal tools, when the deployment wires the advisor in. Mounted for
+   * every run for the same reason as the board: noticing "this should be an
+   * automation" is not reserved to the advisor's own analysis runs.
+   */
+  advisor?: AdvisorFacade;
 }
 
 /**
@@ -530,6 +537,16 @@ export class AgentSupervisor {
           }),
         }
       : {};
+    // The proposal tools, same scoping. Writes are graduated server-side:
+    // automations land disabled, everything else lands in the inbox.
+    const advisorServer: NonNullable<Options['mcpServers']> = this.deps.advisor
+      ? {
+          metaclaude_advisor: buildAdvisorServer(this.deps.advisor, {
+            workspaceId: workspace.id,
+            runId: request.runId,
+          }),
+        }
+      : {};
     // The Tools picker's hard lever: an excluded server is simply not
     // mounted for this run. Filtered before the delegation server merges,
     // so kernel machinery cannot be cut from the composer — it has its own
@@ -542,12 +559,14 @@ export class AgentSupervisor {
     if (
       Object.keys(mountedServers).length > 0 ||
       Object.keys(delegationServer).length > 0 ||
-      Object.keys(boardServer).length > 0
+      Object.keys(boardServer).length > 0 ||
+      Object.keys(advisorServer).length > 0
     ) {
       options.mcpServers = {
         ...(mountedServers as Options['mcpServers']),
         ...delegationServer,
         ...boardServer,
+        ...advisorServer,
       };
     }
     if (Object.keys(request.agents).length > 0) {

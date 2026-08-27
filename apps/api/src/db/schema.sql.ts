@@ -635,4 +635,39 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE agents ADD COLUMN category TEXT NOT NULL DEFAULT 'general';
     `,
   },
+  {
+    version: 15,
+    name: 'advisor',
+    sql: /* sql */ `
+      -- The advisor's inbox: proposals that would *act* the moment they
+      -- existed (skills, agents, MCP servers, plugins), parked as rows until
+      -- a person accepts them. Tickets and disabled automations are created
+      -- directly instead — they are inert by construction — so they never
+      -- pass through this table. payload is the kind-specific creation
+      -- input, JSON, applied verbatim on accept.
+      CREATE TABLE advisor_proposals (
+        id           TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        run_id       TEXT,
+        kind         TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        summary      TEXT NOT NULL,
+        rationale    TEXT NOT NULL,
+        payload      TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        created_at   INTEGER NOT NULL,
+        decided_at   INTEGER,
+        decided_by   TEXT
+      );
+      CREATE INDEX idx_advisor_proposals_ws ON advisor_proposals(workspace_id, status);
+
+      -- One row per workspace the advisor has visited: the session its
+      -- analyses accumulate in, and the clock the daily opt-in respects.
+      CREATE TABLE advisor_state (
+        workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+        session_id   TEXT,
+        last_auto_at INTEGER
+      );
+    `,
+  },
 ];

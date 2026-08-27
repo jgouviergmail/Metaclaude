@@ -53,6 +53,7 @@ const workspace: Workspace = {
     mirrorSessions: false,
     autoWorkBoard: false,
     enabledPlugins: {},
+    advisorAuto: false,
   },
   createdAt: 0,
   updatedAt: 0,

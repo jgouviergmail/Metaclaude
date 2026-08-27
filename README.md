@@ -41,6 +41,12 @@ system around it:
   for seconds, archives every volume, and leaves a marker the in-app doctor
   watches — so backups that quietly stop become a visible warning, and
   `metaclaude-backup restore` puts everything back.
+- **An advisor that studies the system itself.** On request or once a day
+  per workspace, a run reads recent activity, the board and the registry,
+  then creates backlog tickets and disabled automations directly — and
+  leaves skills, subagents and MCP servers from vetted publishers in an
+  inbox that takes one click to accept. Everything it would do is inert
+  until a human decides.
 - **A library to start from.** A curated shelf of skills and subagents by
   domain — code review, tests, debugging, security, writing, data, ops —
   installed with one click, disabled until you switch each one on.
@@ -196,6 +202,17 @@ Any finished run can be undone. With file checkpointing on, every run records
 the point it started from, and the transcript offers a Restore control that
 first shows you exactly which files would change and by how many lines — the
 CLI's own dry run, not an estimate — before anything is written.
+
+### The advisor
+A run that studies a workspace — recent runs and failures, the board,
+automations, the registry, the library — and proposes with graduated
+autonomy: tickets straight to Backlog, automations created disabled,
+everything that would *act* (skills, subagents, MCP servers, plugins)
+parked in a Dashboard inbox until accepted. MCP proposals pass a
+trusted-publisher allowlist curated in this repository, because a web page
+saying "add this server" is what prompt injection looks like. The proposal
+tools are mounted into every run, so any agent that spots a repeated chore
+can suggest the automation on the spot.
 
 ### Extensibility
 Skills (written to `.claude/skills/` before each run so the CLI discovers them),

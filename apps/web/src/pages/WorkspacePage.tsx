@@ -562,6 +562,13 @@ function WorkspaceSettingsModal({
             label="Work the board by itself"
             hint="When a card run ends, start the top To do card automatically — one card at a time, success lands in Review, and the quota guard pauses automatic starts near the plan's ceiling."
           />
+
+          <CheckboxField
+            checked={draft.advisorAuto}
+            onChange={(value) => update('advisorAuto', value)}
+            label="Let the advisor study this workspace daily"
+            hint="At most once a day, an advisor run reads recent runs, the board and the registry, creates backlog tickets and disabled automations, and leaves anything that would act — skills, agents, vetted MCP servers — in the Dashboard inbox for you to accept. The manual button works either way."
+          />
         </fieldset>
 
         <MenuSeparator />
