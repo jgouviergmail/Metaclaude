@@ -589,6 +589,46 @@ export class AuthService {
     return true;
   }
 
+  /**
+   * Re-prove the first factor for an already-identified user. This is the
+   * gate in front of every security downgrade (removing a passkey, replacing
+   * TOTP) and every enrolment of a new factor — the same authority either way.
+   */
+  async checkPassword(userId: string, password: string): Promise<boolean> {
+    const row = this.db.prepare<[string], UserRow>('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!row) return false;
+    return verifyPassword(password, row.password_hash);
+  }
+
+  /**
+   * Issue a session for a user whose identity the caller has already verified
+   * through an independent factor — today, a WebAuthn assertion.
+   *
+   * Deliberately ignores the password lockout: the lockout throttles password
+   * guessing, a passkey is not guessable, and this is the recovery path for
+   * an owner whose password is being hammered by someone else. A successful
+   * sign-in clears the counters exactly as a password login does.
+   */
+  issueVerifiedSession(
+    userId: string,
+    userAgent: string | null,
+    ipAddress: string | null,
+  ): { user: User; token: string; csrfToken: string; sessionId: string } | null {
+    const row = this.db.prepare<[string], UserRow>('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!row) return null;
+    const now = Date.now();
+    const session = this.createSession(userId, userAgent, ipAddress);
+    this.db
+      .prepare('UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = ? WHERE id = ?')
+      .run(now, userId);
+    return {
+      user: toUser({ ...row, last_login_at: now }),
+      token: session.token,
+      csrfToken: session.csrfToken,
+      sessionId: session.id,
+    };
+  }
+
   remainingRecoveryCodes(userId: string): number {
     const row = this.db
       .prepare<[string], { recovery_codes: string }>('SELECT recovery_codes FROM users WHERE id = ?')

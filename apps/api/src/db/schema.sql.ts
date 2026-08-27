@@ -595,4 +595,32 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
     `,
   },
+  {
+    version: 13,
+    name: 'webauthn_credentials',
+    sql: /* sql */ `
+      -- One row per enrolled passkey. credential_id is the authenticator's own
+      -- identifier (base64url) and is globally unique by construction; the
+      -- UNIQUE constraint also blocks the same authenticator being enrolled
+      -- twice. rp_id records the domain the passkey was created under, because
+      -- a WebAuthn credential only ever answers for its own domain — a
+      -- deployment reachable at two names needs a passkey per name, and the
+      -- list in Settings should be able to say so. The signature counter is
+      -- kept per the spec to surface cloned authenticators; many passkey
+      -- providers always report zero, which the verifier tolerates.
+      CREATE TABLE webauthn_credentials (
+        id            TEXT PRIMARY KEY,
+        user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key    BLOB NOT NULL,
+        counter       INTEGER NOT NULL DEFAULT 0,
+        transports    TEXT NOT NULL DEFAULT '[]',
+        rp_id         TEXT NOT NULL,
+        label         TEXT NOT NULL,
+        created_at    INTEGER NOT NULL,
+        last_used_at  INTEGER
+      );
+      CREATE INDEX idx_webauthn_credentials_user ON webauthn_credentials(user_id);
+    `,
+  },
 ];

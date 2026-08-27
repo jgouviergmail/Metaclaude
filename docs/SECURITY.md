@@ -99,6 +99,37 @@ time caught up, with no way back through the product.
   not hand the attacker a fresh budget. Three free attempts, then 2s, 4s, 8s …
   capped at fifteen minutes.
 
+**Passkeys** (WebAuthn, via `@simplewebauthn/server`) are an alternative first
+factor: a signed assertion from a credential the server enrolled, phishing-
+resistant by construction because the browser signs the rpID and origin into
+every ceremony. The decisions worth writing down:
+
+- **The rpID derives from the request's origin, and must be a domain.** The
+  standard has no way to scope a credential to an IP address, so a deployment
+  reached at `https://203.0.113.7` is refused enrolment outright — a 422 with
+  the fix in the message, mirrored in the Settings card — rather than offered
+  a ceremony that fails opaquely. A deployment reachable at several names
+  holds a passkey per name; the assertion's own rpID hash is what prevents a
+  forged `Origin` header from making one domain's credential answer for
+  another.
+- **User verification is "preferred", not required.** A platform passkey
+  brings biometrics anyway; requiring UV would shut out PIN-less security
+  keys. The consequence is stated rather than hidden: a bare security key is
+  then a possession-only factor. Anyone wanting strictly independent factors
+  keeps password + TOTP, which passkeys never replace — enrolment *adds* a
+  method and costs the password, exactly like every other factor change, and
+  so does removal.
+- **A passkey login bypasses the password lockout, deliberately.** The lockout
+  throttles password guessing; an assertion is not guessable, and this is the
+  recovery path for an owner whose password an attacker is hammering. The
+  sign-in ceremony endpoints are public by necessity and share the password
+  login's per-address token bucket.
+- **Challenges are single-use, five minutes, held in memory.** A restart
+  forgets in-flight ceremonies and nothing else; replaying a consumed
+  challenge is refused whatever else is right about the response. Signature
+  counters are stored and updated per the spec (many passkey providers always
+  report zero, which the verifier tolerates).
+
 **Sessions** are 256-bit random tokens. Only their SHA-256 is stored, so a
 database leak yields no usable session. Two independent expiries: a 14-day idle
 window that slides forward (written at most once a minute, so this does not

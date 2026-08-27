@@ -27,6 +27,10 @@ const PUBLIC_PATHS = new Set([
   '/api/health',
   '/api/auth/login',
   '/api/auth/bootstrap-status',
+  // The passkey sign-in ceremony: by definition it happens before a session
+  // exists. Both are rate-limited with the same bucket as password login.
+  '/api/auth/passkey/begin',
+  '/api/auth/passkey/finish',
 ]);
 
 /** Methods that cannot change state and therefore need no CSRF token. */

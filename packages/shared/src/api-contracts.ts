@@ -267,6 +267,51 @@ export const LoginRequest = z.object({
 });
 export type LoginRequest = z.infer<typeof LoginRequest>;
 
+/**
+ * A WebAuthn ceremony response from the browser.
+ *
+ * Only `id` is read by Metaclaude's own code — everything else is verified by
+ * @simplewebauthn, which parses the full structure and throws on junk. The
+ * `.passthrough()` is load-bearing: zod's default is to *strip* unknown keys,
+ * which would silently delete `response.clientDataJSON` and friends between
+ * the edge and the verifier, and every ceremony would fail as "did not
+ * verify" with nothing wrong on either end.
+ */
+const WebAuthnCeremonyResponse = z.object({ id: z.string().min(1).max(1024) }).passthrough();
+
+export const PasskeyRegisterBeginRequest = z.object({
+  password: z.string().min(1).max(1024),
+});
+export type PasskeyRegisterBeginRequest = z.infer<typeof PasskeyRegisterBeginRequest>;
+
+export const PasskeyRegisterFinishRequest = z.object({
+  label: z.string().max(60),
+  response: WebAuthnCeremonyResponse,
+});
+export type PasskeyRegisterFinishRequest = z.infer<typeof PasskeyRegisterFinishRequest>;
+
+export const PasskeyLoginFinishRequest = z.object({
+  ceremonyId: z.string().min(1).max(128),
+  response: WebAuthnCeremonyResponse,
+});
+export type PasskeyLoginFinishRequest = z.infer<typeof PasskeyLoginFinishRequest>;
+
+export const PasskeyRemoveRequest = z.object({
+  password: z.string().min(1).max(1024),
+});
+export type PasskeyRemoveRequest = z.infer<typeof PasskeyRemoveRequest>;
+
+/** One enrolled passkey, as the management list renders it. */
+export const PasskeyRecord = z.object({
+  id: z.string(),
+  label: z.string(),
+  /** The domain the passkey answers for — a credential never crosses domains. */
+  rpId: z.string(),
+  createdAt: Millis,
+  lastUsedAt: Millis.nullable(),
+});
+export type PasskeyRecord = z.infer<typeof PasskeyRecord>;
+
 export const MarketplaceCatalogue = z.object({
   marketplaceId: z.string(),
   name: z.string(),

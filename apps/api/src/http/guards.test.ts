@@ -89,6 +89,9 @@ describe('isPublicPath', () => {
     expect(isPublicPath('/api/health')).toBe(true);
     expect(isPublicPath('/api/auth/login')).toBe(true);
     expect(isPublicPath('/api/auth/bootstrap-status')).toBe(true);
+    // The passkey sign-in ceremony happens before a session can exist.
+    expect(isPublicPath('/api/auth/passkey/begin')).toBe(true);
+    expect(isPublicPath('/api/auth/passkey/finish')).toBe(true);
   });
 
   it('is a closed set — anything else is guarded', () => {
@@ -99,6 +102,9 @@ describe('isPublicPath', () => {
       '/api/health/',
       '/api/HEALTH',
       '/api/auth/login/../workspaces',
+      // Managing passkeys is a credential change; only the *ceremony* is open.
+      '/api/auth/passkeys',
+      '/api/auth/passkeys/begin',
     ]) {
       expect(isPublicPath(path), path).toBe(false);
     }

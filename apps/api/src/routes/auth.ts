@@ -7,11 +7,20 @@
  */
 
 import type { App } from '../http/types.js';
-import { CSRF_COOKIE, LoginRequest, SESSION_COOKIE } from '@metaclaude/shared';
+import {
+  CSRF_COOKIE,
+  LoginRequest,
+  PasskeyLoginFinishRequest,
+  PasskeyRegisterBeginRequest,
+  PasskeyRegisterFinishRequest,
+  PasskeyRemoveRequest,
+  SESSION_COOKIE,
+} from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOwner } from '../http/guards.js';
 import { WeakPasswordError } from '../security/auth.js';
+import { PasskeyError } from '../security/webauthn.js';
 import { TokenBucket } from '../security/ratelimit.js';
 
 /** 10 attempts, refilling at one per 6 seconds. */
@@ -35,8 +44,14 @@ export function registerAuthRoutes(app: App, context: AppContext): void {
 
   app.get('/api/auth/bootstrap-status', async (_request, reply) => {
     // Lets the login screen show "create the first account" without exposing
-    // whether any *particular* username exists.
-    return reply.send({ needsBootstrap: context.auth.countUsers() === 0 });
+    // whether any *particular* username exists. `passkeysEnrolled` is the same
+    // class of disclosure — "this deployment has at least one passkey" — and
+    // buys the login screen the right to offer the button only when pressing
+    // it could work.
+    return reply.send({
+      needsBootstrap: context.auth.countUsers() === 0,
+      passkeysEnrolled: context.webauthn.anyEnrolled(),
+    });
   });
 
   app.post('/api/auth/login', async (request, reply) => {
@@ -297,6 +312,164 @@ export function registerAuthRoutes(app: App, context: AppContext): void {
     context.audit.record({
       actor: user.username,
       action: 'auth.totp.disable',
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send({ ok: true });
+  });
+
+  /* --------------------------- Passkeys ------------------------------ */
+
+  /** PasskeyError carries its own status; anything else is not ours to mask. */
+  const passkeyErrors = async <T>(work: () => Promise<T>): Promise<T> => {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof PasskeyError) throw new HttpError(error.statusCode, error.message);
+      throw error;
+    }
+  };
+
+  /** Sign-in ceremony — public by necessity, throttled like password login. */
+  app.post('/api/auth/passkey/begin', async (request, reply) => {
+    const ip = requestIp(context, request);
+    if (!loginBucket.take(ip)) {
+      return reply
+        .status(429)
+        .header('retry-after', String(loginBucket.retryAfter(ip)))
+        .send({ error: 'Too many sign-in attempts. Try again shortly.', code: 'rate_limited' });
+    }
+    const begun = await passkeyErrors(() =>
+      context.webauthn.beginLogin(request.headers.origin),
+    );
+    return reply.send(begun);
+  });
+
+  app.post('/api/auth/passkey/finish', async (request, reply) => {
+    const ip = requestIp(context, request);
+    if (!loginBucket.take(ip)) {
+      return reply
+        .status(429)
+        .header('retry-after', String(loginBucket.retryAfter(ip)))
+        .send({ error: 'Too many sign-in attempts. Try again shortly.', code: 'rate_limited' });
+    }
+    const parsed = PasskeyLoginFinishRequest.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid request.', code: 'bad_request' });
+    }
+
+    const outcome = await context.webauthn.finishLogin(
+      request.headers.origin,
+      parsed.data.ceremonyId,
+      parsed.data.response,
+      request.headers['user-agent'] ?? null,
+      ip,
+    );
+
+    if (outcome.status !== 'ok') {
+      context.audit.record({
+        actor: 'anonymous',
+        action: 'auth.login.passkey',
+        ipAddress: ip,
+        outcome: 'failure',
+      });
+      return reply.status(401).send({ error: 'That passkey did not sign in.', code: 'invalid' });
+    }
+
+    loginBucket.reset(ip);
+    context.audit.record({
+      actor: outcome.user.username,
+      action: 'auth.login.passkey',
+      ipAddress: ip,
+      outcome: 'success',
+    });
+    return reply
+      .setCookie(SESSION_COOKIE, outcome.token, sessionCookieOptions)
+      .setCookie(CSRF_COOKIE, outcome.csrfToken, csrfCookieOptions)
+      .send({ status: 'ok', user: outcome.user, csrfToken: outcome.csrfToken });
+  });
+
+  /* Management — behind the session like every other credential change. */
+
+  app.get('/api/auth/passkeys', async (request, reply) => {
+    const user = request.currentUser as NonNullable<typeof request.currentUser>;
+    return reply.send({ passkeys: context.webauthn.list(user.id) });
+  });
+
+  app.post('/api/auth/passkeys/begin', async (request, reply) => {
+    const user = request.currentUser as NonNullable<typeof request.currentUser>;
+    const parsed = PasskeyRegisterBeginRequest.safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'Your password is required.');
+
+    let options;
+    try {
+      options = await context.webauthn.beginRegistration(
+        user,
+        request.headers.origin,
+        parsed.data.password,
+      );
+    } catch (error) {
+      // A failed password re-proof is audited exactly as TOTP's is: both are
+      // someone with a session cookie trying to change how sign-in works.
+      if (error instanceof PasskeyError && error.statusCode === 403) {
+        context.audit.record({
+          actor: user.username,
+          action: 'auth.passkey.begin',
+          outcome: 'failure',
+          ipAddress: requestIp(context, request),
+        });
+      }
+      if (error instanceof PasskeyError) throw new HttpError(error.statusCode, error.message);
+      throw error;
+    }
+    context.audit.record({
+      actor: user.username,
+      action: 'auth.passkey.begin',
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send({ options });
+  });
+
+  app.post('/api/auth/passkeys/finish', async (request, reply) => {
+    const user = request.currentUser as NonNullable<typeof request.currentUser>;
+    const parsed = PasskeyRegisterFinishRequest.safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'Invalid request.');
+
+    const record = await passkeyErrors(() =>
+      context.webauthn.finishRegistration(
+        user,
+        request.headers.origin,
+        parsed.data.label,
+        parsed.data.response,
+      ),
+    );
+    context.audit.record({
+      actor: user.username,
+      action: 'auth.passkey.enrol',
+      target: record.label,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.status(201).send({ passkey: record });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/auth/passkeys/:id', async (request, reply) => {
+    const user = request.currentUser as NonNullable<typeof request.currentUser>;
+    const parsed = PasskeyRemoveRequest.safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'Your password is required.');
+
+    const removed = await context.webauthn.remove(user.id, request.params.id, parsed.data.password);
+    if (!removed) {
+      context.audit.record({
+        actor: user.username,
+        action: 'auth.passkey.remove',
+        outcome: 'failure',
+        ipAddress: requestIp(context, request),
+      });
+      throw new HttpError(403, 'That password is incorrect, or the passkey does not exist.');
+    }
+    context.audit.record({
+      actor: user.username,
+      action: 'auth.passkey.remove',
+      target: request.params.id,
       ipAddress: requestIp(context, request),
     });
     return reply.send({ ok: true });

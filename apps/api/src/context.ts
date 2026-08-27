@@ -34,6 +34,7 @@ import { MemoryStore } from './learning/memory.js';
 import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
+import { WebAuthnService } from './security/webauthn.js';
 import { Vault } from './security/vault.js';
 import { BoardAutopilot, planUtilization } from './services/board-autopilot.js';
 import { startTaskRun } from './services/board-run.js';
@@ -68,6 +69,7 @@ export interface AppContext {
   bus: EventBus;
 
   auth: AuthService;
+  webauthn: WebAuthnService;
   audit: AuditLog;
   vault: Vault;
   claudeCredentials: ClaudeCredentials;
@@ -560,6 +562,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     db,
     bus,
     auth,
+    webauthn: new WebAuthnService({ db, auth }),
     audit,
     vault,
     claudeCredentials,

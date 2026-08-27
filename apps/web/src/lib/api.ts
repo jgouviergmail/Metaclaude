@@ -7,6 +7,10 @@
  * failed queries each doing their own thing.
  */
 
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+} from '@simplewebauthn/browser';
 import {
   CSRF_COOKIE,
   type AgentDefinitionRecord,
@@ -51,6 +55,7 @@ import {
   type MarketplaceCatalogue,
   type MarketplaceInput,
   type LoginResponse,
+  type PasskeyRecord,
   type RewindResult,
   type Run,
   type Session,
@@ -174,7 +179,8 @@ export interface MeResponse {
 
 export const api = {
   /* ------------------------------- Auth ------------------------------- */
-  bootstrapStatus: () => request<{ needsBootstrap: boolean }>('/api/auth/bootstrap-status'),
+  bootstrapStatus: () =>
+    request<{ needsBootstrap: boolean; passkeysEnrolled: boolean }>('/api/auth/bootstrap-status'),
 
   login: (body: { username: string; password: string; totp?: string }) =>
     request<LoginResponse>('/api/auth/login', { method: 'POST', body }),
@@ -210,6 +216,37 @@ export const api = {
     request<{ recoveryCodes: string[] }>('/api/auth/totp/confirm', { method: 'POST', body: { code } }),
   totpDisable: (password: string) =>
     request<{ ok: boolean }>('/api/auth/totp/disable', { method: 'POST', body: { password } }),
+
+  // Passkeys. The `response` payloads are whatever @simplewebauthn/browser
+  // produced — passed through untouched, verified server-side.
+  passkeys: {
+    list: () => request<{ passkeys: PasskeyRecord[] }>('/api/auth/passkeys'),
+    begin: (password: string) =>
+      request<{ options: PublicKeyCredentialCreationOptionsJSON }>('/api/auth/passkeys/begin', {
+        method: 'POST',
+        body: { password },
+      }),
+    finish: (label: string, response: unknown) =>
+      request<{ passkey: PasskeyRecord }>('/api/auth/passkeys/finish', {
+        method: 'POST',
+        body: { label, response },
+      }),
+    remove: (id: string, password: string) =>
+      request<{ ok: boolean }>(`/api/auth/passkeys/${id}`, {
+        method: 'DELETE',
+        body: { password },
+      }),
+    loginBegin: () =>
+      request<{ ceremonyId: string; options: PublicKeyCredentialRequestOptionsJSON }>(
+        '/api/auth/passkey/begin',
+        { method: 'POST' },
+      ),
+    loginFinish: (ceremonyId: string, response: unknown) =>
+      request<{ status: 'ok'; user: User; csrfToken: string }>('/api/auth/passkey/finish', {
+        method: 'POST',
+        body: { ceremonyId, response },
+      }),
+  },
 
   users: () => request<{ users: User[] }>('/api/users'),
   createUser: (body: {

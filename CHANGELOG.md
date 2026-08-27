@@ -11,6 +11,27 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-08-27
+
+### Added
+
+- **Passkeys.** Sign in with the device's own unlock — Face ID, a
+  fingerprint, a security key — instead of the password. Enrolment lives in
+  Settings → Security beside two-factor: adding a passkey costs your
+  password (so does removing one), the password and authenticator app keep
+  working underneath, and once any device is enrolled the sign-in screen
+  offers **Sign in with a passkey** — only where pressing it could work.
+  WebAuthn scopes a credential to a *domain*, so a deployment reached by IP
+  address is refused enrolment with the fix in the message (give the server
+  a hostname) rather than offered a ceremony that fails opaquely. A passkey
+  sign-in deliberately ignores the password lockout — an assertion is not
+  guessable, and it is the way back in while someone hammers the password
+  form; the ceremony endpoints share the password login's rate limit, and
+  challenges are single-use with a five-minute life. Verification is
+  `@simplewebauthn/server`; the test suite drives a real software
+  authenticator — genuine P-256 signatures, CBOR attestation — through the
+  unmodified service, and flips one byte to watch it refuse.
+
 ## [0.17.1] — 2026-08-27
 
 ### Fixed

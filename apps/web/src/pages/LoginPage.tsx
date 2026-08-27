@@ -7,12 +7,13 @@
  * password", matching what the API does.
  */
 
-import { KeyRound, Loader2, ShieldCheck } from 'lucide-react';
+import { Fingerprint, KeyRound, Loader2, ShieldCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { APP_NAME } from '@metaclaude/shared';
 import { api, ApiError } from '@/lib/api';
+import { assertPasskey, isCeremonyCancelled, passkeyDomainOk, passkeySupported } from '@/lib/passkeys';
 import { useAuthStore } from '@/lib/store';
 import { Button, Input, Label } from '@/components/ui/primitives';
 
@@ -38,6 +39,32 @@ export function LoginPage() {
   useEffect(() => {
     if (needsTotp) totpRef.current?.focus();
   }, [needsTotp]);
+
+  // Offered only when pressing it could work: a passkey exists somewhere, the
+  // browser has the API, and we are on a domain (a passkey cannot be scoped
+  // to an IP address — the server refuses enrolment there for the same reason).
+  const offerPasskey =
+    Boolean(bootstrap?.passkeysEnrolled) && passkeySupported() && passkeyDomainOk();
+
+  const signInWithPasskey = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { ceremonyId, options } = await api.passkeys.loginBegin();
+      const response = await assertPasskey(options);
+      const result = await api.passkeys.loginFinish(ceremonyId, response);
+      setUser(result.user);
+      navigate('/', { replace: true });
+    } catch (caught) {
+      // Closing the browser's passkey sheet is a choice, not an error.
+      if (isCeremonyCancelled(caught)) return;
+      setError(
+        caught instanceof ApiError ? caught.message : 'That passkey did not sign in. Try your password.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault();
@@ -179,6 +206,27 @@ export function LoginPage() {
             >
               Use a different account
             </button>
+          ) : null}
+
+          {offerPasskey && !needsTotp ? (
+            <>
+              <div className="flex items-center gap-3 text-[11px] uppercase tracking-wide text-subtle">
+                <span className="h-px flex-1 bg-line" aria-hidden />
+                or
+                <span className="h-px flex-1 bg-line" aria-hidden />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                className="w-full"
+                disabled={busy}
+                onClick={() => void signInWithPasskey()}
+              >
+                <Fingerprint className="size-4" aria-hidden />
+                Sign in with a passkey
+              </Button>
+            </>
           ) : null}
         </form>
 

@@ -10,6 +10,16 @@ machine.
   setup key), confirm one code, store the recovery codes. Codes are single-use
   in the strict sense: two simultaneous sign-ins cannot share one. Re-enrolling
   replaces the authenticator and issues fresh recovery codes.
+- **Passkeys.** Sign in with the device's own unlock — Face ID, a fingerprint,
+  a security key — instead of the password. Adding one costs your password
+  (so does removing one), the password keeps working either way, and the
+  sign-in screen offers the passkey button once any device is enrolled. One
+  honest limit: the WebAuthn standard scopes a passkey to a **domain name**,
+  so a deployment you reach by IP address cannot use them — the card says so
+  and points at `METACLAUDE_SITE` — and a passkey enrolled at one address
+  only answers at that address. A passkey sign-in also ignores the password
+  lockout on purpose: it is your way back in while someone else hammers the
+  password form.
 - **Sessions.** Every signed-in device is listed and individually revocable.
 
 ## Claude pairing

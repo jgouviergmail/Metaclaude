@@ -36,6 +36,7 @@ export const ID_PREFIXES = {
   exemplar: 'exm',
   marketplace: 'mkt',
   pushSub: 'psh',
+  passkey: 'pky',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

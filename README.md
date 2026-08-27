@@ -39,6 +39,10 @@ system around it:
   for seconds, archives every volume, and leaves a marker the in-app doctor
   watches — so backups that quietly stop become a visible warning, and
   `metaclaude-backup restore` puts everything back.
+- **Passkeys.** Sign in with Face ID, a fingerprint or a security key —
+  phishing-resistant WebAuthn, self-hosted, with password + TOTP intact
+  underneath. (Needs a domain name: the standard cannot scope a passkey to
+  an IP address, and the app says so instead of failing.)
 
 It runs on **your Claude Pro or Max subscription**. The Agent SDK spawns the real
 `claude` binary, so everything your plan includes — models, skills, plugins,
