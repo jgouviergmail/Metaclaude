@@ -11,8 +11,10 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  BookOpen,
   Bot,
   ChevronDown,
+  Download,
   Filter,
   Plug,
   Plus,
@@ -24,7 +26,14 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import type { AgentDefinitionRecord, McpServerRecord, SkillDefinition } from '@metaclaude/shared';
+import type {
+  AgentDefinitionRecord,
+  LibraryCategory,
+  LibraryListingEntry,
+  McpServerRecord,
+  SkillDefinition,
+} from '@metaclaude/shared';
+import { LIBRARY_CATEGORIES } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel';
 import { CheckboxField, Switch } from '@/components/ui/controls';
@@ -41,9 +50,21 @@ import {
   Textarea,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { interpolate, useT } from '@/lib/i18n';
 import { cn, formatRelative } from '@/lib/utils';
 
-type TabKey = 'skills' | 'agents' | 'mcp' | 'claude';
+type TabKey = 'skills' | 'agents' | 'mcp' | 'library' | 'claude';
+
+/** English display names as data; `t()` translates at render. */
+const CATEGORY_LABELS: Record<LibraryCategory, string> = {
+  engineering: 'Engineering',
+  writing: 'Writing',
+  data: 'Data',
+  ops: 'Ops',
+  research: 'Research',
+  product: 'Product',
+  general: 'General',
+};
 
 const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
 const AGENT_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -58,6 +79,7 @@ const MCP_STATUS_TONE: Record<McpServerRecord['status'], 'success' | 'danger' | 
 
 export function AgentsPage() {
   const queryClient = useQueryClient();
+  const t = useT();
 
   /** `global` = unscoped definitions only; a workspace id = that workspace plus globals. */
   const [scope, setScope] = useState<string>('global');
@@ -83,7 +105,7 @@ export function AgentsPage() {
   return (
     <AppShell>
       <ContentHeader
-        title="Agents & skills"
+        title={t('Agents & skills')}
         subtitle={scopeLabel}
         showSidebarToggle={false}
         icon={<Bot />}
@@ -140,6 +162,9 @@ export function AgentsPage() {
                 { value: 'skills', label: 'Skills', icon: <Sparkles className="size-4" /> },
                 { value: 'agents', label: 'Subagents', icon: <Bot className="size-4" /> },
                 { value: 'mcp', label: 'MCP servers', icon: <Plug className="size-4" /> },
+                // The built-in shelf: curated in the repository, installed on
+                // a click, disabled until switched on.
+                { value: 'library', label: 'Library', icon: <BookOpen className="size-4" /> },
                 // What the CLI itself offers, as opposed to what Metaclaude
                 // defines. Same conceptual space, so it belongs beside them
                 // rather than on a page of its own.
@@ -156,7 +181,7 @@ export function AgentsPage() {
                 )}
               >
                 {entry.icon}
-                {entry.label}
+                {t(entry.label)}
               </Tabs.Trigger>
             ))}
           </Tabs.List>
@@ -172,6 +197,15 @@ export function AgentsPage() {
 
             <Tabs.Content value="mcp" className="focus-visible:outline-none">
               <McpTab workspaceId={workspaceId} onChanged={() => invalidate('mcp-servers')} />
+            </Tabs.Content>
+
+            <Tabs.Content value="library" className="focus-visible:outline-none">
+              <LibraryTab
+                onInstalled={() => {
+                  invalidate('skills');
+                  invalidate('agents');
+                }}
+              />
             </Tabs.Content>
 
             <Tabs.Content value="claude" className="focus-visible:outline-none">
@@ -193,6 +227,7 @@ interface SkillDraft {
   name: string;
   description: string;
   body: string;
+  category: LibraryCategory;
   enabled: boolean;
 }
 
@@ -203,6 +238,7 @@ function SkillsTab({
   workspaceId: string | undefined;
   onChanged: () => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState<SkillDraft | null>(null);
   const [deleting, setDeleting] = useState<SkillDefinition | null>(null);
 
@@ -219,6 +255,7 @@ function SkillsTab({
         name: draft.name.trim(),
         description: draft.description.trim(),
         body: draft.body,
+        category: draft.category,
         enabled: draft.enabled,
       }),
     onSuccess: (result) => {
@@ -263,7 +300,7 @@ function SkillsTab({
             variant="primary"
             size="sm"
             onClick={() =>
-              setEditing({ name: '', description: '', body: SKILL_TEMPLATE, enabled: true })
+              setEditing({ name: '', description: '', body: SKILL_TEMPLATE, category: 'general', enabled: true })
             }
           >
             <Plus className="size-4" />
@@ -293,6 +330,9 @@ function SkillsTab({
                   <div className="flex flex-wrap items-center gap-2">
                     <code className="font-mono text-[13px] font-medium text-ink">{skill.name}</code>
                     {skill.autoGenerated ? <Badge tone="thinking">auto-generated</Badge> : null}
+                    {skill.category !== 'general' ? (
+                      <Badge tone="info">{t(CATEGORY_LABELS[skill.category])}</Badge>
+                    ) : null}
                     {skill.workspaceId === null ? <Badge tone="neutral">global</Badge> : null}
                     {!skill.enabled ? <Badge tone="neutral">disabled</Badge> : null}
                   </div>
@@ -317,6 +357,7 @@ function SkillsTab({
                         name: skill.name,
                         description: skill.description,
                         body: skill.body,
+                        category: skill.category,
                         enabled: skill.enabled,
                       })
                     }
@@ -388,8 +429,9 @@ function SkillEditor({
   onClose: () => void;
   onSubmit: (draft: SkillDraft) => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState<SkillDraft>(
-    draft ?? { name: '', description: '', body: '', enabled: true },
+    draft ?? { name: '', description: '', body: '', category: 'general', enabled: true },
   );
 
   useEffect(() => {
@@ -461,6 +503,27 @@ function SkillEditor({
           />
         </Label>
 
+        <Label
+          htmlFor="skill-category"
+          hint={t('Groups the registry lists; pick General when nothing fits.')}
+        >
+          {t('Category')}
+          <select
+            id="skill-category"
+            value={value.category}
+            onChange={(event) =>
+              setValue({ ...value, category: event.target.value as LibraryCategory })
+            }
+            className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
+          >
+            {LIBRARY_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {t(CATEGORY_LABELS[category])}
+              </option>
+            ))}
+          </select>
+        </Label>
+
         <Label htmlFor="skill-body" hint="Markdown. Written verbatim to SKILL.md.">
           Body
           <Textarea
@@ -497,6 +560,7 @@ interface AgentDraft {
   tools: string;
   /** Blank means "inherit the parent run's model". */
   model: string;
+  category: LibraryCategory;
   enabled: boolean;
 }
 
@@ -509,6 +573,7 @@ function AgentsTab({
   workspaceId: string | undefined;
   onChanged: () => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState<AgentDraft | null>(null);
   const [deleting, setDeleting] = useState<AgentDefinitionRecord | null>(null);
 
@@ -529,6 +594,7 @@ function AgentsTab({
         // an empty list would hand the subagent nothing at all.
         tools: parseList(draft.tools),
         model: draft.model.trim() === '' ? null : draft.model.trim(),
+        category: draft.category,
         enabled: draft.enabled,
       }),
     onSuccess: (result) => {
@@ -581,6 +647,7 @@ function AgentsTab({
                 prompt: '',
                 tools: '',
                 model: '',
+                category: 'general',
                 enabled: true,
               })
             }
@@ -609,6 +676,9 @@ function AgentsTab({
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <code className="font-mono text-[13px] font-medium text-ink">{agent.name}</code>
+                    {agent.category !== 'general' ? (
+                      <Badge tone="info">{t(CATEGORY_LABELS[agent.category])}</Badge>
+                    ) : null}
                     {agent.workspaceId === null ? <Badge tone="neutral">global</Badge> : null}
                     {!agent.enabled ? <Badge tone="neutral">disabled</Badge> : null}
                   </div>
@@ -643,6 +713,7 @@ function AgentsTab({
                         prompt: agent.prompt,
                         tools: agent.tools === null ? '' : agent.tools.join(', '),
                         model: agent.model === null ? '' : String(agent.model),
+                        category: agent.category,
                         enabled: agent.enabled,
                       })
                     }
@@ -705,8 +776,17 @@ function AgentEditor({
   onClose: () => void;
   onSubmit: (draft: AgentDraft) => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState<AgentDraft>(
-    draft ?? { name: '', description: '', prompt: '', tools: '', model: '', enabled: true },
+    draft ?? {
+      name: '',
+      description: '',
+      prompt: '',
+      tools: '',
+      model: '',
+      category: 'general',
+      enabled: true,
+    },
   );
 
   useEffect(() => {
@@ -792,6 +872,27 @@ function AgentEditor({
           />
         </Label>
 
+        <Label
+          htmlFor="agent-category"
+          hint={t('Groups the registry lists; pick General when nothing fits.')}
+        >
+          {t('Category')}
+          <select
+            id="agent-category"
+            value={value.category}
+            onChange={(event) =>
+              setValue({ ...value, category: event.target.value as LibraryCategory })
+            }
+            className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
+          >
+            {LIBRARY_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {t(CATEGORY_LABELS[category])}
+              </option>
+            ))}
+          </select>
+        </Label>
+
         <Label htmlFor="agent-model" hint="Leave blank to inherit whatever the parent run is using.">
           Model
           <select
@@ -831,6 +932,161 @@ function AgentEditor({
         />
       </div>
     </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Library                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The built-in shelf. Everything on it ships with Metaclaude itself — read,
+ * versioned and reviewed in the repository, never fetched from a store —
+ * which is the trust story. Installing copies an entry into the *global*
+ * registry, disabled, where it becomes the operator's own record; the scope
+ * selector above deliberately does not apply here.
+ */
+function LibraryTab({ onInstalled }: { onInstalled: () => void }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [category, setCategory] = useState<LibraryCategory | 'all'>('all');
+
+  const query = useQuery({ queryKey: ['library'], queryFn: () => api.library() });
+
+  const install = useMutation({
+    mutationFn: (name: string) => api.installLibraryEntry(name),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['library'] });
+      onInstalled();
+      toast.success(interpolate(t('Installed “{name}”'), { name: result.entry.name }), {
+        description:
+          result.entry.kind === 'agent'
+            ? t('Find it under Subagents, in the global scope — disabled until you switch it on.')
+            : t('Find it under Skills, in the global scope — disabled until you switch it on.'),
+      });
+    },
+    onError: (error) => toast.error(messageFor(error, t('Could not install that entry.'))),
+  });
+
+  const entries = query.data?.entries ?? [];
+  const filtered = category === 'all' ? entries : entries.filter((entry) => entry.category === category);
+
+  return (
+    <div className="space-y-4">
+      <SectionIntro
+        description={t(
+          'A starter shelf of skills and subagents, curated in this repository and versioned with it. Installing copies one into the global registry, disabled — switch it on when you want runs to see it, edit it like anything you wrote yourself.',
+        )}
+        action={null}
+      />
+
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('Filter by category')}>
+        <CategoryChip active={category === 'all'} onClick={() => setCategory('all')}>
+          {t('All')}
+        </CategoryChip>
+        {LIBRARY_CATEGORIES.map((value) => (
+          <CategoryChip key={value} active={category === value} onClick={() => setCategory(value)}>
+            {t(CATEGORY_LABELS[value])}
+          </CategoryChip>
+        ))}
+      </div>
+
+      {query.isLoading ? (
+        <ListSkeleton />
+      ) : query.isError ? (
+        <Card>
+          <EmptyState
+            icon={<BookOpen />}
+            title={t('The library could not be read')}
+            description={t('Reload the page, or check the server logs if it keeps failing.')}
+          />
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((entry) => (
+            <LibraryEntryCard
+              key={entry.name}
+              entry={entry}
+              installing={install.isPending && install.variables === entry.name}
+              busy={install.isPending}
+              onInstall={() => install.mutate(entry.name)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LibraryEntryCard({
+  entry,
+  installing,
+  busy,
+  onInstall,
+}: {
+  entry: LibraryListingEntry;
+  installing: boolean;
+  busy: boolean;
+  onInstall: () => void;
+}) {
+  const t = useT();
+  return (
+    <Card className="p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="font-mono text-[13px] font-medium text-ink">{entry.name}</code>
+            <Badge tone="thinking">{entry.kind === 'agent' ? t('subagent') : t('skill')}</Badge>
+            <Badge tone="info">{t(CATEGORY_LABELS[entry.category])}</Badge>
+          </div>
+          <p className="text-[13px] leading-relaxed text-muted">{entry.description}</p>
+        </div>
+
+        <div className="flex items-center gap-2 sm:shrink-0">
+          {entry.installed ? (
+            <Badge tone="success">{t('Installed')}</Badge>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={installing}
+              disabled={busy}
+              onClick={onInstall}
+              aria-label={interpolate(t('Install “{name}”'), { name: entry.name })}
+            >
+              <Download className="size-4" />
+              {t('Install')}
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CategoryChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
+        active
+          ? 'border-accent bg-accent-soft text-accent'
+          : 'border-line text-muted hover:text-ink',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

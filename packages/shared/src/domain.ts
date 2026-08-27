@@ -689,6 +689,26 @@ export interface Attachment {
 }
 
 /* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* Library categories — how skills and agents are shelved                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where a skill or agent belongs on the shelf. `general` exists on purpose:
+ * a taxonomy without an "everything else" drawer forces bad filing.
+ */
+export const LibraryCategory = z.enum([
+  'engineering',
+  'writing',
+  'data',
+  'ops',
+  'research',
+  'product',
+  'general',
+]);
+export type LibraryCategory = z.infer<typeof LibraryCategory>;
+export const LIBRARY_CATEGORIES = LibraryCategory.options;
+
 /* The board — tasks the operator and the agents share                         */
 /* -------------------------------------------------------------------------- */
 

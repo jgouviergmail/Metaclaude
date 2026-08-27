@@ -59,6 +59,7 @@ import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
 import { GitService } from './services/git.js';
 import { Registry } from './services/registry.js';
+import { LibraryService } from './library/service.js';
 import { Scheduler } from './services/scheduler.js';
 import { relocateWorkspaces, WorkspaceService } from './services/workspaces.js';
 
@@ -101,6 +102,7 @@ export interface AppContext {
   reflexion: ReflexionEngine;
 
   registry: Registry;
+  library: LibraryService;
   workspaces: WorkspaceService;
   files: FileService;
   attachments: AttachmentService;
@@ -296,6 +298,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     (level, message, data) => log[level](data ?? {}, message),
     plugins,
   );
+
+  const library = new LibraryService(registry);
 
   // The board's one mutation surface — routes, the agent's board tools and the
   // kernel's run-outcome hook all write through it, so every change reaches
@@ -601,6 +605,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     policy,
     reflexion,
     registry,
+    library,
     workspaces,
     files: new FileService(),
     attachments,

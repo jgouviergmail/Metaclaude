@@ -41,6 +41,9 @@ system around it:
   for seconds, archives every volume, and leaves a marker the in-app doctor
   watches — so backups that quietly stop become a visible warning, and
   `metaclaude-backup restore` puts everything back.
+- **A library to start from.** A curated shelf of skills and subagents by
+  domain — code review, tests, debugging, security, writing, data, ops —
+  installed with one click, disabled until you switch each one on.
 - **Passkeys.** Sign in with Face ID, a fingerprint or a security key —
   phishing-resistant WebAuthn, self-hosted, with password + TOTP intact
   underneath. (Needs a domain name: the standard cannot scope a passkey to
@@ -197,6 +200,11 @@ CLI's own dry run, not an estimate — before anything is written.
 ### Extensibility
 Skills (written to `.claude/skills/` before each run so the CLI discovers them),
 custom subagents, and MCP servers with credentials held in an AES-256-GCM vault.
+A built-in **library** ships a starter shelf of both — curated and versioned in
+this very repository rather than fetched from a store, installed disabled with
+one click — and every definition carries a **category** (engineering, writing,
+data, ops, research, product, general) so the registry stays findable as it
+grows.
 
 ### Where the usage went
 Analytics ranks every workspace against each other over the period — tokens,
@@ -274,7 +282,7 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 1356 unit + integration tests, ~20s
+pnpm test:run    # 1715 unit + integration tests, ~30s
 pnpm typecheck
 pnpm build
 ```

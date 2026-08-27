@@ -623,4 +623,16 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_webauthn_credentials_user ON webauthn_credentials(user_id);
     `,
   },
+  {
+    version: 14,
+    name: 'library_categories',
+    sql: /* sql */ `
+      -- Where a skill or agent belongs on the shelf. 'general' is the
+      -- deliberate "everything else" drawer; the vocabulary lives in
+      -- packages/shared (LibraryCategory) and the registry validates against
+      -- it, so the column stays free text here.
+      ALTER TABLE skills ADD COLUMN category TEXT NOT NULL DEFAULT 'general';
+      ALTER TABLE agents ADD COLUMN category TEXT NOT NULL DEFAULT 'general';
+    `,
+  },
 ];

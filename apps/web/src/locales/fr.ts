@@ -412,4 +412,36 @@ export const fr: Record<string, string> = {
   'Remember for this session': 'Retenir pour cette session',
   'High-risk actions are always asked individually.':
     'Les actions à haut risque sont toujours demandées une par une.',
+
+  /* Agents & skills — la bibliothèque et les catégories */
+  'Agents & skills': 'Agents et skills',
+  Subagents: 'Sous-agents',
+  'MCP servers': 'Serveurs MCP',
+  Library: 'Bibliothèque',
+  'From Claude': 'Depuis Claude',
+  Category: 'Catégorie',
+  'Groups the registry lists; pick General when nothing fits.':
+    'Regroupe les listes du registre ; choisissez Général quand rien ne convient.',
+  Engineering: 'Ingénierie',
+  Writing: 'Rédaction',
+  Data: 'Données',
+  Research: 'Recherche',
+  Product: 'Produit',
+  General: 'Général',
+  'A starter shelf of skills and subagents, curated in this repository and versioned with it. Installing copies one into the global registry, disabled — switch it on when you want runs to see it, edit it like anything you wrote yourself.':
+    "Une étagère de départ de skills et de sous-agents, sélectionnée dans ce dépôt et versionnée avec lui. Installer en copie une dans le registre global, désactivée — activez-la quand vous voulez que les runs la voient, modifiez-la comme tout ce que vous auriez écrit vous-même.",
+  'Filter by category': 'Filtrer par catégorie',
+  'The library could not be read': "La bibliothèque n'a pas pu être lue",
+  'Reload the page, or check the server logs if it keeps failing.':
+    'Rechargez la page, ou consultez les journaux du serveur si cela persiste.',
+  subagent: 'sous-agent',
+  Installed: 'Installé',
+  Install: 'Installer',
+  'Install “{name}”': 'Installer « {name} »',
+  'Installed “{name}”': '« {name} » : installation faite',
+  'Find it under Subagents, in the global scope — disabled until you switch it on.':
+    "À retrouver dans Sous-agents, en portée globale — désactivé jusqu'à ce que vous l'activiez.",
+  'Find it under Skills, in the global scope — disabled until you switch it on.':
+    "À retrouver dans Skills, en portée globale — désactivé jusqu'à ce que vous l'activiez.",
+  'Could not install that entry.': "Impossible d'installer cette entrée.",
 };

@@ -11,6 +11,25 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-08-27
+
+### Added
+
+- **A built-in library.** Agents & skills grows a **Library** tab: a starter
+  shelf of eight subagents (code reviewer, test writer, debugger, security
+  auditor, tech writer, data analyst, researcher, ticket splitter) and twelve
+  skills (conventional commits, PR descriptions, migrations, changelog
+  entries, ADRs, SQL review, Dockerfile review, CI diagnosis, option
+  comparison, user stories, meeting notes, postmortems). Everything on the
+  shelf is curated and versioned in the repository itself — never fetched
+  from a store — and installing copies an entry into the global registry
+  **disabled**, where it becomes yours to edit, rename or delete; the
+  library keeps the original for reinstallation.
+- **Categories.** Skills and subagents are now filed under engineering,
+  writing, data, ops, research, product or general. The library filters by
+  category chips, list entries wear their category as a badge, both editors
+  offer the choice, and the French translation covers all of it.
+
 ## [0.20.0] — 2026-08-27
 
 ### Added

@@ -37,6 +37,7 @@ import {
   type FileEntry,
   type GitStatus,
   type Insight,
+  type LibraryListingEntry,
   type McpServerRecord,
   type Memory,
   type MemoryKind,
@@ -632,6 +633,13 @@ export const api = {
   saveAgent: (body: Record<string, unknown>) =>
     request<{ agent: AgentDefinitionRecord }>('/api/agents', { method: 'POST', body }),
   deleteAgent: (id: string) => request<{ ok: boolean }>(`/api/agents/${id}`, { method: 'DELETE' }),
+
+  library: () => request<{ entries: LibraryListingEntry[] }>('/api/library'),
+  installLibraryEntry: (name: string) =>
+    request<{ id: string; entry: LibraryListingEntry }>('/api/library/install', {
+      method: 'POST',
+      body: { name },
+    }),
 
   mcpServers: (workspaceId?: string) =>
     request<{ servers: McpServerRecord[] }>(`/api/mcp${qs({ workspaceId })}`),

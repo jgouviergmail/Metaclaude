@@ -16,6 +16,31 @@ A named sub-agent with its own prompt, tool list and optionally its own
 model — a code reviewer, an explorer, a release scribe. Pick one per message
 in the composer, or let runs delegate to them.
 
+## The library
+
+You do not have to start from a blank page. The **Library** tab under
+Agents & skills is a starter shelf of skills and subagents — a code
+reviewer, a test writer, a debugger, a security auditor, a postmortem
+procedure, an SQL review checklist and more — written for the way this
+system delegates: each description tells the main agent *when* to reach for
+the entry, each prompt states working rules rather than personality.
+
+The shelf is curated **in the repository**, not fetched from a store: what
+you see has been read, versioned and reviewed like any other code in your
+deployment, which is the whole trust story. Installing an entry copies it
+into the global registry **disabled** — present in every workspace's list,
+inert until you switch it on, and from then on yours: edit it, rename it,
+delete it like anything you wrote yourself. The library keeps the original,
+so a deleted copy can always be installed again.
+
+## Categories
+
+Skills and subagents carry a **category** — engineering, writing, data,
+ops, research, product, or general for what fits nowhere else. The library
+filters by them, list entries wear them as badges, and both editors let you
+file your own definitions the same way. They are labels for finding things,
+nothing more: a category never changes what a skill or agent may do.
+
 ## Plugins
 
 Plugins bundle skills, agents and MCP servers in the vendor-neutral **Agent

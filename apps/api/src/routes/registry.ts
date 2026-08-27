@@ -3,7 +3,7 @@
  */
 
 import type { App } from '../http/types.js';
-import { AutomationTrigger, EffortLevel, McpTransport, ModelSelector, PermissionMode } from '@metaclaude/shared';
+import { AutomationTrigger, EffortLevel, LibraryCategory, McpTransport, ModelSelector, PermissionMode } from '@metaclaude/shared';
 import { z } from 'zod';
 import { InstallPluginRequest, MarketplaceInput } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
@@ -51,6 +51,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     name: z.string().min(1).max(64),
     description: z.string().min(1).max(1024),
     body: z.string().max(200_000),
+    category: LibraryCategory.optional(),
     enabled: z.boolean().default(true),
   });
 
@@ -97,6 +98,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     prompt: z.string().min(1).max(100_000),
     tools: z.array(z.string().max(64)).max(64).nullable().default(null),
     model: ModelSelector.nullable().default(null),
+    category: LibraryCategory.optional(),
     enabled: z.boolean().default(true),
   });
 
@@ -138,6 +140,39 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     // an operator refreshes in after fixing a server. Drop it now.
     context.claudeCatalogue.invalidate();
     return reply.send({ ok: true });
+  });
+
+  /* ------------------------------- Library ------------------------------- */
+
+  /**
+   * The built-in shelf. Listing is read-only and free to any signed-in user —
+   * it serves content the repository itself publishes. Installing writes a
+   * *disabled* global record, which is a registry mutation like any other, so
+   * it takes an operator and leaves an audit line.
+   *
+   * No catalogue invalidation here, deliberately: `resolve` filters on
+   * `enabled`, and an install always writes `enabled: false`, so the mounted
+   * set cannot have changed. Enabling later goes through POST /api/skills or
+   * /api/agents, which invalidate.
+   */
+  app.get('/api/library', async (_request, reply) => {
+    return reply.send({ entries: context.library.list() });
+  });
+
+  app.post('/api/library/install', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = z.object({ name: z.string().min(1).max(64) }).safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'name is required.');
+
+    const { entry, id } = context.library.install(parsed.data.name);
+    context.audit.record({
+      actor: actor.username,
+      action: 'library.install',
+      target: id,
+      ipAddress: requestIp(context, request),
+      detail: `${entry.kind} ${entry.name}`,
+    });
+    return reply.status(201).send({ id, entry: { ...entry, installed: true } });
   });
 
   /* --------------------------------- MCP -------------------------------- */

@@ -244,6 +244,44 @@ describe('skills', () => {
 /* Agents                                                                      */
 /* -------------------------------------------------------------------------- */
 
+describe('categories', () => {
+  it('defaults to general and stores a named one, on skills and agents alike', () => {
+    const plain = registry.upsertSkill({
+      workspaceId: null, name: 'plain', description: 'd', body: 'b',
+    });
+    expect(plain.category).toBe('general');
+
+    const filed = registry.upsertSkill({
+      workspaceId: null, name: 'filed', description: 'd', body: 'b', category: 'engineering',
+    });
+    expect(filed.category).toBe('engineering');
+
+    const agent = registry.upsertAgent({
+      workspaceId: null, name: 'filer', description: 'd', prompt: 'p', category: 'writing',
+    });
+    expect(agent.category).toBe('writing');
+  });
+
+  it('refuses a category outside the vocabulary', () => {
+    expect(() =>
+      registry.upsertSkill({
+        workspaceId: null, name: 'bad-shelf', description: 'd', body: 'b',
+        category: 'blockchain' as never,
+      }),
+    ).toThrow(/category/i);
+  });
+
+  it('an update that says nothing about the category keeps it', () => {
+    const skill = registry.upsertSkill({
+      workspaceId: null, name: 'keeper', description: 'd', body: 'b', category: 'data',
+    });
+    const updated = registry.upsertSkill({
+      id: skill.id, workspaceId: null, name: 'keeper', description: 'd2', body: 'b',
+    });
+    expect(updated.category).toBe('data');
+  });
+});
+
 describe('agents', () => {
   it('creates an agent and reads it back', () => {
     const agent = registry.upsertAgent({
