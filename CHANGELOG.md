@@ -11,6 +11,15 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-08-27
+
+### Changed
+
+- **Claude CLI 2.1.247, Agent SDK 0.3.247.** The paired pin moves up one
+  patch. The SDK's message union gained nothing new to narrate — the
+  union-completeness test that exists for exactly this moment stayed green —
+  and the full suite passed unchanged.
+
 ## [0.5.0] — 2026-08-27
 
 ### Added
