@@ -386,6 +386,19 @@ export function Composer({
                   Ultracode
                 </button>
               </Tooltip>
+            ) : value.model === 'default' ? (
+              // Withheld under Auto is a design decision; withheld *silently*
+              // was how it read as missing. The inert button says why.
+              <Tooltip content="Ultracode needs a model that can orchestrate — under Auto the learner may pick one that cannot. Choose a model (Fable, Opus…) to enable it.">
+                <button
+                  type="button"
+                  aria-disabled="true"
+                  className="inline-flex h-7 cursor-not-allowed items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-subtle opacity-70"
+                >
+                  <Network className="size-3.5" aria-hidden />
+                  Ultracode
+                </button>
+              </Tooltip>
             ) : null}
 
             {/* Tools -------------------------------------------------------- */}

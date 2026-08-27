@@ -31,6 +31,7 @@ import {
   type AssigneeFilter,
 } from '@/lib/board';
 import { socket } from '@/lib/socket';
+import { useBoardTouchDrag } from '@/lib/touch-drag';
 import { cn } from '@/lib/utils';
 
 const WHO_FILTERS: Array<{ value: AssigneeFilter; label: string }> = [
@@ -122,6 +123,21 @@ export function BoardPage() {
   const counts = useMemo(() => boardCounts(tasks), [tasks]);
   const columns = useMemo(() => groupByColumn(filterByAssignee(tasks, who)), [tasks, who]);
 
+  // The phone's drag path. A drop on a card lands after it in that card's
+  // column; a drop on a column's open space appends, exactly like the native
+  // mouse drag above.
+  const touch = useBoardTouchDrag({
+    onDropAfterCard: (taskId, targetCardId) => {
+      const target = tasks.find((candidate) => candidate.id === targetCardId);
+      if (!target || taskId === targetCardId) return;
+      move.mutate({ taskId, status: target.status, afterId: targetCardId });
+    },
+    onDropOnColumn: (taskId, status) => {
+      const afterId = (columns.get(status) ?? []).at(-1)?.id ?? null;
+      move.mutate({ taskId, status, afterId: afterId === taskId ? null : afterId });
+    },
+  });
+
   return (
     <AppShell>
     <div className="flex h-full min-h-0 flex-col">
@@ -200,7 +216,10 @@ export function BoardPage() {
               ) : null}
             </p>
           </div>
-          <div className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto p-4 sm:snap-none sm:p-6">
+          <div
+            data-board-scroller
+            className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto p-4 sm:snap-none sm:p-6"
+          >
           {TASK_COLUMNS.map((column) => (
             <BoardColumn
               key={column.status}
@@ -211,11 +230,23 @@ export function BoardPage() {
               onOpen={(task) => setDrawerTask(task.id)}
               onMove={(taskId, status, afterId) => move.mutate({ taskId, status, afterId })}
               onQuickAdd={(status) => setCreating(status)}
+              touchBind={touch.bind}
+              touchTarget={touch.drag?.over ?? null}
             />
           ))}
           </div>
         </>
       )}
+
+      {touch.drag ? (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full rounded-xl border border-accent bg-surface px-3 py-2 text-[13px] font-medium text-ink shadow-[var(--mc-shadow-lg)]"
+          style={{ left: touch.drag.x, top: touch.drag.y - 8 }}
+          aria-hidden
+        >
+          {touch.drag.task.title}
+        </div>
+      ) : null}
 
       <TaskDrawer taskId={drawerTask} onClose={() => setDrawerTask(null)} />
 

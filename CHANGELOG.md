@@ -11,6 +11,34 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-08-27
+
+### Added
+
+- **Drag cards with a finger.** The board's drag and drop only ever spoke
+  mouse — the native HTML5 drag API does not fire on touch, which left
+  phones with the ⋮ menu alone. Press and hold a card and it lifts (a quick
+  swipe still scrolls, as it must), a ghost follows the finger, the column
+  under it lights up, the columns edge-scroll when you carry a card past
+  the screen, and letting go drops it — after the card under your finger,
+  or at the end of an open column, exactly like the mouse. Pointer-events
+  only, no library; the mouse keeps the native path untouched.
+
+### Fixed
+
+- **Fable could vanish from the model picker.** The composer showed exactly
+  what the CLI chose to *enumerate* — but that list is not everything the
+  CLI accepts, and a catalogue answer without `fable` silently hid the
+  flagship the subscription pays for. The stable aliases (Fable, Opus,
+  Sonnet, Haiku, Opus plan) now stay on offer even when the CLI enumerates
+  without them; the CLI's own names and hints still win when it does name
+  them, and an alias the subscription lacks fails at run time with the
+  CLI's own visible message rather than being pre-censored on a guess.
+- **Ultracode looked missing under Auto.** It is withheld there on purpose —
+  the learner may pick a model that cannot orchestrate — but silently, so
+  it read as absent. The toggle now shows inert under Auto with the reason
+  and the fix in its tooltip: pick a model (Fable, Opus…) to enable it.
+
 ## [0.9.1] — 2026-08-27
 
 ### Fixed

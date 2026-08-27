@@ -82,9 +82,15 @@ describe('the ultracode toggle', () => {
     expect(screen.queryByRole('button', { name: /ultracode/i })).toBeNull();
   });
 
-  it('is withheld under Auto, where the learner picks the model', () => {
-    renderComposer({ model: 'default' }, catalogue([capable]));
-    expect(screen.queryByRole('button', { name: /ultracode/i })).toBeNull();
+  it('is inert under Auto — visible with its reason, but a click changes nothing', () => {
+    // Withheld under Auto is the design (the learner may pick a model that
+    // cannot orchestrate); withheld *silently* read as the feature missing.
+    const { onChange } = renderComposer({ model: 'default' }, catalogue([capable]));
+
+    const toggle = screen.getByRole('button', { name: /ultracode/i });
+    expect(toggle.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(toggle);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('says what it costs while it is on', () => {

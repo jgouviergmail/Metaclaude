@@ -63,7 +63,15 @@ export function modelOptions(catalogue: ClaudeCatalogue | undefined): PickerOpti
       hint: model.description,
     }));
 
-  return [AUTO, ...(reported.length > 0 ? reported : FALLBACK_MODELS)];
+  // The CLI's list is what it chose to *enumerate*, not everything it
+  // accepts: the stable aliases run fine and degrade with a visible message
+  // when the subscription lacks one. The catalogue improves the list — its
+  // names and hints win — but must never shrink it below those aliases,
+  // which is exactly how "toujours pas de fable" happened.
+  const known = new Set(reported.map((option) => option.value));
+  const missing = FALLBACK_MODELS.filter((option) => !known.has(option.value));
+
+  return [AUTO, ...reported, ...missing];
 }
 
 /**

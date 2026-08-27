@@ -9,7 +9,7 @@
  */
 
 import { Bot, CircleAlert, GripVertical, MoreVertical, User as UserIcon } from 'lucide-react';
-import { memo } from 'react';
+import { memo, type HTMLAttributes } from 'react';
 import type { BoardTask, TaskStatus } from '@metaclaude/shared';
 import { isWorkedByAgent, TASK_COLUMNS } from '@/lib/board';
 import { Menu, MenuItem, MenuLabel } from '@/components/ui/Menu';
@@ -28,18 +28,23 @@ export const TaskCard = memo(function TaskCard({
   onOpen,
   onMove,
   onDropAfter,
+  touchBind,
 }: {
   task: BoardTask;
   onOpen: (task: BoardTask) => void;
   onMove: (task: BoardTask, status: TaskStatus) => void;
   /** A card was dropped onto this one — place it right after. */
   onDropAfter: (draggedTaskId: string) => void;
+  /** The touch-drag handles from the board's hook; mouse keeps native drag. */
+  touchBind?: (task: BoardTask) => HTMLAttributes<HTMLDivElement>;
 }) {
   const overdue = task.dueAt !== null && task.dueAt < Date.now() && task.status !== 'done';
   const working = isWorkedByAgent(task);
 
   return (
     <div
+      data-task-id={task.id}
+      {...(touchBind ? touchBind(task) : {})}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.setData('text/task-id', task.id);

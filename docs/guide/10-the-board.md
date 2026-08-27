@@ -18,8 +18,11 @@ shows red — and, when something is stuck, a **blocked** marker whose reason
 you can read on hover. Moving a card clears its block: the reason described
 the place it was stuck.
 
-Drag cards between columns on a desktop; on a phone (or with a keyboard) use
-the card's ⋮ menu — the same moves, without the drag. Open a card to edit
+Drag cards between columns with the mouse on a desktop. On a phone, **press
+and hold** a card for a beat — it lifts under your finger, columns light up
+as you pass, and letting go drops it (start moving right away and the board
+scrolls instead, as it should). The ⋮ menu carries the same moves for
+keyboards and anyone who prefers taps. Open a card to edit
 it, comment, and read its **history**: every creation, move, edit and
 comment is recorded with its author, which is what keeps a board worked by
 several hands explicable.

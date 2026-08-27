@@ -87,6 +87,33 @@ describe('modelOptions', () => {
 
     expect(options.filter((option) => option.value === 'default')).toHaveLength(1);
   });
+
+  it('keeps the stable aliases on offer even when the CLI enumerates without them', () => {
+    // "Toujours pas de fable", the enumerated case: the CLI's list reflects
+    // what it chose to enumerate, not everything it accepts — the alias runs
+    // fine and degrades with a visible message when the subscription lacks
+    // it. The catalogue improves the list; it must never shrink it below
+    // the documented aliases.
+    const options = modelOptions(
+      catalogue([model({ value: 'sonnet' }), model({ value: 'opus', displayName: 'Opus 5' })]),
+    );
+
+    const values = options.map((option) => option.value);
+    for (const alias of ['fable', 'opus', 'sonnet', 'haiku', 'opusplan']) {
+      expect(values).toContain(alias);
+    }
+    // The CLI's own entries keep their names; the filled-in aliases follow them.
+    expect(options[1]?.value).toBe('sonnet');
+    expect(options[2]?.label).toBe('Opus 5');
+    expect(values.indexOf('fable')).toBeGreaterThan(values.indexOf('opus'));
+  });
+
+  it('does not duplicate an alias the CLI did enumerate', () => {
+    const options = modelOptions(catalogue([model({ value: 'fable', displayName: 'Fable (CLI)' })]));
+    const fables = options.filter((option) => option.value === 'fable');
+    expect(fables).toHaveLength(1);
+    expect(fables[0]?.label).toBe('Fable (CLI)');
+  });
 });
 
 describe('effortOptions', () => {
