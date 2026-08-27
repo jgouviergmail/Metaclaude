@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-08-27
+
+### Fixed
+
+- **v0.8.2 never became a release — its CI was red on the bundle ratchet.**
+  The phone-navigation fix below is worth its weight: the More sheet and the
+  account menu pushed the entry bundle from 180 to 181 kB gzipped, exactly
+  one kilobyte over the ceiling. The ceiling moves to 181 — deliberately,
+  by hand, for tap-reachable navigation that belongs in the entry chunk.
+  The structural way to win the headroom back stays on record in CLAUDE.md:
+  the API-only Zod contracts still ship in the entry and could move to a
+  module the web's runtime graph never imports.
+
 ## [0.8.2] — 2026-08-27
 
 ### Fixed
