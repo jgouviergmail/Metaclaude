@@ -11,6 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-27
+
+### Added
+
+- **Notes, the Obsidian way — without installing Obsidian.** Markdown files
+  in a workspace now open *reading*: rendered, with `[[wikilinks]]` live —
+  click one and the linked note opens in the panel, `[[Note|alias]]` shows
+  its alias, a name no note answers to shows muted, and links inside code
+  stay prose. Under every note, its local graph (what links here, what it
+  links to, every node a click) drawn in plain SVG, and its backlinks with
+  the exact line that made each link. Resolution matches Obsidian's habits —
+  bare names case-insensitively, the note's own folder first, then the
+  shortest path — and the *same* resolver module is shared by the server's
+  index and the click handler, so the note a click opens is always the note
+  the graph drew. Served straight off the workspace's files: a synced vault
+  works as-is, nothing is stored, scans are bounded (a huge vault gets a
+  truncation flag, never a hung request), and traversal paths are refused at
+  the jail like every other file route. The Edit toggle keeps the plain
+  editor one keystroke away.
+
 ## [0.7.0] — 2026-08-27
 
 ### Added

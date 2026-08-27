@@ -28,9 +28,10 @@ export class FileServiceError extends Error {
  * Directories that are always hidden from the browser tree.
  *
  * These are large, uninteresting, and in `.git`'s case actively hazardous to
- * expose (it contains credentials in some configurations).
+ * expose (it contains credentials in some configurations). Exported because
+ * the notes index walks the same tree and must skip the same places.
  */
-const HIDDEN_DIRECTORIES = new Set([
+export const HIDDEN_DIRECTORIES = new Set([
   '.git',
   'node_modules',
   '.pnpm-store',

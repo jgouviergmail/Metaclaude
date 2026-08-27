@@ -32,6 +32,8 @@ import {
   type McpServerRecord,
   type Memory,
   type MemoryKind,
+  type NoteBacklink,
+  type NotesIndex,
   type MemorySearchResult,
   type PolicyArm,
   type ClaudeCatalogue,
@@ -449,6 +451,15 @@ export const api = {
 
   searchFiles: (workspaceId: string, q: string, limit = 40) =>
     request<{ entries: FileEntry[] }>(`/api/workspaces/${workspaceId}/search${qs({ q, limit })}`),
+
+  /* ------------------------------- Notes ------------------------------- */
+  notesGraph: (workspaceId: string) =>
+    request<NotesIndex>(`/api/workspaces/${workspaceId}/notes/graph`),
+
+  noteBacklinks: (workspaceId: string, path: string) =>
+    request<{ backlinks: NoteBacklink[] }>(
+      `/api/workspaces/${workspaceId}/notes/backlinks${qs({ path })}`,
+    ),
 
   /* -------------------------------- Git ------------------------------- */
   gitStatus: (workspaceId: string) =>

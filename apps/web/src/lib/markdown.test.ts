@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseDiff, renderMarkdown } from './markdown.js';
+import { parseDiff, renderMarkdown, renderNoteMarkdown } from './markdown.js';
 
 /** True when the rendered output contains no executable or fetching surface. */
 function isInert(html: string): boolean {
@@ -143,6 +143,47 @@ describe('renderMarkdown — ordinary content survives', () => {
     expect(renderMarkdown('')).toBe('');
     expect(() => renderMarkdown('[unclosed](')).not.toThrow();
     expect(() => renderMarkdown('#'.repeat(5000))).not.toThrow();
+  });
+});
+
+describe('renderNoteMarkdown — wikilinks', () => {
+  const resolve = (target: string) =>
+    target.toLowerCase() === 'widget' ? 'notes/Widget.md' : null;
+
+  it('renders a resolved wikilink as an in-app link carrying its path', () => {
+    const html = renderNoteMarkdown('Go read [[Widget]].', resolve);
+    expect(html).toContain('data-note="notes/Widget.md"');
+    expect(html).toContain('class="wikilink"');
+    expect(html).toContain('>Widget</a>');
+  });
+
+  it('shows the alias and keeps the target', () => {
+    const html = renderNoteMarkdown('See [[Widget|the widget note]].', resolve);
+    expect(html).toContain('>the widget note</a>');
+    expect(html).toContain('data-note="notes/Widget.md"');
+  });
+
+  it('marks an unresolved wikilink instead of linking nowhere', () => {
+    const html = renderNoteMarkdown('See [[Missing]].', resolve);
+    expect(html).not.toContain('<a');
+    expect(html).toContain('wikilink-missing');
+    expect(html).toContain('Missing');
+  });
+
+  it('leaves wikilinks inside code alone', () => {
+    const html = renderNoteMarkdown('Use `[[Widget]]` syntax:\n\n```\n[[Widget]]\n```', resolve);
+    expect(html).not.toContain('data-note');
+  });
+
+  it('still sanitises everything else', () => {
+    const html = renderNoteMarkdown('[[Widget]] <script>alert(1)</script>', resolve);
+    expect(html).not.toContain('<script');
+  });
+
+  it('never leaks into the transcript renderer', () => {
+    const html = renderMarkdown('See [[Widget]].');
+    expect(html).not.toContain('data-note');
+    expect(html).toContain('[[Widget]]');
   });
 });
 

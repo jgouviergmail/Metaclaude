@@ -17,9 +17,44 @@ import {
 } from '../http/guards.js';
 import { redactUrlCredentials } from '../security/audit.js';
 import { queryIntOr, spreadInt } from '../http/query.js';
+import { TtlCache } from '../services/claude-catalogue.js';
+import { NotesService, type NotesIndex } from '../services/notes.js';
 
 export function registerFileRoutes(app: App, context: AppContext): void {
   const mustGetWorkspace = (id: string) => mustGetWorkspaceFrom(context, id);
+
+  // The index is rebuilt from disk, so it is briefly memoised per workspace:
+  // the notes panel asks for the graph and the backlinks together, and two
+  // scans for one render would be pure waste. Ten seconds keeps it honest
+  // while an agent is writing notes mid-run.
+  const notes = new NotesService();
+  const notesIndex = new TtlCache<NotesIndex>({
+    read: (workspacePath) => notes.index(workspacePath),
+    ttlMs: 10_000,
+  });
+
+  /* -------------------------------- Notes ------------------------------- */
+
+  app.get<{ Params: { id: string } }>('/api/workspaces/:id/notes/graph', async (request, reply) => {
+    const workspace = mustGetWorkspace(request.params.id);
+    return reply.send(await notesIndex.get(workspace.path));
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { path?: string } }>(
+    '/api/workspaces/:id/notes/backlinks',
+    async (request, reply) => {
+      const workspace = mustGetWorkspace(request.params.id);
+      const path = request.query.path ?? '';
+      if (!path) throw new HttpError(400, 'Which note? Pass ?path=.');
+      return reply.send({
+        backlinks: await notes.backlinks(
+          workspace.path,
+          path,
+          await notesIndex.get(workspace.path),
+        ),
+      });
+    },
+  );
 
   /* -------------------------------- Files ------------------------------- */
 

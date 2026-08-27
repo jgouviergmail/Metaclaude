@@ -16,11 +16,13 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import CodeMirror, { type Extension } from '@uiw/react-codemirror';
 import {
   ArrowLeft,
+  BookOpen,
   ChevronRight,
   File as FileIcon,
   FileWarning,
   Folder,
   Home,
+  PencilLine,
   RefreshCw,
   Save,
   Search,
@@ -30,6 +32,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { FileEntry } from '@metaclaude/shared';
+import { NotePreview } from '@/components/workspace/NotePreview';
 import { Button, EmptyState, Input, Spinner, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatBytes, isModifier, shortcut, truncate } from '@/lib/utils';
@@ -99,9 +102,13 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
 
       {openPath ? (
         <FileEditor
+          // Remounting per file resets the draft, the language and the
+          // preview/edit choice together — the three belong to one file.
+          key={openPath}
           workspaceId={workspaceId}
           path={openPath}
           onBack={() => setOpenPath(null)}
+          onOpen={setOpenPath}
         />
       ) : (
         <>
@@ -244,10 +251,13 @@ function FileEditor({
   workspaceId,
   path,
   onBack,
+  onOpen,
 }: {
   workspaceId: string;
   path: string;
   onBack: () => void;
+  /** Open another file in this panel — how a wikilink click navigates. */
+  onOpen: (path: string) => void;
 }) {
   const queryClient = useQueryClient();
   const dark = useDarkTheme();
@@ -255,6 +265,9 @@ function FileEditor({
   const [draft, setDraft] = useState('');
   const [baseline, setBaseline] = useState('');
   const [language, setLanguage] = useState<Extension | null>(null);
+  // Notes open reading, code opens editing; the toggle only shows for notes.
+  const isNote = path.toLowerCase().endsWith('.md');
+  const [mode, setMode] = useState<'preview' | 'edit'>(isNote ? 'preview' : 'edit');
 
   const file = useQuery({
     queryKey: ['file', workspaceId, path],
@@ -338,6 +351,35 @@ function FileEditor({
           />
         ) : null}
 
+        {isNote ? (
+          <div className="flex shrink-0 rounded-lg border border-line p-0.5" role="group" aria-label="View mode">
+            <button
+              type="button"
+              aria-pressed={mode === 'preview'}
+              onClick={() => setMode('preview')}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px]',
+                mode === 'preview' ? 'bg-accent-soft font-medium text-accent' : 'text-muted hover:text-ink',
+              )}
+            >
+              <BookOpen className="size-3.5" aria-hidden />
+              Read
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === 'edit'}
+              onClick={() => setMode('edit')}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px]',
+                mode === 'edit' ? 'bg-accent-soft font-medium text-accent' : 'text-muted hover:text-ink',
+              )}
+            >
+              <PencilLine className="size-3.5" aria-hidden />
+              Edit
+            </button>
+          </div>
+        ) : null}
+
         <Tooltip content={`Save (${shortcut('S')})`}>
           <Button
             variant="primary"
@@ -384,20 +426,29 @@ function FileEditor({
             </p>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-auto text-[13px]">
-            <CodeMirror
-              value={draft}
-              onChange={setDraft}
-              extensions={extensions}
-              // `oneDark` is the only dark editor theme in the bundle; in light
-              // mode CodeMirror's own default already matches the surface.
-              theme={dark ? oneDark : 'light'}
-              editable={!truncated}
-              height="100%"
-              basicSetup={{ foldGutter: false, highlightActiveLine: !truncated }}
-              aria-label={`Contents of ${path}`}
+          {isNote && mode === 'preview' ? (
+            <NotePreview
+              workspaceId={workspaceId}
+              path={path}
+              content={draft}
+              onOpenNote={onOpen}
             />
-          </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-auto text-[13px]">
+              <CodeMirror
+                value={draft}
+                onChange={setDraft}
+                extensions={extensions}
+                // `oneDark` is the only dark editor theme in the bundle; in light
+                // mode CodeMirror's own default already matches the surface.
+                theme={dark ? oneDark : 'light'}
+                editable={!truncated}
+                height="100%"
+                basicSetup={{ foldGutter: false, highlightActiveLine: !truncated }}
+                aria-label={`Contents of ${path}`}
+              />
+            </div>
+          )}
         </>
       )}
     </div>

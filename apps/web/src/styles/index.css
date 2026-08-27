@@ -317,6 +317,15 @@
     @apply max-w-full rounded-lg;
   }
 
+  /* Wikilinks in the note preview: a chip for a note that exists, a muted
+     one for a name nothing answers to yet. */
+  .prose-mc a.wikilink {
+    @apply rounded bg-[var(--mc-accent-soft)] px-1 py-0.5 no-underline;
+  }
+  .prose-mc .wikilink-missing {
+    @apply rounded bg-[var(--mc-surface-sunken)] px-1 py-0.5 text-[var(--mc-text-muted)];
+  }
+
   /* Streaming caret shown at the end of in-flight assistant text. */
   .caret::after {
     content: '';

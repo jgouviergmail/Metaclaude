@@ -24,6 +24,24 @@ files) are not addressable through it at all. The agent works with git through
 its own tools, which go through the permission prompt; the file panel is your
 direct door.
 
+## Notes
+
+Markdown files in a workspace are notes, and the Files panel treats them the
+way Obsidian would. A `.md` file opens **reading** — rendered, with
+`[[wikilinks]]` live: click one and the linked note opens in the panel.
+`[[Note|alias]]` shows the alias, a name no note answers to yet shows muted,
+and links written inside code stay prose. The **Edit** toggle is the plain
+editor, one keystroke away.
+
+Under every note: its **local graph** — what links here on the left, what it
+links to on the right, each node a click — and its **backlinks**, with the
+line that made each link. Resolution works like Obsidian's: bare names match
+case-insensitively, the note's own folder wins, then the shortest path.
+
+There is nothing to install or sync for this. The notes are the workspace's
+own files — a synced Obsidian vault works as-is, and everything the agent
+writes with its file tools joins the graph the moment it lands on disk.
+
 ## Git
 
 The **Source control** panel shows status and diffs, stages files, and
