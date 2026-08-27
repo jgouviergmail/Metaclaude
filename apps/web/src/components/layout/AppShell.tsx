@@ -149,8 +149,13 @@ export function AppShell({
         </>
       ) : null}
 
-      {/* Main content. `min-w-0` stops long code blocks from stretching the grid. */}
-      <main className="flex min-w-0 flex-1 flex-col pb-14 sm:pb-0">{children}</main>
+      {/* Main content. `min-w-0` stops long code blocks from stretching the
+          grid. The bottom padding mirrors the tab bar's real height: bar plus
+          the safe-area inset it grows by on gesture-nav phones — without the
+          inset here, an installed PWA hides the last lines behind the bar. */}
+      <main className="flex min-w-0 flex-1 flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+        {children}
+      </main>
 
       {/* The sections the tab bar cannot hold, one tap behind "More". */}
       {moreOpen ? (
@@ -201,8 +206,11 @@ export function AppShell({
             end={entry.to === '/'}
             className={({ isActive }) =>
               cn(
-                'flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium',
-                '[&>svg]:size-[19px]',
+                // Platform floor for a bottom bar: 24px icons, 11px labels.
+                // An installed PWA renders these raw — no browser text
+                // scaling rescues smaller metrics there.
+                'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
+                '[&>svg]:size-6',
                 isActive ? 'text-accent' : 'text-subtle',
               )
             }
@@ -217,8 +225,8 @@ export function AppShell({
           aria-label="More sections"
           aria-expanded={moreOpen}
           className={cn(
-            'flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium',
-            '[&>svg]:size-[19px]',
+            'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
+            '[&>svg]:size-6',
             // Standing on one of the sheet's sections tints the tab that leads
             // to it, exactly as a primary tab would be tinted.
             moreOpen || onSecondary ? 'text-accent' : 'text-subtle',

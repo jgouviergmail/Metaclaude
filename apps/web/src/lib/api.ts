@@ -717,7 +717,7 @@ export const api = {
         `/api/push/subscriptions?endpoint=${encodeURIComponent(endpoint)}`,
         { method: 'DELETE' },
       ),
-    test: () => request<{ sent: number; pruned: number }>('/api/push/test', { method: 'POST', body: {} }),
+    test: () => request<{ devices: number; sent: number; pruned: number; lastError: string | null }>('/api/push/test', { method: 'POST', body: {} }),
   },
 
   claudePairing: {

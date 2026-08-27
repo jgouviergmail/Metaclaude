@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { NotificationsCard } from './NotificationsCard';
 
-const { apiMock, pushLib } = vi.hoisted(() => ({
+const { apiMock, pushLib, toastMock } = vi.hoisted(() => ({
   apiMock: {
     push: { status: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn(), test: vi.fn() },
   },
@@ -20,10 +20,12 @@ const { apiMock, pushLib } = vi.hoisted(() => ({
     enablePush: vi.fn(),
     disablePush: vi.fn(),
   },
+  toastMock: { success: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock('@/lib/api', () => ({ api: apiMock, ApiError: class ApiError extends Error {} }));
 vi.mock('@/lib/push', () => pushLib);
+vi.mock('sonner', () => ({ toast: toastMock }));
 
 const SUB = { endpoint: 'https://push.example/device-1', keys: { p256dh: 'p', auth: 'a' } };
 
@@ -36,7 +38,7 @@ beforeEach(() => {
   apiMock.push.status.mockResolvedValue({ publicKey: 'vapid-public', devices: 1 });
   apiMock.push.subscribe.mockResolvedValue({ devices: 2 });
   apiMock.push.unsubscribe.mockResolvedValue({ removed: true, devices: 1 });
-  apiMock.push.test.mockResolvedValue({ sent: 2, pruned: 0 });
+  apiMock.push.test.mockResolvedValue({ devices: 2, sent: 2, pruned: 0, lastError: null });
 });
 
 describe('NotificationsCard', () => {
@@ -78,5 +80,37 @@ describe('NotificationsCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /disable here/i }));
     await waitFor(() => expect(apiMock.push.unsubscribe).toHaveBeenCalledWith(SUB.endpoint));
     expect(await screen.findByRole('button', { name: /enable on this device/i })).toBeTruthy();
+  });
+
+  it('re-registers a subscribed device with the server on mount', async () => {
+    // The browser's subscription and the server's row can drift apart — a
+    // restored database, a registration that failed after the permission
+    // was granted. The card then said "subscribed" from the browser's half
+    // alone while the server had nothing to send to, and the test button's
+    // "no device is subscribed" read as nonsense. Re-registering is an
+    // idempotent upsert, so the two halves converge on every visit.
+    pushLib.currentSubscription.mockResolvedValue(SUB);
+    renderWithProviders(<NotificationsCard />);
+
+    await waitFor(() => expect(apiMock.push.subscribe).toHaveBeenCalledWith(SUB));
+    expect(pushLib.enablePush).not.toHaveBeenCalled(); // no permission prompt on mount
+  });
+
+  it('the test button tells a delivery failure from an absent device', async () => {
+    pushLib.currentSubscription.mockResolvedValue(SUB);
+    apiMock.push.test.mockResolvedValue({
+      devices: 1,
+      sent: 0,
+      pruned: 0,
+      lastError: 'push service answered 503',
+    });
+    renderWithProviders(<NotificationsCard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /send a test/i }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    const message = String(toastMock.error.mock.calls[0]?.[0]);
+    expect(message).toMatch(/could not be delivered/i);
+    expect(message).toContain('503');
+    expect(toastMock.success).not.toHaveBeenCalledWith(expect.stringMatching(/no device/i));
   });
 });

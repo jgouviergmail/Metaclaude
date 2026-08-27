@@ -30,9 +30,18 @@ export function NotificationsCard() {
 
   useEffect(() => {
     if (!supported) return;
-    void currentSubscription().then((subscription) =>
-      setEndpoint(subscription?.endpoint ?? null),
-    );
+    void currentSubscription().then((subscription) => {
+      setEndpoint(subscription?.endpoint ?? null);
+      // The browser's subscription and the server's row drift apart — a
+      // restored database, a registration that failed after the permission
+      // was granted — and this card then claims "subscribed" from the
+      // browser's half alone while the server has nothing to send to.
+      // Re-registering is an idempotent upsert and needs no permission
+      // prompt, so the two halves converge on every visit to this screen.
+      if (subscription) {
+        api.push.subscribe(subscription).catch(() => undefined);
+      }
+    });
   }, [supported]);
 
   const enable = useMutation({
@@ -72,12 +81,22 @@ export function NotificationsCard() {
 
   const test = useMutation({
     mutationFn: () => api.push.test(),
-    onSuccess: (outcome) =>
-      toast.success(
-        outcome.sent > 0
-          ? `Sent to ${outcome.sent} device${outcome.sent > 1 ? 's' : ''}.`
-          : 'No device is subscribed yet.',
-      ),
+    // Three different truths, three different sentences: delivered, nothing
+    // to deliver to, and — the one that used to masquerade as "no device is
+    // subscribed" — devices exist but every delivery failed.
+    onSuccess: (outcome) => {
+      if (outcome.sent > 0) {
+        toast.success(`Sent to ${outcome.sent} device${outcome.sent > 1 ? 's' : ''}.`);
+      } else if (outcome.devices === 0) {
+        toast.success('No device is subscribed yet.');
+      } else {
+        toast.error(
+          `${outcome.devices} device${outcome.devices > 1 ? 's are' : ' is'} subscribed but the test could not be delivered${
+            outcome.lastError ? ` — ${outcome.lastError}` : ''
+          }.`,
+        );
+      }
+    },
     onError: () => toast.error('The test notification could not be sent.'),
   });
 

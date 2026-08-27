@@ -154,15 +154,19 @@ export class PushService {
   async notify(
     payload: PushPayload,
     options: PushSendOptions = { ttlSeconds: 3600, urgency: 'normal' },
-  ): Promise<{ sent: number; pruned: number }> {
+  ): Promise<{ devices: number; sent: number; pruned: number; lastError: string | null }> {
     const rows = this.deps.db
       .prepare<[], SubscriptionRow>('SELECT * FROM push_subscriptions')
       .all();
-    if (rows.length === 0) return { sent: 0, pruned: 0 };
+    if (rows.length === 0) return { devices: 0, sent: 0, pruned: 0, lastError: null };
 
     const body = JSON.stringify(payload);
     let sent = 0;
     let pruned = 0;
+    // `devices` and `lastError` exist so a caller can tell "nobody is
+    // subscribed" apart from "every delivery failed" — with only `sent`,
+    // the test button diagnosed a relay outage as an absent subscription.
+    let lastError: string | null = null;
 
     await Promise.all(
       rows.map(async (row) => {
@@ -176,9 +180,10 @@ export class PushService {
             pruned += 1;
             return;
           }
+          lastError = (error as Error).message.slice(0, 300);
           this.deps.db
             .prepare('UPDATE push_subscriptions SET last_error = ? WHERE id = ?')
-            .run((error as Error).message.slice(0, 300), row.id);
+            .run(lastError, row.id);
           this.deps.log('warn', 'a push delivery failed', {
             endpoint: new URL(row.endpoint).host,
             message: (error as Error).message,
@@ -187,7 +192,7 @@ export class PushService {
       }),
     );
 
-    return { sent, pruned };
+    return { devices: rows.length, sent, pruned, lastError };
   }
 
   private async defaultSend(

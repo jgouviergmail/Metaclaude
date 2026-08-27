@@ -11,6 +11,29 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.19.1] — 2026-08-27
+
+### Fixed
+
+- **The phone tab bar was miniature in the installed app.** An installed
+  PWA renders raw CSS metrics: unlike a browser tab, no accessibility text
+  scaling rescues undersized icons, so the 19px icons and 10px labels that
+  looked fine in Chrome read as miniatures on the Home-Screen app. The bar
+  now carries the platform floor itself — 24px icons, 11px labels — and the
+  content area finally accounts for the safe-area inset the bar grows by on
+  gesture-nav phones, so the last lines of a screen are no longer hidden
+  behind it in the installed app.
+- **"Send a test" no longer claims no device is subscribed when one is.**
+  Two bugs wearing one message. The browser's push subscription and the
+  server's record can drift apart — a restored database, a registration
+  that failed after the permission was granted — and the card then said
+  "subscribed" from the browser's half alone; it now re-registers the
+  device on every visit (an idempotent upsert, no permission prompt), so
+  the two halves converge. And the test button reported *every delivery
+  failed* with the same words as *nobody is subscribed*; the server now
+  answers with devices, deliveries and the last error, and the button says
+  which of the three actually happened.
+
 ## [0.19.0] — 2026-08-27
 
 ### Added

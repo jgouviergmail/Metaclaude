@@ -47,6 +47,27 @@ describe('AppShell navigation', () => {
     expect(screen.queryByRole('menu', { name: 'More sections' })).toBeNull();
   });
 
+  it('holds platform tap-target metrics in the tab bar, safe area included', () => {
+    // An installed PWA renders raw CSS metrics: unlike a browser tab, no
+    // accessibility text-scaling rescues undersized icons, and on gesture-nav
+    // iPhones the bar grows by the safe-area inset while the content behind
+    // it does not — unless both are stated here. 24px icons and 11px labels
+    // are the Material/iOS floor for a bottom bar; 19px and 10px read as
+    // miniatures the moment nothing scales them up.
+    renderWithProviders(<AppShell>content</AppShell>);
+
+    const tabBar = screen
+      .getAllByRole('navigation', { name: 'Sections' })
+      .find((bar) => bar.className.includes('fixed'));
+    expect(tabBar).toBeDefined();
+    const firstTab = within(tabBar as HTMLElement).getAllByRole('link')[0] as HTMLElement;
+    expect(firstTab.className).toContain('[&>svg]:size-6');
+    expect(firstTab.className).toContain('text-[11px]');
+
+    const main = screen.getByRole('main');
+    expect(main.className).toContain('env(safe-area-inset-bottom)');
+  });
+
   it('keeps the rail listing every section for wider screens', () => {
     renderWithProviders(<AppShell>content</AppShell>);
     for (const label of SECONDARY) {

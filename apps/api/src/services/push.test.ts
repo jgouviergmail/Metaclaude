@@ -119,7 +119,7 @@ describe('delivery', () => {
       { ttlSeconds: 600, urgency: 'high' },
     );
 
-    expect(outcome).toEqual({ sent: 2, pruned: 0 });
+    expect(outcome).toEqual({ devices: 2, sent: 2, pruned: 0, lastError: null });
     expect(sent).toHaveLength(2);
     const payload = JSON.parse(sent[0]?.payload ?? '{}') as Record<string, unknown>;
     // Exactly these keys: a push payload transits a third-party service, so
@@ -135,8 +135,29 @@ describe('delivery', () => {
     push.subscribe('usr_1', SUB(2));
 
     const outcome = await push.notify({ title: 't', body: 'b', url: '/', tag: 'x' });
-    expect(outcome).toEqual({ sent: 1, pruned: 1 });
+    expect(outcome).toEqual({ devices: 2, sent: 1, pruned: 1, lastError: null });
     expect(push.devices()).toBe(1);
+  });
+
+  it('tells "nobody is subscribed" apart from "every delivery failed"', async () => {
+    // The test button turns this outcome into words. With only `sent` to go
+    // on, a relay outage on a subscribed deployment read as "no device is
+    // subscribed yet" — the one diagnosis guaranteed to send the operator
+    // re-enabling a subscription that already exists.
+    const empty = build();
+    expect(await empty.push.notify({ title: 't', body: 'b', url: '/', tag: 'x' })).toEqual({
+      devices: 0,
+      sent: 0,
+      pruned: 0,
+      lastError: null,
+    });
+
+    const failing = build(() => 503);
+    failing.push.subscribe('usr_1', SUB(1));
+    const outcome = await failing.push.notify({ title: 't', body: 'b', url: '/', tag: 'x' });
+    expect(outcome.devices).toBe(1);
+    expect(outcome.sent).toBe(0);
+    expect(outcome.lastError).toContain('503');
   });
 
   it('keeps a subscription through a transient failure, recording the error', async () => {
@@ -189,8 +210,11 @@ const run = (over: Partial<Run>): Run =>
 describe('what deserves a buzz', () => {
   function handlers() {
     const notify = vi.fn<
-      (payload: { title: string; body: string; url: string; tag: string }, options?: object) => Promise<{ sent: number; pruned: number }>
-    >(async () => ({ sent: 1, pruned: 0 }));
+      (
+        payload: { title: string; body: string; url: string; tag: string },
+        options?: object,
+      ) => Promise<{ devices: number; sent: number; pruned: number; lastError: string | null }>
+    >(async () => ({ devices: 1, sent: 1, pruned: 0, lastError: null }));
     const built = buildPushEventHandlers({
       push: { notify },
       sessions: { get: (id) => (id === 'ses_1' ? { title: 'Fix the parser' } : null) },
