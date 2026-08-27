@@ -7,7 +7,13 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { ensureHelpSession, guideChapters, loadChangelog, searchGuide } from './help';
+import {
+  corpusStamp,
+  ensureHelpSession,
+  guideChapters,
+  loadChangelog,
+  searchGuide,
+} from './help';
 
 describe('the guide manifest', () => {
   it('lists every chapter on disk, in reading order', async () => {
@@ -54,7 +60,7 @@ describe('searchGuide', () => {
 });
 
 describe('ensureHelpSession', () => {
-  function fakeApi(existing: Array<{ id: string; slug: string }>) {
+  function fakeApi(existing: Array<{ id: string; slug: string }>, disk = new Map<string, string>()) {
     const calls = {
       create: [] as unknown[],
       write: [] as unknown[],
@@ -63,15 +69,23 @@ describe('ensureHelpSession', () => {
     };
     return {
       calls,
+      disk,
       workspaces: async () => ({ workspaces: existing }),
       createWorkspace: async (body: unknown) => {
         calls.create.push(body);
         return { workspace: { id: 'ws_help', slug: 'metaclaude-help' } };
       },
       updateWorkspace: async () => ({}),
-      writeFile: async (id: string, path: string) => {
+      writeFile: async (id: string, path: string, content: string) => {
         calls.write.push(`${id}:${path}`);
+        disk.set(path, content);
         return {};
+      },
+      readFile: async (_id: string, path: string) => {
+        const content = disk.get(path);
+        // The real endpoint 404s, which the caller must treat as "unknown".
+        if (content === undefined) throw new Error('not found');
+        return { content };
       },
       createSession: async (body: unknown) => {
         calls.session.push(body);
@@ -102,13 +116,50 @@ describe('ensureHelpSession', () => {
     expect(result).toEqual({ workspaceId: 'ws_help', sessionId: 'ses_help' });
   });
 
-  it('reuses an existing help workspace without re-seeding it', async () => {
-    const api = fakeApi([{ id: 'ws_help', slug: 'metaclaude-help' }]);
+  it('reuses the workspace and re-seeds nothing while the guide is unchanged', async () => {
+    // Seed once through the real path, so the stamp on disk is the real one.
+    const disk = new Map<string, string>();
+    await ensureHelpSession(fakeApi([{ id: 'ws_help', slug: 'metaclaude-help' }], disk), 'first');
+
+    const api = fakeApi([{ id: 'ws_help', slug: 'metaclaude-help' }], disk);
     await ensureHelpSession(api, 'What does rewind restore?');
 
     expect(api.calls.create).toHaveLength(0);
     expect(api.calls.write).toHaveLength(0);
     expect(api.calls.session).toHaveLength(1);
+  });
+
+  it('re-seeds when the guide has changed since the workspace was made', async () => {
+    // A workspace seeded against an older, shorter guide — which is exactly
+    // what every deployment holds after a release adds or edits a chapter.
+    const disk = new Map<string, string>([[ 'guide/.corpus', 'stale' ]]);
+    const api = fakeApi([{ id: 'ws_help', slug: 'metaclaude-help' }], disk);
+    await ensureHelpSession(api, 'What is the advisor?');
+
+    expect(api.calls.create).toHaveLength(0);
+    // Every chapter rewritten, plus CLAUDE.md and the new stamp.
+    expect(api.calls.write.length).toBe(guideChapters.length + 2);
+    expect(disk.get('guide/.corpus')).toBe(await corpusStamp());
+    // And the freshly written corpus is the one the app actually bundles.
+    for (const chapter of guideChapters) {
+      expect(disk.has(`guide/${chapter.slug}.md`)).toBe(true);
+    }
+  });
+
+  it('records the stamp only after the whole guide is written', async () => {
+    // An interrupted seed must be retried, not remembered as complete.
+    const disk = new Map<string, string>();
+    const api = fakeApi([{ id: 'ws_help', slug: 'metaclaude-help' }], disk);
+    const realWrite = api.writeFile;
+    let writes = 0;
+    api.writeFile = async (id: string, path: string, content: string) => {
+      writes += 1;
+      if (writes === 3) throw new Error('disk full');
+      return realWrite(id, path, content);
+    };
+
+    await expect(ensureHelpSession(api, 'q')).rejects.toThrow('disk full');
+    expect(disk.has('guide/.corpus')).toBe(false);
   });
 
   it('propagates a failure instead of leaving a half-seeded workspace silent', async () => {

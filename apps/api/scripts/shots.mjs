@@ -175,6 +175,7 @@ async function shoot(theme, viewport, suffix) {
     ['/memory', 'memory'],
     ['/analytics', 'analytics'],
     ['/board', 'board'],
+    ['/help', 'help'],
   ];
   for (const [path, name] of screens) {
     await page.goto(`${server.baseUrl}${path}`, { waitUntil: 'networkidle' });

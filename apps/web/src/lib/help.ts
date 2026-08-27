@@ -39,6 +39,8 @@ export interface HelpApi {
     body: { settings?: Record<string, unknown> },
   ) => Promise<unknown>;
   writeFile: (workspaceId: string, path: string, content: string) => Promise<unknown>;
+  /** Rejects when the file is absent, which is how a first seed is detected. */
+  readFile: (workspaceId: string, path: string) => Promise<{ content: string }>;
   createSession: (body: {
     workspaceId: string;
     title?: string;
@@ -166,9 +168,32 @@ guessing — an honest "the guide does not cover this" beats an invented answer.
 You are running in plan mode on purpose: read and explain, execute nothing.
 `;
 
+const STAMP_PATH = 'guide/.corpus';
+
 /**
- * Find or create the help workspace, seed it with the guide on first use, and
- * open a plan-mode session already answering the question.
+ * A fingerprint of the bundled guide: chapter slugs with their lengths.
+ *
+ * Enough to notice a chapter added, removed, renamed or edited — which is all
+ * this needs to decide — without hashing tens of kilobytes on every press.
+ */
+export async function corpusStamp(): Promise<string> {
+  const parts = await Promise.all(
+    guideChapters.map(async (chapter) => `${chapter.slug}:${(await chapter.load()).length}`),
+  );
+  return parts.join('\n');
+}
+
+/**
+ * Find or create the help workspace, seed it with the guide **whenever the
+ * guide has changed**, and open a plan-mode session already answering the
+ * question.
+ *
+ * The re-seed is the point. Seeding only at creation was the obvious economy
+ * and it was wrong: the workspace outlives every release, so a help agent
+ * created before a chapter existed answered from a guide frozen at first use —
+ * confidently, and about a product that had moved on. A stamp file records
+ * which corpus is on disk; a mismatch (or an unreadable stamp, which is how a
+ * fresh workspace reads) rewrites every chapter. Steady state costs one read.
  *
  * Every step is an existing API the rest of the product already exercises —
  * the help agent is an ordinary session with a curated library, not a second
@@ -180,6 +205,7 @@ export async function ensureHelpSession(
 ): Promise<{ workspaceId: string; sessionId: string }> {
   const { workspaces } = await api.workspaces();
   let workspaceId = workspaces.find((workspace) => workspace.slug === HELP_SLUG)?.id;
+  let fresh = false;
 
   if (!workspaceId) {
     const created = await api.createWorkspace({
@@ -188,15 +214,35 @@ export async function ensureHelpSession(
       icon: 'book',
     });
     workspaceId = created.workspace.id;
+    fresh = true;
+  }
 
+  const stamp = await corpusStamp();
+  let seeded = '';
+  if (!fresh) {
+    // Absent, empty or unreadable all mean the same thing here: we cannot
+    // prove the guide on disk is current, so we write it again.
+    seeded = await api
+      .readFile(workspaceId, STAMP_PATH)
+      .then((file) => file.content)
+      .catch(() => '');
+  }
+
+  if (seeded !== stamp) {
     // The guide, verbatim, then the assistant's standing instructions. Writes
     // are sequential and failures propagate: a half-seeded library that fails
-    // silently would produce confidently incomplete answers forever.
+    // silently would produce confidently incomplete answers forever — and the
+    // stamp is written last, so an interrupted seed is retried next time
+    // rather than recorded as complete.
     for (const chapter of guideChapters) {
       const body = await chapter.load();
       await api.writeFile(workspaceId, `guide/${chapter.slug}.md`, body);
     }
     await api.writeFile(workspaceId, 'CLAUDE.md', HELP_CLAUDE_MD);
+    await api.writeFile(workspaceId, STAMP_PATH, stamp);
+  }
+
+  if (fresh) {
     await api.updateWorkspace(workspaceId, {
       settings: { defaultPermissionMode: 'plan', memoryEnabled: false },
     });

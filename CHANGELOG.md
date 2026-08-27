@@ -11,6 +11,21 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.26.2] — 2026-08-27
+
+### Fixed
+
+- **"Ask Metaclaude about itself" answered from a frozen guide.** The help
+  workspace was seeded with the guide exactly once, when it was first
+  created — so every chapter written or corrected afterwards never reached
+  it, and the assistant went on answering, confidently, about a product that
+  had moved on. (On a deployment that had asked one question before 0.21.0,
+  that meant no library, no advisor, and two chapters' worth of corrections
+  it had never seen.) The guide is now re-seeded whenever it has changed,
+  detected by a fingerprint file written *after* the last chapter, so an
+  interrupted seed is retried rather than remembered as complete. Steady
+  state costs one read.
+
 ## [0.26.1] — 2026-08-27
 
 ### Fixed
