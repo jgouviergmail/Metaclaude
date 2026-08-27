@@ -51,6 +51,15 @@ const checkFirst = async () => {
 };
 
 describe('UpdateCard', () => {
+  it('presses past the server cache: an explicit Check always forces a fresh read', async () => {
+    // The server caches the answer for an hour — correct for passive
+    // readers, wrong for a person who just published a release and is
+    // pressing the button to see it. Shipped unforced once: the press
+    // re-served the pre-release answer and read as "no update".
+    await checkFirst();
+    expect(apiMock.updateCheck).toHaveBeenCalledWith(true);
+  });
+
   it('offers Apply only when an update exists and the host has an updater', async () => {
     await checkFirst();
     expect(await screen.findByRole('button', { name: /apply v9\.9\.9/i })).toBeDefined();

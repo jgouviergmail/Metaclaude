@@ -11,6 +11,18 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-08-27
+
+### Fixed
+
+- **Pressing Check re-served last hour's answer.** The server caches the
+  update check for an hour — right for passive readers, wrong for the
+  button: the card never sent `refresh=true`, so a deliberate press
+  minutes after a release still answered "no update" from the
+  pre-release cache. Found live, minutes after v0.12.0 was published.
+  The Check button now always forces a fresh read; it is the only thing
+  that runs that query, so the cache still shields everything else.
+
 ## [0.12.0] — 2026-08-27
 
 ### Added

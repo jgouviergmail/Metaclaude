@@ -20,7 +20,12 @@ import { nextUpdateWatch, type UpdateWatch } from '@/lib/update-watch';
 export function UpdateCard() {
   const updateQuery = useQuery({
     queryKey: ['update-check'],
-    queryFn: () => api.updateCheck(),
+    // Forced past the server's hour-long cache on purpose: with
+    // `enabled: false` this only ever runs when a person presses Check, and
+    // a deliberate press that gets last hour's answer reads as "no update"
+    // minutes after one was published — which is how it shipped, and how it
+    // was caught. Passive readers (the doctor) still enjoy the cache.
+    queryFn: () => api.updateCheck(true),
     enabled: false,
   });
   const applyStatus = useQuery({
