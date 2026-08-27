@@ -37,6 +37,17 @@ export function buildTaskPrompt(
   const lines = [
     `You are picking up the card "${task.title}" (${task.id}) from this workspace's kanban board.`,
   ];
+  if (task.status === 'review') {
+    // Built before the run's own mutations move the card, so "sitting in
+    // review" is exactly the state the sender saw. Without this line the
+    // prompt reads as fresh work, and the agent redoes instead of verifying.
+    lines.push(
+      '',
+      'This card sat in review and has been handed back to you. Verify what the',
+      'earlier work claims, address any gaps you find, and put it back in review',
+      'once it genuinely stands.',
+    );
+  }
   if (task.description.trim()) {
     lines.push('', 'Description:', task.description.trim());
   }

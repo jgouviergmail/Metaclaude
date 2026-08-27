@@ -372,15 +372,27 @@ export class BoardService {
       upper = siblings[at + 1]?.order_key ?? null;
     }
 
+    // The review rule: what enters review is the operator's to judge, so the
+    // transition itself hands the card to them — from every path at once,
+    // since the agent's board tools, the run-outcome hook and a human drag
+    // all land here. Strictly the *transition*: reordering inside the column
+    // must not clobber a deliberate delegation back to the agent.
+    const entersReview = to.status === 'review' && task.status !== 'review';
+
     const orderKey = orderKeyBetween(lower, upper);
     this.db
       .prepare(
-        'UPDATE tasks SET status = ?, order_key = ?, blocked_reason = NULL, updated_at = ? WHERE id = ?',
+        `UPDATE tasks SET status = ?, order_key = ?, blocked_reason = NULL,
+           assignee = CASE WHEN ? THEN 'user' ELSE assignee END,
+           updated_at = ? WHERE id = ?`,
       )
-      .run(to.status, orderKey, Date.now(), id);
+      .run(to.status, orderKey, entersReview ? 1 : 0, Date.now(), id);
 
     if (task.status !== to.status) {
       this.record(id, actor, 'moved', `${task.status} → ${to.status}`);
+    }
+    if (entersReview && task.assignee !== 'user') {
+      this.record(id, actor, 'assigned', 'user');
     }
     return this.mustGet(id);
   }

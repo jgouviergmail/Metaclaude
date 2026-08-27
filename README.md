@@ -29,7 +29,9 @@ system around it:
   keep the same session and accumulate context indefinitely.
 - **A board that works itself.** Fill the To do column, switch the autopilot
   on, and cards get worked one at a time into Review — with a quota guard
-  that pauses automatic starts near the plan's ceiling.
+  that pauses automatic starts near the plan's ceiling. Whatever lands in
+  Review is assigned to you; assign the agent on a review card and it takes
+  the work back.
 - **Permission prompts you can actually read**, with the literal command shown
   and a risk assessment attached.
 - **Push notifications, self-hosted.** The phone buzzes when a run waits on

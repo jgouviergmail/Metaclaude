@@ -134,6 +134,60 @@ describe('publication', () => {
 /* applyRunOutcome                                                           */
 /* ------------------------------------------------------------------------ */
 
+describe('delegating a review back to the agent', () => {
+  it('fires the hook when a review card is assigned to the agent, with task and actor', () => {
+    const card = make('reviewed work');
+    gateway.move(card.id, { status: 'review' }, 'user:jules');
+
+    const calls: { taskId: string; actor: string }[] = [];
+    gateway.onReviewDelegated = (task, actor) => calls.push({ taskId: task.id, actor });
+
+    gateway.update(card.id, { assignee: 'agent' }, 'user:jules');
+    expect(calls).toEqual([{ taskId: card.id, actor: 'user:jules' }]);
+  });
+
+  it('stays silent for every non-delegation update', () => {
+    const calls: string[] = [];
+    gateway.onReviewDelegated = (task) => calls.push(task.id);
+
+    // Assigning the agent outside review is the ordinary Send-to-agent state.
+    const todo = make('still to do');
+    gateway.update(todo.id, { assignee: 'agent' }, 'user:jules');
+
+    // A review card edited without touching the assignee.
+    const review = make('in review');
+    gateway.move(review.id, { status: 'review' }, 'user:jules');
+    gateway.update(review.id, { title: 'renamed' }, 'user:jules');
+    // Re-stating the current assignee is not a new delegation.
+    gateway.update(review.id, { assignee: 'user' }, 'user:jules');
+
+    expect(calls).toEqual([]);
+  });
+
+  it('does not re-fire when the assignee is already the agent', () => {
+    const card = make('delegated once');
+    gateway.move(card.id, { status: 'review' }, 'user:jules');
+    const calls: string[] = [];
+    gateway.onReviewDelegated = (task) => calls.push(task.id);
+
+    gateway.update(card.id, { assignee: 'agent' }, 'user:jules');
+    gateway.update(card.id, { assignee: 'agent' }, 'user:jules');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('entering review always hands the card to the user first', () => {
+    // The composition of the two rules: an agent-assigned card dragged into
+    // review is the user's again; delegation is the explicit act afterwards.
+    const card = make('agent-held', { assignee: 'agent' });
+    const calls: string[] = [];
+    gateway.onReviewDelegated = (task) => calls.push(task.id);
+
+    const moved = gateway.move(card.id, { status: 'review' }, 'user:jules');
+    expect(moved.assignee).toBe('user');
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('applyRunOutcome', () => {
   const linkInProgress = (runId: string) => {
     seedRun(runId);
@@ -148,6 +202,9 @@ describe('applyRunOutcome', () => {
     const moved = gateway.applyRunOutcome(runShape({ id: 'run_ok' }));
 
     expect(moved?.status).toBe('review');
+    // The review rule reaches this path too: the finished card is the
+    // operator's to judge, not the agent's to keep.
+    expect(moved?.assignee).toBe('user');
     const comments = gateway.comments(task.id);
     expect(comments.at(-1)?.author).toBe('agent:run_ok');
     expect(comments.at(-1)?.body).toContain('review');

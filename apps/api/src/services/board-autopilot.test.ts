@@ -170,6 +170,86 @@ describe('the opt-in and the chain', () => {
   });
 });
 
+describe('a review delegated back to the agent', () => {
+  // The rule: a card in review assigned to the agent must be worked by the
+  // agent. It was an explicit human act, so it carries the Work button's
+  // authority — ahead of the To do queue, past the opt-in and the quota
+  // guard — and only the one-run-at-a-time rule outranks it.
+
+  it('outranks the To do queue', async () => {
+    const { autopilot, started } = build({
+      cards: [
+        card({ id: 'tsk_todo', status: 'todo', orderKey: 'a' }),
+        card({ id: 'tsk_delegated', status: 'review', assignee: 'agent', orderKey: 'b' }),
+      ],
+    });
+    expect((await autopilot.workNext('ws_1', { manual: false })).reason).toBe('started');
+    expect(started).toEqual(['tsk_delegated']);
+  });
+
+  it('starts even where the autopilot was never opted in', async () => {
+    const { autopilot, started } = build({
+      cards: [card({ id: 'tsk_delegated', status: 'review', assignee: 'agent' })],
+      settings: { autoWorkBoard: false },
+    });
+    expect((await autopilot.workNext('ws_1', { manual: false })).reason).toBe('started');
+    expect(started).toEqual(['tsk_delegated']);
+  });
+
+  it('outranks the quota guard — a human asked for exactly this card', async () => {
+    const { autopilot, started } = build({
+      cards: [card({ id: 'tsk_delegated', status: 'review', assignee: 'agent' })],
+      utilization: 99,
+      guardPct: 85,
+    });
+    expect((await autopilot.workNext('ws_1', { manual: false })).reason).toBe('started');
+    expect(started).toEqual(['tsk_delegated']);
+  });
+
+  it('still never runs two cards at once', async () => {
+    const { autopilot, started } = build({
+      cards: [
+        card({ id: 'tsk_active', status: 'in_progress', runId: 'run_live', orderKey: 'a' }),
+        card({ id: 'tsk_delegated', status: 'review', assignee: 'agent', orderKey: 'b' }),
+      ],
+      runs: { run_live: { status: 'running' } },
+    });
+    expect((await autopilot.workNext('ws_1', { manual: false })).reason).toBe('busy');
+    expect(started).toEqual([]);
+  });
+
+  it('skips a blocked delegation and falls back to the To do queue', async () => {
+    const { autopilot, started } = build({
+      cards: [
+        card({ id: 'tsk_stuck', status: 'review', assignee: 'agent', blockedReason: 'why' }),
+        card({ id: 'tsk_todo', status: 'todo', orderKey: 'z' }),
+      ],
+    });
+    expect((await autopilot.workNext('ws_1', { manual: false })).reason).toBe('started');
+    expect(started).toEqual(['tsk_todo']);
+  });
+
+  it('takes delegations in the human’s column order', async () => {
+    const { autopilot, started } = build({
+      cards: [
+        card({ id: 'tsk_lower', status: 'review', assignee: 'agent', orderKey: 'c' }),
+        card({ id: 'tsk_upper', status: 'review', assignee: 'agent', orderKey: 'b' }),
+      ],
+    });
+    await autopilot.workNext('ws_1', { manual: false });
+    expect(started).toEqual(['tsk_upper']);
+  });
+
+  it('is caught by the sweep even in a workspace that never opted in', async () => {
+    const { autopilot, started } = build({
+      cards: [card({ id: 'tsk_delegated', status: 'review', assignee: 'agent' })],
+      settings: { autoWorkBoard: false },
+    });
+    await autopilot.sweep();
+    expect(started).toEqual(['tsk_delegated']);
+  });
+});
+
 describe('planUtilization', () => {
   const usage = (windows: { key: string; utilization: number | null }[]) => ({ windows });
 

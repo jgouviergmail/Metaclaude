@@ -77,6 +77,17 @@ describe('TaskDrawer — the agent affordance', () => {
     await waitFor(() => expect(apiMock.runTask).toHaveBeenCalledWith('tsk_1'));
   });
 
+  it('warns that assigning the agent on a review card hands the work back', async () => {
+    // The server treats that assignment as "take this back" and starts the
+    // agent; the menu must say so before the click, not surprise after it.
+    apiMock.task.mockResolvedValue(detail({ task: task({ status: 'review', assignee: 'user' }) }));
+    renderWithProviders(<TaskDrawer taskId="tsk_1" onClose={() => {}} />);
+
+    // Radix opens its menu on pointerdown, which a bare click never fires.
+    fireEvent.pointerDown(await screen.findByRole('button', { name: /you/i }));
+    expect(await screen.findByText(/hands the card back/i)).toBeTruthy();
+  });
+
   it('says the agent is on it and links the session while a run lives', async () => {
     apiMock.task.mockResolvedValue(
       detail({ task: task({ runId: 'run_1', status: 'in_progress', assignee: 'agent' }), run: run('running') }),

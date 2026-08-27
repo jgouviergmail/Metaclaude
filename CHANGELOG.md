@@ -11,6 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-08-27
+
+### Added
+
+- **Review changes hands explicitly, in both directions.** Whatever enters
+  the Review column is now assigned to *you* — the agent finishing a card,
+  the agent moving one with its own board tools, your own drag, every path
+  converges on the same rule, because what sits in review is yours to
+  judge. (Reordering inside the column changes nothing: tidying is not
+  judging.) And the one way a review card can be agent-assigned is the new
+  hand-back: **assign the agent to a card in review and the agent picks it
+  up** — ahead of the To do queue, with or without the autopilot opt-in,
+  past the quota guard (you asked for exactly this card), and never two
+  runs at once; the run-finished chain and the periodic sweep start it the
+  moment the workspace is free. The hand-back prompt tells the agent the
+  card came back from review — verify, don't redo — and carries the card's
+  discussion, so comment your feedback first. On success the card returns
+  to review, assigned to you again: the loop closes where it started. The
+  assignee menu says all of this before you click it.
+
 ## [0.18.0] — 2026-08-27
 
 ### Added

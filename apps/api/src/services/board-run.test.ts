@@ -112,6 +112,21 @@ describe('starting a run from a card', () => {
     expect(task.assignee).toBe('agent');
   });
 
+  it('tells the agent when a card comes back from review, and only then', async () => {
+    // A card started from review was handed back — by a delegation or a
+    // re-send — and the prompt must say so: "pick up the card" alone reads
+    // as fresh work, and the agent would redo instead of verify.
+    const fresh = seed({ title: 'Fresh work' });
+    await startTaskRun(deps, fresh.id, 'jules');
+    expect(submitted[0]!.prompt).not.toMatch(/handed back/i);
+
+    const reviewed = seed({ title: 'Reviewed work' });
+    board.move(reviewed.id, { status: 'review' }, 'user:jules');
+    await startTaskRun(deps, reviewed.id, 'jules');
+    expect(submitted[1]!.prompt).toMatch(/handed back/i);
+    expect(submitted[1]!.prompt).toMatch(/verify/i);
+  });
+
   it('reuses the previous card session so the agent keeps its context', async () => {
     const card = seed();
     const first = await startTaskRun(deps, card.id, 'jules');

@@ -231,7 +231,11 @@ export function TaskDrawer({
               <MenuItem
                 selected={task.assignee === 'agent'}
                 onSelect={() => save.mutate({ assignee: 'agent' })}
-                description="The workspace's agent — it can pick this card up"
+                description={
+                  task.status === 'review'
+                    ? 'Hands the card back — the agent starts working it'
+                    : "The workspace's agent — it can pick this card up"
+                }
               >
                 Agent
               </MenuItem>

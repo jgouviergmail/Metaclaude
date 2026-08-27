@@ -15,6 +15,16 @@ import type { EventBus } from '../kernel/bus.js';
 import type { BoardService, CreateTaskInput, UpdateTaskInput } from './board.js';
 
 export class BoardGateway {
+  /**
+   * Fired when a card sitting in review is assigned to the agent — the
+   * board's way of saying "take this back". Set after construction (the
+   * autopilot that answers it is built later), and observed *here* because
+   * this is the one surface every writer passes through: the HTTP routes
+   * and the agent's own board tools alike. The rule it serves: a card in
+   * review assigned to the agent must be worked by the agent.
+   */
+  onReviewDelegated?: (task: BoardTask, actor: string) => void;
+
   constructor(
     private readonly board: BoardService,
     private readonly bus: EventBus,
@@ -60,8 +70,19 @@ export class BoardGateway {
   }
 
   update(id: string, patch: UpdateTaskInput, actor: string): BoardTask {
+    // Read before writing: the delegation trigger is the *transition* to
+    // agent-assigned, and only the prior row can say whether this is one.
+    const before = this.board.get(id);
     const task = this.board.update(id, patch, actor);
     this.publishTask(task);
+    if (
+      task.status === 'review' &&
+      task.archivedAt === null &&
+      task.assignee === 'agent' &&
+      before?.assignee !== 'agent'
+    ) {
+      this.onReviewDelegated?.(task, actor);
+    }
     return task;
   }
 

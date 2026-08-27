@@ -62,10 +62,30 @@ reason where the board can read it, and the agent's comment says the same.
 A card the agent already moved holds its place — its moves win over the
 bookkeeping.
 
-Press **Send back to the agent** after leaving review feedback in the
-comments: the same session resumes, context intact, so the agent picks up
-exactly where its last attempt ended. A card already being worked refuses a
-second press until you interrupt the run.
+## Review is yours, until you hand it back
+
+Two rules govern the review column, and together they make the hand-off
+explicit in both directions:
+
+- **Whatever enters review is assigned to you.** However it got there — the
+  agent finishing, the agent moving it with its own board tools, your own
+  drag — the card arrives with *You* as its assignee, because what sits in
+  review is yours to judge. (Reordering cards inside the column changes
+  nothing: tidying is not judging.)
+- **Assigning the agent to a review card hands the work back.** That is the
+  one way a review card can be agent-assigned, so it always means the same
+  thing: the agent picks the card up — ahead of the To do queue, whether or
+  not the autopilot is on, past the quota guard (you asked for exactly this
+  card) — with a prompt that says the card came back from review, so it
+  verifies instead of redoing. Only the one-run-at-a-time rule can delay
+  it; the chain and the sweep start it the moment the workspace is free.
+  On success the card lands back in review, assigned to you again.
+
+Leave your feedback in the comments first — the hand-back prompt carries
+the discussion. Pressing **Send back to the agent** in the drawer does the
+same thing by hand: the same session resumes, context intact, so the agent
+picks up exactly where its last attempt ended. A card already being worked
+refuses a second press until you interrupt the run.
 
 ## The autopilot
 

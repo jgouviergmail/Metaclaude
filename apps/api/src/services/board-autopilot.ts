@@ -61,6 +61,24 @@ export class BoardAutopilot {
     return todo[0] ?? null;
   }
 
+  /**
+   * The top review card handed back to the agent, if any. Entering review
+   * always assigns the *user* (the board's rule), so this state only exists
+   * because a human explicitly re-assigned the agent — which is why it is
+   * worked ahead of the To do queue and past the opt-in and quota guard.
+   * A blocked delegation waits like any blocked card: unblocking is an act.
+   */
+  delegatedReview(workspaceId: string): BoardTask | null {
+    const delegated = this.deps.boardTasks
+      .board(workspaceId)
+      .filter(
+        (task) =>
+          task.status === 'review' && task.assignee === 'agent' && task.blockedReason === null,
+      )
+      .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0));
+    return delegated[0] ?? null;
+  }
+
   /** True while any card in the workspace has a live run on it. */
   busy(workspaceId: string): boolean {
     return this.deps.boardTasks.board(workspaceId).some((task) => {
@@ -80,10 +98,25 @@ export class BoardAutopilot {
   ): Promise<{ started: BoardTask | null; reason: AutopilotReason }> {
     const workspace = this.deps.workspaces.get(workspaceId);
     if (!workspace) return { started: null, reason: 'off' };
+    if (this.busy(workspaceId)) return { started: null, reason: 'busy' };
+
+    // A delegated review first: it exists only because a human explicitly
+    // assigned the agent to a card in review, so it carries the Work
+    // button's authority — no opt-in, no quota guard, only the busy rule
+    // above outranks it.
+    const delegated = this.delegatedReview(workspaceId);
+    if (delegated) {
+      await this.deps.start(delegated.id, options.username ?? 'autopilot');
+      this.deps.log('info', 'autopilot started a delegated review', {
+        workspaceId,
+        taskId: delegated.id,
+      });
+      return { started: delegated, reason: 'started' };
+    }
+
     if (!options.manual && !workspace.settings.autoWorkBoard) {
       return { started: null, reason: 'off' };
     }
-    if (this.busy(workspaceId)) return { started: null, reason: 'busy' };
 
     const next = this.nextCard(workspaceId);
     if (!next) return { started: null, reason: 'empty' };
@@ -128,13 +161,14 @@ export class BoardAutopilot {
   }
 
   /**
-   * The safety net: revisit every opted-in workspace. Catches the stalls
-   * the chain cannot see — a quota deferral with nothing left to finish, a
-   * kernel refusal, cards added while the board was idle.
+   * The safety net: revisit every workspace. Catches the stalls the chain
+   * cannot see — a quota deferral with nothing left to finish, a kernel
+   * refusal, cards added while the board was idle. Every workspace, not
+   * just the opted-in ones: a delegated review lives outside the opt-in,
+   * and workNext itself holds the gate for the rest.
    */
   async sweep(): Promise<void> {
     for (const workspace of this.deps.workspaces.list(false)) {
-      if (!workspace.settings.autoWorkBoard) continue;
       try {
         await this.workNext(workspace.id, { manual: false });
       } catch (error) {

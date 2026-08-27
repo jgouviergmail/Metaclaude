@@ -135,6 +135,40 @@ describe('move', () => {
     expect(moved.blockedReason).toBeNull();
   });
 
+  it('entering review assigns the card to the user, whoever held it', () => {
+    // The rule of the review column: what lands there is the operator's to
+    // judge. Every entry path converges on move(), so this is the one spot.
+    const fromAgent = make('worked by the agent', { assignee: 'agent' });
+    const moved = board.move(fromAgent.id, { status: 'review' }, 'agent:run_1');
+    expect(moved.assignee).toBe('user');
+    expect(
+      board.activity(fromAgent.id).some((a) => a.kind === 'assigned' && a.detail === 'user'),
+    ).toBe(true);
+
+    const unassigned = make('never assigned');
+    expect(board.move(unassigned.id, { status: 'review' }, 'user:jules').assignee).toBe('user');
+  });
+
+  it('reordering inside review never touches the assignee', () => {
+    // A drag within the column must not clobber a deliberate delegation:
+    // assigning the agent to a review card is a request, and tidying the
+    // column is not a way to withdraw it.
+    const first = make('first');
+    board.move(first.id, { status: 'review' }, 'user:jules');
+    const second = make('second');
+    board.move(second.id, { status: 'review' }, 'user:jules');
+    board.update(second.id, { assignee: 'agent' }, 'user:jules');
+
+    const reordered = board.move(second.id, { status: 'review', afterId: first.id }, 'user:jules');
+    expect(reordered.assignee).toBe('agent');
+  });
+
+  it('moving anywhere else leaves the assignee alone', () => {
+    const task = make('agent-held', { assignee: 'agent' });
+    expect(board.move(task.id, { status: 'in_progress' }, 'user:jules').assignee).toBe('agent');
+    expect(board.move(task.id, { status: 'done' }, 'user:jules').assignee).toBe('agent');
+  });
+
   it('refuses a stale afterId and an archived card', () => {
     const a = make('a');
     const b = make('b');

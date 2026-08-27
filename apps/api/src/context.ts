@@ -469,6 +469,18 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     log: (level, message, data) => log[level](data ?? {}, message),
   });
   autopilotRef = autopilot;
+  // The review rule's second half: a card in review assigned to the agent is
+  // worked by the agent. The gateway sees the delegation (it is the board's
+  // one mutation surface); the autopilot answers it with the Work button's
+  // authority — immediately when the workspace is idle, or picked up by the
+  // run-finished chain and the sweep when it is not. Fire-and-forget: the
+  // assignment already succeeded, and a kernel refusal here is a deferral.
+  board.onReviewDelegated = (task, actor) => {
+    const username = actor.startsWith('user:') ? actor.slice('user:'.length) : 'autopilot';
+    void autopilot.workNext(task.workspaceId, { manual: false, username }).catch((error: Error) => {
+      log.warn({ taskId: task.id, message: error.message }, 'delegated review could not start');
+    });
+  };
   // The safety net for stalls the chain cannot see: a quota deferral with
   // nothing left to finish, a kernel refusal, cards added while idle.
   const autopilotTimer = setInterval(() => void autopilot.sweep(), 5 * 60_000);
