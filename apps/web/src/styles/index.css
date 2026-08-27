@@ -192,8 +192,15 @@
     text-rendering: optimizeLegibility;
     /* The chat view manages its own scrolling; the page itself never scrolls. */
     overflow: hidden;
-    /* Respect the notch and the home indicator on iOS. */
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    /* Respect the notch and the screen edges on iOS — top and sides ONLY.
+       The bottom inset deliberately stays 0 here: the phone tab bar owns it
+       (it paints the home-indicator zone with its own surface, and <main>
+       reserves the bar's total height). When the body ALSO padded the
+       bottom, the three reservations stacked — content stopped ~34px above
+       a bar that itself sat ~34px tall of padding — and the installed app
+       showed a bare band above the bar and a hollow one below it. One layer
+       per inset, never two. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0
       env(safe-area-inset-left);
   }
 

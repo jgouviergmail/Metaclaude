@@ -68,6 +68,45 @@ describe('AppShell navigation', () => {
     expect(main.className).toContain('env(safe-area-inset-bottom)');
   });
 
+  it('never lets the safe-area padding share an element with the fixed height', () => {
+    // The trap that shipped miniature icons twice: with border-box sizing,
+    // `h-14` and `padding-bottom: env(safe-area-inset-bottom)` on the SAME
+    // element leave 56 − ~34 = 22px of content on a gesture-nav phone, and
+    // flexbox crushes the icons into it — while every browser tab (inset 0)
+    // looks fine. The outer nav must own the padding and paint the
+    // home-indicator zone; the inner row must own the full 3.5rem.
+    renderWithProviders(<AppShell>content</AppShell>);
+
+    const tabBar = screen
+      .getAllByRole('navigation', { name: 'Sections' })
+      .find((bar) => bar.className.includes('fixed')) as HTMLElement;
+    expect(tabBar.className).toContain('pb-[env(safe-area-inset-bottom)]');
+    expect(tabBar.className).not.toMatch(/\bh-14\b/);
+
+    const row = tabBar.firstElementChild as HTMLElement;
+    expect(row.className).toMatch(/\bh-14\b/);
+
+    // And no future squeeze may crush the icon: it opts out of shrinking.
+    const firstTab = within(tabBar).getAllByRole('link')[0] as HTMLElement;
+    expect(firstTab.className).toContain('[&>svg]:shrink-0');
+  });
+
+  it('leaves the bottom inset to the tab bar — the page chrome must not pad it too', async () => {
+    // Three layers once reserved the same ~34px (body padding, main padding,
+    // the bar's own) and the stack showed as bare bands around the bar. The
+    // body's global padding therefore states 0 for the bottom, and this
+    // reads the stylesheet to keep it that way.
+    const { readFileSync } = await import('node:fs');
+    // Not import.meta.url: vitest serves modules over http, not file://.
+    const css = readFileSync('src/styles/index.css', 'utf8');
+    const bodyRule = /body\s*\{[^}]*\}/g;
+    for (const match of css.match(bodyRule) ?? []) {
+      expect(match).not.toContain('env(safe-area-inset-bottom)');
+    }
+    // The padding shorthand still guards the notch and the sides.
+    expect(css).toContain('env(safe-area-inset-top)');
+  });
+
   it('keeps the rail listing every section for wider screens', () => {
     renderWithProviders(<AppShell>content</AppShell>);
     for (const label of SECONDARY) {

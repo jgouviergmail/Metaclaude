@@ -169,8 +169,7 @@ export function AppShell({
             aria-label="Close sections"
           />
           <div
-            className="animate-in-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-line bg-surface p-2 shadow-[var(--mc-shadow-lg)]"
-            style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
+            className="animate-in-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-line bg-surface p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[var(--mc-shadow-lg)]"
             role="menu"
             aria-label="More sections"
           >
@@ -195,48 +194,60 @@ export function AppShell({
         </div>
       ) : null}
 
-      {/* Phone tab bar */}
+      {/* Phone tab bar.
+
+          The safe-area padding and the fixed height live on SEPARATE
+          elements, and that separation is load-bearing: with border-box
+          sizing, `h-14` + `padding-bottom: env(safe-area-inset-bottom)` on
+          one element leaves 56 − ~34 = 22px for the content on a gesture-nav
+          phone, and flexbox then crushes the icons to nothing — which is
+          exactly how the installed app shipped with miniature icons twice
+          while every browser tab (inset 0) looked fine. The outer nav paints
+          the home-indicator zone with the bar's own surface; the inner row
+          keeps its full 3.5rem, matching what <main> reserves. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-line bg-surface/95 backdrop-blur sm:hidden"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
         aria-label="Sections"
       >
-        {NAV.filter((entry) => entry.primary).map((entry) => (
-          <NavLink
-            key={entry.to}
-            to={entry.to}
-            end={entry.to === '/'}
-            className={({ isActive }) =>
-              cn(
-                // Platform floor for a bottom bar: 24px icons, 11px labels.
-                // An installed PWA renders these raw — no browser text
-                // scaling rescues smaller metrics there.
-                'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
-                '[&>svg]:size-6',
-                isActive ? 'text-accent' : 'text-subtle',
-              )
-            }
+        <div className="flex h-14 items-stretch">
+          {NAV.filter((entry) => entry.primary).map((entry) => (
+            <NavLink
+              key={entry.to}
+              to={entry.to}
+              end={entry.to === '/'}
+              className={({ isActive }) =>
+                cn(
+                  // Platform floor for a bottom bar: 24px icons, 11px labels.
+                  // An installed PWA renders these raw — no browser text
+                  // scaling rescues smaller metrics there. shrink-0 so no
+                  // future height squeeze can crush the icon again.
+                  'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
+                  '[&>svg]:size-6 [&>svg]:shrink-0',
+                  isActive ? 'text-accent' : 'text-subtle',
+                )
+              }
+            >
+              {entry.icon}
+              {t(entry.label).split(' ')[0]}
+            </NavLink>
+          ))}
+          <button
+            type="button"
+            onClick={() => setMoreOpen((current) => !current)}
+            aria-label="More sections"
+            aria-expanded={moreOpen}
+            className={cn(
+              'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
+              '[&>svg]:size-6 [&>svg]:shrink-0',
+              // Standing on one of the sheet's sections tints the tab that leads
+              // to it, exactly as a primary tab would be tinted.
+              moreOpen || onSecondary ? 'text-accent' : 'text-subtle',
+            )}
           >
-            {entry.icon}
-            {t(entry.label).split(' ')[0]}
-          </NavLink>
-        ))}
-        <button
-          type="button"
-          onClick={() => setMoreOpen((current) => !current)}
-          aria-label="More sections"
-          aria-expanded={moreOpen}
-          className={cn(
-            'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
-            '[&>svg]:size-6',
-            // Standing on one of the sheet's sections tints the tab that leads
-            // to it, exactly as a primary tab would be tinted.
-            moreOpen || onSecondary ? 'text-accent' : 'text-subtle',
-          )}
-        >
-          <MoreHorizontal />
-          {t('More')}
-        </button>
+            <MoreHorizontal />
+            {t('More')}
+          </button>
+        </div>
       </nav>
     </div>
   );

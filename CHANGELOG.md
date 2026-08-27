@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.22.2] — 2026-08-27
+
+### Fixed
+
+- **The installed app's tab bar: no more black bands, no more miniature
+  icons.** One CSS trap explained all three symptoms on a gesture-nav
+  phone: the bar carried a fixed height *and* the home-indicator padding on
+  the same border-box element, leaving ~22px for its content — flexbox
+  crushed the icons into it (fine in a browser tab, where the inset is 0) —
+  while the page's global padding *also* reserved the inset, so the three
+  stacked reservations showed as a bare band above the bar and a hollow one
+  below it. The bar now owns the bottom inset alone and paints the
+  home-indicator zone with its own surface, its content row keeps its full
+  height, the icons refuse to shrink, and the page chrome pads only the
+  notch and the sides. Two tests now pin the separation, so neither half of
+  the trap can come back quietly.
+
 ## [0.22.1] — 2026-08-27
 
 ### Changed
