@@ -50,6 +50,7 @@ const workspace: Workspace = {
     autoPolicyEnabled: false,
     reflexionEnabled: false,
     checkpointing: true,
+    mirrorSessions: false,
     enabledPlugins: {},
   },
   createdAt: 0,
@@ -1621,6 +1622,39 @@ describe('buildOptions — ultracode', () => {
     // must stay byte-identical for every run that never asked.
     const supervisor = makeSupervisor(fakeQuery().query);
     expect(supervisor.buildOptions(makeRequest()).settings).toBeUndefined();
+  });
+});
+
+describe('buildOptions — mirroring sessions to claude.ai', () => {
+  /** A fresh workspace replaced whole — the fixture's is shared across tests. */
+  const withMirror = (request: ReturnType<typeof makeRequest>) => {
+    request.workspace = {
+      ...request.workspace,
+      settings: { ...request.workspace.settings, mirrorSessions: true },
+    };
+    return request;
+  };
+
+  it('asks the CLI to upload sessions when the workspace opted in', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+
+    expect(supervisor.buildOptions(withMirror(makeRequest())).settings).toEqual({
+      autoUploadSessions: true,
+    });
+  });
+
+  it('stays absent when off, and composes with ultracode when both are on', () => {
+    // The same absence rule as ultracode: off means no key at all, and the
+    // two share the one flag-tier payload rather than clobbering each other.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest()).settings).toBeUndefined();
+
+    const both = withMirror(makeRequest());
+    both.policy = { ...both.policy, ultracode: true };
+    expect(supervisor.buildOptions(both).settings).toEqual({
+      ultracode: true,
+      autoUploadSessions: true,
+    });
   });
 });
 

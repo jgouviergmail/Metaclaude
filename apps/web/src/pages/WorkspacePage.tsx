@@ -553,6 +553,19 @@ function WorkspaceSettingsModal({
 
         <MenuSeparator />
 
+        <fieldset className="space-y-3">
+          <legend className="text-[13px] font-semibold text-ink">claude.ai</legend>
+
+          <CheckboxField
+            checked={draft.mirrorSessions}
+            onChange={(value) => update('mirrorSessions', value)}
+            label="Mirror sessions to claude.ai"
+            hint="Publish view-only copies of this workspace's sessions to your Claude account. Works only while the CLI account sign-in is the live credential — a paired token is inference-only. See the guide's sessions chapter."
+          />
+        </fieldset>
+
+        <MenuSeparator />
+
         <fieldset className="space-y-2">
           <legend className="text-[13px] font-semibold text-ink">Marketplace plugins</legend>
           <p className="text-[12px] text-muted">

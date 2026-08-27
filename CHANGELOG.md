@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-08-27
+
+### Added
+
+- **Mirror a workspace's sessions to claude.ai.** With the CLI's account
+  sign-in as the live credential (v0.12.0), each workspace can now opt in
+  to publishing view-only copies of its sessions to the account — the
+  toggle lives in the workspace's settings, rides the same flag-tier
+  settings payload as ultracode and plugins, and is sent only when on, so
+  every run that never asked stays byte-identical. Off by default: it
+  puts transcripts on claude.ai, and it is inert under a token
+  credential, which Anthropic scopes to inference only.
+
 ## [0.12.1] — 2026-08-27
 
 ### Fixed

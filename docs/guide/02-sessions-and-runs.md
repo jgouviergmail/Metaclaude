@@ -116,6 +116,12 @@ as its last-resort credential — with no token paired here and none in
 shows which of the two is live and when a token is shadowing a full-scope
 sign-in you may prefer.
 
+With the sign-in live, each workspace decides whether its sessions travel:
+**Mirror sessions to claude.ai**, in the workspace's settings, asks the CLI
+to publish view-only copies of that workspace's sessions to the account.
+Off by default — it puts transcripts on claude.ai — and inert under a
+token credential, which cannot upload.
+
 Two honest caveats. Signing the server in as your full account hands every
 agent run whatever the account can reach — weigh that against the
 inference-only token, whose narrowness is a feature on a machine that works

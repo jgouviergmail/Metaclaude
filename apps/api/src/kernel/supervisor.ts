@@ -444,10 +444,15 @@ export class AgentSupervisor {
       // still a settings payload for the CLI to merge, and every run that
       // never asked must stay byte-identical to before the field existed.
       // The same absence rule covers the plugin keys.
-      ...(policy.ultracode || wantsPlugins
+      // `mirrorSessions` rides the same payload: view-only upload of this
+      // workspace's sessions to claude.ai. Only meaningful when the CLI's own
+      // account sign-in is the live credential — a token is inference-only —
+      // and sent only when true, on the same absence rule as the others.
+      ...(policy.ultracode || wantsPlugins || settings.mirrorSessions
         ? {
             settings: {
               ...(policy.ultracode ? { ultracode: true } : {}),
+              ...(settings.mirrorSessions ? { autoUploadSessions: true } : {}),
               ...(wantsPlugins
                 ? { extraKnownMarketplaces: request.marketplaces, enabledPlugins }
                 : {}),

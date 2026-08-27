@@ -187,6 +187,13 @@ export const WorkspaceSettings = z.object({
   /** Enable file checkpointing so runs can be rewound. */
   checkpointing: z.boolean().default(true),
   /**
+   * Mirror this workspace's sessions to claude.ai as view-only. Off by
+   * default: it publishes transcripts to the account, and it only has an
+   * effect when the CLI's own account sign-in is the live credential — a
+   * token is inference-only and cannot upload sessions.
+   */
+  mirrorSessions: z.boolean().default(false),
+  /**
    * Marketplace plugins enabled here, keyed `plugin@marketplace` — the CLI's
    * own `enabledPlugins` format. A key without its marketplace half would be
    * meaningless to the CLI, so the shape refuses it at the edge.
