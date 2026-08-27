@@ -75,7 +75,9 @@ export interface SubmitOptions {
   /** Pending attachments this message carries; bound to the run at admission. */
   attachmentIds?: string[];
   /** Explicit overrides; when absent the workspace default or the bandit decides. */
-  overrides?: Partial<Pick<RunPolicy, 'model' | 'effort' | 'permissionMode' | 'agentName' | 'ultracode'>>;
+  overrides?: Partial<
+    Pick<RunPolicy, 'model' | 'effort' | 'permissionMode' | 'agentName' | 'ultracode' | 'toolControls'>
+  >;
 }
 
 export interface KernelDeps {
@@ -418,6 +420,8 @@ export class Kernel {
     // so it exists only as a per-message choice. The bandit cannot pick it and
     // a stored setting cannot leave it quietly on.
     if (overrides?.ultracode !== undefined) base.ultracode = overrides.ultracode;
+    // Same rule: tool steering is a per-message decision, never a stored one.
+    if (overrides?.toolControls !== undefined) base.toolControls = overrides.toolControls;
 
     return base;
   }

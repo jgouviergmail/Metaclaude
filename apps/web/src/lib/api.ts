@@ -44,6 +44,7 @@ import {
   type Session,
   type SkillDefinition,
   type SystemHealth,
+  type ToolControls,
   type TranscriptEvent,
   type UsagePoint,
   type User,
@@ -271,6 +272,7 @@ export const api = {
       permissionMode?: string;
       agentName?: string | null;
       ultracode?: boolean;
+      toolControls?: ToolControls;
       attachmentIds?: string[];
     },
   ) => request<{ run: Run }>(`/api/sessions/${sessionId}/runs`, { method: 'POST', body }),

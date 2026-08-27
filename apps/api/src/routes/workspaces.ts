@@ -14,6 +14,7 @@ import {
   ModelSelector,
   PermissionMode,
   RewindRequest,
+  ToolControls,
   WorkspaceSettings,
 } from '@metaclaude/shared';
 import { z } from 'zod';
@@ -239,6 +240,8 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     // Per-message only, never on CreateSession: orchestration multiplies cost,
     // so nothing stored may leave it quietly on for the next prompt.
     ultracode: z.boolean().optional(),
+    // Same per-message rule: tool steering never becomes a stored default.
+    toolControls: ToolControls.optional(),
     attachmentIds: z.array(z.string()).max(ATTACHMENT_LIMITS.maxPerMessage).optional(),
   });
 
@@ -259,6 +262,35 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       context.log.warn({ err: error.message }, 'could not materialise skills');
     });
 
+    // A steering directive naming something that does not exist is a typo or
+    // a stale picker, and it must fail here — loudly, before the run — not as
+    // a run that quietly loaded no skill at all.
+    if (parsed.data.toolControls) {
+      const controls = parsed.data.toolControls;
+      const knownSkills = new Set([
+        ...context.registry
+          .listSkills(workspace.id)
+          .filter((skill) => skill.enabled)
+          .map((skill) => skill.name),
+        ...context.plugins.runtime().skills.map((skill) => skill.name),
+      ]);
+      const missingSkill = controls.requiredSkills.find((name) => !knownSkills.has(name));
+      if (missingSkill) {
+        throw new HttpError(400, `No enabled skill named "${missingSkill}" in this workspace.`);
+      }
+
+      const knownServers = new Set(
+        context.registry.listMcpServers(workspace.id).map((server) => server.name),
+      );
+      const missingServer = [
+        ...controls.excludedMcpServers,
+        ...controls.preferredMcpServers,
+      ].find((name) => !knownServers.has(name));
+      if (missingServer) {
+        throw new HttpError(400, `No MCP server named "${missingServer}" in this workspace.`);
+      }
+    }
+
     try {
       const run = await context.kernel.submit({
         sessionId: session.id,
@@ -272,6 +304,9 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
             : {}),
           ...(parsed.data.agentName !== undefined ? { agentName: parsed.data.agentName } : {}),
           ...(parsed.data.ultracode !== undefined ? { ultracode: parsed.data.ultracode } : {}),
+          ...(parsed.data.toolControls !== undefined
+            ? { toolControls: parsed.data.toolControls }
+            : {}),
         },
       });
 

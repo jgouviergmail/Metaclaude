@@ -1625,6 +1625,81 @@ describe('buildOptions — the delegation tool', () => {
   });
 });
 
+describe('buildOptions — tool controls', () => {
+  const withControls = (
+    toolControls: NonNullable<RunRequest['policy']['toolControls']>,
+    over: Partial<RunRequest> = {},
+  ): RunRequest => {
+    const request = makeRequest(over);
+    request.policy = { ...request.policy, toolControls };
+    return request;
+  };
+
+  it('narrows the loaded skills to exactly the required ones, and says so in the prompt', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(
+      withControls({ requiredSkills: ['deploy', 'review'], excludedMcpServers: [], preferredMcpServers: [] }),
+    );
+
+    expect(options.skills).toEqual(['deploy', 'review']);
+    const prompt = options.systemPrompt as { append?: string };
+    expect(prompt.append).toContain('deploy');
+    expect(prompt.append).toContain('review');
+  });
+
+  it('loads every skill when nothing is required', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest()).skills).toBe('all');
+  });
+
+  it('does not mount an excluded MCP server at all', () => {
+    // Absence is the honest hard lever: a server that is not mounted cannot
+    // be called, whatever the model decides.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(
+      withControls(
+        { requiredSkills: [], excludedMcpServers: ['docs'], preferredMcpServers: [] },
+        { mcpServers: { docs: { type: 'http', url: 'https://x' }, github: { type: 'http', url: 'https://y' } } },
+      ),
+    );
+
+    expect(Object.keys(options.mcpServers ?? {})).toEqual(['github']);
+  });
+
+  it('cannot strip the internal delegation server', () => {
+    // The metaclaude server is merged after the exclusion filter on purpose:
+    // it is kernel machinery with its own depth rule, not a workspace server.
+    const delegate = async (): Promise<never> => {
+      throw new Error('not called');
+    };
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    const options = supervisor.buildOptions(
+      withControls({ requiredSkills: [], excludedMcpServers: ['metaclaude'], preferredMcpServers: [] }),
+    );
+
+    expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude');
+  });
+
+  it('keeps a preferred server mounted and writes the preference into the prompt', () => {
+    // Availability can force absence; only words can ask for use.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(
+      withControls(
+        { requiredSkills: [], excludedMcpServers: [], preferredMcpServers: ['github'] },
+        {
+          mcpServers: { github: { type: 'http', url: 'https://y' } },
+          systemPromptAppend: 'existing context',
+        },
+      ),
+    );
+
+    expect(Object.keys(options.mcpServers ?? {})).toContain('github');
+    const prompt = options.systemPrompt as { append?: string };
+    expect(prompt.append).toContain('existing context');
+    expect(prompt.append).toContain('github');
+  });
+});
+
 describe('buildOptions — marketplace plugins', () => {
   const marketplaces = { tools: { source: { source: 'github' as const, repo: 'a/b' } } };
 

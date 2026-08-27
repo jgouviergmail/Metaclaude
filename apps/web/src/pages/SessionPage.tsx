@@ -98,6 +98,20 @@ export function SessionPage() {
     staleTime: 5 * 60_000,
   });
 
+  // The Tools picker's catalogue: the workspace's own skills and MCP servers.
+  const skillsQuery = useQuery({
+    queryKey: ['skills', workspaceId],
+    queryFn: () => api.skills(workspaceId),
+    enabled: Boolean(workspaceId),
+    staleTime: 60_000,
+  });
+  const mcpQuery = useQuery({
+    queryKey: ['mcp-servers', workspaceId],
+    queryFn: () => api.mcpServers(workspaceId),
+    enabled: Boolean(workspaceId),
+    staleTime: 60_000,
+  });
+
   const sessionQuery = useQuery({
     queryKey: ['session', sessionId],
     queryFn: () => api.session(sessionId),
@@ -165,6 +179,7 @@ export function SessionPage() {
     effort: null,
     permissionMode: 'default',
     ultracode: false,
+    toolControls: null,
   });
 
   // Seed the composer from the session's own settings once it loads.
@@ -177,8 +192,17 @@ export function SessionPage() {
       // Per-message, never persisted on the session: reseeding must not
       // silently switch orchestration on or off under the operator.
       ultracode: current.ultracode,
+      // Same rule — but a *navigation* to another session drops the steering:
+      // it named that session's tools.
+      toolControls: current.toolControls,
     }));
   }, [session?.id]);
+
+  // Tool steering names one workspace's skills and servers; leaving the
+  // session leaves them behind.
+  useEffect(() => {
+    setComposer((current) => (current.toolControls ? { ...current, toolControls: null } : current));
+  }, [sessionId]);
 
   /* ------------------------------ Mutations ------------------------------- */
 
@@ -192,6 +216,7 @@ export function SessionPage() {
         effort: composer.effort,
         permissionMode: composer.permissionMode,
         ultracode: composer.ultracode,
+        ...(composer.toolControls ? { toolControls: composer.toolControls } : {}),
         ...(pending.readyIds.length > 0 ? { attachmentIds: pending.readyIds } : {}),
       }),
     // Only a message that actually left consumes its attachments; on error the
@@ -370,6 +395,14 @@ export function SessionPage() {
             attachments={pending.attachments}
             onAttachFiles={pending.attach}
             onRemoveAttachment={pending.remove}
+            toolOptions={{
+              skills: (skillsQuery.data?.skills ?? [])
+                .filter((skill) => skill.enabled)
+                .map((skill) => skill.name),
+              mcpServers: (mcpQuery.data?.servers ?? [])
+                .filter((server) => server.enabled)
+                .map((server) => server.name),
+            }}
             {...(catalogueQuery.data ? { catalogue: catalogueQuery.data } : {})}
             onInterrupt={() => {
               socket.interrupt(sessionId);

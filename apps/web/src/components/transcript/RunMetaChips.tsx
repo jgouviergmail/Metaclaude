@@ -11,7 +11,7 @@
  * not content.
  */
 
-import { Cpu, Network } from 'lucide-react';
+import { Cpu, Network, Wrench } from 'lucide-react';
 import type { RunPolicy } from '@metaclaude/shared';
 import { PERMISSION_MODE_INFO } from '@metaclaude/shared';
 import { Tooltip } from '@/components/ui/primitives';
@@ -61,6 +61,33 @@ export function RunMetaChips({
           <Network className="size-3" aria-hidden />
           ultracode
         </span>
+      ) : null}
+
+      {policy.toolControls ? (
+        <Tooltip
+          content={
+            <span>
+              {[
+                policy.toolControls.requiredSkills.length > 0
+                  ? `Skills required: ${policy.toolControls.requiredSkills.join(', ')}`
+                  : null,
+                policy.toolControls.preferredMcpServers.length > 0
+                  ? `MCP preferred: ${policy.toolControls.preferredMcpServers.join(', ')}`
+                  : null,
+                policy.toolControls.excludedMcpServers.length > 0
+                  ? `MCP off: ${policy.toolControls.excludedMcpServers.join(', ')}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          }
+        >
+          <span className="flex cursor-help items-center gap-1 text-accent">
+            <Wrench className="size-3" aria-hidden />
+            tools steered
+          </span>
+        </Tooltip>
       ) : null}
     </>
   );

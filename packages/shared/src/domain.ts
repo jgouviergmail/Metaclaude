@@ -289,6 +289,24 @@ export const RunStatus = z.enum([
 ]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
+/**
+ * The composer's Tools picker, as a contract. A name may not be both cut and
+ * preferred — the refinement rejects the contradiction where it is typed
+ * rather than letting the run resolve it arbitrarily.
+ */
+export const ToolControls = z
+  .object({
+    requiredSkills: z.array(z.string().min(1).max(128)).max(16).default([]),
+    excludedMcpServers: z.array(z.string().min(1).max(128)).max(32).default([]),
+    preferredMcpServers: z.array(z.string().min(1).max(128)).max(32).default([]),
+  })
+  .refine(
+    (controls) =>
+      !controls.excludedMcpServers.some((name) => controls.preferredMcpServers.includes(name)),
+    { message: 'An MCP server cannot be both excluded and preferred.' },
+  );
+export type ToolControls = z.infer<typeof ToolControls>;
+
 export const RunPolicy = z.object({
   model: ModelSelector,
   effort: EffortLevel.nullable(),
@@ -304,6 +322,17 @@ export const RunPolicy = z.object({
    * still parses.
    */
   ultracode: z.boolean().default(false),
+  /**
+   * Per-message tool steering, from the composer's Tools picker. Three honest
+   * levers, none of which widens a permission: required skills narrow what
+   * the CLI loads to exactly those (its `skills` option is a context filter,
+   * not a sandbox — the permission gates still apply); an excluded MCP server
+   * is simply not mounted for this run; a preferred one stays mounted and the
+   * preference is written into the system prompt, because an availability
+   * filter can force absence but only words can ask for use. Absent means
+   * the agent's own judgement over everything the workspace offers.
+   */
+  toolControls: ToolControls.optional(),
   /** Where this policy came from — user choice, workspace default, or the bandit. */
   source: z.enum(['explicit', 'workspace', 'learned']),
 });

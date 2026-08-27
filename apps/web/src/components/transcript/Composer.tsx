@@ -18,6 +18,7 @@ import {
   Shield,
   Square,
   Wand2,
+  Wrench,
   X,
   Zap,
 } from 'lucide-react';
@@ -28,12 +29,14 @@ import {
   type ClaudeCatalogue,
   type EffortLevel,
   type PermissionMode,
+  type ToolControls,
 } from '@metaclaude/shared';
 import { Button, Tooltip } from '@/components/ui/primitives';
 import { ATTACHMENT_ACCEPT, type PendingAttachment } from '@/lib/attachments';
+import { cycleMcpServer, mcpServerState, steeredCount, toggleRequiredSkill } from '@/lib/tool-controls';
 import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
 import { cn, formatBytes, isModifier } from '@/lib/utils';
-import { Menu, MenuItem } from '@/components/ui/Menu';
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 
 const MODES: PermissionMode[] = ['plan', 'default', 'acceptEdits', 'auto', 'dontAsk'];
 
@@ -43,6 +46,14 @@ export interface ComposerValue {
   permissionMode: PermissionMode;
   /** Standing multi-agent orchestration for this message. See supportsUltracode. */
   ultracode: boolean;
+  /** Per-message tool steering from the Tools picker; null means Auto. */
+  toolControls: ToolControls | null;
+}
+
+/** What the Tools picker can offer — the workspace's own catalogue. */
+export interface ToolPickerOptions {
+  skills: string[];
+  mcpServers: string[];
 }
 
 export function Composer({
@@ -57,6 +68,7 @@ export function Composer({
   attachments = [],
   onAttachFiles,
   onRemoveAttachment,
+  toolOptions,
   placeholder = 'Ask Metaclaude to do something…',
 }: {
   value: ComposerValue;
@@ -72,6 +84,8 @@ export function Composer({
   attachments?: PendingAttachment[];
   onAttachFiles?: (files: File[]) => void;
   onRemoveAttachment?: (key: string) => void;
+  /** The workspace's skills and MCP servers, for the Tools picker. */
+  toolOptions?: ToolPickerOptions;
   placeholder?: string;
 }) {
   const [text, setText] = useState('');
@@ -107,6 +121,18 @@ export function Composer({
     const files = Array.from(list);
     if (files.length > 0) onAttachFiles(files);
   };
+
+  /* -- Tool steering — transitions live in lib/tool-controls -------------- */
+
+  const controls = value.toolControls;
+  const steered = steeredCount(controls);
+  const toggleSkill = (name: string): void =>
+    onChange({ ...value, toolControls: toggleRequiredSkill(controls, name) });
+  const cycleServer = (name: string): void =>
+    onChange({ ...value, toolControls: cycleMcpServer(controls, name) });
+
+  const offerTools =
+    toolOptions !== undefined && (toolOptions.skills.length > 0 || toolOptions.mcpServers.length > 0);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     // Enter sends; Shift+Enter and ⌘/Ctrl+Enter insert a newline. This matches
@@ -362,6 +388,81 @@ export function Composer({
               </Tooltip>
             ) : null}
 
+            {/* Tools -------------------------------------------------------- */}
+            {offerTools ? (
+              <Menu
+                trigger={
+                  <button
+                    type="button"
+                    aria-label="Tools"
+                    className={cn(
+                      'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium',
+                      steered > 0
+                        ? 'bg-accent-soft text-accent'
+                        : 'text-muted hover:bg-raised hover:text-ink',
+                    )}
+                  >
+                    <Wrench className="size-3.5" aria-hidden />
+                    Tools
+                    {steered > 0 ? <span>{steered}</span> : null}
+                    <ChevronDown className="size-3" aria-hidden />
+                  </button>
+                }
+              >
+                {toolOptions.skills.length > 0 ? (
+                  <>
+                    <MenuLabel>Require skills</MenuLabel>
+                    {toolOptions.skills.map((skill) => (
+                      <MenuItem
+                        key={skill}
+                        keepOpen
+                        selected={controls?.requiredSkills.includes(skill) ?? false}
+                        onSelect={() => toggleSkill(skill)}
+                      >
+                        {skill}
+                      </MenuItem>
+                    ))}
+                  </>
+                ) : null}
+                {toolOptions.skills.length > 0 && toolOptions.mcpServers.length > 0 ? (
+                  <MenuSeparator />
+                ) : null}
+                {toolOptions.mcpServers.length > 0 ? (
+                  <>
+                    <MenuLabel>MCP servers</MenuLabel>
+                    {toolOptions.mcpServers.map((server) => {
+                      const state = mcpServerState(controls, server);
+                      return (
+                        <MenuItem
+                          key={server}
+                          keepOpen
+                          selected={state !== 'auto'}
+                          onSelect={() => cycleServer(server)}
+                          description={
+                            state === 'preferred'
+                              ? 'Preferred — the agent is asked to reach for it first'
+                              : state === 'off'
+                                ? 'Off — not mounted for this message'
+                                : 'Auto — the agent decides'
+                          }
+                        >
+                          {state === 'off' ? <s>{server}</s> : server}
+                        </MenuItem>
+                      );
+                    })}
+                  </>
+                ) : null}
+                {steered > 0 ? (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem onSelect={() => onChange({ ...value, toolControls: null })}>
+                      Reset — back to Auto
+                    </MenuItem>
+                  </>
+                ) : null}
+              </Menu>
+            ) : null}
+
             <div className="ml-auto flex items-center gap-2">
               {isRunning ? (
                 <Button variant="danger" size="sm" onClick={onInterrupt}>
@@ -395,6 +496,24 @@ export function Composer({
             <Network className="size-3" aria-hidden />
             Ultracode: this message fans out across sub-agents at maximum effort. Expect
             multi-agent token spend.
+          </p>
+        ) : null}
+        {steered > 0 ? (
+          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11.5px] text-accent">
+            <Wrench className="size-3" aria-hidden />
+            {[
+              controls && controls.requiredSkills.length > 0
+                ? `Skills required: ${controls.requiredSkills.join(', ')}`
+                : null,
+              controls && controls.preferredMcpServers.length > 0
+                ? `MCP preferred: ${controls.preferredMcpServers.join(', ')}`
+                : null,
+              controls && controls.excludedMcpServers.length > 0
+                ? `MCP off: ${controls.excludedMcpServers.join(', ')}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
         ) : null}
         {value.permissionMode === 'bypassPermissions' ? (

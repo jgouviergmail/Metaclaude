@@ -60,4 +60,25 @@ describe('RunMetaChips', () => {
     render(<RunMetaChips policy={policy({ permissionMode: 'plan' })} servedModel={null} />);
     expect(screen.getByText('Plan')).toBeDefined();
   });
+
+  it('marks a run whose tools were steered, and stays silent otherwise', () => {
+    // The chip is the closing half of the Tools picker's honesty loop: what
+    // was forced must be readable on the result it shaped.
+    render(
+      <RunMetaChips
+        policy={policy({
+          toolControls: {
+            requiredSkills: ['deploy'],
+            excludedMcpServers: [],
+            preferredMcpServers: ['github'],
+          },
+        })}
+        servedModel={null}
+      />,
+    );
+    expect(screen.getByText(/tools steered/i)).toBeDefined();
+
+    render(<RunMetaChips policy={policy()} servedModel={null} />);
+    expect(screen.getAllByText(/tools steered/i)).toHaveLength(1);
+  });
 });

@@ -377,12 +377,29 @@ export class AgentSupervisor {
       this.deps.allowBypassPermissions,
     );
 
+    // The Tools picker's soft half. Requirement and preference are *written*,
+    // beside the hard halves below (the skills filter, the unmounted server):
+    // an availability filter can force absence, but only words ask for use.
+    const controls = policy.toolControls;
+    const steering: string[] = [];
+    if (controls && controls.requiredSkills.length > 0) {
+      steering.push(
+        `For this message the operator requires the skill(s): ${controls.requiredSkills.join(', ')}. Use them.`,
+      );
+    }
+    if (controls && controls.preferredMcpServers.length > 0) {
+      steering.push(
+        `For this message the operator prefers tools from the MCP server(s): ${controls.preferredMcpServers.join(', ')}. Reach for them first where relevant.`,
+      );
+    }
+    const promptAppend = [request.systemPromptAppend, ...steering].filter(Boolean).join('\n\n');
+
     const options: Options = {
       cwd: workspace.path,
       // Preset + append keeps every Claude Code behaviour the operator relies on
       // (CLAUDE.md discovery, skills, tool descriptions) and layers ours on top.
-      systemPrompt: request.systemPromptAppend
-        ? { type: 'preset', preset: 'claude_code', append: request.systemPromptAppend }
+      systemPrompt: promptAppend
+        ? { type: 'preset', preset: 'claude_code', append: promptAppend }
         : { type: 'preset', preset: 'claude_code' },
       permissionMode,
       includePartialMessages: true,
@@ -482,19 +499,30 @@ export class AgentSupervisor {
       this.deps.delegate && request.triggeredBy !== 'delegation'
         ? { metaclaude: this.buildDelegationServer(request) }
         : {};
-    if (Object.keys(request.mcpServers).length > 0 || Object.keys(delegationServer).length > 0) {
+    // The Tools picker's hard lever: an excluded server is simply not
+    // mounted for this run. Filtered before the delegation server merges,
+    // so kernel machinery cannot be cut from the composer — it has its own
+    // depth rule, and "exclude metaclaude" silently doing nothing is better
+    // than a delegation affordance that flickers per message.
+    const excluded = new Set(controls?.excludedMcpServers ?? []);
+    const mountedServers = Object.fromEntries(
+      Object.entries(request.mcpServers).filter(([name]) => !excluded.has(name)),
+    );
+    if (Object.keys(mountedServers).length > 0 || Object.keys(delegationServer).length > 0) {
       options.mcpServers = {
-        ...(request.mcpServers as Options['mcpServers']),
+        ...(mountedServers as Options['mcpServers']),
         ...delegationServer,
       };
     }
     if (Object.keys(request.agents).length > 0) {
       options.agents = request.agents as Options['agents'];
     }
-    // Enable every skill the CLI discovers in the workspace. Metaclaude
-    // materialises only the enabled ones to disk before each run, so the
-    // filtering has already happened.
-    options.skills = 'all';
+    // Metaclaude materialises only the enabled skills to disk before each
+    // run, so 'all' already means "what the workspace enables". A required
+    // list narrows the CLI's context filter to exactly those — a filter,
+    // not a sandbox: the permission gates still apply.
+    options.skills =
+      controls && controls.requiredSkills.length > 0 ? controls.requiredSkills : 'all';
     if (this.deps.claudeBinPath) options.pathToClaudeCodeExecutable = this.deps.claudeBinPath;
 
     if (request.resumeSessionId) options.resume = request.resumeSessionId;

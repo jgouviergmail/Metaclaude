@@ -21,6 +21,15 @@ The controls under the input change what the *next* message does:
   multi-agent token spend; the hint under the composer reminds you while it is
   on. It is a per-message choice by design — nothing can leave it quietly
   enabled.
+- **Tools** — normally the agent knows its skills and MCP servers and uses
+  its judgement; this picker is for the times you want to steer. Require a
+  skill (only the required ones load, and the requirement is written into
+  the run), switch an MCP server off (it is simply not mounted for this
+  message), or mark one preferred (it stays mounted and the agent is asked
+  to reach for it first). A summary under the composer shows what is
+  steered, the run's result carries a "tools steered" chip, and — like
+  Ultracode — it is per-message: nothing stays quietly forced. Steering
+  never widens a permission; every approval rule still applies.
 
 Enter sends. Shift+Enter inserts a newline.
 

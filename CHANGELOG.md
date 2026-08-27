@@ -11,6 +11,22 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-27
+
+### Added
+
+- **Steer the tools, when judgement is not enough.** Normally the agent
+  knows its skills and MCP servers and picks well; the composer's new Tools
+  picker is for the other times. Require a skill and only the required ones
+  load — with the requirement written into the run's instructions; switch
+  an MCP server off and it is simply not mounted for that message; mark one
+  preferred and the agent is asked to reach for it first. Per-message by
+  design, like Ultracode: nothing stays quietly forced. A directive naming
+  a skill or server that does not exist fails loudly at submission, the
+  result carries a "tools steered" chip with the detail on hover, and none
+  of it widens a permission — the approval rules apply unchanged, and the
+  kernel's own delegation machinery cannot be cut from the picker.
+
 ## [0.4.1] — 2026-08-27
 
 ### Fixed

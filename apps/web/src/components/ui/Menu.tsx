@@ -48,6 +48,11 @@ export interface MenuItemProps
   onSelect: () => void;
   tone?: 'danger';
   icon?: ReactNode;
+  /**
+   * Keep the menu open after selecting — for multi-select lists (the Tools
+   * picker), where closing on every toggle would cost a reopen per choice.
+   */
+  keepOpen?: boolean;
 }
 
 /**
@@ -55,14 +60,17 @@ export interface MenuItemProps
  * anything else that needs a real element handle) can wrap a menu item.
  */
 export const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function MenuItem(
-  { children, description, selected, onSelect, tone, icon, disabled, className, ...rest },
+  { children, description, selected, onSelect, tone, icon, disabled, className, keepOpen, ...rest },
   ref,
 ) {
   return (
     <DropdownMenu.Item
       ref={ref}
       disabled={disabled}
-      onSelect={onSelect}
+      onSelect={(event) => {
+        if (keepOpen) event.preventDefault();
+        onSelect();
+      }}
       {...rest}
       className={cn(
         'flex cursor-pointer select-none items-start gap-2.5 rounded-lg px-2.5 py-2',

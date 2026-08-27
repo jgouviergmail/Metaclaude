@@ -106,7 +106,7 @@ describe('attachments', () => {
     const onSubmit = vi.fn();
     renderWithProviders(
       <Composer
-        value={{ model: 'opus', effort: null, permissionMode: 'default', ultracode: false }}
+        value={{ model: 'opus', effort: null, permissionMode: 'default', ultracode: false, toolControls: null }}
         onChange={vi.fn()}
         onSubmit={onSubmit}
         onInterrupt={vi.fn()}
@@ -154,6 +154,49 @@ describe('attachments', () => {
     expect(send.getAttribute('disabled')).not.toBeNull();
     fireEvent.click(send);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('offers the tools picker only when the workspace has something to steer', () => {
+    renderWithProviders(
+      <Composer
+        value={{ model: 'opus', effort: null, permissionMode: 'default', ultracode: false, toolControls: null }}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onInterrupt={vi.fn()}
+        isRunning={false}
+        toolOptions={{ skills: [], mcpServers: [] }}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /^tools$/i })).toBeNull();
+  });
+
+  it('shows the steering summary under the composer while something is steered', () => {
+    renderWithProviders(
+      <Composer
+        value={{
+          model: 'opus',
+          effort: null,
+          permissionMode: 'default',
+          ultracode: false,
+          toolControls: {
+            requiredSkills: ['deploy'],
+            excludedMcpServers: ['docs'],
+            preferredMcpServers: [],
+          },
+        }}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onInterrupt={vi.fn()}
+        isRunning={false}
+        toolOptions={{ skills: ['deploy'], mcpServers: ['docs'] }}
+      />,
+    );
+
+    // The summary is the honest part: steering that is on must be readable
+    // where the next message is typed, not remembered.
+    expect(screen.getByText(/skills required: deploy/i)).toBeTruthy();
+    expect(screen.getByText(/mcp off: docs/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^tools$/i }).textContent).toContain('2');
   });
 
   it('hands picked files to the page', () => {

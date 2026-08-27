@@ -289,6 +289,35 @@ describe('admission', () => {
     expect(fixture.runs.get(retry.id)?.status).toBe('succeeded');
   });
 
+  it('carries the message’s tool controls onto the policy the supervisor reads', async () => {
+    // Like ultracode: per-message only — no stored default may quietly steer
+    // the next prompt's tools.
+    const session = fixture.newSession();
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'use the deploy skill',
+      overrides: {
+        toolControls: {
+          requiredSkills: ['deploy'],
+          excludedMcpServers: ['docs'],
+          preferredMcpServers: [],
+        },
+      },
+    });
+    await settled(fixture, run.id);
+
+    expect(fixture.supervisor.started[0]?.policy.toolControls).toEqual({
+      requiredSkills: ['deploy'],
+      excludedMcpServers: ['docs'],
+      preferredMcpServers: [],
+    });
+
+    const plain = await fixture.kernel.submit({ sessionId: session.id, prompt: 'and now without' });
+    await settled(fixture, plain.id);
+    expect(fixture.supervisor.started[1]?.policy.toolControls).toBeUndefined();
+  });
+
   it('names the session from its first prompt', async () => {
     // Otherwise the sidebar is a column of "New session".
     const session = fixture.newSession();
