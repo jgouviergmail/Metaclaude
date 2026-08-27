@@ -6,7 +6,7 @@
  * difference between a chat window and an OS.
  */
 
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ComponentType, lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import { SYSTEM_TOPIC } from '@metaclaude/shared';
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { Spinner } from '@/components/ui/primitives';
 import { api, setUnauthenticatedHandler } from '@/lib/api';
+import { applyAppBadge } from '@/lib/push';
 import { socket } from '@/lib/socket';
 import {
   useAuthStore,
@@ -141,10 +142,14 @@ export function App() {
               message: frame.request.summary,
               href: `/w/${frame.request.workspaceId}/s/${frame.request.sessionId}`,
             });
+            // The app-icon badge counts from the server's list, not the
+            // session store — refresh it the moment the count changed.
+            void queryClient.invalidateQueries({ queryKey: ['approvals'] });
           }
           break;
         case 'approval_resolved':
           session.resolveApproval(frame.approvalId);
+          void queryClient.invalidateQueries({ queryKey: ['approvals'] });
           break;
         case 'notification':
           addNotification({
@@ -172,6 +177,23 @@ export function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  /* ----------------------- App-icon badge (approvals) ----------------------- */
+
+  // The installed PWA's icon shows how many decisions wait. The server is
+  // the truth — the session store only holds the open session plus what
+  // arrived live — refreshed by the approval frames above and by run ends,
+  // with a slow poll as the safety net for a missed frame.
+  const approvalsQuery = useQuery({
+    queryKey: ['approvals'],
+    queryFn: () => api.approvals(),
+    enabled: status === 'authenticated',
+    refetchInterval: 120_000,
+  });
+  const pendingApprovals = approvalsQuery.data?.approvals.length ?? 0;
+  useEffect(() => {
+    applyAppBadge(navigator as Parameters<typeof applyAppBadge>[0], pendingApprovals);
+  }, [pendingApprovals]);
 
   /* -------------------------------- Render --------------------------------- */
 

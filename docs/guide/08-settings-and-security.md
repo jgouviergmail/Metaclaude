@@ -39,6 +39,26 @@ see the sessions chapter. The card reports it, says when runs are using it,
 and warns when a paired token is overriding it, because removing a token is
 sometimes the upgrade.
 
+## Notifications
+
+The System tab's **Notifications** card makes the phone part of the loop:
+enable it on a device and Metaclaude pushes when a run **waits on your
+approval** — the one moment the whole system is blocked on you — and when
+a run **you started** ends, with its outcome. Automations, loops and
+delegated runs never push, by design: they work while you sleep, and a
+channel that wakes you for them gets disabled within a week.
+
+Everything stays self-hosted: the signing keys are generated on your
+server and sealed in the vault, the payload is encrypted end-to-end
+(RFC 8291) so the browser vendor's relay sees nothing readable, and it
+carries only a title, a short line and the link to open — never prompt
+text or tool input. **Send a test** proves the whole path to the lock
+screen. On iPhone and iPad, install the app to the Home Screen first
+(Share → Add to Home Screen); push needs the installed app.
+
+While approvals wait, the installed app's icon also carries a **badge**
+with their count — it clears the moment the last one is decided.
+
 ## Appearance
 
 Light, dark, or follow the system. The whole interface is built on one token

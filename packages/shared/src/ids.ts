@@ -35,6 +35,7 @@ export const ID_PREFIXES = {
   plugin: 'plg',
   exemplar: 'exm',
   marketplace: 'mkt',
+  pushSub: 'psh',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

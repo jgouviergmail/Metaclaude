@@ -24,6 +24,7 @@ import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { TotpQr } from '@/components/auth/TotpQr';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
+import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { UpdateCard } from '@/components/settings/UpdateCard';
 import { CopyableCode } from '@/components/ui/CopyableCode';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -752,6 +753,8 @@ function SystemCard() {
       </Card>
 
       <ClaudeCredentialCard />
+
+      <NotificationsCard />
 
       <Card>
         <CardHeader title="Kernel" />

@@ -1083,6 +1083,32 @@ export const ClaudePairingCodeInput = z.object({
 });
 export type ClaudePairingCodeInput = z.infer<typeof ClaudePairingCodeInput>;
 
+/**
+ * A browser push subscription, as `PushManager.subscribe` hands it over.
+ * The endpoint must be https: it is where the server will POST encrypted
+ * notification payloads, and a plaintext push service is not a push service.
+ */
+export const PushSubscriptionInput = z.object({
+  endpoint: z
+    .string()
+    .url()
+    .max(2048)
+    .refine((value) => value.startsWith('https://'), 'The push endpoint must be https.'),
+  keys: z.object({
+    p256dh: z.string().min(1).max(512),
+    auth: z.string().min(1).max(256),
+  }),
+});
+export type PushSubscriptionInput = z.infer<typeof PushSubscriptionInput>;
+
+/** Type-only on purpose: only the API builds it. */
+export interface PushStatus {
+  /** The VAPID public key browsers subscribe with. Public by design. */
+  publicKey: string;
+  /** Live subscriptions across the deployment, all devices confounded. */
+  devices: number;
+}
+
 /** Type-only on purpose: only the API builds these, so no runtime schema. */
 export interface ClaudePairingStart {
   /** The authorization URL to open and approve. */

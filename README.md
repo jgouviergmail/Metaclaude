@@ -29,6 +29,9 @@ system around it:
   keep the same session and accumulate context indefinitely.
 - **Permission prompts you can actually read**, with the literal command shown
   and a risk assessment attached.
+- **Push notifications, self-hosted.** The phone buzzes when a run waits on
+  your approval or when a run you started ends — end-to-end encrypted, keys
+  generated on your server, and the app icon badges while decisions wait.
 
 It runs on **your Claude Pro or Max subscription**. The Agent SDK spawns the real
 `claude` binary, so everything your plan includes — models, skills, plugins,
@@ -135,6 +138,10 @@ button.
 Six modes, from **Plan** (research only, nothing executes) through **Ask**,
 **Accept edits**, **Auto** and **Don't ask**, to **Bypass** — which is disabled
 at deployment level unless you explicitly enable it.
+
+A pending approval also reaches you: a push notification (see Settings →
+Notifications) with a ten-minute lifetime matching the approval's own, and a
+badge on the installed app's icon that clears when the last decision is made.
 
 ### Memory
 Three kinds — episodic, semantic, procedural — retrieved by hybrid search:

@@ -11,11 +11,13 @@ import {
   ClaudeCredentialInput,
   ClaudePairingBeginInput,
   ClaudePairingCodeInput,
+  PushSubscriptionInput,
+  type PushStatus,
   type SystemHealth,
 } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { HttpError, requestIp, requireOwner } from '../http/guards.js';
+import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
 import { queryIntOr, spreadInt, spreadTimestamp } from '../http/query.js';
 
 const execFileAsync = promisify(execFile);
@@ -167,6 +169,64 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
     requireOwner(request);
     context.claudePairing.cancel();
     return reply.send(context.claudePairing.status());
+  });
+
+  /* ------------------------------ Web push ------------------------------ */
+
+  /**
+   * Operator-level: anyone who can watch runs and decide approvals may be
+   * notified about them. The endpoint host lands in the audit trail — a new
+   * device receiving the deployment's notifications is worth a line — but
+   * never the full endpoint, which is capability-shaped.
+   */
+  app.get('/api/push', async (request, reply) => {
+    requireOperator(request);
+    const status: PushStatus = {
+      publicKey: context.push.publicKey(),
+      devices: context.push.devices(),
+    };
+    return reply.send(status);
+  });
+
+  app.post('/api/push/subscriptions', async (request, reply) => {
+    const user = requireOperator(request);
+    const input = PushSubscriptionInput.parse(request.body);
+    context.push.subscribe(user.id, input);
+    context.audit.record({
+      actor: user.username,
+      action: 'push.subscribe',
+      target: new URL(input.endpoint).host,
+      outcome: 'success',
+      ipAddress: request.ip,
+    });
+    return reply.status(201).send({ devices: context.push.devices() });
+  });
+
+  app.delete('/api/push/subscriptions', async (request, reply) => {
+    const user = requireOperator(request);
+    const query = request.query as { endpoint?: string };
+    if (!query.endpoint) throw new HttpError(400, 'Name the endpoint to remove.');
+    const removed = context.push.unsubscribe(user.id, query.endpoint);
+    if (removed) {
+      context.audit.record({
+        actor: user.username,
+        action: 'push.unsubscribe',
+        target: new URL(query.endpoint).host,
+        outcome: 'success',
+        ipAddress: request.ip,
+      });
+    }
+    return reply.send({ removed, devices: context.push.devices() });
+  });
+
+  /** Ring the caller's own devices, so "did it work?" has a button. */
+  app.post('/api/push/test', async (request, reply) => {
+    requireOperator(request);
+    const outcome = await context.push.notify(
+      { title: 'Metaclaude', body: 'Push notifications are working.', url: '/', tag: 'push-test' },
+      { ttlSeconds: 60, urgency: 'normal' },
+    );
+    return reply.send(outcome);
   });
 
   /* ------------------------------ Analytics ----------------------------- */

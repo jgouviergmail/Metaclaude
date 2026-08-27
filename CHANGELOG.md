@@ -11,6 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-08-27
+
+### Added
+
+- **Push notifications, self-hosted end to end.** The phone finally hears
+  about the one moment everything is blocked on you: a run waiting on an
+  approval pushes to every subscribed device (high urgency, a lifetime
+  matching the approval's own ten minutes), and a run **you** started
+  pushes its outcome when it ends. Automations, loops and delegated runs
+  never push, by design — they work while you sleep. The VAPID identity
+  is generated on the server and sealed in the vault, payloads are
+  encrypted end-to-end (RFC 8291, via the `web-push` library) so the
+  browser vendor's relay reads nothing, and they carry only a title, a
+  short line and a link — never prompt text or tool input. Enable per
+  device from Settings → Notifications, with a **Send a test** button
+  that proves the path to the lock screen; a relay answering "gone"
+  prunes the subscription by itself. The installed app's icon also
+  **badges** with the number of waiting approvals, cleared the moment
+  the last one is decided.
+
 ## [0.13.1] — 2026-08-27
 
 ### Changed

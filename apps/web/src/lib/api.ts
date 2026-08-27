@@ -17,6 +17,8 @@ import {
   type ClaudeCredentialStatus,
   type ClaudePairingStart,
   type ClaudePairingState,
+  type PushStatus,
+  type PushSubscriptionInput,
   type ConnectRepositoryResult,
   type PluginRecord,
   type AuthSessionInfo,
@@ -661,6 +663,18 @@ export const api = {
       }),
     clear: () =>
       request<ClaudeCredentialStatus>('/api/claude/credential', { method: 'DELETE' }),
+  },
+
+  push: {
+    status: () => request<PushStatus>('/api/push'),
+    subscribe: (input: PushSubscriptionInput) =>
+      request<{ devices: number }>('/api/push/subscriptions', { method: 'POST', body: input }),
+    unsubscribe: (endpoint: string) =>
+      request<{ removed: boolean; devices: number }>(
+        `/api/push/subscriptions?endpoint=${encodeURIComponent(endpoint)}`,
+        { method: 'DELETE' },
+      ),
+    test: () => request<{ sent: number; pruned: number }>('/api/push/test', { method: 'POST', body: {} }),
   },
 
   claudePairing: {

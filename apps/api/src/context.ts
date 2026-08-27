@@ -13,6 +13,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
+import { SYSTEM_TOPIC } from '@metaclaude/shared';
 import type { ClaudeUsage } from '@metaclaude/shared';
 import type { Logger } from 'pino';
 import type { Config } from './config.js';
@@ -34,6 +35,7 @@ import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
+import { buildPushEventHandlers, PushService } from './services/push.js';
 import { readCliLogin } from './services/claude-cli-login.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { ClaudePairing } from './services/claude-pairing.js';
@@ -68,6 +70,7 @@ export interface AppContext {
   vault: Vault;
   claudeCredentials: ClaudeCredentials;
   claudePairing: ClaudePairing;
+  push: PushService;
   plugins: PluginRegistry;
   claudeCatalogue: CatalogueCache;
   claudeUsage: TtlCache<ClaudeUsage>;
@@ -240,6 +243,23 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     credentials: claudeCredentials,
     log: (level, message) => log[level](message),
   });
+
+  // Web push: the VAPID identity lives in the vault, subscriptions in the
+  // database, and the two event hooks below decide what deserves a buzz.
+  const push = new PushService({
+    db,
+    vault,
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+  const pushEvents = buildPushEventHandlers({
+    push,
+    sessions: sessionRepo,
+    workspaces: workspaceRepo,
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+  // Approvals reach the bus, not onRunFinished — subscribe where they are
+  // published. The kernel mirrors every approval onto the system topic.
+  bus.subscribe(SYSTEM_TOPIC, (frame) => pushEvents.onSystemFrame(frame));
   const kernelLog = (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => {
     log[level](data ?? {}, message);
   };
@@ -382,6 +402,9 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       } catch (error) {
         log.warn({ err: error, runId: run.id }, 'could not apply the run outcome to its board card');
       }
+      // The phone hears about it — for human-started runs only, and
+      // fire-and-forget inside the handler, so push can never slow a finish.
+      pushEvents.onRunFinished(run);
     },
     log: kernelLog,
   });
@@ -485,6 +508,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     vault,
     claudeCredentials,
     claudePairing,
+    push,
     plugins,
     claudeCatalogue,
     claudeUsage,

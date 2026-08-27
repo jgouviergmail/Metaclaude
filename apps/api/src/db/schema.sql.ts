@@ -576,4 +576,23 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_task_events ON task_events(task_id, at);
     `,
   },
+  {
+    version: 12,
+    name: 'push_subscriptions',
+    sql: /* sql */ `
+      -- One row per browser push endpoint. The endpoint is the identity: a
+      -- re-subscribe from the same browser upserts rather than duplicates,
+      -- and a push service answering 404/410 deletes the row outright.
+      CREATE TABLE push_subscriptions (
+        id         TEXT PRIMARY KEY,
+        user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint   TEXT NOT NULL UNIQUE,
+        p256dh     TEXT NOT NULL,
+        auth       TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_error TEXT
+      );
+      CREATE INDEX idx_push_subscriptions_user ON push_subscriptions(user_id);
+    `,
+  },
 ];

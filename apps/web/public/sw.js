@@ -14,7 +14,7 @@
  *     no connection still renders something rather than a browser error page.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `metaclaude-shell-${VERSION}`;
 const ASSET_CACHE = `metaclaude-assets-${VERSION}`;
 
@@ -43,6 +43,51 @@ self.addEventListener('activate', (event) => {
         ),
       )
       .then(() => self.clients.claim()),
+  );
+});
+
+/**
+ * Web push. The payload is JSON the API composed — title, short body, a
+ * same-origin path, a tag that coalesces re-sends of the same event. A push
+ * that cannot be parsed still shows *something*: push services require a
+ * visible notification per push, and a swallowed one costs the permission.
+ */
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    // An opaque or malformed payload; the generic notification below stands.
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Metaclaude', {
+      body: data.body || '',
+      tag: data.tag || undefined,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: data.url || '/' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => {
+        // Prefer the tab that is already open: focus it and steer it to the
+        // session the notification is about, rather than stacking windows.
+        for (const client of clients) {
+          if ('focus' in client) {
+            client.focus();
+            if ('navigate' in client) return client.navigate(url);
+            return undefined;
+          }
+        }
+        return self.clients.openWindow(url);
+      }),
   );
 });
 
