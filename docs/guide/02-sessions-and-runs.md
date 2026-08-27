@@ -122,14 +122,21 @@ to publish view-only copies of that workspace's sessions to the account.
 Off by default — it puts transcripts on claude.ai — and inert under a
 token credential, which cannot upload.
 
+State of that mirror, tested against a real deployment: **server sessions
+do not appear on claude.ai today**. The upload belongs to the CLI's Remote
+Control bridge — a background worker that interactive sessions start and
+headless runs do not — and it is additionally feature-gated per account on
+Anthropic's side. The toggle passes the setting faithfully and costs
+nothing while it is ignored; the day Anthropic opens the gate to headless
+sessions, it starts working without a Metaclaude release.
+
 Two honest caveats. Signing the server in as your full account hands every
 agent run whatever the account can reach — weigh that against the
 inference-only token, whose narrowness is a feature on a machine that works
-unattended. And whether claude.ai lists sessions the server ran headlessly
-is Anthropic's side of the bridge; the teleport direction — pull a cloud
-session into a workspace directory from a container shell, then **Adopt**
-it from the workspace page — is the one that composes entirely from pieces
-you can see here.
+unattended. And the direction that works **today** is the other one:
+teleport a cloud session into a workspace directory from a container
+shell, then **Adopt** it from the workspace page — that path composes
+entirely from pieces you can see here.
 
 ## Cost
 

@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-08-27
+
+### Changed
+
+- **The mirror's real-world status is documented.** Tested on a live
+  deployment with a full-scope sign-in: server sessions do not appear on
+  claude.ai today. The upload belongs to the CLI's Remote Control bridge —
+  a background worker headless runs never start — and is feature-gated per
+  account on Anthropic's side besides. The guide now says so where the
+  toggle is explained: the setting is passed faithfully, costs nothing
+  while ignored, and starts working without a Metaclaude release the day
+  Anthropic opens the gate.
+
 ## [0.13.0] — 2026-08-27
 
 ### Added
