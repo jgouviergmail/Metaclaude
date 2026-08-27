@@ -7,6 +7,7 @@ import { App } from './App';
 import { RootBoundary } from './components/RootBoundary';
 import { ApiError } from './lib/api';
 import { TooltipProvider } from './components/ui/primitives';
+import { I18nProvider } from './lib/i18n';
 import './styles/index.css';
 
 /**
@@ -61,8 +62,9 @@ createRoot(container).render(
     {/* Outside every provider: a throw inside one of them must still be caught. */}
     <RootBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <TooltipProvider>
+        <I18nProvider>
+          <BrowserRouter>
+            <TooltipProvider>
             <App />
             <Toaster
               position="bottom-right"
@@ -77,8 +79,9 @@ createRoot(container).render(
                 },
               }}
             />
-          </TooltipProvider>
-        </BrowserRouter>
+            </TooltipProvider>
+          </BrowserRouter>
+        </I18nProvider>
       </QueryClientProvider>
     </RootBoundary>
   </StrictMode>,

@@ -21,6 +21,7 @@ import { render, type RenderOptions, type RenderResult } from '@testing-library/
 import type { ReactElement, ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/primitives';
+import { I18nProvider } from '@/lib/i18n';
 
 export interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   /** Initial history entries, for a component that reads the route. */
@@ -44,9 +45,11 @@ export function renderWithProviders(
 ): RenderResult & { queryClient: QueryClient } {
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>
-        <TooltipProvider>{children}</TooltipProvider>
-      </MemoryRouter>
+      <I18nProvider>
+        <MemoryRouter initialEntries={[route]}>
+          <TooltipProvider>{children}</TooltipProvider>
+        </MemoryRouter>
+      </I18nProvider>
     </QueryClientProvider>
   );
 

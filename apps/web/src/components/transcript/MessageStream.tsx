@@ -13,6 +13,7 @@
 import { ArrowDown, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ApprovalRequest, Run, TranscriptEvent } from '@metaclaude/shared';
+import { useT } from '@/lib/i18n';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import type { StreamingBlock } from '@/lib/store';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,7 @@ export function MessageStream({
   ) => void | Promise<void>;
   emptyHint?: React.ReactNode;
 }) {
+  const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [stuckToBottom, setStuckToBottom] = useState(true);
@@ -111,8 +113,8 @@ export function MessageStream({
       <div className="flex flex-1 items-center justify-center overflow-y-auto">
         <EmptyState
           icon={<Sparkles />}
-          title="Nothing here yet"
-          description="Describe what you want done. Metaclaude picks the model, recalls what it learned from earlier sessions, and asks before it does anything irreversible."
+          title={t('Nothing here yet')}
+          description={t('Describe what you want done. Metaclaude picks the model, recalls what it learned from earlier sessions, and asks before it does anything irreversible.')}
           action={emptyHint}
         />
       </div>
@@ -131,7 +133,7 @@ export function MessageStream({
             <section
               key={group.runId}
               className="space-y-3"
-              aria-label="Exchange"
+              aria-label={t('Exchange')}
               // Native lazy rendering for long transcripts: exchanges far off
               // screen skip layout and paint entirely, which is what keeps a
               // hundred-run session scrollable on a phone. The intrinsic-size
@@ -201,7 +203,7 @@ export function MessageStream({
             className="pointer-events-auto shadow-[var(--mc-shadow)]"
           >
             <ArrowDown className="size-3.5" aria-hidden />
-            Jump to latest
+            {t('Jump to latest')}
           </Button>
         </div>
       ) : null}
@@ -211,13 +213,14 @@ export function MessageStream({
 
 /** Shown between a submitted prompt and the first token, so nothing feels stuck. */
 function WorkingIndicator() {
+  const t = useT();
   return (
     <div className="flex items-center gap-2.5 text-[13px] text-muted" role="status">
       <span className="relative flex size-2">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-70" />
         <span className="relative inline-flex size-2 rounded-full bg-accent" />
       </span>
-      <span className={cn('animate-pulse')}>Working…</span>
+      <span className={cn('animate-pulse')}>{t('Working…')}</span>
     </div>
   );
 }

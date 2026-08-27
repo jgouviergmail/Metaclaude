@@ -5,6 +5,7 @@
 import { Eye, EyeOff, LogOut, Monitor, Moon, Settings, Sun, Wrench } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useT } from '@/lib/i18n';
 import { api } from '@/lib/api';
 import { socket } from '@/lib/socket';
 import { useAuthStore, useUiStore, type ThemeMode } from '@/lib/store';
@@ -18,6 +19,7 @@ const THEMES: Array<{ value: ThemeMode; label: string; icon: React.ReactNode }> 
 ];
 
 export function UserMenu() {
+  const t = useT();
   const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
   const { theme, setTheme, showThinking, setShowThinking, expandTools, setExpandTools } =
@@ -32,7 +34,7 @@ export function UserMenu() {
     socket.dispose();
     setUser(null);
     navigate('/login', { replace: true });
-    toast.success('Signed out');
+    toast.success(t('Signed out'));
   };
 
   if (!user) return null;
@@ -45,7 +47,7 @@ export function UserMenu() {
         <button
           type="button"
           className="flex size-8 items-center justify-center rounded-lg bg-accent-soft text-[11px] font-semibold text-accent hover:brightness-110"
-          aria-label="Account"
+          aria-label={t('Account')}
         >
           {initials(user.displayName || user.username)}
         </button>
@@ -57,7 +59,7 @@ export function UserMenu() {
       </MenuLabel>
       <MenuSeparator />
 
-      <MenuLabel>Theme</MenuLabel>
+      <MenuLabel>{t('Theme')}</MenuLabel>
       {THEMES.map((entry) => (
         <MenuItem
           key={entry.value}

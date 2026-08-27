@@ -27,12 +27,14 @@ import { BriefView } from '@/components/analytics/BriefView';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
 import { useAuthStore } from '@/lib/store';
 import { cn, formatCost, formatDuration, formatRelative, formatPercent } from '@/lib/utils';
 
 export function DashboardPage() {
+  const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
@@ -83,7 +85,7 @@ export function DashboardPage() {
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       navigate(`/w/${data.workspace.id}`);
     },
-    onError: () => toast.error('Could not create the workspace.'),
+    onError: () => toast.error(t('Could not create the workspace.')),
   });
 
   const workspaces = workspacesQuery.data?.workspaces ?? [];
@@ -96,7 +98,7 @@ export function DashboardPage() {
     (run) => run.status === 'running' || run.status === 'waiting_approval' || run.status === 'queued',
   );
 
-  const greeting = `${timeOfDayGreeting()}, ${user?.displayName || user?.username || 'there'}.`;
+  const greeting = `${t(timeOfDayGreeting())}, ${user?.displayName || user?.username || t('there')}.`;
 
   return (
     <AppShell>
@@ -105,9 +107,9 @@ export function DashboardPage() {
         subtitle={
           system?.claudeCli.authenticated
             ? `Claude CLI ${system.claudeCli.version ?? ''} · ${
-                system.claudeCli.authMode === 'subscription' ? 'subscription' : 'API key'
+                system.claudeCli.authMode === 'subscription' ? t('subscription') : t('API key')
               }`
-            : 'No Claude credentials configured'
+            : t('No Claude credentials configured')
         }
         showSidebarToggle={false}
         actions={
@@ -118,7 +120,7 @@ export function DashboardPage() {
             loading={createWorkspace.isPending}
           >
             <Plus className="size-4" aria-hidden />
-            New workspace
+            {t('New workspace')}
           </Button>
         }
       />
@@ -132,16 +134,15 @@ export function DashboardPage() {
             <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning-soft/40 p-4">
               <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
               <div className="min-w-0 space-y-1 text-[13px] leading-relaxed">
-                <p className="font-medium text-ink">Claude is not authenticated.</p>
+                <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
                 <p className="text-muted">
-                  Pair it from{' '}
+                  {t('Pair it from')}{' '}
                   <Link to="/settings" className="font-medium text-accent underline-offset-2 hover:underline">
-                    Settings → System
+                    {t('Settings → System')}
                   </Link>
-                  : sign in with your Pro or Max plan, paste back one code, done — no shell, no
-                  restart. A token from{' '}
+                  {t(': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from')}{' '}
                   <code className="rounded bg-raised px-1 font-mono text-[12px]">claude setup-token</code>{' '}
-                  can be pasted there too.
+                  {t('can be pasted there too.')}
                 </p>
               </div>
             </div>
@@ -152,8 +153,8 @@ export function DashboardPage() {
           {briefQuery.data ? (
             <Card>
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-                <h2 className="text-sm font-semibold text-ink">The brief</h2>
-                <span className="text-[11.5px] text-subtle">last 24 hours</span>
+                <h2 className="text-sm font-semibold text-ink">{t('The brief')}</h2>
+                <span className="text-[11.5px] text-subtle">{t('last 24 hours')}</span>
               </div>
               <div className="px-4 py-3">
                 <BriefView brief={briefQuery.data} />
@@ -167,7 +168,7 @@ export function DashboardPage() {
               <div className="flex items-center gap-2 border-b border-warning/25 px-4 py-3">
                 <ShieldQuestion className="size-4 shrink-0 text-warning" aria-hidden />
                 <h2 className="text-sm font-semibold text-ink">
-                  {approvals.length} action{approvals.length === 1 ? '' : 's'} waiting for you
+                  {t('{n} action(s) waiting for you', { n: approvals.length })}
                 </h2>
               </div>
               <ul className="divide-y divide-[var(--mc-border)]">
@@ -194,12 +195,12 @@ export function DashboardPage() {
                             toast.error(
                               error instanceof ApiError
                                 ? error.message
-                                : 'Could not send that decision.',
+                                : t('Could not send that decision.'),
                             );
                           });
                         }}
                       >
-                        Deny
+                        {t('Deny')}
                       </Button>
                       <Button
                         variant="secondary"
@@ -208,7 +209,7 @@ export function DashboardPage() {
                           navigate(`/w/${approval.workspaceId}/s/${approval.sessionId}`)
                         }
                       >
-                        Review
+                        {t('Review')}
                       </Button>
                     </div>
                   </li>
@@ -220,24 +221,24 @@ export function DashboardPage() {
           {/* Metrics */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat
-              label="Active runs"
+              label={t('Active runs')}
               value={system?.activeRuns ?? 0}
-              hint={system?.queuedRuns ? `${system.queuedRuns} queued` : 'Nothing queued'}
+              hint={system?.queuedRuns ? t('{n} queued', { n: system.queuedRuns }) : t('Nothing queued')}
               icon={<Cpu />}
               tone={system && system.activeRuns > 0 ? 'success' : undefined}
             />
             <Stat
-              label="Cost, 7 days"
+              label={t('Cost, 7 days')}
               value={formatCost(summary?.totalCostUsd ?? 0)}
-              hint={`${summary?.totalRuns ?? 0} runs`}
+              hint={t('{n} runs', { n: summary?.totalRuns ?? 0 })}
               icon={<Coins />}
             />
             <Stat
-              label="Success rate"
+              label={t('Success rate')}
               value={summary ? formatPercent(summary.successRate) : '—'}
               hint={
                 summary?.medianDurationMs
-                  ? `median ${formatDuration(summary.medianDurationMs)}`
+                  ? t('median {d}', { d: formatDuration(summary.medianDurationMs) })
                   : undefined
               }
               icon={<CheckCircle2 />}
@@ -252,7 +253,7 @@ export function DashboardPage() {
               }
             />
             <Stat
-              label="Memories"
+              label={t('Memories')}
               value={system?.memoryCount ?? 0}
               hint={system?.embeddingProvider}
               icon={<Brain />}
@@ -264,7 +265,7 @@ export function DashboardPage() {
             <Card>
               <div className="flex items-center gap-2 border-b border-line px-4 py-3">
                 <Activity className="size-4 shrink-0 text-accent" aria-hidden />
-                <h2 className="text-sm font-semibold text-ink">In flight</h2>
+                <h2 className="text-sm font-semibold text-ink">{t('In flight')}</h2>
               </div>
               <ul className="divide-y divide-[var(--mc-border)]">
                 {activeRuns.map((run) => (
@@ -280,10 +281,10 @@ export function DashboardPage() {
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
                 <div className="flex items-center gap-2">
                   <FolderGit2 className="size-4 shrink-0 text-muted" aria-hidden />
-                  <h2 className="text-sm font-semibold text-ink">Workspaces</h2>
+                  <h2 className="text-sm font-semibold text-ink">{t('Workspaces')}</h2>
                 </div>
                 <Link to="/workspaces" className="text-[12.5px] text-accent hover:underline">
-                  View all
+                  {t('View all')}
                 </Link>
               </div>
 
@@ -294,8 +295,8 @@ export function DashboardPage() {
               ) : workspaces.length === 0 ? (
                 <EmptyState
                   icon={<FolderGit2 />}
-                  title="No workspaces yet"
-                  description="A workspace is a project directory plus the agent policy that applies inside it."
+                  title={t('No workspaces yet')}
+                  description={t('A workspace is a project directory plus the agent policy that applies inside it.')}
                   action={
                     <Button
                       variant="primary"
@@ -304,7 +305,7 @@ export function DashboardPage() {
                       loading={createWorkspace.isPending}
                     >
                       <Plus className="size-4" aria-hidden />
-                      Create the first one
+                      {t('Create the first one')}
                     </Button>
                   }
                 />
@@ -344,17 +345,17 @@ export function DashboardPage() {
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Zap className="size-4 shrink-0 text-thinking" aria-hidden />
-                  <h2 className="text-sm font-semibold text-ink">Recently learned</h2>
+                  <h2 className="text-sm font-semibold text-ink">{t('Recently learned')}</h2>
                 </div>
                 <Link to="/memory" className="text-[12.5px] text-accent hover:underline">
-                  Review
+                  {t('Review')}
                 </Link>
               </div>
 
               {(insightsQuery.data?.insights ?? []).length === 0 ? (
                 <EmptyState
-                  title="Nothing new"
-                  description="After each run, Metaclaude reflects on what happened and records anything worth remembering."
+                  title={t('Nothing new')}
+                  description={t('After each run, Metaclaude reflects on what happened and records anything worth remembering.')}
                   className="py-8"
                 />
               ) : (
@@ -390,15 +391,15 @@ export function DashboardPage() {
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
               <div className="flex items-center gap-2">
                 <Timer className="size-4 shrink-0 text-muted" aria-hidden />
-                <h2 className="text-sm font-semibold text-ink">Recent runs</h2>
+                <h2 className="text-sm font-semibold text-ink">{t('Recent runs')}</h2>
               </div>
               <Link to="/analytics" className="text-[12.5px] text-accent hover:underline">
-                Analytics
+                {t('Analytics')}
               </Link>
             </div>
 
             {runs.length === 0 ? (
-              <EmptyState title="No runs yet" description="Start a session to see history here." />
+              <EmptyState title={t('No runs yet')} description={t('Start a session to see history here.')} />
             ) : (
               <ul className="divide-y divide-[var(--mc-border)]">
                 {runs

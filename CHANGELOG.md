@@ -11,6 +11,25 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-08-27
+
+### Added
+
+- **The interface speaks French.** A language switch in Settings →
+  Appearance (each language named in itself, so the way back is always
+  readable), the choice persisted per browser, and a browser already set to
+  French starts in French. The translation covers the everyday surface:
+  navigation, sign-in, dashboard, the whole board, sessions' chrome
+  (approval prompts included), settings with all their security cards,
+  notifications and passkeys, the command palette and the onboarding
+  checklist. Honest edges, stated in the switch itself: the guide and the
+  changelog stay in English for now, as does text the server or the CLI
+  produces. Under the hood the English string is the key — a missing
+  translation falls back to English, never to a blank — and the French
+  dictionary loads as its own lazy chunk, so the English product pays
+  nothing; the entry grew 1 kB for the translation *machinery*, and the
+  bundle ratchet moves 182 → 184 deliberately for it.
+
 ## [0.19.1] — 2026-08-27
 
 ### Fixed

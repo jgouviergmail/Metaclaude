@@ -15,6 +15,7 @@ import { isWorkedByAgent, TASK_COLUMNS } from '@/lib/board';
 import { Menu, MenuItem, MenuLabel } from '@/components/ui/Menu';
 import { Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 const PRIORITY_TONE: Record<BoardTask['priority'], string> = {
   urgent: 'bg-danger',
@@ -39,6 +40,7 @@ export const TaskCard = memo(function TaskCard({
   touchBind?: (task: BoardTask) => HTMLAttributes<HTMLDivElement>;
 }) {
   const overdue = task.dueAt !== null && task.dueAt < Date.now() && task.status !== 'done';
+  const t = useT();
   const working = isWorkedByAgent(task);
 
   return (
@@ -77,17 +79,17 @@ export const TaskCard = memo(function TaskCard({
             trigger={
               <button
                 type="button"
-                aria-label={`Actions for ${task.title}`}
+                aria-label={t('Actions for {title}', { title: task.title })}
                 className="rounded p-1 text-subtle opacity-0 transition-opacity hover:bg-raised hover:text-ink focus:opacity-100 group-hover:opacity-100"
               >
                 <MoreVertical className="size-3.5" aria-hidden />
               </button>
             }
           >
-            <MenuLabel>Move to</MenuLabel>
+            <MenuLabel>{t('Move to')}</MenuLabel>
             {TASK_COLUMNS.filter((column) => column.status !== task.status).map((column) => (
               <MenuItem key={column.status} onSelect={() => onMove(task, column.status)}>
-                {column.label}
+                {t(column.label)}
               </MenuItem>
             ))}
           </Menu>
@@ -95,27 +97,27 @@ export const TaskCard = memo(function TaskCard({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 pl-5 text-[11.5px] text-muted">
-        <Tooltip content={`Priority: ${task.priority}`}>
-          <span className={cn('inline-block size-2 rounded-full', PRIORITY_TONE[task.priority])} aria-label={`Priority ${task.priority}`} />
+        <Tooltip content={t('Priority: {p}', { p: t(task.priority) })}>
+          <span className={cn('inline-block size-2 rounded-full', PRIORITY_TONE[task.priority])} aria-label={t('Priority: {p}', { p: t(task.priority) })} />
         </Tooltip>
         {task.assignee ? (
           <Tooltip
             content={
               working
-                ? 'The agent is working this card'
+                ? t('The agent is working this card')
                 : task.assignee === 'agent'
-                  ? 'Assigned to the agent'
-                  : 'Assigned to you'
+                  ? t('Assigned to the agent')
+                  : t('Assigned to you')
             }
           >
             <span className="inline-flex items-center gap-1">
               {task.assignee === 'agent' ? (
                 <Bot
                   className={cn('size-3.5', working && 'text-accent')}
-                  aria-label={working ? 'Agent working' : 'Agent'}
+                  aria-label={working ? t('Agent working') : t('Agent')}
                 />
               ) : (
-                <UserIcon className="size-3.5" aria-label="You" />
+                <UserIcon className="size-3.5" aria-label={t('You')} />
               )}
               {working ? (
                 <span className="relative flex size-1.5" aria-hidden>
@@ -135,7 +137,7 @@ export const TaskCard = memo(function TaskCard({
           <Tooltip content={task.blockedReason}>
             <span className="inline-flex items-center gap-1 text-warning">
               <CircleAlert className="size-3.5" aria-hidden />
-              blocked
+              {t('blocked')}
             </span>
           </Tooltip>
         ) : null}

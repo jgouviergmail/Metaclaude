@@ -30,6 +30,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { Tooltip } from '@/components/ui/primitives';
 import { ConnectionBadge } from './ConnectionBadge';
 import { NotificationBell } from './NotificationBell';
@@ -66,6 +67,7 @@ export function AppShell({
   const { sidebarOpen, setSidebar } = useUiStore();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const t = useT();
 
   // On a phone the sidebar is an overlay; navigating must dismiss it, or the
   // user lands on a new screen still covered by the old panel. The More
@@ -91,7 +93,7 @@ export function AppShell({
         </NavLink>
 
         {NAV.map((entry) => (
-          <Tooltip key={entry.to} content={entry.label} side="right">
+          <Tooltip key={entry.to} content={t(entry.label)} side="right">
             <NavLink
               to={entry.to}
               end={entry.to === '/'}
@@ -104,7 +106,7 @@ export function AppShell({
                     : 'text-subtle hover:bg-raised hover:text-ink',
                 )
               }
-              aria-label={entry.label}
+              aria-label={t(entry.label)}
             >
               {entry.icon}
             </NavLink>
@@ -186,7 +188,7 @@ export function AppShell({
                 }
               >
                 {entry.icon}
-                {entry.label}
+                {t(entry.label)}
               </NavLink>
             ))}
           </div>
@@ -216,7 +218,7 @@ export function AppShell({
             }
           >
             {entry.icon}
-            {entry.label.split(' ')[0]}
+            {t(entry.label).split(' ')[0]}
           </NavLink>
         ))}
         <button
@@ -233,7 +235,7 @@ export function AppShell({
           )}
         >
           <MoreHorizontal />
-          More
+          {t('More')}
         </button>
       </nav>
     </div>

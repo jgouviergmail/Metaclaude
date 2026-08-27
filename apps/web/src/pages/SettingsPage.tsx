@@ -18,6 +18,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useI18n, useT, type Lang } from '@/lib/i18n';
 import * as Tabs from '@radix-ui/react-tabs';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
@@ -55,13 +56,14 @@ const TAB_CLASS =
   'px-3 py-2 text-[13px] font-medium text-muted border-b-2 border-transparent transition-colors data-[state=active]:border-accent data-[state=active]:text-ink hover:text-ink';
 
 export function SettingsPage() {
+  const t = useT();
   const user = useAuthStore((state) => state.user);
 
   return (
     <AppShell>
       <ContentHeader
-        title="Settings"
-        subtitle={user ? `Signed in as ${user.username} (${user.role})` : undefined}
+        title={t('Settings')}
+        subtitle={user ? t('Signed in as {name} ({role})', { name: user.username, role: user.role }) : undefined}
         showSidebarToggle={false}
       />
 
@@ -70,20 +72,20 @@ export function SettingsPage() {
           <Tabs.Root defaultValue="security">
             <Tabs.List
               className="mb-5 flex gap-1 overflow-x-auto border-b border-line"
-              aria-label="Settings sections"
+              aria-label={t('Settings sections')}
             >
               <Tabs.Trigger value="security" className={TAB_CLASS}>
-                Security
+                {t('Security')}
               </Tabs.Trigger>
               <Tabs.Trigger value="appearance" className={TAB_CLASS}>
-                Appearance
+                {t('Appearance')}
               </Tabs.Trigger>
               <Tabs.Trigger value="system" className={TAB_CLASS}>
-                System
+                {t('System')}
               </Tabs.Trigger>
               {user?.role === 'owner' ? (
                 <Tabs.Trigger value="audit" className={TAB_CLASS}>
-                  Audit log
+                  {t('Audit log')}
                 </Tabs.Trigger>
               ) : null}
             </Tabs.List>
@@ -122,6 +124,7 @@ export function SettingsPage() {
 /* -------------------------------------------------------------------------- */
 
 function PasswordCard() {
+  const t = useT();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -129,12 +132,12 @@ function PasswordCard() {
   const change = useMutation({
     mutationFn: () => api.changePassword({ currentPassword: current, newPassword: next }),
     onSuccess: () => {
-      toast.success('Password changed. Sign in again with the new one.');
+      toast.success(t('Password changed. Sign in again with the new one.'));
       // Every session was revoked server-side, including this one.
       setTimeout(() => window.location.assign('/login'), 1200);
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not change the password.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not change the password.')),
   });
 
   const mismatch = confirm.length > 0 && next !== confirm;
@@ -143,12 +146,12 @@ function PasswordCard() {
   return (
     <Card>
       <CardHeader
-        title="Password"
-        description="Changing it signs out every device, including this one."
+        title={t('Password')}
+        description={t('Changing it signs out every device, including this one.')}
       />
       <div className="space-y-4 p-4">
         <Label htmlFor="pw-current">
-          Current password
+          {t('Current password')}
           <Input
             id="pw-current"
             type="password"
@@ -159,8 +162,8 @@ function PasswordCard() {
           />
         </Label>
 
-        <Label htmlFor="pw-new" hint="At least 12 characters. Length matters more than symbols.">
-          New password
+        <Label htmlFor="pw-new" hint={t('At least 12 characters. Length matters more than symbols.')}>
+          {t('New password')}
           <Input
             id="pw-new"
             type="password"
@@ -172,7 +175,7 @@ function PasswordCard() {
         </Label>
 
         <Label htmlFor="pw-confirm">
-          Confirm new password
+          {t('Confirm new password')}
           <Input
             id="pw-confirm"
             type="password"
@@ -183,9 +186,9 @@ function PasswordCard() {
           />
         </Label>
 
-        {mismatch ? <p className="text-[12.5px] text-danger">The passwords do not match.</p> : null}
+        {mismatch ? <p className="text-[12.5px] text-danger">{t('The passwords do not match.')}</p> : null}
         {tooShort ? (
-          <p className="text-[12.5px] text-warning">Use at least 12 characters.</p>
+          <p className="text-[12.5px] text-warning">{t('Use at least 12 characters.')}</p>
         ) : null}
 
         <Button
@@ -196,7 +199,7 @@ function PasswordCard() {
           onClick={() => change.mutate()}
         >
           <KeyRound className="size-4" aria-hidden />
-          Change password
+          {t('Change password')}
         </Button>
       </div>
     </Card>
@@ -204,6 +207,7 @@ function PasswordCard() {
 }
 
 function TotpCard() {
+  const t = useT();
   const { user, recoveryCodesRemaining, setUser } = useAuthStore();
   const [enrolling, setEnrolling] = useState<{ secret: string; uri: string } | null>(null);
   const [code, setCode] = useState('');
@@ -229,7 +233,7 @@ function TotpCard() {
       setEnrolPassword('');
       setEnrolling(data);
     },
-    onError: () => toast.error('That password is incorrect.'),
+    onError: () => toast.error(t('That password is incorrect.')),
   });
 
   const confirm = useMutation({
@@ -239,9 +243,9 @@ function TotpCard() {
       setEnrolling(null);
       setCode('');
       if (user) setUser({ ...user, totpEnabled: true }, data.recoveryCodes.length);
-      toast.success('Two-factor authentication is on.');
+      toast.success(t('Two-factor authentication is on.'));
     },
-    onError: () => toast.error('That code was not accepted. Check your device clock.'),
+    onError: () => toast.error(t('That code was not accepted. Check your device clock.')),
   });
 
   const disable = useMutation({
@@ -250,24 +254,24 @@ function TotpCard() {
       if (user) setUser({ ...user, totpEnabled: false }, 0);
       setDisabling(false);
       setPassword('');
-      toast.success('Two-factor authentication is off.');
+      toast.success(t('Two-factor authentication is off.'));
     },
-    onError: () => toast.error('That password is incorrect.'),
+    onError: () => toast.error(t('That password is incorrect.')),
   });
 
   return (
     <Card>
       <CardHeader
-        title="Two-factor authentication"
-        description="A second factor is what keeps a leaked password from becoming a compromised agent OS."
+        title={t('Two-factor authentication')}
+        description={t('A second factor is what keeps a leaked password from becoming a compromised agent OS.')}
         actions={
           user?.totpEnabled ? (
             <Badge tone="success">
               <ShieldCheck className="size-3" aria-hidden />
-              on
+              {t('on')}
             </Badge>
           ) : (
-            <Badge tone="warning">off</Badge>
+            <Badge tone="warning">{t('off')}</Badge>
           )
         }
       />
@@ -276,26 +280,25 @@ function TotpCard() {
         {user?.totpEnabled ? (
           <>
             <p className="text-[13px] text-muted">
-              {recoveryCodesRemaining} recovery code{recoveryCodesRemaining === 1 ? '' : 's'}{' '}
-              remaining.
+              {t('{n} recovery code(s) remaining.', { n: recoveryCodesRemaining })}
               {recoveryCodesRemaining <= 2 ? (
-                <span className="text-warning"> Consider re-enrolling to get a fresh set.</span>
+                <span className="text-warning"> {t('Consider re-enrolling to get a fresh set.')}</span>
               ) : null}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" onClick={() => setConfirmingIdentity(true)}>
                 <Smartphone className="size-4" aria-hidden />
-                Re-enrol
+                {t('Re-enrol')}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setDisabling(true)}>
-                Turn off
+                {t('Turn off')}
               </Button>
             </div>
           </>
         ) : (
           <Button variant="primary" size="sm" onClick={() => setConfirmingIdentity(true)}>
             <Smartphone className="size-4" aria-hidden />
-            Set up
+            {t('Set up')}
           </Button>
         )}
       </div>
@@ -307,17 +310,17 @@ function TotpCard() {
           setConfirmingIdentity(open);
           if (!open) setEnrolPassword('');
         }}
-        title="Confirm your password"
+        title={t('Confirm your password')}
         description={
           user?.totpEnabled
-            ? 'Re-enrolling replaces your current authenticator and issues new recovery codes.'
-            : 'Enrolling a device changes how you sign in, so it needs your password.'
+            ? t('Re-enrolling replaces your current authenticator and issues new recovery codes.')
+            : t('Enrolling a device changes how you sign in, so it needs your password.')
         }
         size="sm"
         footer={
           <>
             <Button variant="ghost" size="sm" onClick={() => setConfirmingIdentity(false)}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -326,13 +329,13 @@ function TotpCard() {
               disabled={!enrolPassword}
               onClick={() => begin.mutate()}
             >
-              Continue
+              {t('Continue')}
             </Button>
           </>
         }
       >
         <Label htmlFor="totp-enrol-pw">
-          Password
+          {t('Password')}
           <Input
             id="totp-enrol-pw"
             type="password"
@@ -353,12 +356,12 @@ function TotpCard() {
         onOpenChange={(open) => {
           if (!open) closeEnrolment();
         }}
-        title="Set up two-factor authentication"
-        description="Add this secret to your authenticator app, then confirm with the code it shows."
+        title={t('Set up two-factor authentication')}
+        description={t('Add this secret to your authenticator app, then confirm with the code it shows.')}
         footer={
           <>
             <Button variant="ghost" size="sm" onClick={closeEnrolment}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -367,7 +370,7 @@ function TotpCard() {
               disabled={!/^\d{6}$/.test(code)}
               onClick={() => confirm.mutate()}
             >
-              Confirm
+              {t('Confirm')}
             </Button>
           </>
         }
@@ -380,13 +383,13 @@ function TotpCard() {
 
             <div>
               <p className="mb-1.5 text-[13px] font-medium text-ink">
-                Can't scan? Enter this setup key instead
+                {t("Can't scan? Enter this setup key instead")}
               </p>
               <CopyableCode value={enrolling.secret} />
             </div>
 
             <Label htmlFor="totp-code">
-              Code from your app
+              {t('Code from your app')}
               <Input
                 id="totp-code"
                 value={code}
@@ -405,11 +408,11 @@ function TotpCard() {
       <Modal
         open={Boolean(recoveryCodes)}
         onOpenChange={(open) => !open && setRecoveryCodes(null)}
-        title="Save your recovery codes"
-        description="Each works once, in place of a code from your app. This is the only time they are shown."
+        title={t('Save your recovery codes')}
+        description={t('Each works once, in place of a code from your app. This is the only time they are shown.')}
         footer={
           <Button variant="primary" size="sm" onClick={() => setRecoveryCodes(null)}>
-            I have saved them
+            {t('I have saved them')}
           </Button>
         }
       >
@@ -426,12 +429,12 @@ function TotpCard() {
             size="sm"
             onClick={() => {
               void copyToClipboard((recoveryCodes ?? []).join('\n')).then((ok) =>
-                ok ? toast.success('Copied') : toast.error('Could not copy'),
+                ok ? toast.success(t('Copied')) : toast.error(t('Could not copy')),
               );
             }}
           >
             <Copy className="size-4" aria-hidden />
-            Copy all
+            {t('Copy all')}
           </Button>
         </div>
       </Modal>
@@ -440,13 +443,13 @@ function TotpCard() {
       <Modal
         open={disabling}
         onOpenChange={setDisabling}
-        title="Turn off two-factor authentication?"
-        description="Confirm with your password. This weakens your account's security."
+        title={t('Turn off two-factor authentication?')}
+        description={t("Confirm with your password. This weakens your account's security.")}
         size="sm"
         footer={
           <>
             <Button variant="ghost" size="sm" onClick={() => setDisabling(false)}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               variant="danger"
@@ -455,13 +458,13 @@ function TotpCard() {
               disabled={!password}
               onClick={() => disable.mutate()}
             >
-              Turn off
+              {t('Turn off')}
             </Button>
           </>
         }
       >
         <Label htmlFor="totp-disable-pw">
-          Password
+          {t('Password')}
           <Input
             id="totp-disable-pw"
             type="password"
@@ -476,6 +479,7 @@ function TotpCard() {
 }
 
 function SessionsCard() {
+  const t = useT();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['auth-sessions'],
@@ -486,7 +490,7 @@ function SessionsCard() {
     mutationFn: (id: string) => api.revokeAuthSession(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['auth-sessions'] });
-      toast.success('Signed out that device');
+      toast.success(t('Signed out that device'));
     },
   });
 
@@ -494,7 +498,7 @@ function SessionsCard() {
     mutationFn: () => api.revokeOtherSessions(),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['auth-sessions'] });
-      toast.success(`Signed out ${result.revoked} other device(s)`);
+      toast.success(t('Signed out {n} other device(s)', { n: result.revoked }));
     },
   });
 
@@ -503,8 +507,8 @@ function SessionsCard() {
   return (
     <Card>
       <CardHeader
-        title="Signed-in devices"
-        description="Anything you do not recognise should be signed out immediately."
+        title={t('Signed-in devices')}
+        description={t('Anything you do not recognise should be signed out immediately.')}
         actions={
           sessions.length > 1 ? (
             <Button
@@ -513,7 +517,7 @@ function SessionsCard() {
               loading={revokeOthers.isPending}
               onClick={() => revokeOthers.mutate()}
             >
-              Sign out others
+              {t('Sign out others')}
             </Button>
           ) : null
         }
@@ -530,10 +534,10 @@ function SessionsCard() {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-[13px] text-ink">
                   <span className="truncate">{describeUserAgent(session.userAgent)}</span>
-                  {session.current ? <Badge tone="accent">this device</Badge> : null}
+                  {session.current ? <Badge tone="accent">{t('this device')}</Badge> : null}
                 </p>
                 <p className="text-[11.5px] text-subtle">
-                  {session.ipAddress ?? 'unknown address'} · active{' '}
+                  {session.ipAddress ?? t('unknown address')} · {t('active')}{' '}
                   {formatRelative(session.lastSeenAt)}
                 </p>
               </div>
@@ -541,7 +545,7 @@ function SessionsCard() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Sign out this device"
+                  aria-label={t('Sign out this device')}
                   onClick={() => revoke.mutate(session.id)}
                 >
                   <Trash2 className="size-4" />
@@ -562,6 +566,7 @@ function SessionsCard() {
 function AppearanceCard() {
   const { theme, setTheme, showThinking, setShowThinking, expandTools, setExpandTools } =
     useUiStore();
+  const { lang, setLang, t } = useI18n();
 
   const options: Array<{ value: ThemeMode; label: string; icon: React.ReactNode }> = [
     { value: 'light', label: 'Light', icon: <Sun /> },
@@ -569,12 +574,48 @@ function AppearanceCard() {
     { value: 'system', label: 'System', icon: <Monitor /> },
   ];
 
+  // Each language names itself in itself — the one string a switch must
+  // never translate, or the person who cannot read the current language
+  // cannot find their way back.
+  const languages: Array<{ value: Lang; label: string }> = [
+    { value: 'en', label: 'English' },
+    { value: 'fr', label: 'Français' },
+  ];
+
   return (
     <Card>
-      <CardHeader title="Appearance" description="These preferences live in this browser only." />
+      <CardHeader
+        title={t('Appearance')}
+        description={t('These preferences live in this browser only.')}
+      />
       <div className="space-y-5 p-4">
         <div>
-          <p className="mb-2 text-[13px] font-medium text-ink">Theme</p>
+          <p className="mb-2 text-[13px] font-medium text-ink">{t('Language')}</p>
+          <div className="flex gap-2">
+            {languages.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => void setLang(option.value)}
+                aria-pressed={lang === option.value}
+                className={cn(
+                  'flex-1 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors',
+                  lang === option.value
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line text-muted hover:bg-raised',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[12px] text-muted">
+            {t('The guide and the changelog stay in English for now.')}
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-2 text-[13px] font-medium text-ink">{t('Theme')}</p>
           <div className="flex gap-2">
             {options.map((option) => (
               <button
@@ -591,25 +632,25 @@ function AppearanceCard() {
                 )}
               >
                 {option.icon}
-                <span className="text-[12px] font-medium">{option.label}</span>
+                <span className="text-[12px] font-medium">{t(option.label)}</span>
               </button>
             ))}
           </div>
         </div>
 
         <div className="space-y-3">
-          <p className="text-[13px] font-medium text-ink">Transcript</p>
+          <p className="text-[13px] font-medium text-ink">{t('Transcript')}</p>
           <PreferenceToggle
             checked={showThinking}
             onChange={setShowThinking}
-            label="Show the model's reasoning"
-            hint="Collapsible blocks showing how the agent worked through the problem."
+            label={t("Show the model's reasoning")}
+            hint={t('Collapsible blocks showing how the agent worked through the problem.')}
           />
           <PreferenceToggle
             checked={expandTools}
             onChange={setExpandTools}
-            label="Expand tool calls by default"
-            hint="Show each tool's full input and result instead of a one-line summary."
+            label={t('Expand tool calls by default')}
+            hint={t("Show each tool's full input and result instead of a one-line summary.")}
           />
         </div>
       </div>
@@ -654,6 +695,7 @@ function PreferenceToggle({
  * noise. The button is the request.
  */
 function DoctorCard() {
+  const t = useT();
   const doctorQuery = useQuery({
     queryKey: ['doctor'],
     queryFn: () => api.doctor(),
@@ -663,8 +705,8 @@ function DoctorCard() {
   return (
     <Card>
       <CardHeader
-        title="Doctor"
-        description="Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations."
+        title={t('Doctor')}
+        description={t('Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations.')}
         actions={
           <Button
             variant="secondary"
@@ -672,7 +714,7 @@ function DoctorCard() {
             loading={doctorQuery.isFetching}
             onClick={() => void doctorQuery.refetch()}
           >
-            Run checks
+            {t('Run checks')}
           </Button>
         }
       />
@@ -680,9 +722,9 @@ function DoctorCard() {
         {doctorQuery.data ? (
           <DoctorReportView report={doctorQuery.data} />
         ) : doctorQuery.isError ? (
-          <p className="text-[12.5px] text-muted">The examination could not run.</p>
+          <p className="text-[12.5px] text-muted">{t('The examination could not run.')}</p>
         ) : (
-          <p className="text-[12.5px] text-subtle">Not run yet.</p>
+          <p className="text-[12.5px] text-subtle">{t('Not run yet.')}</p>
         )}
       </div>
     </Card>
@@ -690,6 +732,7 @@ function DoctorCard() {
 }
 
 function SystemCard() {
+  const t = useT();
   const { data, isLoading } = useQuery({
     queryKey: ['system'],
     queryFn: () => api.system(),
@@ -707,35 +750,35 @@ function SystemCard() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Version" value={data.version} />
-        <Stat label="Uptime" value={formatDuration(data.uptimeMs)} />
+        <Stat label={t('Version')} value={data.version} />
+        <Stat label={t('Uptime')} value={formatDuration(data.uptimeMs)} />
         <Stat
-          label="Memory (RSS)"
+          label={t('Memory (RSS)')}
           value={formatBytes(data.rssBytes)}
           icon={<Cpu />}
         />
-        <Stat label="Disk free" value={formatBytes(data.diskFreeBytes)} icon={<HardDrive />} />
+        <Stat label={t('Disk free')} value={formatBytes(data.diskFreeBytes)} icon={<HardDrive />} />
       </div>
 
       <Card>
-        <CardHeader title="Claude CLI" description="Every agent run goes through this binary." />
+        <CardHeader title="Claude CLI" description={t('Every agent run goes through this binary.')} />
         <dl className="divide-y divide-[var(--mc-border)]">
-          <Row label="Available">
+          <Row label={t('Available')}>
             {data.claudeCli.available ? (
-              <Badge tone="success">yes</Badge>
+              <Badge tone="success">{t('yes')}</Badge>
             ) : (
-              <Badge tone="danger">not found</Badge>
+              <Badge tone="danger">{t('not found')}</Badge>
             )}
           </Row>
-          <Row label="Version">{data.claudeCli.version ?? '—'}</Row>
-          <Row label="Authentication">
+          <Row label={t('Version')}>{data.claudeCli.version ?? '—'}</Row>
+          <Row label={t('Authentication')}>
             <div className="flex flex-wrap items-center gap-2">
               {data.claudeCli.authMode === 'subscription' ? (
-                <Badge tone="success">subscription (Pro / Max)</Badge>
+                <Badge tone="success">{t('subscription (Pro / Max)')}</Badge>
               ) : data.claudeCli.authMode === 'api_key' ? (
-                <Badge tone="warning">API key (pay as you go)</Badge>
+                <Badge tone="warning">{t('API key (pay as you go)')}</Badge>
               ) : (
-                <Badge tone="danger">none configured</Badge>
+                <Badge tone="danger">{t('none configured')}</Badge>
               )}
               {data.claudeCli.authHint ? (
                 <code className="font-mono text-[12px] text-muted">{data.claudeCli.authHint}</code>
@@ -743,10 +786,10 @@ function SystemCard() {
               {data.claudeCli.authSource ? (
                 <span className="text-[12px] text-subtle">
                   {data.claudeCli.authSource === 'stored'
-                    ? 'paired here'
+                    ? t('paired here')
                     : data.claudeCli.authSource === 'cli-login'
-                      ? 'CLI account sign-in'
-                      : 'from the environment'}
+                      ? t('CLI account sign-in')
+                      : t('from the environment')}
                 </span>
               ) : null}
             </div>
@@ -759,12 +802,12 @@ function SystemCard() {
       <NotificationsCard />
 
       <Card>
-        <CardHeader title="Kernel" />
+        <CardHeader title={t('Kernel')} />
         <dl className="divide-y divide-[var(--mc-border)]">
-          <Row label="Active runs">{data.activeRuns}</Row>
-          <Row label="Queued runs">{data.queuedRuns}</Row>
-          <Row label="Stored memories">{data.memoryCount}</Row>
-          <Row label="Embedding provider">
+          <Row label={t('Active runs')}>{data.activeRuns}</Row>
+          <Row label={t('Queued runs')}>{data.queuedRuns}</Row>
+          <Row label={t('Stored memories')}>{data.memoryCount}</Row>
+          <Row label={t('Embedding provider')}>
             <code className="font-mono text-[12px]">{data.embeddingProvider}</code>
           </Row>
         </dl>
@@ -787,6 +830,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /* -------------------------------------------------------------------------- */
 
 function AuditCard() {
+  const t = useT();
   const [verifying, setVerifying] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -798,14 +842,14 @@ function AuditCard() {
     mutationFn: () => api.verifyAudit(),
     onSuccess: (result) => {
       if (result.ok) {
-        toast.success(`Chain intact across ${result.entries} entries.`);
+        toast.success(t('Chain intact across {n} entries.', { n: result.entries }));
       } else {
-        toast.error(`Chain broken at entry ${result.brokenAt}. The log may have been altered.`);
+        toast.error(t('Chain broken at entry {id}. The log may have been altered.', { id: result.brokenAt ?? '?' }));
       }
       setVerifying(false);
     },
     onError: () => {
-      toast.error('Could not verify the chain.');
+      toast.error(t('Could not verify the chain.'));
       setVerifying(false);
     },
   });
@@ -815,8 +859,8 @@ function AuditCard() {
   return (
     <Card>
       <CardHeader
-        title="Audit log"
-        description="Every entry commits to the hash of the one before it, so an edit anywhere invalidates everything after."
+        title={t('Audit log')}
+        description={t('Every entry commits to the hash of the one before it, so an edit anywhere invalidates everything after.')}
         actions={
           <Button
             variant="outline"
@@ -828,7 +872,7 @@ function AuditCard() {
             }}
           >
             <ScrollText className="size-4" aria-hidden />
-            Verify chain
+            {t('Verify chain')}
           </Button>
         }
       />
@@ -838,7 +882,7 @@ function AuditCard() {
           <Spinner />
         </div>
       ) : entries.length === 0 ? (
-        <EmptyState title="No entries" />
+        <EmptyState title={t('No entries')} />
       ) : (
         <div className="max-h-[28rem] overflow-y-auto">
           <ul className="divide-y divide-[var(--mc-border)]">

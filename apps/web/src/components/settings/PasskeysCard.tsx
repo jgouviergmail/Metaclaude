@@ -13,12 +13,14 @@ import { Fingerprint, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { PasskeyRecord } from '@metaclaude/shared';
+import { useT } from '@/lib/i18n';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, Button, Card, CardHeader, Input, Label } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { createPasskey, isCeremonyCancelled, passkeyDomainOk, passkeySupported } from '@/lib/passkeys';
 
 export function PasskeysCard() {
+  const t = useT();
   const queryClient = useQueryClient();
   const supported = passkeySupported();
   const domainOk = passkeyDomainOk();
@@ -49,11 +51,11 @@ export function PasskeysCard() {
     onSuccess: ({ passkey }) => {
       closeDialogs();
       void queryClient.invalidateQueries({ queryKey: ['passkeys'] });
-      toast.success(`"${passkey.label}" can now sign you in.`);
+      toast.success(t('"{label}" can now sign you in.', { label: passkey.label }));
     },
     onError: (error) => {
       if (isCeremonyCancelled(error)) return;
-      toast.error(error instanceof ApiError ? error.message : 'Could not add the passkey.');
+      toast.error(error instanceof ApiError ? error.message : t('Could not add the passkey.'));
     },
   });
 
@@ -62,10 +64,10 @@ export function PasskeysCard() {
     onSuccess: () => {
       closeDialogs();
       void queryClient.invalidateQueries({ queryKey: ['passkeys'] });
-      toast.success('Passkey removed.');
+      toast.success(t('Passkey removed.'));
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not remove the passkey.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not remove the passkey.')),
   });
 
   const list = passkeys.data?.passkeys ?? [];
@@ -73,22 +75,18 @@ export function PasskeysCard() {
   return (
     <Card>
       <CardHeader
-        title="Passkeys"
-        description="Sign in with your device's own unlock — Face ID, a fingerprint, a security key — instead of the password."
-        actions={list.length > 0 ? <Badge tone="success">{list.length} enrolled</Badge> : null}
+        title={t('Passkeys')}
+        description={t("Sign in with your device's own unlock — Face ID, a fingerprint, a security key — instead of the password.")}
+        actions={list.length > 0 ? <Badge tone="success">{t('{n} enrolled', { n: list.length })}</Badge> : null}
       />
       <div className="space-y-3 px-4 pb-4">
         {!supported ? (
           <p className="text-[12.5px] leading-relaxed text-muted">
-            This browser does not support passkeys (WebAuthn). Password and authenticator-app
-            sign-in are unaffected.
+            {t('This browser does not support passkeys (WebAuthn). Password and authenticator-app sign-in are unaffected.')}
           </p>
         ) : !domainOk ? (
           <p className="text-[12.5px] leading-relaxed text-muted">
-            Passkeys need a domain name: the WebAuthn standard scopes a credential to a domain,
-            and this deployment is being reached by IP address. Give the server a hostname
-            (METACLAUDE_SITE — see the deployment guide) and enrol from there. Password and
-            authenticator-app sign-in are unaffected.
+            {t('Passkeys need a domain name: the WebAuthn standard scopes a credential to a domain, and this deployment is being reached by IP address. Give the server a hostname (METACLAUDE_SITE — see the deployment guide) and enrol from there. Password and authenticator-app sign-in are unaffected.')}
           </p>
         ) : (
           <>
@@ -102,14 +100,14 @@ export function PasskeysCard() {
                       <p className="truncate text-[11.5px] text-subtle">
                         {passkey.rpId}
                         {passkey.lastUsedAt
-                          ? ` · last used ${new Date(passkey.lastUsedAt).toLocaleDateString()}`
-                          : ' · never used'}
+                          ? ` · ${t('last used')} ${new Date(passkey.lastUsedAt).toLocaleDateString()}`
+                          : ` · ${t('never used')}`}
                       </p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      aria-label={`Remove ${passkey.label}`}
+                      aria-label={t('Remove {label}', { label: passkey.label })}
                       onClick={() => {
                         setRemoving(passkey);
                         setPassword('');
@@ -122,8 +120,7 @@ export function PasskeysCard() {
               </ul>
             ) : (
               <p className="text-[12.5px] text-muted">
-                No passkey yet. The password keeps working either way — a passkey is an
-                addition, never a replacement.
+                {t('No passkey yet. The password keeps working either way — a passkey is an addition, never a replacement.')}
               </p>
             )}
             <Button
@@ -136,7 +133,7 @@ export function PasskeysCard() {
               }}
             >
               <Fingerprint className="size-3.5" aria-hidden />
-              Add a passkey
+              {t('Add a passkey')}
             </Button>
           </>
         )}
@@ -146,13 +143,13 @@ export function PasskeysCard() {
       <Modal
         open={adding}
         onOpenChange={(open) => (open ? setAdding(true) : closeDialogs())}
-        title="Add a passkey"
-        description="Your password confirms it is you; your device then creates the passkey."
+        title={t('Add a passkey')}
+        description={t('Your password confirms it is you; your device then creates the passkey.')}
         size="sm"
         footer={
           <>
             <Button variant="ghost" size="sm" onClick={closeDialogs}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -161,25 +158,25 @@ export function PasskeysCard() {
               disabled={!password}
               onClick={() => add.mutate()}
             >
-              Create
+              {t('Create')}
             </Button>
           </>
         }
       >
         <div className="space-y-3">
-          <Label htmlFor="passkey-label" hint="So you can tell your devices apart later.">
-            Name
+          <Label htmlFor="passkey-label" hint={t('So you can tell your devices apart later.')}>
+            {t('Name')}
             <Input
               id="passkey-label"
               value={label}
               onChange={(event) => setLabel(event.target.value)}
-              placeholder="This phone"
+              placeholder={t('This phone')}
               maxLength={60}
               className="mt-1.5"
             />
           </Label>
           <Label htmlFor="passkey-add-pw">
-            Password
+            {t('Password')}
             <Input
               id="passkey-add-pw"
               type="password"
@@ -198,8 +195,8 @@ export function PasskeysCard() {
       <Modal
         open={removing !== null}
         onOpenChange={(open) => (open ? undefined : closeDialogs())}
-        title={`Remove "${removing?.label ?? ''}"`}
-        description="That device will no longer sign you in. Removing a sign-in method needs your password."
+        title={t('Remove "{label}"', { label: removing?.label ?? '' })}
+        description={t('That device will no longer sign you in. Removing a sign-in method needs your password.')}
         size="sm"
         footer={
           <>
@@ -213,13 +210,13 @@ export function PasskeysCard() {
               disabled={!password}
               onClick={() => removing && remove.mutate(removing)}
             >
-              Remove
+              {t('Remove')}
             </Button>
           </>
         }
       >
         <Label htmlFor="passkey-remove-pw">
-          Password
+          {t('Password')}
           <Input
             id="passkey-remove-pw"
             type="password"

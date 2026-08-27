@@ -20,7 +20,7 @@ Claude Code is excellent in a terminal. This gives it the rest of an operating
 system around it:
 
 - **A real interface**, on every device you own. Installable as a PWA, usable
-  one-handed on a phone.
+  one-handed on a phone — in English or in French.
 - **Memory that persists** across sessions and projects — and that is retrieved
   automatically into the runs where it helps.
 - **A policy that learns.** Which model and effort level actually works for which

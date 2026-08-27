@@ -24,6 +24,7 @@ import {
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useT } from '@/lib/i18n';
 import { api } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
 
@@ -37,6 +38,7 @@ interface Action {
 }
 
 export function CommandPalette() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -112,7 +114,7 @@ export function CommandPalette() {
   for (const run of runData?.runs ?? []) {
     actions.push({
       id: `run-${run.id}`,
-      label: run.prompt.split('\n')[0]?.slice(0, 80) ?? 'Untitled run',
+      label: run.prompt.split('\n')[0]?.slice(0, 80) ?? t('Untitled run'),
       hint: `${run.status} · ${formatRelative(run.startedAt)}`,
       icon: <MessageSquare />,
       group: 'Recent sessions',
@@ -137,19 +139,19 @@ export function CommandPalette() {
       )}
     >
       <Command.Input
-        placeholder="Search workspaces, sessions and commands…"
+        placeholder={t('Search workspaces, sessions and commands…')}
         className="h-12 w-full border-b border-line bg-transparent px-4 text-[15px] text-ink outline-none placeholder:text-subtle"
       />
 
       <Command.List className="max-h-[min(26rem,60vh)] overflow-y-auto p-2">
         <Command.Empty className="px-3 py-8 text-center text-[13px] text-muted">
-          Nothing matches that.
+          {t('Nothing matches that.')}
         </Command.Empty>
 
         {groups.map((group) => (
           <Command.Group
             key={group}
-            heading={group}
+            heading={t(group)}
             className="mb-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-subtle"
           >
             {actions
@@ -157,7 +159,7 @@ export function CommandPalette() {
               .map((action) => (
                 <Command.Item
                   key={action.id}
-                  value={`${action.label} ${action.hint ?? ''}`}
+                  value={`${t(action.label)} ${action.hint ? t(action.hint) : ''}`}
                   onSelect={action.run}
                   className={cn(
                     'flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px]',
@@ -165,10 +167,10 @@ export function CommandPalette() {
                   )}
                 >
                   <span className="shrink-0 text-subtle [&>svg]:size-4">{action.icon}</span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{action.label}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{t(action.label)}</span>
                   {action.hint ? (
                     <span className="max-w-[45%] shrink-0 truncate text-[11.5px] text-subtle">
-                      {action.hint}
+                      {t(action.hint)}
                     </span>
                   ) : null}
                 </Command.Item>

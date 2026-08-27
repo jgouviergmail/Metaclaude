@@ -14,6 +14,7 @@
 import { AlertTriangle, Check, Clock, ShieldQuestion, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ApprovalRequest } from '@metaclaude/shared';
+import { useT } from '@/lib/i18n';
 import { Badge, Button, Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +37,7 @@ export function ApprovalCard({
   request: ApprovalRequest;
   onDecide: (approved: boolean, remember: boolean) => void | Promise<void>;
 }) {
+  const t = useT();
   const [remember, setRemember] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [remaining, setRemaining] = useState(() =>
@@ -177,14 +179,14 @@ export function ApprovalCard({
                 request.risk === 'high' ? 'danger' : request.risk === 'medium' ? 'warning' : 'accent'
               }
             >
-              {risk.label}
+              {t(risk.label)}
             </Badge>
             <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[11px] text-muted">
               {request.toolName}
             </code>
 
             {remaining > 0 ? (
-              <Tooltip content="Unanswered prompts are declined automatically.">
+              <Tooltip content={t('Unanswered prompts are declined automatically.')}>
                 <span className="ml-auto flex cursor-help items-center gap-1 text-[11px] tabular-nums text-subtle">
                   <Clock className="size-3" aria-hidden />
                   {formatCountdown(remaining)}
@@ -193,7 +195,7 @@ export function ApprovalCard({
             ) : null}
           </div>
 
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">{risk.blurb}</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{t(risk.blurb)}</p>
         </div>
       </div>
 
@@ -218,7 +220,7 @@ export function ApprovalCard({
 
       {request.reason ? (
         <p className="mx-4 mt-2 text-[12px] leading-relaxed text-muted">
-          <span className="font-medium text-ink">Why you are being asked: </span>
+          <span className="font-medium text-ink">{t('Why you are being asked:')} </span>
           {request.reason}
         </p>
       ) : null}
@@ -235,13 +237,13 @@ export function ApprovalCard({
           autoFocus={mayClaimFocus}
         >
           <X className="size-4" aria-hidden />
-          Deny
+          {t('Deny')}
           <kbd className="ml-1 hidden rounded bg-black/20 px-1 text-[10px] sm:inline">Esc</kbd>
         </Button>
 
         <Button variant="success" size="sm" onClick={() => decide(true)} disabled={submitting}>
           <Check className="size-4" aria-hidden />
-          Allow
+          {t('Allow')}
         </Button>
 
         {/* "Always allow" is withheld for high-risk calls by design. */}
@@ -253,11 +255,11 @@ export function ApprovalCard({
               onChange={(event) => setRemember(event.target.checked)}
               className="size-3.5 accent-[var(--mc-accent)]"
             />
-            Remember for this session
+            {t('Remember for this session')}
           </label>
         ) : (
           <span className="ml-auto text-[11px] text-danger">
-            High-risk actions are always asked individually.
+            {t('High-risk actions are always asked individually.')}
           </span>
         )}
       </div>

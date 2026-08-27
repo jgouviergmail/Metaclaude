@@ -8,6 +8,7 @@
 
 import { Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useT } from '@/lib/i18n';
 import { socket, type ConnectionState } from '@/lib/socket';
 import { Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,7 @@ const COPY: Record<ConnectionState, { label: string; detail: string }> = {
 };
 
 export function ConnectionBadge() {
+  const t = useT();
   const [state, setState] = useState<ConnectionState>(socket.connectionState);
 
   useEffect(() => socket.onState(setState), []);

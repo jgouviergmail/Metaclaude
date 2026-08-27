@@ -12,6 +12,7 @@ import type { BoardTask, TaskStatus } from '@metaclaude/shared';
 import type { DropTarget } from '@/lib/touch-drag';
 import { TaskCard } from './TaskCard';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export function BoardColumn({
   status,
@@ -37,6 +38,7 @@ export function BoardColumn({
   /** Where a touch drag currently hovers, for the same highlight native drag gets. */
   touchTarget?: DropTarget | null;
 }) {
+  const t = useT();
   const [dragOver, setDragOver] = useState(false);
   const touchOver =
     touchTarget != null &&
@@ -46,20 +48,20 @@ export function BoardColumn({
 
   return (
     <section
-      aria-label={`${label} column`}
+      aria-label={t('{column} column', { column: t(label) })}
       data-column={status}
       className={cn(
         'flex h-full w-[280px] shrink-0 snap-start flex-col rounded-2xl border border-line bg-raised/40 sm:w-[300px]',
         touchOver && 'border-accent bg-accent-soft/30',
       )}
     >
-      <header className="flex items-center gap-2 px-3 pb-2 pt-3" title={hint}>
-        <h2 className="text-[13px] font-semibold tracking-tight text-ink">{label}</h2>
+      <header className="flex items-center gap-2 px-3 pb-2 pt-3" title={t(hint)}>
+        <h2 className="text-[13px] font-semibold tracking-tight text-ink">{t(label)}</h2>
         <span className="text-[12px] text-subtle">{tasks.length}</span>
         <button
           type="button"
           onClick={() => onQuickAdd(status)}
-          aria-label={`Add a task to ${label}`}
+          aria-label={t('Add a task to {column}', { column: t(label) })}
           className="ml-auto rounded-md p-1 text-muted transition-colors hover:bg-surface hover:text-ink"
         >
           <Plus className="size-4" aria-hidden />

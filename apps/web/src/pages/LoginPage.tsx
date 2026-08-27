@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { APP_NAME } from '@metaclaude/shared';
 import { api, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { assertPasskey, isCeremonyCancelled, passkeyDomainOk, passkeySupported } from '@/lib/passkeys';
 import { useAuthStore } from '@/lib/store';
 import { Button, Input, Label } from '@/components/ui/primitives';
@@ -20,6 +21,7 @@ import { Button, Input, Label } from '@/components/ui/primitives';
 export function LoginPage() {
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
+  const t = useT();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -59,7 +61,7 @@ export function LoginPage() {
       // Closing the browser's passkey sheet is a choice, not an error.
       if (isCeremonyCancelled(caught)) return;
       setError(
-        caught instanceof ApiError ? caught.message : 'That passkey did not sign in. Try your password.',
+        caught instanceof ApiError ? caught.message : t('That passkey did not sign in. Try your password.'),
       );
     } finally {
       setBusy(false);
@@ -89,7 +91,7 @@ export function LoginPage() {
       const message =
         caught instanceof ApiError
           ? caught.message
-          : 'Could not reach the server. Check that it is running.';
+          : t('Could not reach the server. Check that it is running.');
       setError(message);
       // A rejected code is far more often a typo than a wrong password, so keep
       // the operator on the code step rather than sending them back.
@@ -106,13 +108,13 @@ export function LoginPage() {
           <Logo />
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-ink">{APP_NAME}</h1>
-            <p className="mt-1 text-[13px] text-muted">Your private agentic OS.</p>
+            <p className="mt-1 text-[13px] text-muted">{t('Your private agentic OS.')}</p>
           </div>
         </div>
 
         {bootstrap?.needsBootstrap ? (
           <div className="mb-4 rounded-xl border border-warning/30 bg-warning-soft/40 p-4 text-[13px] leading-relaxed text-ink">
-            <p className="font-medium">No account exists yet.</p>
+            <p className="font-medium">{t('No account exists yet.')}</p>
             <p className="mt-1 text-muted">
               Set <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_USER</code> and{' '}
               <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_PASSWORD</code> in your{' '}
@@ -128,7 +130,7 @@ export function LoginPage() {
           {!needsTotp ? (
             <>
               <Label htmlFor="username">
-                Username
+                {t('Username')}
                 <Input
                   id="username"
                   value={username}
@@ -141,7 +143,7 @@ export function LoginPage() {
               </Label>
 
               <Label htmlFor="password">
-                Password
+                {t('Password')}
                 <Input
                   id="password"
                   type="password"
@@ -157,11 +159,11 @@ export function LoginPage() {
             <>
               <div className="flex items-center gap-2 rounded-lg bg-accent-soft px-3 py-2 text-[13px] text-accent">
                 <ShieldCheck className="size-4 shrink-0" aria-hidden />
-                Enter the code from your authenticator app.
+                {t('Enter the code from your authenticator app.')}
               </div>
 
-              <Label htmlFor="totp" hint="A recovery code also works here.">
-                Verification code
+              <Label htmlFor="totp" hint={t('A recovery code also works here.')}>
+                {t('Verification code')}
                 <Input
                   id="totp"
                   ref={totpRef}
@@ -175,7 +177,7 @@ export function LoginPage() {
                   autoComplete="one-time-code"
                   autoCapitalize="characters"
                   spellCheck={false}
-                  placeholder="123456 or ABCDE-FGHJK"
+                  placeholder={t('123456 or ABCDE-FGHJK')}
                   required
                   className="mt-1.5 text-center font-mono text-lg tracking-[0.35em]"
                 />
@@ -191,7 +193,7 @@ export function LoginPage() {
 
           <Button type="submit" variant="primary" size="lg" className="w-full" loading={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
-            {needsTotp ? 'Verify' : 'Sign in'}
+            {needsTotp ? t('Verify') : t('Sign in')}
           </Button>
 
           {needsTotp ? (
@@ -204,7 +206,7 @@ export function LoginPage() {
               }}
               className="w-full text-center text-[12.5px] text-muted hover:text-ink"
             >
-              Use a different account
+              {t('Use a different account')}
             </button>
           ) : null}
 
@@ -212,7 +214,7 @@ export function LoginPage() {
             <>
               <div className="flex items-center gap-3 text-[11px] uppercase tracking-wide text-subtle">
                 <span className="h-px flex-1 bg-line" aria-hidden />
-                or
+                {t('or')}
                 <span className="h-px flex-1 bg-line" aria-hidden />
               </div>
               <Button
@@ -224,14 +226,14 @@ export function LoginPage() {
                 onClick={() => void signInWithPasskey()}
               >
                 <Fingerprint className="size-4" aria-hidden />
-                Sign in with a passkey
+                {t('Sign in with a passkey')}
               </Button>
             </>
           ) : null}
         </form>
 
         <p className="mt-6 text-center text-[11.5px] leading-relaxed text-subtle">
-          This instance is private. Every action is recorded in a hash-chained audit log.
+          {t('This instance is private. Every action is recorded in a hash-chained audit log.')}
         </p>
       </div>
     </div>

@@ -22,6 +22,7 @@ import { Menu, MenuItem } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
 import { Button, EmptyState, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import {
   boardCounts,
   filterByAssignee,
@@ -41,6 +42,7 @@ const WHO_FILTERS: Array<{ value: AssigneeFilter; label: string }> = [
 ];
 
 export function BoardPage() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -85,7 +87,7 @@ export function BoardPage() {
   /* -- Mutations ---------------------------------------------------------- */
 
   const onError = (error: unknown): void => {
-    toast.error(error instanceof ApiError ? error.message : 'The board did not accept that.');
+    toast.error(error instanceof ApiError ? error.message : t('The board did not accept that.'));
     void queryClient.invalidateQueries({ queryKey: ['board', workspaceId] });
   };
 
@@ -98,9 +100,9 @@ export function BoardPage() {
   const workBoard = useMutation({
     mutationFn: () => api.workBoard(workspaceId as string),
     onSuccess: (outcome) => {
-      if (outcome.started) toast.success(`Started "${outcome.started.title}".`);
-      else if (outcome.reason === 'busy') toast.info('A card is already being worked — one at a time.');
-      else toast.info('Nothing unblocked in To do.');
+      if (outcome.started) toast.success(t('Started "{title}".', { title: outcome.started.title }));
+      else if (outcome.reason === 'busy') toast.info(t('A card is already being worked — one at a time.'));
+      else toast.info(t('Nothing unblocked in To do.'));
     },
     onError,
   });
@@ -152,8 +154,8 @@ export function BoardPage() {
     <AppShell>
     <div className="flex h-full min-h-0 flex-col">
       <ContentHeader
-        title="Board"
-        subtitle="What is captured, moving, and done — for you and the agents alike."
+        title={t('Board')}
+        subtitle={t('What is captured, moving, and done — for you and the agents alike.')}
         actions={
           <div className="flex items-center gap-2">
             <Menu
@@ -162,7 +164,7 @@ export function BoardPage() {
                   type="button"
                   className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] text-ink hover:border-accent"
                 >
-                  {workspace?.name ?? 'Workspace'}
+                  {workspace?.name ?? t('Workspace')}
                   <ChevronDown className="size-3.5" aria-hidden />
                 </button>
               }
@@ -185,10 +187,10 @@ export function BoardPage() {
               onClick={() => workBoard.mutate()}
             >
               <Play className="size-3.5" aria-hidden />
-              Work the board
+              {t('Work the board')}
             </Button>
             <Button variant="primary" size="sm" onClick={() => setCreating('todo')} disabled={!workspaceId}>
-              New task
+              {t('New task')}
             </Button>
           </div>
         }
@@ -201,8 +203,8 @@ export function BoardPage() {
       ) : !workspaceId ? (
         <EmptyState
           icon={<SquareKanban />}
-          title="No workspace yet"
-          description="Create a workspace first — its board comes with it."
+          title={t('No workspace yet')}
+          description={t('Create a workspace first — its board comes with it.')}
         />
       ) : (
         <>
@@ -226,7 +228,7 @@ export function BoardPage() {
               ))}
             </div>
             <p className="ml-auto text-[12px] text-muted">
-              {counts.total} card{counts.total === 1 ? '' : 's'}
+              {t('{n} card(s)', { n: counts.total })}
               {counts.working > 0 ? (
                 <span className="text-accent"> · {counts.working} being worked</span>
               ) : null}
@@ -275,12 +277,12 @@ export function BoardPage() {
         onOpenChange={(open) => {
           if (!open) setCreating(null);
         }}
-        title="New task"
-        description={creating ? `Lands in ${TASK_COLUMNS.find((column) => column.status === creating)?.label}.` : undefined}
+        title={t('New task')}
+        description={creating ? t('Lands in {column}.', { column: t(TASK_COLUMNS.find((column) => column.status === creating)?.label ?? '') }) : undefined}
         footer={
           <div className="flex w-full justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setCreating(null)}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -288,7 +290,7 @@ export function BoardPage() {
               disabled={!newTitle.trim() || create.isPending}
               onClick={() => create.mutate()}
             >
-              Create
+              {t('Create')}
             </Button>
           </div>
         }
@@ -301,28 +303,28 @@ export function BoardPage() {
           }}
         >
           <div className="space-y-2">
-            <Label htmlFor="new-task-title">Title</Label>
+            <Label htmlFor="new-task-title">{t('Title')}</Label>
             <Input
               id="new-task-title"
               value={newTitle}
               onChange={(event) => setNewTitle(event.target.value)}
               maxLength={300}
               autoFocus
-              placeholder="What needs doing?"
+              placeholder={t('What needs doing?')}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="new-task-description">Description (optional)</Label>
+            <Label htmlFor="new-task-description">{t('Description (optional)')}</Label>
             <Textarea
               id="new-task-description"
               rows={3}
               value={newDescription}
               onChange={(event) => setNewDescription(event.target.value)}
-              placeholder="What done looks like, constraints, links…"
+              placeholder={t('What done looks like, constraints, links…')}
             />
           </div>
           <div className="space-y-2">
-            <Label>Priority</Label>
+            <Label>{t('Priority')}</Label>
             <div className="flex gap-1.5">
               {(['low', 'normal', 'high', 'urgent'] as TaskPriority[]).map((priority) => (
                 <button
@@ -336,7 +338,7 @@ export function BoardPage() {
                       : 'rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-muted hover:text-ink'
                   }
                 >
-                  {priority}
+                  {t(priority)}
                 </button>
               ))}
             </div>

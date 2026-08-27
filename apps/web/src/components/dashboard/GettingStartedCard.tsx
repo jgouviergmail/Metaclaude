@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Circle, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useT } from '@/lib/i18n';
 import { Button, Card, CardHeader } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { onboardingDone, onboardingSteps } from '@/lib/onboarding';
@@ -27,6 +28,7 @@ function readDismissed(): boolean {
 }
 
 export function GettingStartedCard() {
+  const t = useT();
   const user = useAuthStore((state) => state.user);
   const [dismissed, setDismissed] = useState(readDismissed);
   const owner = user?.role === 'owner';
@@ -86,10 +88,10 @@ export function GettingStartedCard() {
   return (
     <Card>
       <CardHeader
-        title="Getting set up"
-        description={`${remaining} step${remaining > 1 ? 's' : ''} left before everything this can do is switched on.`}
+        title={t('Getting set up')}
+        description={t('{n} step(s) left before everything this can do is switched on.', { n: remaining })}
         actions={
-          <Button variant="ghost" size="icon" aria-label="Dismiss the checklist" onClick={dismiss}>
+          <Button variant="ghost" size="icon" aria-label={t('Dismiss the checklist')} onClick={dismiss}>
             <X className="size-4" />
           </Button>
         }
@@ -112,10 +114,10 @@ export function GettingStartedCard() {
                     step.done ? 'text-[13px] text-muted line-through' : 'text-[13px] font-medium text-ink'
                   }
                 >
-                  {step.label}
+                  {t(step.label)}
                 </span>
                 {!step.done ? (
-                  <span className="block text-[12px] leading-relaxed text-muted">{step.detail}</span>
+                  <span className="block text-[12px] leading-relaxed text-muted">{t(step.detail)}</span>
                 ) : null}
               </span>
             </Link>

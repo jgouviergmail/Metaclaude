@@ -71,8 +71,15 @@ with their count — it clears the moment the last one is decided.
 
 ## Appearance
 
-Light, dark, or follow the system. The whole interface is built on one token
-set, so both themes are first-class — including the charts.
+**Language.** The interface speaks English and French; the switch lives here,
+the choice sticks to this browser, and a browser already set to French starts
+in French. Each language names itself in itself, so you can always find the
+way back. The guide you are reading and the changelog stay in English for
+now, as does text the server or the CLI produces (error messages, doctor
+verdicts, transcripts).
+
+**Theme.** Light, dark, or follow the system. The whole interface is built on
+one token set, so both themes are first-class — including the charts.
 
 ## System, doctor and updates
 

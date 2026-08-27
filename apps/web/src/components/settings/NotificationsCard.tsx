@@ -13,11 +13,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useT } from '@/lib/i18n';
 import { Badge, Button, Card, CardHeader } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
 
 export function NotificationsCard() {
+  const t = useT();
   const queryClient = useQueryClient();
   const supported = pushSupported();
   const [endpoint, setEndpoint] = useState<string | null>(null);
@@ -57,13 +59,13 @@ export function NotificationsCard() {
     onSuccess: (next) => {
       setEndpoint(next);
       void queryClient.invalidateQueries({ queryKey: ['push-status'] });
-      toast.success('This device now receives notifications.');
+      toast.success(t('This device now receives notifications.'));
     },
     onError: (error) =>
       toast.error(
         error instanceof ApiError || error instanceof Error
           ? error.message
-          : 'Could not enable notifications.',
+          : t('Could not enable notifications.'),
       ),
   });
 
@@ -75,7 +77,7 @@ export function NotificationsCard() {
     onSuccess: () => {
       setEndpoint(null);
       void queryClient.invalidateQueries({ queryKey: ['push-status'] });
-      toast.success('This device will no longer be notified.');
+      toast.success(t('This device will no longer be notified.'));
     },
   });
 
@@ -86,31 +88,31 @@ export function NotificationsCard() {
     // subscribed" — devices exist but every delivery failed.
     onSuccess: (outcome) => {
       if (outcome.sent > 0) {
-        toast.success(`Sent to ${outcome.sent} device${outcome.sent > 1 ? 's' : ''}.`);
+        toast.success(t('Sent to {n} device(s).', { n: outcome.sent }));
       } else if (outcome.devices === 0) {
-        toast.success('No device is subscribed yet.');
+        toast.success(t('No device is subscribed yet.'));
       } else {
         toast.error(
-          `${outcome.devices} device${outcome.devices > 1 ? 's are' : ' is'} subscribed but the test could not be delivered${
-            outcome.lastError ? ` — ${outcome.lastError}` : ''
-          }.`,
+          t('{n} device(s) subscribed but the test could not be delivered{err}.', {
+            n: outcome.devices,
+            err: outcome.lastError ? ` — ${outcome.lastError}` : '',
+          }),
         );
       }
     },
-    onError: () => toast.error('The test notification could not be sent.'),
+    onError: () => toast.error(t('The test notification could not be sent.')),
   });
 
   return (
     <Card>
       <CardHeader
-        title="Notifications"
-        description="A push when a run waits on your approval, and when a run you started ends. Automations stay silent by design."
+        title={t('Notifications')}
+        description={t('A push when a run waits on your approval, and when a run you started ends. Automations stay silent by design.')}
       />
       <div className="space-y-3 px-4 pb-4">
         {!supported ? (
           <p className="text-[12.5px] leading-relaxed text-muted">
-            This browser cannot receive push notifications. On iPhone and iPad they need the app
-            installed to the Home Screen (Share → Add to Home Screen), then enabled from here.
+            {t('This browser cannot receive push notifications. On iPhone and iPad they need the app installed to the Home Screen (Share → Add to Home Screen), then enabled from here.')}
           </p>
         ) : (
           <>
@@ -119,13 +121,13 @@ export function NotificationsCard() {
                 <>
                   <Badge tone="success">
                     <BellRing className="size-3" aria-hidden />
-                    this device is subscribed
+                    {t('this device is subscribed')}
                   </Badge>
                   <Button variant="secondary" size="sm" loading={test.isPending} onClick={() => test.mutate()}>
-                    Send a test
+                    {t('Send a test')}
                   </Button>
                   <Button variant="ghost" size="sm" loading={disable.isPending} onClick={() => disable.mutate()}>
-                    Disable here
+                    {t('Disable here')}
                   </Button>
                 </>
               ) : (
@@ -136,15 +138,15 @@ export function NotificationsCard() {
                   onClick={() => enable.mutate()}
                 >
                   <BellRing className="size-3.5" aria-hidden />
-                  Enable on this device
+                  {t('Enable on this device')}
                 </Button>
               )}
             </div>
             <p className="text-[12px] text-subtle">
               {status.data
-                ? `${status.data.devices} device${status.data.devices === 1 ? '' : 's'} subscribed across the deployment.`
-                : 'Reading the push status…'}{' '}
-              The app icon also shows a badge while approvals wait.
+                ? t('{n} device(s) subscribed across the deployment.', { n: status.data.devices })
+                : t('Reading the push status…')}{' '}
+              {t('The app icon also shows a badge while approvals wait.')}
             </p>
           </>
         )}

@@ -21,6 +21,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge, Button, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
 import { toast } from 'sonner';
 import { cn, formatRelative } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
 
@@ -35,6 +36,7 @@ export function TaskDrawer({
   taskId: string | null;
   onClose: () => void;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const detail = useQuery({
     queryKey: ['task', taskId],
@@ -60,7 +62,7 @@ export function TaskDrawer({
     if (task) void queryClient.invalidateQueries({ queryKey: ['board', task.workspaceId] });
   };
   const onError = (error: unknown): void => {
-    toast.error(error instanceof ApiError ? error.message : 'The board did not accept that.');
+    toast.error(error instanceof ApiError ? error.message : t('The board did not accept that.'));
   };
 
   const save = useMutation({
@@ -112,7 +114,7 @@ export function TaskDrawer({
   const runTask = useMutation({
     mutationFn: () => api.runTask(taskId as string),
     onSuccess: () => {
-      toast.success('Sent to the agent — the card comes back in review.');
+      toast.success(t('Sent to the agent — the card comes back in review.'));
       refresh();
     },
     onError,
@@ -129,7 +131,7 @@ export function TaskDrawer({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={task ? (task.archivedAt ? 'Archived task' : columnLabel(task.status)) : 'Task'}
+      title={task ? (task.archivedAt ? t('Archived task') : t(columnLabel(task.status))) : t('Task')}
       size="lg"
       footer={
         task ? (
@@ -137,23 +139,23 @@ export function TaskDrawer({
             {task.archivedAt === null ? (
               <Button variant="ghost" size="sm" onClick={() => archive.mutate()}>
                 <Archive className="size-3.5" aria-hidden />
-                Archive
+                {t('Archive')}
               </Button>
             ) : (
               <>
                 <Button variant="ghost" size="sm" onClick={() => restore.mutate()}>
                   <ArchiveRestore className="size-3.5" aria-hidden />
-                  Restore
+                  {t('Restore')}
                 </Button>
                 <Button variant="danger" size="sm" onClick={() => remove.mutate()}>
                   <Trash2 className="size-3.5" aria-hidden />
-                  Delete forever
+                  {t('Delete forever')}
                 </Button>
               </>
             )}
             <div className="ml-auto flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={onClose}>
-                Close
+                {t('Close')}
               </Button>
               <Button
                 variant="primary"
@@ -161,7 +163,7 @@ export function TaskDrawer({
                 disabled={!dirty || title.trim().length === 0}
                 onClick={() => save.mutate({ title: title.trim(), description })}
               >
-                Save
+                {t('Save')}
               </Button>
             </div>
           </div>
@@ -175,18 +177,18 @@ export function TaskDrawer({
       ) : (
         <div className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="task-title">Title</Label>
+            <Label htmlFor="task-title">{t('Title')}</Label>
             <Input id="task-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={300} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="task-description">Description</Label>
+            <Label htmlFor="task-description">{t('Description')}</Label>
             <Textarea
               id="task-description"
               rows={4}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="What done looks like, constraints, links…"
+              placeholder={t('What done looks like, constraints, links…')}
             />
           </div>
 
@@ -194,7 +196,7 @@ export function TaskDrawer({
             <Menu
               trigger={
                 <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
-                  Priority: <span className="font-medium text-ink">{task.priority}</span>
+                  {t('Priority')}: <span className="font-medium text-ink">{t(task.priority)}</span>
                 </button>
               }
             >
@@ -204,7 +206,7 @@ export function TaskDrawer({
                   selected={priority === task.priority}
                   onSelect={() => save.mutate({ priority })}
                 >
-                  {priority}
+                  {t(priority)}
                 </MenuItem>
               ))}
             </Menu>
@@ -213,37 +215,37 @@ export function TaskDrawer({
               trigger={
                 <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
                   {task.assignee === 'agent' ? (
-                    <span className="inline-flex items-center gap-1"><Bot className="size-3.5" aria-hidden /> Agent</span>
+                    <span className="inline-flex items-center gap-1"><Bot className="size-3.5" aria-hidden /> {t('Agent')}</span>
                   ) : task.assignee === 'user' ? (
-                    <span className="inline-flex items-center gap-1"><UserIcon className="size-3.5" aria-hidden /> You</span>
+                    <span className="inline-flex items-center gap-1"><UserIcon className="size-3.5" aria-hidden /> {t('You')}</span>
                   ) : (
-                    'Unassigned'
+                    t('Unassigned')
                   )}
                 </button>
               }
             >
               <MenuItem selected={task.assignee === null} onSelect={() => save.mutate({ assignee: null })}>
-                Unassigned
+                {t('Unassigned')}
               </MenuItem>
               <MenuItem selected={task.assignee === 'user'} onSelect={() => save.mutate({ assignee: 'user' })}>
-                You
+                {t('You')}
               </MenuItem>
               <MenuItem
                 selected={task.assignee === 'agent'}
                 onSelect={() => save.mutate({ assignee: 'agent' })}
                 description={
                   task.status === 'review'
-                    ? 'Hands the card back — the agent starts working it'
-                    : "The workspace's agent — it can pick this card up"
+                    ? t('Hands the card back — the agent starts working it')
+                    : t("The workspace's agent — it can pick this card up")
                 }
               >
-                Agent
+                {t('Agent')}
               </MenuItem>
             </Menu>
 
             <Input
               type="date"
-              aria-label="Due date"
+              aria-label={t('Due date')}
               className="w-auto"
               value={task.dueAt ? new Date(task.dueAt).toISOString().slice(0, 10) : ''}
               onChange={(event) => {
@@ -254,7 +256,7 @@ export function TaskDrawer({
 
             {task.blockedReason ? (
               <Badge tone="warning" className="max-w-full">
-                <span className="truncate">blocked: {task.blockedReason}</span>
+                <span className="truncate">{t('blocked')}: {task.blockedReason}</span>
               </Badge>
             ) : null}
           </div>
@@ -269,13 +271,13 @@ export function TaskDrawer({
                       <span className="relative inline-flex size-2 rounded-full bg-accent" />
                     </span>
                     <Bot className="size-4 text-accent" aria-hidden />
-                    The agent is working this card
+                    {t('The agent is working this card')}
                   </span>
                   <Link
                     to={`/w/${task.workspaceId}/s/${run.sessionId}`}
                     className="inline-flex items-center gap-1 text-[12.5px] text-accent hover:underline"
                   >
-                    Watch the session
+                    {t('Watch the session')}
                     <ArrowRight className="size-3.5" aria-hidden />
                   </Link>
                 </>
@@ -288,17 +290,17 @@ export function TaskDrawer({
                     onClick={() => runTask.mutate()}
                   >
                     <Bot className="size-3.5" aria-hidden />
-                    {run ? 'Send back to the agent' : 'Send to the agent'}
+                    {run ? t('Send back to the agent') : t('Send to the agent')}
                   </Button>
                   <span className="text-[12px] text-muted">
-                    Runs this card in its own session; done stays your call.
+                    {t('Runs this card in its own session; done stays your call.')}
                   </span>
                   {run ? (
                     <Link
                       to={`/w/${task.workspaceId}/s/${run.sessionId}`}
                       className="inline-flex items-center gap-1 text-[12.5px] text-accent hover:underline"
                     >
-                      Last session
+                      {t('Last session')}
                       <ArrowRight className="size-3.5" aria-hidden />
                     </Link>
                   ) : null}
@@ -308,14 +310,14 @@ export function TaskDrawer({
           ) : null}
 
           <div className="space-y-1.5">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">Sub-tasks</h3>
+            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('Sub-tasks')}</h3>
             {detail.data && detail.data.children.length > 0 ? (
               <ul className="space-y-1">
                 {detail.data.children.map((child) => (
                   <li key={child.id} className="flex items-center gap-2 text-[13px] text-ink">
                     <span className={cn('size-1.5 rounded-full', child.status === 'done' ? 'bg-success' : 'bg-line')} aria-hidden />
                     <span className={cn('truncate', child.status === 'done' && 'text-muted line-through')}>{child.title}</span>
-                    <span className="ml-auto shrink-0 text-[11.5px] text-subtle">{columnLabel(child.status)}</span>
+                    <span className="ml-auto shrink-0 text-[11.5px] text-subtle">{t(columnLabel(child.status))}</span>
                   </li>
                 ))}
               </ul>
@@ -330,18 +332,18 @@ export function TaskDrawer({
               <Input
                 value={subTask}
                 onChange={(event) => setSubTask(event.target.value)}
-                placeholder="Break a piece out…"
-                aria-label="New sub-task"
+                placeholder={t('Break a piece out…')}
+                aria-label={t('New sub-task')}
                 maxLength={300}
               />
               <Button type="submit" variant="secondary" size="sm" disabled={!subTask.trim()}>
-                Add
+                {t('Add')}
               </Button>
             </form>
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">Comments</h3>
+            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('Comments')}</h3>
             <ul className="space-y-2">
               {(detail.data?.comments ?? []).map((entry) => (
                 <li key={entry.id} className="rounded-lg border border-line bg-raised/50 px-3 py-2">
@@ -364,11 +366,11 @@ export function TaskDrawer({
               <Input
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}
-                placeholder="Add a comment…"
-                aria-label="New comment"
+                placeholder={t('Add a comment…')}
+                aria-label={t('New comment')}
               />
               <Button type="submit" variant="secondary" size="sm" disabled={!comment.trim()}>
-                Send
+                {t('Send')}
               </Button>
             </form>
           </div>
@@ -380,7 +382,7 @@ export function TaskDrawer({
               className="inline-flex items-center gap-1.5 text-[12px] text-muted hover:text-ink"
             >
               <History className="size-3.5" aria-hidden />
-              {showHistory ? 'Hide history' : `History (${detail.data?.activity.length ?? 0})`}
+              {showHistory ? t('Hide history') : t('History ({n})', { n: detail.data?.activity.length ?? 0 })}
             </button>
             {showHistory ? (
               <ul className="mt-2 space-y-1 border-l border-line pl-3">
