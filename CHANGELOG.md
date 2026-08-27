@@ -11,6 +11,30 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-08-27
+
+### Changed
+
+- **The entry bundle sheds the API's paperwork.** Twenty-eight
+  request/response schemas only the API validates moved out of the module
+  the web's socket validation keeps alive, into
+  `packages/shared/src/api-contracts.ts` — a module nothing in the entry's
+  runtime graph imports, so the bundler drops it whole. The entry shrinks
+  by 1.2 kB gzipped *after* three feature lots landed the same day, the
+  bundle ratchet tightens for the first time (184 → 182), and every future
+  API-only contract is free. The rule now lives in CLAUDE.md.
+- **Long transcripts render lazily.** Each exchange carries
+  `content-visibility: auto`: sections far off screen skip layout and
+  paint entirely, which keeps a hundred-run session scrollable on a
+  phone — chosen over list virtualisation deliberately, since it cannot
+  interfere with scroll anchoring, find-in-page, or the DOM that tests
+  and tools see.
+- **Fixing an MCP server shows up without the wait.** Saving or deleting
+  an MCP server or a custom agent now drops the catalogue cache, so the
+  From Claude panel's next read reflects the change immediately instead
+  of up to a minute later — exactly the window an operator refreshes in
+  after fixing a server's command.
+
 ## [0.16.0] — 2026-08-27
 
 ### Added

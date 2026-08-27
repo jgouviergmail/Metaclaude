@@ -116,6 +116,10 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       ipAddress: requestIp(context, request),
       detail: agent.name,
     });
+    // The catalogue probe mounts what runs mount; a changed registry
+    // makes its cached answer stale for up to a minute — exactly the window
+    // an operator refreshes in after fixing a server. Drop it now.
+    context.claudeCatalogue.invalidate();
     return reply.status(parsed.data.id ? 200 : 201).send({ agent });
   });
 
@@ -129,6 +133,10 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       target: request.params.id,
       ipAddress: requestIp(context, request),
     });
+    // The catalogue probe mounts what runs mount; a changed registry
+    // makes its cached answer stale for up to a minute — exactly the window
+    // an operator refreshes in after fixing a server. Drop it now.
+    context.claudeCatalogue.invalidate();
     return reply.send({ ok: true });
   });
 
@@ -177,6 +185,10 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       // The env *keys* are safe to log; the values live only in the vault.
       detail: `${server.name} (${Object.keys(parsed.data.env).join(', ') || 'no secrets'})`,
     });
+    // The catalogue probe mounts what runs mount; a changed registry
+    // makes its cached answer stale for up to a minute — exactly the window
+    // an operator refreshes in after fixing a server. Drop it now.
+    context.claudeCatalogue.invalidate();
     return reply.status(parsed.data.id ? 200 : 201).send({ server });
   });
 
@@ -191,6 +203,10 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       target: request.params.id,
       ipAddress: requestIp(context, request),
     });
+    // The catalogue probe mounts what runs mount; a changed registry
+    // makes its cached answer stale for up to a minute — exactly the window
+    // an operator refreshes in after fixing a server. Drop it now.
+    context.claudeCatalogue.invalidate();
     return reply.send({ ok: true });
   });
 

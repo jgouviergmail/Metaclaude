@@ -128,7 +128,20 @@ export function MessageStream({
       >
         <div className="mx-auto max-w-4xl space-y-6">
           {groups.map((group) => (
-            <section key={group.runId} className="space-y-3" aria-label="Exchange">
+            <section
+              key={group.runId}
+              className="space-y-3"
+              aria-label="Exchange"
+              // Native lazy rendering for long transcripts: exchanges far off
+              // screen skip layout and paint entirely, which is what keeps a
+              // hundred-run session scrollable on a phone. The intrinsic-size
+              // hint keeps the scrollbar honest while they are skipped; a
+              // browser without the property simply renders everything, as
+              // before. Chosen over list virtualisation deliberately — same
+              // win, zero interference with scroll anchoring, find-in-page
+              // or the DOM the tests and tools see.
+              style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 320px' }}
+            >
               {/* What this run farmed out, in one line. The individual events
                   are scattered through the transcript wherever the delegation
                   happened, which answers "what happened next" and never "what

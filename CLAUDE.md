@@ -103,17 +103,19 @@ restates the code is noise; one that records a decision or a trap is not.
   name of a labelled control is its `<label>`'s text content, so a hint nested
   inside the label is announced as part of the name however it is described.
   Move it out of the label — `components/ui/controls.tsx` does.
-- **Every Zod schema in `packages/shared` ships in the web app's entry chunk.**
+- **A Zod schema declared in `domain.ts` ships in the web app's entry chunk.**
   `parseWireFrame` validates socket frames, so `TranscriptEvent`, `Run`,
   `Session`, `ApprovalRequest` and everything they reference are genuinely
-  reachable and *should* be there. The rest — the request/response contracts
-  only the API validates — are retained too, because `z.object(...)` is a call
-  Rollup cannot prove side-effect-free, and `sideEffects: false` only lets it
-  drop a whole unused module, not a declaration inside a used one. Each new
-  contract therefore costs the entry roughly a kilobyte gzipped. To reclaim it,
-  move the API-only schemas into their own module that nothing in the entry's
-  runtime graph imports; annotating declarations `/*#__PURE__*/` also works and
-  is easier to get subtly wrong.
+  reachable and *should* be there — and because `z.object(...)` is a call
+  Rollup cannot prove side-effect-free, *everything else in the same module*
+  rides along: `sideEffects: false` only lets it drop a whole unused module,
+  never a declaration inside a used one. That is why
+  `packages/shared/src/api-contracts.ts` exists: the request/response schemas
+  only the API validates live there, nothing in the entry's runtime graph
+  imports it, and the whole module vanishes from the bundle (measured: −1.2 kB
+  gzip the day it was split). **A new API-only schema goes in `api-contracts.ts`,
+  not `domain.ts`** — and nothing the web runs at runtime (`protocol.ts` above
+  all) may ever import from it; type imports are fine everywhere.
 - **Naming a Vite manual chunk pulls it into the entry's graph.** `index.html`
   then emits `<link rel="modulepreload">` for it, which is the opposite of
   deferring it. Let the dynamic `import()` boundaries derive the chunks; see the
