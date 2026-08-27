@@ -11,6 +11,36 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-08-27
+
+### Added
+
+- **The everyday half of the library gains its experts.** Sixteen more
+  entries, aimed at the moments that actually cost money and sleep rather
+  than at the daily routine: a tax preparer, a housing navigator covering a
+  tenancy from the inventory to the deposit, a career coach, a caregiver
+  organiser for an ageing parent, a negotiator that fixes the walk-away
+  number before the conversation starts, and a gardener that plans by season
+  — with procedures beside them for a house move, an insurance claim, vehicle
+  paperwork, a CV and cover letter, interview preparation, health
+  administration, energy savings, school orientation, a sleep reset and a
+  digital-hygiene sweep. Fifty-six entries now.
+- **`career` joins the vocabulary**, between travel and general: a job search
+  is neither a domain of work nor a chore of the house, and filing it under
+  either made the chips lie. Thirteen categories, all covered — existing rows
+  are untouched, since the column is text with a `general` default and the
+  enum is the validator.
+- **A declared jurisdiction, enforced.** Administration is the one domain
+  where a good procedure stops being portable: a notice period, a tax ceiling
+  or an application calendar is a fact about one country, and a vague entry
+  would be useless where a concrete one is wrong. Entries that lean on a
+  national system open with a `Jurisdiction: France` line naming the portal
+  to confirm against — service-public.fr, impots.gouv.fr, ameli.fr,
+  ants.gouv.fr, Parcoursup — and instruct the agent to say what still holds
+  elsewhere. A catalogue test refuses any entry citing one of those services
+  without declaring the assumption, so the shelf cannot quietly become
+  France-only; proved by stripping one marker and watching it go red.
+
 ## [0.27.0] — 2026-08-27
 
 ### Added

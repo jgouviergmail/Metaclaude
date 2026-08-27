@@ -725,6 +725,7 @@ export const LibraryCategory = z.enum([
   'money',
   'learning',
   'travel',
+  'career',
   'general',
 ]);
 export type LibraryCategory = z.infer<typeof LibraryCategory>;

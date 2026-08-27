@@ -37,9 +37,29 @@ hosting, auditing subscriptions, deciding a big purchase, revising for an
 exam, practising a language, preparing a medical appointment and building
 the household inventory an insurance claim needs.
 
+Beyond the everyday, a set of entries goes deeper into the moments that
+actually cost money and sleep: a tax preparer, a housing navigator for the
+whole tenancy from inventory to deposit, a career coach, a caregiver
+organiser for an ageing parent, a negotiator that fixes the walk-away number
+before the conversation, a gardener that plans by season — and procedures for
+a house move, an insurance claim, vehicle paperwork, a CV and cover letter,
+interview preparation, health administration, energy savings, school
+orientation, a sleep reset and a digital-hygiene sweep.
+
 Each entry is written for the way this system delegates: the description
 tells the main agent *when* to reach for it, and the prompt states working
-rules rather than personality.
+rules rather than personality. Everything is in English — that is the
+language these models reason best in — while the agent answers you in
+whichever language you write.
+
+Administration is the one domain where a good procedure stops being
+portable, because a deadline or a ceiling is a fact about one country. Those
+entries open with a **`Jurisdiction: France`** line naming the portal to
+confirm against — service-public.fr, impots.gouv.fr, ameli.fr, ants.gouv.fr,
+Parcoursup — and instruct the agent to say what still holds and what changes
+if you are somewhere else. A catalogue test refuses any entry that cites a
+national service without declaring which one it assumes, so the shelf cannot
+quietly become France-only.
 
 Where a domain belongs to a professional, the entry says so in its own text
 and says what to bring to that appointment instead. The health and money
@@ -59,8 +79,8 @@ so a deleted copy can always be installed again.
 
 Skills and subagents carry a **category**, in two groups. The domains of
 work: engineering, writing, data, ops, research, product. The domains of a
-life: home, health, money, learning, travel. And **general** for what fits
-nowhere else — a taxonomy without an "everything else" drawer forces bad
+life: home, health, money, learning, travel, career. And **general** for what
+fits nowhere else — a taxonomy without an "everything else" drawer forces bad
 filing.
 
 The library filters by them, list entries wear them as badges, and both

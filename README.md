@@ -49,9 +49,10 @@ system around it:
   until a human decides.
 - **A library to start from, for work and for life.** A curated shelf of
   skills and subagents — code review, tests, debugging and security on one
-  side; meals, paperwork, budgets, trips, study and the household on the
-  other — installed with one click, disabled until you switch each one on.
-  Nothing here is specific to code, and the shelf finally says so.
+  side; meals, paperwork, budgets, trips, study, the household, tax, a
+  tenancy, a job search, a move and caring for a parent on the other —
+  installed with one click, disabled until you switch each one on. Nothing
+  here is specific to code, and the shelf finally says so.
 - **Passkeys.** Sign in with Face ID, a fingerprint or a security key —
   phishing-resistant WebAuthn, self-hosted, with password + TOTP intact
   underneath. (Needs a domain name: the standard cannot scope a passkey to
@@ -239,12 +240,16 @@ custom subagents, and MCP servers with credentials held in an AES-256-GCM vault.
 A built-in **library** ships a starter shelf of both — curated and versioned in
 this very repository rather than fetched from a store, installed disabled with
 one click. It has two halves: the work of building software, and the rest of a
-week (meals, admin, money, travel, learning, the house). Every definition
-carries a **category** — engineering, writing, data, ops, research, product,
-then home, health, money, learning, travel, and general — so the registry stays
-findable as it grows. Entries in domains that belong to a professional say so
-in their own working rules: the fitness plan and the budget are explicitly not
-medical or financial advice, and a test enforces it.
+week — the everyday (meals, trips, the week itself) and the expensive moments
+beside it (tax, a tenancy, a move, an insurance claim, a job search, an ageing
+parent). Every definition carries a **category** — engineering, writing, data,
+ops, research, product, then home, health, money, learning, travel, career, and
+general — so the registry stays findable as it grows. Entries in domains that
+belong to a professional say so in their own working rules: the fitness plan
+and the budget are explicitly not medical or financial advice, and a test
+enforces it. Entries that lean on a national system open with a
+`Jurisdiction: France` line naming the portal to confirm against, and a second
+test refuses any that cite one without declaring it.
 
 ### Where the usage went
 Analytics ranks every workspace against each other over the period — tokens,

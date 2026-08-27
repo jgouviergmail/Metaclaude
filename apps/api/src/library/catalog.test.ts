@@ -86,6 +86,26 @@ describe('the built-in library catalogue', () => {
     }
   });
 
+  it('names the jurisdiction whenever an entry leans on a national system', () => {
+    // Everyday administration is the one place a generic procedure stops being
+    // portable: a deposit deadline, a tax ceiling or an application calendar is
+    // a fact about one country. Entries that reach for a French portal are
+    // useful precisely because they are concrete, so the rule is not "stay
+    // vague" — it is "say which country you are in", in the text the model
+    // reads, so it can tell a reader elsewhere what still holds. Without this
+    // the shelf silently becomes France-only.
+    const NATIONAL = /service-public\.fr|impots\.gouv\.fr|ameli\.fr|ants\.gouv\.fr|parcoursup/i;
+
+    for (const entry of LIBRARY) {
+      const text = entry.kind === 'agent' ? entry.prompt : entry.body;
+      if (!NATIONAL.test(text)) continue;
+      expect(
+        text,
+        `${entry.name} cites a French service but never says "Jurisdiction: France"`,
+      ).toContain('Jurisdiction: France');
+    }
+  });
+
   it('writes every skill as a markdown procedure with a definition of done', () => {
     for (const entry of LIBRARY) {
       if (entry.kind !== 'skill') continue;
