@@ -6,7 +6,13 @@ import { execFile } from 'node:child_process';
 import { statfs } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import type { App } from '../http/types.js';
-import { APP_VERSION, ClaudeCredentialInput, type SystemHealth } from '@metaclaude/shared';
+import {
+  APP_VERSION,
+  ClaudeCredentialInput,
+  ClaudePairingBeginInput,
+  ClaudePairingCodeInput,
+  type SystemHealth,
+} from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOwner } from '../http/guards.js';
@@ -119,6 +125,48 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       ipAddress: request.ip,
     });
     return reply.send(status);
+  });
+
+  /**
+   * Guided pairing — the `setup-token` OAuth exchange run by the server, so
+   * the whole flow fits on a phone. Owner-only like the credential itself.
+   * What goes back to the browser is a sign-in URL and, at the end, the same
+   * status the credential routes return; the token never does.
+   */
+  app.post('/api/claude/pairing', async (request, reply) => {
+    const user = requireOwner(request);
+    const input = ClaudePairingBeginInput.parse(request.body ?? {});
+    const start = context.claudePairing.begin(input.account);
+    context.audit.record({
+      actor: user.username,
+      action: 'claude.pairing.start',
+      target: input.account,
+      outcome: 'success',
+      ipAddress: request.ip,
+    });
+    return reply.send(start);
+  });
+
+  app.post('/api/claude/pairing/code', async (request, reply) => {
+    const user = requireOwner(request);
+    const input = ClaudePairingCodeInput.parse(request.body);
+    const status = await context.claudePairing.complete(input.code);
+    context.audit.record({
+      actor: user.username,
+      action: 'claude.credential.set',
+      target: status.mode,
+      outcome: 'success',
+      ipAddress: request.ip,
+      // The value never reaches the audit log; the hint identifies it.
+      detail: status.hint ?? '',
+    });
+    return reply.send(status);
+  });
+
+  app.delete('/api/claude/pairing', async (request, reply) => {
+    requireOwner(request);
+    context.claudePairing.cancel();
+    return reply.send(context.claudePairing.status());
   });
 
   /* ------------------------------ Analytics ----------------------------- */

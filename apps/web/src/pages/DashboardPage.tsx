@@ -131,10 +131,14 @@ export function DashboardPage() {
               <div className="min-w-0 space-y-1 text-[13px] leading-relaxed">
                 <p className="font-medium text-ink">Claude is not authenticated.</p>
                 <p className="text-muted">
-                  Run <code className="rounded bg-raised px-1 font-mono text-[12px]">claude setup-token</code>{' '}
-                  on a machine where you are signed in with your Pro or Max plan, then set{' '}
-                  <code className="rounded bg-raised px-1 font-mono text-[12px]">CLAUDE_CODE_OAUTH_TOKEN</code>{' '}
-                  in <code className="rounded bg-raised px-1 font-mono text-[12px]">.env</code> and restart.
+                  Pair it from{' '}
+                  <Link to="/settings" className="font-medium text-accent underline-offset-2 hover:underline">
+                    Settings → System
+                  </Link>
+                  : sign in with your Pro or Max plan, paste back one code, done — no shell, no
+                  restart. A token from{' '}
+                  <code className="rounded bg-raised px-1 font-mono text-[12px]">claude setup-token</code>{' '}
+                  can be pasted there too.
                 </p>
               </div>
             </div>

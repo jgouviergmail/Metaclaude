@@ -1035,6 +1035,39 @@ export const ClaudeCredentialStatus = z.object({
 });
 export type ClaudeCredentialStatus = z.infer<typeof ClaudeCredentialStatus>;
 
+/**
+ * Guided pairing: the server runs the same OAuth exchange `claude setup-token`
+ * performs, so pairing needs no shell anywhere — the owner opens a link,
+ * approves, and pastes the code back.
+ *
+ * `account` picks the sign-in surface: a Pro/Max subscription lives on
+ * claude.ai, a Console (per-token billing) account on platform.claude.com.
+ * The code is what Claude's callback page displays — `code#state`, though the
+ * state half is optional here because some people copy only the first box.
+ */
+export const ClaudePairingBeginInput = z.object({
+  account: z.enum(['claudeai', 'console']).default('claudeai'),
+});
+export type ClaudePairingBeginInput = z.infer<typeof ClaudePairingBeginInput>;
+
+export const ClaudePairingCodeInput = z.object({
+  code: z.string().min(1, 'Paste the code first.').max(4096),
+});
+export type ClaudePairingCodeInput = z.infer<typeof ClaudePairingCodeInput>;
+
+/** Type-only on purpose: only the API builds these, so no runtime schema. */
+export interface ClaudePairingStart {
+  /** The authorization URL to open and approve. */
+  url: string;
+  /** When this attempt stops being accepted (epoch ms). */
+  expiresAt: number;
+}
+
+export interface ClaudePairingState {
+  active: boolean;
+  expiresAt: number | null;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Analytics                                                                   */
 /* -------------------------------------------------------------------------- */

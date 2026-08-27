@@ -1100,6 +1100,42 @@ describe('reading the CLI’s own catalogue', () => {
     expect(control.opened[0]).toMatchObject({ cwd: WORKSPACE });
   });
 
+  it('probes under the posture runs get, mounting what runs would mount', async () => {
+    // The panel's promise is "what Claude offers *here*" — and here means in
+    // a run. A probe that loaded servers runs never see, or missed the ones
+    // they do, would answer a different question convincingly.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.catalogue(WORKSPACE, {
+      mcpServers: { docs: { type: 'http', url: 'https://docs.example/mcp' } },
+      agents: { reviewer: { description: 'Reviews changes', prompt: 'Review.' } },
+    });
+
+    expect(control.opened[0]).toMatchObject({
+      cwd: WORKSPACE,
+      strictMcpConfig: true,
+      settingSources: ['project'],
+      mcpServers: { docs: { type: 'http', url: 'https://docs.example/mcp' } },
+      agents: { reviewer: { description: 'Reviews changes' } },
+      // The same policy locks as buildOptions: a probe that read project
+      // hooks would *run* them, on every dashboard load.
+      managedSettings: { allowManagedHooksOnly: true, allowManagedMcpServersOnly: true },
+    });
+  });
+
+  it('stays strict with nothing to mount, so the CLI cannot volunteer servers runs never see', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.catalogue(WORKSPACE);
+
+    expect(control.opened[0]).toMatchObject({ strictMcpConfig: true, settingSources: ['project'] });
+    const opened = control.opened[0] as { mcpServers?: unknown; agents?: unknown };
+    expect(opened.mcpServers).toBeUndefined();
+    expect(opened.agents).toBeUndefined();
+  });
+
   it('returns the models with their effort levels', async () => {
     // The web app had three model names and their prices hard-coded, written
     // when the page was built. Which models a subscription grants, and which

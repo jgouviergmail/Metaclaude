@@ -132,13 +132,20 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
       <Section
         icon={<Server className="size-4 text-info" />}
         title="MCP servers"
-        subtitle="Whether each configured server actually connected"
+        subtitle="The servers this workspace's runs mount — and whether each actually connected"
         count={catalogue.mcpServers.length}
       >
         {catalogue.mcpServers.map((server) => (
           <McpRow key={server.name} server={server} />
         ))}
       </Section>
+      <p className="rounded-lg border border-dashed border-line px-3 py-2 text-[12px] leading-relaxed text-subtle">
+        Connectors from your claude.ai account never appear here: a server paired with a setup
+        token authenticates for inference only, so the CLI cannot fetch them. To connect an
+        external service, add its MCP server on the Agents screen — it is mounted into every run
+        and reported above. Metaclaude&rsquo;s own board and delegation tools ride along in-process
+        and are always available.
+      </p>
 
       <Section
         icon={<Wand2 className="size-4 text-accent" />}

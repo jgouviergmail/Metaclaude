@@ -57,5 +57,23 @@ retype.
 reports for a workspace rather than what Metaclaude assumes: the models your
 subscription grants and which take an effort level, the slash commands and
 sub-agents available there, which account is signed in, and whether each MCP
-server actually connected, with its error when it did not. Refresh it after
-fixing a server's command; that read skips the cache.
+server actually connected, with its error when it did not. The probe mounts
+exactly what a run would — your configured servers, your custom agents,
+under the same policy locks — so what it reports is the world a run really
+sees. Refresh it after fixing a server's command; that read skips the cache.
+
+## Where are my claude.ai connectors?
+
+Not here, and knowably so. The connectors you enable on claude.ai (Gmail,
+Calendar, Drive…) follow a *full* interactive sign-in, whose token carries
+the `user:mcp_servers` scope. A server pairs headlessly with a setup token,
+which Anthropic scopes to inference only — the CLI in the container cannot
+even ask for the connector list, and each connector's own OAuth consent
+would still need a browser the agent does not have. Runs also mount servers
+strictly and explicitly, on purpose: an agent that works unattended should
+not inherit whatever a signed-in account happens to have switched on.
+
+The equivalent here is the MCP registry above: any remote MCP endpoint a
+service exposes can be added with its URL and an API key or header, scoped
+globally or to one workspace, sealed in the vault — and it then shows up in
+**From Claude** with its live connection status.

@@ -15,6 +15,8 @@ import {
   type Attachment,
   type AuditEntry,
   type ClaudeCredentialStatus,
+  type ClaudePairingStart,
+  type ClaudePairingState,
   type ConnectRepositoryResult,
   type PluginRecord,
   type AuthSessionInfo,
@@ -659,6 +661,17 @@ export const api = {
       }),
     clear: () =>
       request<ClaudeCredentialStatus>('/api/claude/credential', { method: 'DELETE' }),
+  },
+
+  claudePairing: {
+    begin: (account: 'claudeai' | 'console' = 'claudeai') =>
+      request<ClaudePairingStart>('/api/claude/pairing', { method: 'POST', body: { account } }),
+    complete: (code: string) =>
+      request<ClaudeCredentialStatus>('/api/claude/pairing/code', {
+        method: 'POST',
+        body: { code },
+      }),
+    cancel: () => request<ClaudePairingState>('/api/claude/pairing', { method: 'DELETE' }),
   },
 
   analytics: (params: { workspaceId?: string; days?: number; granularity?: string } = {}) =>

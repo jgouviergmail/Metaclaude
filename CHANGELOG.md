@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-08-27
+
+### Added
+
+- **Pair with Claude from the app — no shell, no restart.** Settings →
+  System now runs the `claude setup-token` flow itself: Start pairing hands
+  you the claude.ai sign-in link (open it here, or copy it to any device),
+  and pasting back the code Claude displays finishes the exchange
+  server-side — PKCE-bound, the token sealed straight into the vault and
+  live on the very next run. A mistyped code is retriable, an expired or
+  replaced attempt says so, and the token never passes through the browser.
+  The OAuth constants are read from the CLI binary the image ships, and the
+  manual token paste stays as the fallback.
+
+### Changed
+
+- **The From Claude panel now reports the world runs actually see.** The
+  catalogue probe used to open a bare CLI session: no registry servers, no
+  custom agents, none of the run posture — so "whether each configured
+  server actually connected" was a promise about servers it never mounted.
+  It now mounts the workspace's resolved MCP servers and agents under the
+  same policy locks and strict MCP posture as a run, so connection status
+  is finally live truth. The panel and guide also now say plainly why
+  claude.ai account connectors cannot appear on a headless server — a
+  setup token is scoped to inference only — and that the MCP registry is
+  the way to connect external services.
+
 ## [0.10.1] — 2026-08-27
 
 ### Fixed

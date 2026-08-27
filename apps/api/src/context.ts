@@ -34,6 +34,7 @@ import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
+import { ClaudePairing } from './services/claude-pairing.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { AttachmentService } from './services/attachments.js';
 import { BoardService } from './services/board.js';
@@ -64,6 +65,7 @@ export interface AppContext {
   audit: AuditLog;
   vault: Vault;
   claudeCredentials: ClaudeCredentials;
+  claudePairing: ClaudePairing;
   plugins: PluginRegistry;
   claudeCatalogue: CatalogueCache;
   claudeUsage: TtlCache<ClaudeUsage>;
@@ -225,6 +227,13 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     fromEnvironment: { oauthToken: config.claude.oauthToken, apiKey: config.claude.apiKey },
     log: (level, message) => log[level](message),
   });
+
+  // The guided pairing flow ends in `claudeCredentials.save`, so a token it
+  // obtains takes effect on the very next run like a pasted one would.
+  const claudePairing = new ClaudePairing({
+    credentials: claudeCredentials,
+    log: (level, message) => log[level](message),
+  });
   const kernelLog = (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => {
     log[level](data ?? {}, message);
   };
@@ -287,8 +296,14 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
 
   // What the CLI itself offers, per workspace. Behind a short-lived cache
   // because each read spawns a subprocess and a dashboard's panels ask together.
+  // The registry's servers and agents are mounted into the probe so the panel
+  // reports live connection status for what runs actually use — a workspace is
+  // found by path because that is the cache's key.
   const claudeCatalogue = new CatalogueCache({
-    read: (workspacePath) => supervisor.catalogue(workspacePath),
+    read: (workspacePath) => {
+      const workspace = workspaceRepo.list(true).find((entry) => entry.path === workspacePath);
+      return supervisor.catalogue(workspacePath, workspace ? registry.resolve(workspace) : undefined);
+    },
   });
 
   // Same shape, same reason: reading the quota spawns a CLI subprocess.
@@ -463,6 +478,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     audit,
     vault,
     claudeCredentials,
+    claudePairing,
     plugins,
     claudeCatalogue,
     claudeUsage,

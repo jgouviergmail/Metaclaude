@@ -182,7 +182,9 @@ describe('the paired account', () => {
       account: { email: null, organization: null, subscriptionType: 'pro', apiProvider: null },
     });
 
-    expect(screen.getByText(/pro/i)).toBeTruthy();
+    // "pro subscription", the joined form — a bare /pro/ would also match the
+    // connectors note's "in-process" and prove nothing about the account row.
+    expect(screen.getByText(/pro subscription/i)).toBeTruthy();
   });
 });
 

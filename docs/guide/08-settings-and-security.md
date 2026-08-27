@@ -14,11 +14,24 @@ machine.
 
 ## Claude pairing
 
-The agent runs on your Claude subscription. Pair it here by pasting a
-setup-token from a machine where you are signed in — the token is stored in
-the encrypted vault, used only to run the CLI, and survives restarts. The
-**System** card shows what is actually live: CLI version, authentication mode,
-and where the credential came from.
+The agent runs on your Claude subscription, and pairing it happens entirely
+from this screen — no shell anywhere. Press **Start pairing**: Metaclaude
+runs the same OAuth flow `claude setup-token` would, and hands you the
+sign-in link. Open it (on this device, or copy it to any other), approve
+with your Pro or Max account, and paste back the code Claude displays. The
+server exchanges that code for a year-long token, seals it in the encrypted
+vault, and the very next run uses it — no restart. The token itself never
+passes through your browser.
+
+The link stays valid for ten minutes and one attempt exists at a time;
+starting again simply replaces it. If Claude rejects the code, paste it
+again or start afresh — a code belongs to the link that produced it.
+
+Pasting a ready-made credential still works below the wizard: a
+`sk-ant-oat…` token from `claude setup-token` on any signed-in machine, or
+a `sk-ant-api…` key for per-token Console billing — Metaclaude tells them
+apart on its own. The **System** card shows what is actually live: CLI
+version, authentication mode, and where the credential came from.
 
 ## Appearance
 

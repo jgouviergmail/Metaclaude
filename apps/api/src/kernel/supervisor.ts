@@ -353,6 +353,18 @@ const EMPTY_USAGE: RunUsage = {
 /* Supervisor                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The policy locks every CLI session gets — runs and probes alike. Loading
+ * project settings is wanted for *context* (CLAUDE.md, skills); these pin
+ * *policy* at the managed tier so a cloned repository's `.claude/settings.json`
+ * can pre-approve no tool, register no hook and add no MCP server.
+ */
+const MANAGED_POLICY_LOCKS = {
+  allowManagedPermissionRulesOnly: true,
+  allowManagedHooksOnly: true,
+  allowManagedMcpServersOnly: true,
+} as const;
+
 export class AgentSupervisor {
   constructor(private readonly deps: SupervisorDeps) {}
 
@@ -454,11 +466,7 @@ export class AgentSupervisor {
       // MCP servers — silently defeating the approval flow. These managed locks
       // pin all three at the policy tier, which project settings cannot override.
       // Project *context* is trusted; project *policy* is not.
-      managedSettings: {
-        allowManagedPermissionRulesOnly: true,
-        allowManagedHooksOnly: true,
-        allowManagedMcpServersOnly: true,
-      },
+      managedSettings: MANAGED_POLICY_LOCKS,
 
       strictMcpConfig: true,
       stderr: (data) => this.deps.log('debug', `[cli] ${data.trim()}`),
@@ -911,8 +919,26 @@ export class AgentSupervisor {
    * others, and losing the whole catalogue to one missing method is the wrong
    * trade. What failed is reported by name rather than swallowed, because an
    * empty list means something different depending on which it was.
+   *
+   * `runtime` is what the registry would mount for a run here — its MCP
+   * servers, its custom agents. Mounting them makes the MCP section report
+   * *live* connection status for the servers runs actually use, which no
+   * static row could say; and the probe pins the same posture as
+   * `buildOptions` (project sources, managed locks, strict MCP) so it never
+   * reports a server or hook a run would not see. That posture is also why
+   * claude.ai account connectors cannot appear: a `setup-token` credential
+   * carries inference scope only, and runs mount servers explicitly.
    */
-  async catalogue(workspacePath: string): Promise<ClaudeCatalogue> {
+  async catalogue(
+    workspacePath: string,
+    runtime?: {
+      mcpServers: Record<string, unknown>;
+      agents: Record<
+        string,
+        { description: string; prompt: string; tools?: string[]; model?: string }
+      >;
+    },
+  ): Promise<ClaudeCatalogue> {
     const unavailable: string[] = [];
     const empty: ClaudeCatalogue = {
       models: [],
@@ -938,7 +964,20 @@ export class AgentSupervisor {
     };
 
     try {
-      return await this.probe({ cwd: workspacePath }, async (handle) => {
+      return await this.probe(
+        {
+          cwd: workspacePath,
+          settingSources: ['project'],
+          managedSettings: MANAGED_POLICY_LOCKS,
+          strictMcpConfig: true,
+          ...(runtime && Object.keys(runtime.mcpServers).length > 0
+            ? { mcpServers: runtime.mcpServers as Options['mcpServers'] }
+            : {}),
+          ...(runtime && Object.keys(runtime.agents).length > 0
+            ? { agents: runtime.agents as Options['agents'] }
+            : {}),
+        },
+        async (handle) => {
         // Concurrent: these are independent control requests on one channel,
         // and asking in series would multiply the round trips by five for no
         // benefit.
@@ -1214,7 +1253,17 @@ export class AgentSupervisor {
    * this awaited the message stream ending as proof it had. It hung.
    */
   private async probe<T>(
-    options: Pick<Options, 'cwd' | 'resume' | 'enableFileCheckpointing'>,
+    options: Pick<
+      Options,
+      | 'cwd'
+      | 'resume'
+      | 'enableFileCheckpointing'
+      | 'settingSources'
+      | 'managedSettings'
+      | 'strictMcpConfig'
+      | 'mcpServers'
+      | 'agents'
+    >,
     ask: (handle: Query) => Promise<T>,
   ): Promise<T> {
     const stream = new PromptStream();
