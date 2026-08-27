@@ -489,4 +489,11 @@ export const fr: Record<string, string> = {
   semantic: 'sémantique',
   episodic: 'épisodique',
   procedural: 'procédurale',
+
+  /* La constellation de la mémoire */
+  'The memory as a constellation — recent at the centre, fading toward the rim':
+    "La mémoire en constellation — le récent au centre, l'oublié vers le bord",
+  'size = confidence · centre = recently recalled · ring = pinned':
+    'taille = confiance · centre = rappelé récemment · anneau = épinglé',
+  '{n} fainter ones not drawn': '{n} plus pâles non dessinées',
 };

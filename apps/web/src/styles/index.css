@@ -401,6 +401,54 @@
     }
   }
 
+  /* The memory constellation. Stars grow slightly under the pointer, and a
+     star recalled in the last day breathes — the reinforcement loop shown
+     where it lands. Motion preference stills the sky entirely. */
+  .constellation-node {
+    transition: r 0.15s var(--ease-out-quint);
+    outline: none;
+  }
+  .constellation-node:hover,
+  .constellation-node:focus-visible {
+    r: 9;
+  }
+  @keyframes mc-breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+  .constellation-live {
+    animation: mc-breathe 2.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .constellation-live {
+      animation: none;
+    }
+  }
+
+  /* Landing highlight when a constellation star brings you to its card. */
+  @keyframes mc-flash {
+    from {
+      box-shadow: 0 0 0 2px var(--mc-accent);
+    }
+    to {
+      box-shadow: 0 0 0 2px transparent;
+    }
+  }
+  .memory-flash {
+    animation: mc-flash 1.5s var(--ease-out-quint) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .memory-flash {
+      animation: none;
+      box-shadow: 0 0 0 2px var(--mc-accent);
+    }
+  }
+
   /* Unified-diff colouring. */
   .diff-line-add {
     background: var(--mc-diff-add);

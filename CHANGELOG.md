@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-08-27
+
+### Added
+
+- **The memory has a sky.** The Memory page now opens on a constellation:
+  each kind of memory owns a sector, a star's size is its confidence, its
+  distance from the centre is how long since a run last recalled it — so a
+  star drifting toward the rim *is* the forgetting curve — and one recalled
+  in the last day breathes gently (stilled under reduced motion). Pinned
+  memories wear a ring, visibly exempt from decay. Tap a star to land on
+  its card. Positions are deterministic — the sky holds still between
+  visits, and only genuine reinforcement or decay moves a star; past ~240
+  the faintest stars stay undrawn and the legend says how many.
+
 ## [0.23.0] — 2026-08-27
 
 ### Added

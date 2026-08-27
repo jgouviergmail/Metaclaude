@@ -61,3 +61,15 @@ spike is an arm the learner has settled on; a broad hump is one it is still
 unsure about — and that width is exactly why a trailing arm keeps getting
 occasional trials. Watch a curve sharpen over a week of runs and you are
 watching the system learn.
+
+## The sky
+
+Above the list, the Memory page draws its constellation. Every visual
+dimension carries a real datum: each kind owns a sector of the sky, a
+star's size is its confidence, its distance from the centre is how long
+since a run last recalled it — so watching a star drift toward the rim *is*
+watching the forgetting curve — and a star recalled in the last day
+breathes gently. Pinned memories wear a ring: exempt from decay, and
+visibly so. Tap a star to land on its card below. Positions are
+deterministic, so the sky holds still between visits and only genuine
+reinforcement or decay moves a star.

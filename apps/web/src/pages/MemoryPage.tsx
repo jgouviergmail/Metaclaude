@@ -32,6 +32,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { Insight, Memory, MemoryKind } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
@@ -557,6 +558,18 @@ export function MemoryPage() {
               </Card>
             ) : (
               <div className="space-y-3">
+                {/* The sky above the shelves: tap a star to land on its card. */}
+                <Card className="p-3">
+                  <MemoryConstellation
+                    memories={memories}
+                    onSelect={(id) => {
+                      const card = document.getElementById(`memory-${id}`);
+                      card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      card?.classList.add('memory-flash');
+                      window.setTimeout(() => card?.classList.remove('memory-flash'), 1600);
+                    }}
+                  />
+                </Card>
                 {memories.map((memory) => (
                   <MemoryCard
                     key={memory.id}
@@ -762,7 +775,7 @@ function MemoryCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Card className="p-4">
+    <Card id={`memory-${memory.id}`} className="p-4">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
