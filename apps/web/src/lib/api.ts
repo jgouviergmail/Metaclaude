@@ -294,6 +294,12 @@ export const api = {
   board: (workspaceId: string) =>
     request<{ tasks: BoardTask[] }>(`/api/workspaces/${workspaceId}/board`),
 
+  workBoard: (workspaceId: string) =>
+    request<{ started: BoardTask | null; reason: 'started' | 'busy' | 'empty' | 'quota' | 'off' }>(
+      `/api/workspaces/${workspaceId}/board/work`,
+      { method: 'POST', body: {} },
+    ),
+
   tasks: (params: {
     workspaceId?: string;
     status?: TaskStatus;

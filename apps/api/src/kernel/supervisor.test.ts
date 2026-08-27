@@ -51,6 +51,7 @@ const workspace: Workspace = {
     reflexionEnabled: false,
     checkpointing: true,
     mirrorSessions: false,
+    autoWorkBoard: false,
     enabledPlugins: {},
   },
   createdAt: 0,

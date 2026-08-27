@@ -194,6 +194,13 @@ export const WorkspaceSettings = z.object({
    */
   mirrorSessions: z.boolean().default(false),
   /**
+   * The board autopilot: when a card run ends, start the next To do card by
+   * itself — one card at a time, success landing in Review, the quota guard
+   * consulted before every automatic start. Off by default: draining a
+   * backlog unattended is a decision, not a discovery.
+   */
+  autoWorkBoard: z.boolean().default(false),
+  /**
    * Marketplace plugins enabled here, keyed `plugin@marketplace` — the CLI's
    * own `enabledPlugins` format. A key without its marketplace half would be
    * meaningless to the CLI, so the shape refuses it at the edge.

@@ -35,6 +35,8 @@ import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
 import { Vault } from './security/vault.js';
+import { BoardAutopilot, planUtilization } from './services/board-autopilot.js';
+import { startTaskRun } from './services/board-run.js';
 import { buildPushEventHandlers, PushService } from './services/push.js';
 import { readCliLogin } from './services/claude-cli-login.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
@@ -71,6 +73,7 @@ export interface AppContext {
   claudeCredentials: ClaudeCredentials;
   claudePairing: ClaudePairing;
   push: PushService;
+  autopilot: BoardAutopilot;
   plugins: PluginRegistry;
   claudeCatalogue: CatalogueCache;
   claudeUsage: TtlCache<ClaudeUsage>;
@@ -362,6 +365,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
 
   // Declared before the kernel because the kernel's completion hook feeds it.
   let schedulerRef: Scheduler | null = null;
+  let autopilotRef: BoardAutopilot | null = null;
 
   // Shared between the kernel (binding and loading a run's files) and the
   // HTTP routes (upload, serve, delete) — one ledger, one jail.
@@ -405,6 +409,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       // The phone hears about it — for human-started runs only, and
       // fire-and-forget inside the handler, so push can never slow a finish.
       pushEvents.onRunFinished(run);
+      // The autopilot's chain: an opted-in board pulls its next card.
+      void autopilotRef?.onRunFinished(run);
     },
     log: kernelLog,
   });
@@ -426,6 +432,45 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   });
 
   schedulerRef = scheduler;
+
+  // The board autopilot: composed from the exact pieces the card's own
+  // "Send to the agent" route uses, so an automatic start is byte-identical
+  // to a pressed one — skills materialised, session reused, outcome hooked.
+  const autopilot = new BoardAutopilot({
+    boardTasks: { board: (workspaceId) => board.list(workspaceId) },
+    workspaces: workspaceRepo,
+    runs: runRepo,
+    start: async (taskId, username) => {
+      const task = board.get(taskId);
+      const workspace = task ? workspaceRepo.get(task.workspaceId) : null;
+      if (workspace) {
+        await registry.materialiseSkills(workspace).catch((error: Error) => {
+          log.warn({ err: error.message }, 'could not materialise skills');
+        });
+      }
+      return startTaskRun(
+        {
+          board,
+          runs: runRepo,
+          sessions: sessionRepo,
+          workspaces: workspaceRepo,
+          submit: (input) => kernel.submit(input),
+        },
+        taskId,
+        username,
+      );
+    },
+    quota: {
+      utilization: async (workspacePath) => planUtilization(await claudeUsage.get(workspacePath)),
+    },
+    guardPct: config.quotaGuardPct,
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+  autopilotRef = autopilot;
+  // The safety net for stalls the chain cannot see: a quota deferral with
+  // nothing left to finish, a kernel refusal, cards added while idle.
+  const autopilotTimer = setInterval(() => void autopilot.sweep(), 5 * 60_000);
+  autopilotTimer.unref();
 
   // Read-only self-diagnosis. Probes are bound here so the doctor itself
   // stays testable against fakes; on demand only, so no caching.
@@ -509,6 +554,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeCredentials,
     claudePairing,
     push,
+    autopilot,
     plugins,
     claudeCatalogue,
     claudeUsage,

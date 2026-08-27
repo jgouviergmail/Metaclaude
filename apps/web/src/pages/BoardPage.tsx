@@ -10,7 +10,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, SquareKanban } from 'lucide-react';
+import { ChevronDown, Play, SquareKanban } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { workspaceTopic, type BoardTask, type TaskPriority, type TaskStatus } from '@metaclaude/shared';
@@ -95,6 +95,16 @@ export function BoardPage() {
     onError,
   });
 
+  const workBoard = useMutation({
+    mutationFn: () => api.workBoard(workspaceId as string),
+    onSuccess: (outcome) => {
+      if (outcome.started) toast.success(`Started "${outcome.started.title}".`);
+      else if (outcome.reason === 'busy') toast.info('A card is already being worked — one at a time.');
+      else toast.info('Nothing unblocked in To do.');
+    },
+    onError,
+  });
+
   const [drawerTask, setDrawerTask] = useState<string | null>(null);
   const [creating, setCreating] = useState<TaskStatus | null>(null);
   const [newTitle, setNewTitle] = useState('');
@@ -167,6 +177,16 @@ export function BoardPage() {
                 </MenuItem>
               ))}
             </Menu>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!workspaceId}
+              loading={workBoard.isPending}
+              onClick={() => workBoard.mutate()}
+            >
+              <Play className="size-3.5" aria-hidden />
+              Work the board
+            </Button>
             <Button variant="primary" size="sm" onClick={() => setCreating('todo')} disabled={!workspaceId}>
               New task
             </Button>

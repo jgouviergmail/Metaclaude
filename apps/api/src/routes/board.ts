@@ -203,6 +203,31 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
     return reply.status(202).send({ run: started.run, task: started.task });
   });
 
+  /**
+   * The autopilot's button: start the top To do card now. Manual, so it
+   * bypasses the opt-in and the quota guard — never the one-card-at-a-time
+   * rule — and the board history signs it with the presser's name.
+   */
+  app.post<{ Params: { id: string } }>('/api/workspaces/:id/board/work', async (request, reply) => {
+    const actor = requireOperator(request);
+    const workspace = mustGetWorkspace(context, request.params.id);
+
+    const outcome = await context.autopilot.workNext(workspace.id, {
+      manual: true,
+      username: actor.username,
+    });
+    if (outcome.started) {
+      context.audit.record({
+        actor: actor.username,
+        action: 'task.run',
+        target: outcome.started.id,
+        ipAddress: requestIp(context, request),
+        detail: `${workspace.name}: ${outcome.started.title.slice(0, 120)} (work the board)`,
+      });
+    }
+    return reply.status(outcome.started ? 202 : 200).send(outcome);
+  });
+
   app.post<{ Params: { id: string } }>('/api/tasks/:id/comments', async (request, reply) => {
     const actor = requireOperator(request);
     const parsed = z.object({ body: z.string().min(1).max(10_000) }).safeParse(request.body);

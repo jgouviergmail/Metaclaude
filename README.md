@@ -27,6 +27,9 @@ system around it:
   kind of task, measured rather than guessed.
 - **Loops.** Automations that run on a schedule, including continuous ones that
   keep the same session and accumulate context indefinitely.
+- **A board that works itself.** Fill the To do column, switch the autopilot
+  on, and cards get worked one at a time into Review — with a quota guard
+  that pauses automatic starts near the plan's ceiling.
 - **Permission prompts you can actually read**, with the literal command shown
   and a risk assessment attached.
 - **Push notifications, self-hosted.** The phone buzzes when a run waits on

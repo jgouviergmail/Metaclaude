@@ -53,6 +53,12 @@ const EnvSchema = z.object({
 
   /** Maximum concurrent agent runs across the whole OS. */
   METACLAUDE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(64).default(4),
+  /**
+   * The board autopilot waits above this percentage of the plan's worst
+   * quota window before starting a card by itself. 100 disables the guard.
+   * Automatic starts only: a human pressing the button is never refused.
+   */
+  METACLAUDE_QUOTA_GUARD_PCT: z.coerce.number().min(0).max(100).default(85),
   /** Hard ceiling on a single run's wall-clock time. */
   METACLAUDE_RUN_TIMEOUT_MS: z.coerce.number().int().min(30_000).default(45 * 60 * 1000),
 
@@ -90,6 +96,7 @@ export interface Config {
   allowBypassPermissions: boolean;
   bootstrap: { username: string; password: string } | null;
   maxConcurrentRuns: number;
+  quotaGuardPct: number;
   runTimeoutMs: number;
   embeddings: { provider: 'hash' | 'local'; model: string };
   claude: {
@@ -243,6 +250,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
         ? { username: bootstrapUser, password: bootstrapPassword }
         : null,
     maxConcurrentRuns: env.METACLAUDE_MAX_CONCURRENT_RUNS,
+    quotaGuardPct: env.METACLAUDE_QUOTA_GUARD_PCT,
     runTimeoutMs: env.METACLAUDE_RUN_TIMEOUT_MS,
     embeddings: { provider: env.METACLAUDE_EMBEDDINGS, model: env.METACLAUDE_EMBEDDING_MODEL },
     claude: {

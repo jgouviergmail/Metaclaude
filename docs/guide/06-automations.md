@@ -42,3 +42,9 @@ A nightly dependency-and-CI review per repository. A continuous watcher that
 triages failures from your test suite. A weekly summary of what changed
 across workspaces. Anything you would do every morning with the same three
 prompts — that is an automation.
+
+The board has its own standing loop besides these: the **autopilot** (see
+the board chapter), which drains the To do column one card at a time and
+respects the quota guard. Reach for an automation when the work is a
+prompt on a schedule; reach for the autopilot when the work is already
+written down as cards.

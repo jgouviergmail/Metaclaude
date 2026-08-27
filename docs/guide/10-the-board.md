@@ -67,6 +67,25 @@ comments: the same session resumes, context intact, so the agent picks up
 exactly where its last attempt ended. A card already being worked refuses a
 second press until you interrupt the run.
 
+## The autopilot
+
+The board can drain itself. Switch **Work the board by itself** on in the
+workspace's settings and, each time a card run ends, the top unblocked card
+of *To do* starts on its own — one card at a time, in the order you
+arranged, success landing in **Review** for your eyes, failures blocking
+the card with their reason. You fill the queue from your phone; the agent
+works through it; you dispense reviews.
+
+Two guards keep it honest. Only one card runs at a time per workspace — a
+backlog is a queue, not a fan-out. And near the plan's quota ceiling
+(`METACLAUDE_QUOTA_GUARD_PCT`, 85% by default) automatic starts wait for
+the window to breathe; a periodic sweep resumes them when it does.
+
+The **Work the board** button in the header starts the top card once,
+whether or not the autopilot is on — and being your own press, it outranks
+the quota guard. The board history signs automatic starts as `autopilot`,
+so who queued what stays answerable.
+
 ## What the agent can do on the board
 
 Every run carries board tools scoped to its own workspace — `board_list`,

@@ -554,6 +554,19 @@ function WorkspaceSettingsModal({
         <MenuSeparator />
 
         <fieldset className="space-y-3">
+          <legend className="text-[13px] font-semibold text-ink">Autonomy</legend>
+
+          <CheckboxField
+            checked={draft.autoWorkBoard}
+            onChange={(value) => update('autoWorkBoard', value)}
+            label="Work the board by itself"
+            hint="When a card run ends, start the top To do card automatically — one card at a time, success lands in Review, and the quota guard pauses automatic starts near the plan's ceiling."
+          />
+        </fieldset>
+
+        <MenuSeparator />
+
+        <fieldset className="space-y-3">
           <legend className="text-[13px] font-semibold text-ink">claude.ai</legend>
 
           <CheckboxField

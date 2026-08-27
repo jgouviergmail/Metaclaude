@@ -11,6 +11,25 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-08-27
+
+### Added
+
+- **The board works itself.** Switch *Work the board by itself* on in a
+  workspace's settings and each finished card run pulls the top unblocked
+  To do card automatically — one card at a time (a backlog is a queue,
+  not a fan-out), in the order you arranged, success landing in Review
+  and failures blocking the card with their reason, exactly as a pressed
+  "Send to the agent" would. A **quota guard**
+  (`METACLAUDE_QUOTA_GUARD_PCT`, 85% by default) pauses automatic starts
+  when the plan's worst window nears its ceiling — per-model buckets are
+  ignored so one saturated model cannot stall the rest — and a periodic
+  sweep resumes the queue when the window breathes, or when cards were
+  added while the board sat idle. The guard never refuses a human: the
+  new **Work the board** button in the board header starts the top card
+  on demand, opted in or not, and the board history signs automatic
+  starts as `autopilot` so who queued what stays answerable.
+
 ## [0.14.0] — 2026-08-27
 
 ### Added
