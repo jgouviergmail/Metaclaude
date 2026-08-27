@@ -163,6 +163,14 @@ restates the code is noise; one that records a decision or a trap is not.
   of a 3647 ceiling with one live process. `init: true` on the proxy; the app
   image already ships tini. `check.sh` asserts every service with a healthcheck
   has one or the other.
+- **Under `set -e`, an assignment from a failing command substitution exits the
+  script.** `VAR="$(sed … file | tail -1)"` with pipefail dies when the file is
+  absent — and uninstall.sh died exactly there, after removing the systemd
+  units and *before* saving `.env` or deleting the tree. CI's uninstall
+  rehearsal caught it; local runs skip that section without root, so a change
+  to uninstall.sh is only really tested where docker and root exist. Guard the
+  read (`[ -f ] || default`), never bolt `2>/dev/null` onto a pipeline and
+  call it handled.
 - **A check that cannot tell "the guard held" from "the script never ran" proves
   nothing.** The uninstall rehearsal asserted three promises; on CI the script
   refused at its own root check, and two assertions *passed on the inert

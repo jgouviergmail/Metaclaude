@@ -147,8 +147,18 @@ fi
 
 # Where the backup archives live — read from deploy.conf before the tree
 # holding it is deleted, so the closing summary can name the right place.
-BACKUP_DIR="$(sed -n 's/^METACLAUDE_BACKUP_DIR=//p' "$APP_DIR/deploy.conf" 2>/dev/null | tail -1)"
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/metaclaude}"
+#
+# Guarded, not piped-and-hoped: under `set -Eeuo pipefail` an assignment from
+# a failing command substitution exits the script, so on a host with no
+# deploy.conf the one-liner version of this died HERE — after the units were
+# removed, before the .env was saved and the tree deleted. CI's uninstall
+# rehearsal caught it; local runs skip that section without root and did not.
+BACKUP_DIR="/var/backups/metaclaude"
+if [ -f "$APP_DIR/deploy.conf" ]; then
+  conf_dir="$(sed -n 's/^METACLAUDE_BACKUP_DIR=//p' "$APP_DIR/deploy.conf" | tail -1)"
+  conf_dir="${conf_dir%\"}"; conf_dir="${conf_dir#\"}"
+  if [ -n "$conf_dir" ]; then BACKUP_DIR="$conf_dir"; fi
+fi
 
 if [ -f "$APP_DIR/.env" ]; then
   # Outside $APP_DIR, mode 0600, because the master key inside it is the one

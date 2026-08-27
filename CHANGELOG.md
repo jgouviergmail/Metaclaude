@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.17.1] — 2026-08-27
+
+### Fixed
+
+- **Uninstalling saved the secrets again.** The closing-summary lookup of the
+  backup directory read `deploy.conf` through a pipeline; on a host without
+  that file, `set -e` killed uninstall.sh at that line — after removing the
+  systemd units, *before* saving `.env` (the master key) to `/root` and
+  before removing the application tree. Caught by CI's uninstall rehearsal
+  minutes after v0.17.0 was pushed, released as the fix here; the read is now
+  guarded, and the trap (an assignment from a failing command substitution
+  exits the script) is recorded in CLAUDE.md.
+
 ## [0.17.0] — 2026-08-27
 
 ### Added
