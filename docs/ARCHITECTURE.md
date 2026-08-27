@@ -287,6 +287,22 @@ calendar fields, never by stepping a cursor minute by minute, because stepping a
 
 ---
 
+## The advisor
+
+`services/advisor.ts` is the part of the system that studies the system. It
+composes a dossier server-side — recent runs and failures, the board, the
+automations, the registry, what the built-in library still holds, what it
+already proposed — and submits it as an ordinary kernel run in a persistent
+per-workspace session, pinned to the Auto permission mode. The run acts
+through `kernel/advisor-tools.ts`, an in-process MCP server mounted into
+*every* run (like the board tools): automations are created directly but
+disabled, and skills, agents, MCP servers and plugins become rows in
+`advisor_proposals` that the Dashboard inbox accepts or dismisses. The
+trusted-publisher allowlist for MCP proposals lives in the service, in
+code, and is enforced at propose time and again at accept. A workspace can
+opt into one automatic analysis per day (`advisorAuto`, default off); an
+hourly sweep applies the 24-hour gate per workspace.
+
 ## Data model
 
 SQLite in WAL mode, one synchronous connection. For a single-user OS this is a

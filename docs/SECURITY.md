@@ -294,6 +294,18 @@ consequences bounded and visible:
   filesystem access, and runs in a scratch directory. It reads text and returns
   JSON.
 - **Generated skills are never auto-installed.** A proposal enters a review queue.
+- **The advisor's autonomy is graduated by consequence.** Its runs research
+  the open web, which is exactly where an injected "add this MCP server"
+  would come from — so anything a run proposes that would *act* (a skill, a
+  subagent, an MCP server, a plugin) becomes an inbox row a person accepts,
+  never a live record; what it may create directly is inert by construction
+  (backlog tickets, automations written disabled). MCP proposals are checked
+  server-side against a trusted-publisher allowlist curated in this
+  repository — npm scopes for stdio servers, exact-or-subdomain host matches
+  for remote ones — and the payloads are re-validated at accept time,
+  because neither a tool boundary nor a database row is a trust boundary.
+  Nothing the model reads or says can widen the allowlist; extending it is a
+  reviewed commit.
 - **Model output is treated as untrusted** by the frontend renderer.
 
 ---

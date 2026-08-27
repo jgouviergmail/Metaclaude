@@ -11,6 +11,16 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.22.1] — 2026-08-27
+
+### Changed
+
+- **The security and architecture documents now cover the advisor.**
+  docs/SECURITY.md's prompt-injection section explains why its autonomy is
+  graduated by consequence and how the trusted-publisher allowlist bounds
+  what web research can bring in; docs/ARCHITECTURE.md describes the
+  service, the per-run proposal tools and the daily sweep.
+
 ## [0.22.0] — 2026-08-27
 
 ### Added
