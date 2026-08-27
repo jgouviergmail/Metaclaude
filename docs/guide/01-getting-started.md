@@ -13,6 +13,13 @@ Claude subscription.
    recovery codes somewhere safe. They are shown exactly once and each works
    exactly once.
 
+The dashboard greets a fresh deployment with a **Getting set up** checklist:
+pair Claude, create a workspace, run the agent once, two-factor,
+notifications, the host updater — each step a link to the screen where it
+happens, ticked off as the deployment learns to do it. It disappears when
+everything is done, and its ✕ dismisses it for good if you prefer to find
+your own way.
+
 ## Your first run
 
 1. **Workspaces → New workspace.** A workspace is a directory plus the agent

@@ -11,6 +11,28 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-08-27
+
+### Added
+
+- **A Getting set up checklist on the dashboard.** A fresh deployment has
+  half a dozen one-time steps spread across four screens, and each was
+  historically discovered by hitting the wall it guards. The owner's
+  dashboard now lists them — pair Claude, create a workspace, run the
+  agent once, two-factor, notifications, the host updater — each a link
+  to its screen, struck through as done, gone when everything is, and
+  dismissible for good.
+- **Slash commands where you type.** `/` on an empty message offers the
+  CLI's own commands, narrowed as you type — arrows choose, Enter or Tab
+  completes, Escape writes a literal slash. Read from the catalogue, so a
+  command a plugin adds appears without a release; a `/` mid-sentence (a
+  path, a fraction) never interrupts.
+
+### Changed
+
+- **The ⌘K palette reaches everywhere.** Board, Plugins and Help joined
+  its navigation list — the three sections it could not jump to.
+
 ## [0.15.0] — 2026-08-27
 
 ### Added

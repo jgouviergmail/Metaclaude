@@ -217,3 +217,67 @@ describe('attachments', () => {
     expect(onAttachFiles.mock.calls[0]?.[0]?.[0]?.name).toBe('notes.md');
   });
 });
+
+describe('slash-command suggestions', () => {
+  const withCommands = (): ClaudeCatalogue => ({
+    ...catalogue([capable]),
+    commands: [
+      { name: 'compact', description: 'Compact the conversation', argumentHint: null },
+      { name: 'review', description: 'Review the diff', argumentHint: null },
+    ] as unknown as ClaudeCatalogue['commands'],
+  });
+
+  it('offers the CLI’s commands while a /token is being typed', () => {
+    renderComposer({}, withCommands());
+    fireEvent.change(screen.getByRole('textbox', { name: /prompt/i }), {
+      target: { value: '/re' },
+    });
+
+    const listbox = screen.getByRole('listbox', { name: /slash commands/i });
+    expect(listbox.textContent).toContain('/review');
+    expect(listbox.textContent).not.toContain('/compact');
+  });
+
+  it('completes with Enter instead of sending the message', () => {
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <Composer
+        value={{ model: 'opus', effort: null, permissionMode: 'default', ultracode: false, toolControls: null }}
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onInterrupt={vi.fn()}
+        isRunning={false}
+        catalogue={withCommands()}
+      />,
+    );
+    const box = screen.getByRole('textbox', { name: /prompt/i }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: '/rev' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(box.value).toBe('/review ');
+    // The list is gone once the command is chosen — a space follows it.
+    expect(screen.queryByRole('listbox', { name: /slash commands/i })).toBeNull();
+  });
+
+  it('goes away on Escape and stays away until the draft changes', () => {
+    renderComposer({}, withCommands());
+    const box = screen.getByRole('textbox', { name: /prompt/i });
+    fireEvent.change(box, { target: { value: '/' } });
+    expect(screen.getByRole('listbox', { name: /slash commands/i })).toBeTruthy();
+
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(screen.queryByRole('listbox', { name: /slash commands/i })).toBeNull();
+
+    fireEvent.change(box, { target: { value: '/r' } });
+    expect(screen.getByRole('listbox', { name: /slash commands/i })).toBeTruthy();
+  });
+
+  it('never appears mid-sentence', () => {
+    renderComposer({}, withCommands());
+    fireEvent.change(screen.getByRole('textbox', { name: /prompt/i }), {
+      target: { value: 'look at src/lib please' },
+    });
+    expect(screen.queryByRole('listbox', { name: /slash commands/i })).toBeNull();
+  });
+});

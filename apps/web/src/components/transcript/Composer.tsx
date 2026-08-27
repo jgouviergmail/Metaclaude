@@ -33,6 +33,7 @@ import {
 } from '@metaclaude/shared';
 import { Button, Tooltip } from '@/components/ui/primitives';
 import { ATTACHMENT_ACCEPT, type PendingAttachment } from '@/lib/attachments';
+import { completeSlash, slashMatches } from '@/lib/slash';
 import { cycleMcpServer, mcpServerState, steeredCount, toggleRequiredSkill } from '@/lib/tool-controls';
 import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
 import { cn, formatBytes, isModifier } from '@/lib/utils';
@@ -89,6 +90,13 @@ export function Composer({
   placeholder?: string;
 }) {
   const [text, setText] = useState('');
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  // A new draft reopens what Escape closed, and re-anchors the highlight.
+  useEffect(() => {
+    setSlashDismissed(false);
+    setSlashIndex(0);
+  }, [text]);
   const [dragging, setDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -134,7 +142,39 @@ export function Composer({
   const offerTools =
     toolOptions !== undefined && (toolOptions.skills.length > 0 || toolOptions.mcpServers.length > 0);
 
+  /* -- Slash commands — the rule lives in lib/slash ----------------------- */
+
+  const slash = useMemo(
+    () => (slashDismissed ? [] : slashMatches(catalogue?.commands ?? [], text)),
+    [catalogue, text, slashDismissed],
+  );
+  const pickSlash = (name: string): void => {
+    setText(completeSlash(name));
+    setSlashIndex(0);
+    textareaRef.current?.focus();
+  };
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    // While suggestions are up, the keyboard drives them: arrows cycle,
+    // Enter and Tab choose, Escape dismisses until the draft changes.
+    if (slash.length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        setSlashIndex((index) => (index + delta + slash.length) % slash.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        pickSlash((slash[slashIndex] ?? slash[0])?.name ?? '');
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+    }
     // Enter sends; Shift+Enter and ⌘/Ctrl+Enter insert a newline. This matches
     // every chat tool people already use, and the modifier escape hatch means a
     // multi-line prompt is never lost to muscle memory.
@@ -168,7 +208,7 @@ export function Composer({
       <div className="mx-auto max-w-4xl px-3 py-3 sm:px-6">
         <div
           className={cn(
-            'rounded-2xl border bg-surface transition-colors',
+            'relative rounded-2xl border bg-surface transition-colors',
             'focus-within:border-accent',
             dragging
               ? 'border-accent bg-accent-soft/40'
@@ -189,6 +229,41 @@ export function Composer({
             pickFiles(event.dataTransfer.files);
           }}
         >
+          {slash.length > 0 ? (
+            <ul
+              role="listbox"
+              aria-label="Slash commands"
+              className={cn(
+                'absolute bottom-full left-3 right-3 z-10 mb-2 max-h-64 overflow-y-auto',
+                'rounded-xl border border-line bg-surface p-1 shadow-lg',
+              )}
+            >
+              {slash.map((command, index) => (
+                <li key={command.name} role="option" aria-selected={index === slashIndex}>
+                  <button
+                    type="button"
+                    // onMouseDown, not onClick: a click would blur the
+                    // textarea first and close the list before it lands.
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      pickSlash(command.name);
+                    }}
+                    className={cn(
+                      'flex w-full items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-left',
+                      index === slashIndex ? 'bg-accent-soft' : 'hover:bg-sunken',
+                    )}
+                  >
+                    <code className="shrink-0 font-mono text-[13px] font-medium text-ink">
+                      /{command.name}
+                    </code>
+                    <span className="min-w-0 truncate text-[12px] text-muted">
+                      {command.description}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <textarea
             ref={textareaRef}
             value={text}

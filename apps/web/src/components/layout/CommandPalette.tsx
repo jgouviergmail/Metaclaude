@@ -9,13 +9,16 @@
 import { Command } from 'cmdk';
 import {
   Activity,
+  Blocks,
   Bot,
   Brain,
+  CircleHelp,
   FolderGit2,
   LayoutDashboard,
   MessageSquare,
   Plus,
   Settings,
+  SquareKanban,
   Timer,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -71,10 +74,13 @@ export function CommandPalette() {
   const actions: Action[] = [
     { id: 'nav-dashboard', label: 'Dashboard', icon: <LayoutDashboard />, group: 'Go to', run: go('/') },
     { id: 'nav-workspaces', label: 'Workspaces', icon: <FolderGit2 />, group: 'Go to', run: go('/workspaces') },
+    { id: 'nav-board', label: 'Board', icon: <SquareKanban />, group: 'Go to', run: go('/board') },
     { id: 'nav-memory', label: 'Memory', icon: <Brain />, group: 'Go to', run: go('/memory') },
     { id: 'nav-automations', label: 'Automations', icon: <Timer />, group: 'Go to', run: go('/automations') },
     { id: 'nav-agents', label: 'Agents & skills', icon: <Bot />, group: 'Go to', run: go('/agents') },
     { id: 'nav-analytics', label: 'Analytics', icon: <Activity />, group: 'Go to', run: go('/analytics') },
+    { id: 'nav-plugins', label: 'Plugins', icon: <Blocks />, group: 'Go to', run: go('/plugins') },
+    { id: 'nav-help', label: 'Help', icon: <CircleHelp />, group: 'Go to', run: go('/help') },
     { id: 'nav-settings', label: 'Settings', icon: <Settings />, group: 'Go to', run: go('/settings') },
     {
       id: 'new-workspace',

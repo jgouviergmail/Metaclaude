@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { BriefView } from '@/components/analytics/BriefView';
+import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { decideApproval } from '@/lib/approvals';
@@ -124,6 +125,8 @@ export function DashboardPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+          <GettingStartedCard />
+
           {/* Credential warning: without this the first run just fails opaquely. */}
           {system && !system.claudeCli.authenticated ? (
             <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning-soft/40 p-4">

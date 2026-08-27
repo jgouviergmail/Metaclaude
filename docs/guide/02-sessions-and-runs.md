@@ -7,6 +7,12 @@ undo.
 
 ## The composer
 
+Type **`/`** on an empty message and the CLI's slash commands appear as you
+narrow — arrow keys to choose, Enter or Tab to complete, Escape to write a
+literal slash. The list is read from the CLI itself, so anything a plugin
+or a skill adds shows up without a Metaclaude release. A `/` further into
+a sentence (a path, a fraction) never interrupts.
+
 The controls under the input change what the *next* message does:
 
 - **Model** — what the CLI offers your subscription, by name. **Auto** hands
