@@ -14,6 +14,14 @@ import { useNotificationStore } from '@/lib/store';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import { cn, formatRelative } from '@/lib/utils';
 
+/** What each level *means*, for the readers a colour cannot reach. */
+const LEVEL_LABEL: Record<'success' | 'error' | 'warning' | 'info', string> = {
+  success: 'Succeeded',
+  error: 'Failed',
+  warning: 'Needs attention',
+  info: 'Information',
+};
+
 export function NotificationBell() {
   const t = useT();
   const { items, markAllRead, clear } = useNotificationStore();
@@ -81,6 +89,12 @@ export function NotificationBell() {
                           )}
                           aria-hidden
                         />
+                        {/* The dot carries the level in colour alone, so a
+                            failed run and a finished one read identically to
+                            anyone not seeing it. This is where a failure is
+                            found, which makes that the wrong thing to leave
+                            to a hue. */}
+                        <span className="sr-only">{t(LEVEL_LABEL[item.level])}</span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-medium text-ink">{item.title}</p>
                           <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">

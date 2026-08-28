@@ -44,6 +44,10 @@ export const DiffView = memo(function DiffView({
   }, [lines, additions, deletions]);
 
   const visible = expanded ? lines : lines.slice(0, 12);
+  // `parseDiff('')` yields one empty context line — deliberately, and pinned
+  // by its own test — so an empty patch would otherwise draw a bordered table
+  // around a blank row with two empty number columns.
+  const nothingToShow = visible.every((line) => line.text.trim() === '');
 
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface">
@@ -89,7 +93,7 @@ export const DiffView = memo(function DiffView({
         </span>
       </button>
 
-      {visible.length > 0 ? (
+      {visible.length > 0 && !nothingToShow ? (
         <div className="overflow-x-auto border-t border-line">
           <table className="w-full border-collapse font-mono text-[12px] leading-[1.55]">
             <tbody>

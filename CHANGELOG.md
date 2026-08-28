@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.6] — 2026-08-28
+
+### Added
+
+- **Two more components tested**, taking the ratchet from 18 untested to 16.
+
+### Fixed
+
+- **A notification's level was carried by colour alone.** The dot beside each
+  entry is `aria-hidden`, and nothing else said whether a run had succeeded or
+  failed — so the place a failure is *found* announced a rollback and a
+  finished backup identically. Each entry now states its level in text for
+  the readers a hue cannot reach.
+- **An empty patch drew a bordered table around a blank row.** `parseDiff('')`
+  returns one empty context line, deliberately and pinned by its own test, so
+  the guard belongs in the viewer rather than in the parser.
+
+
 ## [0.32.5] — 2026-08-28
 
 ### Added
