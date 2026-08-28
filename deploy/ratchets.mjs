@@ -92,6 +92,38 @@ function countDeployChecks() {
   return (body.match(/^\s+(?:ok|bad|skip)\s+"/gm) ?? []).length;
 }
 
+/**
+ * UI strings the French catalogue does not carry.
+ *
+ * The app ships in two languages and `t()` falls back to its English key when
+ * a translation is missing, so an untranslated string is invisible in every
+ * test, every typecheck and every English-language review — it shows up only
+ * as one English button in the middle of a French screen, to the person using
+ * it. Measured once by hand at 411 keys and one gap; a ratchet is what keeps
+ * that from drifting back, since each new feature adds keys.
+ *
+ * Matches `t('…')` / `t("…")` in non-test components. Template literals and
+ * computed keys are not counted: they cannot be resolved statically, and a
+ * ratchet that guesses is worse than one with a stated blind spot.
+ */
+function countUntranslatedStrings() {
+  const CALL = /\bt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g;
+  const catalogue = read('apps/web/src/locales/fr.ts');
+  const keys = new Set();
+  for (const file of tracked('apps/web/src/*')) {
+    if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    for (const match of read(file).matchAll(CALL)) {
+      const key = match[1] ?? match[2];
+      if (key) keys.add(key);
+    }
+  }
+  let missing = 0;
+  for (const key of keys) {
+    if (!catalogue.includes(key) && !catalogue.includes(key.replace(/\\'/g, "'"))) missing += 1;
+  }
+  return missing;
+}
+
 /** Files carrying at least one test — a suite spread thin is a different risk. */
 function countTestFiles() {
   return tracked('*.test.ts').concat(tracked('*.test.tsx')).length;
@@ -167,6 +199,12 @@ const METRICS = [
     measure: countDeployChecks,
   },
   { key: 'rawPaletteClasses', direction: 'down', label: 'raw Tailwind palette classes', measure: countRawPalette },
+  {
+    key: 'untranslatedStrings',
+    direction: 'down',
+    label: 'UI strings missing from the French catalogue',
+    measure: countUntranslatedStrings,
+  },
   {
     key: 'untestedCriticalModules',
     direction: 'down',

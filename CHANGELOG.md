@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.2] — 2026-08-28
+
+### Added
+
+- **A ratchet for untranslated interface strings, held at zero.** The app
+  ships in two languages and `t()` falls back to its English key when a
+  translation is missing, so a gap is invisible to every test, every
+  typecheck and every English-language review — it surfaces only as one
+  English button in the middle of a French screen, to the person using it.
+  Swept once by hand: 411 keys, one gap (`Saved “{name}”`, from the knowledge
+  library). Translated, and the sweep is now a ratchet so each new feature
+  cannot re-open it. Template literals and computed keys are a stated blind
+  spot rather than a guess.
+
 ## [0.32.1] — 2026-08-28
 
 ### Changed

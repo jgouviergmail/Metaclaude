@@ -5,7 +5,8 @@
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
     "initialJsGzipKb": 185,
-    "deployChecks": 146
+    "deployChecks": 146,
+    "untranslatedStrings": 0
   },
   "updated": "2026-08-28"
 }

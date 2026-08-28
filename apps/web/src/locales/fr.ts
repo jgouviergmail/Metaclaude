@@ -514,6 +514,7 @@ export const fr: Record<string, string> = {
   'Reference documents the agent can quote — a lease, a spec, a runbook. Global documents reach every workspace; scoped ones stay in theirs. Runs retrieve the relevant passages automatically, and the transcript shows which ones were used.':
     "Des documents de référence que l'agent peut citer — un bail, une spec, un runbook. Les documents globaux atteignent tous les espaces de travail ; les autres restent dans le leur. Les runs récupèrent automatiquement les passages pertinents, et le transcript montre ceux qui ont servi.",
   'Add document': 'Ajouter un document',
+  'Saved “{name}”': 'Enregistré « {name} »',
   'Re-index': 'Réindexer',
   'Recompute every passage’s embedding — needed after changing embedding provider.':
     "Recalculer le vecteur de chaque passage — nécessaire après un changement de fournisseur d'embeddings.",
