@@ -375,6 +375,51 @@ describe('the MCP tab: testing connections', () => {
     expect(toastMock.error.mock.calls[0]?.[1]).toMatchObject({ description: 'Connection closed' });
   });
 
+  /**
+   * The contract has six statuses; the first report knew two.
+   *
+   * Anything that was not `failed` was called a success, and a success sentence
+   * carries a tool count — so a server answering `needs-auth` was reported as
+   * having answered, with the zero tools it naturally has. "Always 0 tools" was
+   * that sentence. It is wrong about the one case an operator most needs named:
+   * a server demanding authorisation has not answered, and the thing to do
+   * about it is not "test again".
+   */
+  it.each([
+    ['needs-auth', /needs authorisation/, 'warning'],
+    ['pending', /still connecting/, 'info'],
+    ['disabled', /switched off/, 'info'],
+  ] as const)('does not call %s a success with zero tools', async (status, sentence, channel) => {
+    apiMock.workspaces.mockResolvedValue({ workspaces: [{ id: 'ws_1', name: 'Alpha' }] } as never);
+    apiMock.mcpServers.mockResolvedValue({
+      servers: [{ ...mcpServer, id: 'mcp_1', name: 'guarded', enabled: true }],
+    } as never);
+    apiMock.claudeCatalogue.mockResolvedValue({
+      models: [],
+      commands: [],
+      agents: [],
+      mcpServers: [{ name: 'guarded', status, error: null, tools: [] }],
+      account: null,
+      unavailable: [],
+      fetchedAt: 0,
+    } as never);
+
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+
+    const tester = await screen.findByRole('button', { name: /^Test$/ });
+    fireEvent.pointerDown(tester, { button: 0 });
+    fireEvent.click(tester);
+    const alpha = await screen.findByRole('menuitem', { name: 'Alpha' });
+    fireEvent.pointerDown(alpha, { button: 0 });
+    fireEvent.click(alpha);
+
+    await waitFor(() => expect(toastMock[channel]).toHaveBeenCalled());
+    expect(String(toastMock[channel].mock.calls[0]?.[0])).toMatch(sentence);
+    // And never as a pass: that is the whole defect.
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
   it('refuses only when there is nowhere to mount anything', async () => {
     apiMock.workspaces.mockResolvedValue({ workspaces: [] } as never);
 

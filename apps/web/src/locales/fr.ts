@@ -1742,4 +1742,12 @@ export const fr: Record<string, string> = {
   '{name} answered with {n} tool.': '{name} a répondu avec {n} outil.',
   '{name} answered with {n} tools.': '{name} a répondu avec {n} outils.',
   'Test': 'Tester',
+  '{name} needs authorisation.': '{name} demande une autorisation.',
+  'It answered, but refused the connection until it is authorised.': 'Il a répondu, mais refuse la connexion tant qu’il n’est pas autorisé.',
+  '{name} is still connecting.': '{name} est encore en cours de connexion.',
+  'Test again in a moment.': 'Retestez dans un instant.',
+  '{name} is switched off, so a run would not mount it.': '{name} est désactivé : un run ne le monterait pas.',
+  '{name} reported no status at all.': '{name} n’a rapporté aucun statut.',
+  '{n} server needs authorisation': '{n} serveur demande une autorisation',
+  '{n} servers need authorisation': '{n} serveurs demandent une autorisation',
 };

@@ -1394,6 +1394,62 @@ function McpTab({
       const failed = fresh.mcpServers.filter((server) => server.status === 'failed');
       const where = workspaces.find((workspace) => workspace.id === inWorkspace)?.name ?? '';
 
+      /**
+       * One server's outcome, per status rather than per "did it fail".
+       *
+       * The first version asked `status === 'failed'` and called everything
+       * else a success — so a server that answered `needs-auth`, `pending` or
+       * `disabled` was reported as having *answered*, with the zero tools it
+       * naturally carries. "Always 0 tools" was that sentence, and it was
+       * wrong about the one case an operator most needs named: a server
+       * demanding authorisation is not a server that answered.
+       *
+       * The switch is exhaustive over the contract's six statuses and the
+       * `never` below makes the compiler say so. A seventh arriving from the
+       * SDK must be given a sentence here, not silently absorbed into a
+       * success — which is the trap CLAUDE.md records about `default:` over an
+       * SDK union.
+       */
+      const report = (one: ClaudeCatalogue['mcpServers'][number]): void => {
+        switch (one.status) {
+          case 'connected':
+            toast.success(
+              plural(
+                one.tools.length,
+                '{name} answered with {n} tool.',
+                '{name} answered with {n} tools.',
+                { name: one.name },
+              ),
+            );
+            return;
+          case 'failed':
+            toast.error(t('{name} did not connect.', { name: one.name }), {
+              description: one.error ?? undefined,
+            });
+            return;
+          case 'needs-auth':
+            toast.warning(t('{name} needs authorisation.', { name: one.name }), {
+              description: t('It answered, but refused the connection until it is authorised.'),
+            });
+            return;
+          case 'pending':
+            toast.info(t('{name} is still connecting.', { name: one.name }), {
+              description: t('Test again in a moment.'),
+            });
+            return;
+          case 'disabled':
+            toast.info(t('{name} is switched off, so a run would not mount it.', { name: one.name }));
+            return;
+          case 'unknown':
+            toast.warning(t('{name} reported no status at all.', { name: one.name }));
+            return;
+          default: {
+            const unreachable: never = one.status;
+            throw new Error(`unhandled MCP status: ${String(unreachable)}`);
+          }
+        }
+      };
+
       // A row's own button reports on that row. The others were mounted too —
       // their badges above are updated — but the sentence answers the question
       // that was actually asked.
@@ -1401,27 +1457,34 @@ function McpTab({
         const one = fresh.mcpServers.find((server) => server.name === focus);
         if (!one) {
           toast.warning(t('{name} was not mounted in {workspace}.', { name: focus, workspace: where }));
-        } else if (one.status === 'failed') {
-          toast.error(t('{name} did not connect.', { name: focus }), {
-            description: one.error ?? undefined,
-          });
-        } else {
-          toast.success(
-            plural(
-              one.tools.length,
-              '{name} answered with {n} tool.',
-              '{name} answered with {n} tools.',
-              { name: focus },
-            ),
-          );
+          return;
         }
+        report(one);
         return;
       }
 
+      // One server: say the useful thing rather than a count of one.
+      if (fresh.mcpServers.length === 1) {
+        report(fresh.mcpServers[0]!);
+        return;
+      }
+
+      const needAuth = fresh.mcpServers.filter((server) => server.status === 'needs-auth');
       if (failed.length > 0) {
         toast.error(
           plural(failed.length, '{n} server did not connect', '{n} servers did not connect'),
           { description: failed.map((server) => server.name).join(', ') },
+        );
+      } else if (needAuth.length > 0) {
+        // Ahead of the success case: a server waiting to be authorised has not
+        // answered, and calling the set a pass would hide the one thing to do.
+        toast.warning(
+          plural(
+            needAuth.length,
+            '{n} server needs authorisation',
+            '{n} servers need authorisation',
+          ),
+          { description: needAuth.map((server) => server.name).join(', ') },
         );
       } else if (fresh.mcpServers.length === 0) {
         // "Every server answered" over an empty list is technically true and

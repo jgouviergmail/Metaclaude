@@ -11,6 +11,37 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.35.1] — 2026-08-28
+
+### Fixed
+
+- **"0 tools" was the report for a server that never answered.** The contract
+  carries six statuses; the report knew two. Anything that was not `failed` was
+  called a success, and a success sentence carries a tool count — so a server
+  answering `needs-auth`, `pending` or `disabled` was reported as having
+  *answered*, with the zero tools it naturally has. `needs-auth` is the case
+  that matters: it is what a remote server demanding OAuth replies, the badge
+  on the card said so, and the toast contradicted it. Each status now has its
+  own sentence, the switch is exhaustive, and a `never` makes the compiler
+  refuse a seventh status arriving from the SDK rather than letting it be
+  absorbed into a success — the trap CLAUDE.md already records about `default:`
+  over an SDK union.
+- **The summary hid the same thing.** With no failure it said "every server
+  answered", including when several were waiting to be authorised. Servers
+  needing authorisation are now named ahead of the success case, because that
+  is the one line with something to do about it. A single server reports its
+  own outcome rather than a count of one.
+
+### Changed
+
+- **Measured, not assumed: the CLI does report a connected server's tools.**
+  The suspicion was that tool loading is deferred behind tool search and that
+  the probe would have to ask for `alwaysLoad`. Checked against a real stdio
+  MCP server with two named tools: the probe returns both, immediately. What it
+  drops is their *descriptions*, which is the gap the direct probe already
+  fills. No change was needed, and the change that looked obvious would have
+  put every server's whole tool list into every prompt for nothing.
+
 ## [0.35.0] — 2026-08-28
 
 ### Added
