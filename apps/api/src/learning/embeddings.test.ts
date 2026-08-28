@@ -1,6 +1,12 @@
 import { HASH_EMBEDDING_DIM } from '@metaclaude/shared';
 import { describe, expect, it } from 'vitest';
-import { HashingEmbedder, cosineSimilarity, l2Normalise, tokenize } from './embeddings.js';
+import {
+  HashingEmbedder,
+  cosineSimilarity,
+  createEmbeddingProvider,
+  l2Normalise,
+  tokenize,
+} from './embeddings.js';
 
 const embedder = new HashingEmbedder();
 
@@ -193,5 +199,75 @@ describe('HashingEmbedder', () => {
     const many = embedder.embedSync(`memory retrieval ${'memory '.repeat(30)}`);
     // Still recognisably about the same thing despite the repetition.
     expect(cosineSimilarity(once, many)).toBeGreaterThan(0.3);
+  });
+});
+
+/**
+ * The factory, and the branch that actually runs in production.
+ *
+ * `METACLAUDE_EMBEDDINGS=local` needs `@huggingface/transformers`, which is a
+ * dependency of no package here and is not in the shipped image — the download
+ * and its ~350 MB are an opt-in. So on every deployment that asks for `local`
+ * today, what executes is the *fallback*, and until now nothing exercised it:
+ * a factory that threw instead would have taken the whole service down at boot,
+ * and the suite would have stayed green.
+ *
+ * These tests need no mocking. The optional import genuinely fails here for
+ * exactly the reason it fails in production — the package is not installed —
+ * so this is the real path, not a simulation of it.
+ */
+describe('createEmbeddingProvider', () => {
+  it('returns the hashing embedder unchanged when hash is asked for', async () => {
+    const provider = await createEmbeddingProvider({
+      provider: 'hash',
+      model: 'ignored',
+      cacheDir: '/nonexistent',
+    });
+
+    expect(provider.id).toBe(`hash-v1:${HASH_EMBEDDING_DIM}`);
+    expect(provider.dimension).toBe(HASH_EMBEDDING_DIM);
+  });
+
+  it('falls back to hashing — rather than failing the boot — when the model cannot load', async () => {
+    const logs: Array<{ level: string; message: string }> = [];
+    const provider = await createEmbeddingProvider({
+      provider: 'local',
+      model: 'Xenova/all-MiniLM-L6-v2',
+      cacheDir: '/nonexistent',
+      log: (level, message) => logs.push({ level, message }),
+    });
+
+    expect(provider.id).toBe(`hash-v1:${HASH_EMBEDDING_DIM}`);
+    // And it embeds: a provider that fell back but could not answer would be
+    // the same outage by a longer route.
+    expect(norm(await provider.embed('a question about retrieval'))).toBeCloseTo(1, 5);
+  });
+
+  it('says out loud that it fell back, naming the model, so the doctor is not the only witness', async () => {
+    const logs: Array<{ level: string; message: string }> = [];
+    await createEmbeddingProvider({
+      provider: 'local',
+      model: 'Xenova/all-MiniLM-L6-v2',
+      cacheDir: '/nonexistent',
+      log: (level, message) => logs.push({ level, message }),
+    });
+
+    const warning = logs.find((entry) => entry.level === 'warn');
+    expect(warning?.message).toContain('Xenova/all-MiniLM-L6-v2');
+    expect(warning?.message).toMatch(/falling back/i);
+  });
+
+  it('leaves the requested provider legible to the doctor, which compares it with the active one', async () => {
+    // The divergence the doctor reports is exactly this pair: `local` asked
+    // for, `hash-v1:512` answering. If the id ever stopped saying which
+    // embedder is running, that check would silently pass on a lie.
+    const provider = await createEmbeddingProvider({
+      provider: 'local',
+      model: 'Xenova/all-MiniLM-L6-v2',
+      cacheDir: '/nonexistent',
+    });
+
+    expect(provider.id.startsWith('hash-')).toBe(true);
+    expect(provider.id).not.toContain('Xenova');
   });
 });

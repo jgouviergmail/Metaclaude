@@ -67,6 +67,24 @@ export interface DoctorDeps {
 
 const WORST: Record<DoctorCheck['status'], number> = { ok: 0, warn: 1, fail: 2 };
 
+/**
+ * One judgement over free space, shared by the two disk checks and the backup
+ * one, so a figure that is "getting low" on the data volume does not read as
+ * healthy on the volume holding the archives. The backup case cannot call
+ * `diskFree` itself: the archives live on a volume the container does not
+ * mount, so the only measurement available is the one the backup script took
+ * and wrote into its marker.
+ */
+function judgeFreeSpace(free: number): DoctorCheck['status'] {
+  if (free < DISK_FAIL_BYTES) return 'fail';
+  if (free < DISK_WARN_BYTES) return 'warn';
+  return 'ok';
+}
+
+function formatFree(free: number): string {
+  return `${(free / GB).toFixed(1)} GB free`;
+}
+
 export class Doctor {
   constructor(private readonly deps: DoctorDeps) {}
 
@@ -160,11 +178,12 @@ export class Doctor {
 
   private async disk(name: string, path: string): Promise<DoctorCheck> {
     const free = await this.deps.diskFree(path);
-    const label = `${(free / GB).toFixed(1)} GB free at ${path}`;
-    if (free < DISK_FAIL_BYTES) {
+    const label = `${formatFree(free)} at ${path}`;
+    const verdict = judgeFreeSpace(free);
+    if (verdict === 'fail') {
       return { name, status: 'fail', summary: 'Disk space is critically low.', detail: label };
     }
-    if (free < DISK_WARN_BYTES) {
+    if (verdict === 'warn') {
       return { name, status: 'warn', summary: 'Disk space is getting low.', detail: label };
     }
     return { name, status: 'ok', summary: label, detail: null };
@@ -183,9 +202,9 @@ export class Doctor {
       };
     }
 
-    let marker: { at?: unknown; archive?: unknown };
+    let marker: { at?: unknown; archive?: unknown; freeBytes?: unknown };
     try {
-      marker = JSON.parse(raw) as { at?: unknown; archive?: unknown };
+      marker = JSON.parse(raw) as { at?: unknown; archive?: unknown; freeBytes?: unknown };
     } catch {
       marker = {};
     }
@@ -202,6 +221,30 @@ export class Doctor {
     const age = Math.max(0, now - marker.at);
     const hours = Math.round(age / HOUR);
     const archive = typeof marker.archive === 'string' ? marker.archive : 'unnamed archive';
+
+    // Space before age, and deliberately: a volume with no room left is why a
+    // nightly backup stops happening, so it is the sentence that leads to the
+    // fix. Absent from markers written before the field existed, which is the
+    // ordinary case on a host that has not re-run install-app.sh — silence
+    // there means "not measured", never "measured as zero".
+    const free = typeof marker.freeBytes === 'number' && Number.isFinite(marker.freeBytes)
+      ? marker.freeBytes
+      : null;
+    if (free !== null) {
+      const verdict = judgeFreeSpace(free);
+      if (verdict !== 'ok') {
+        return {
+          name: 'backup',
+          status: verdict,
+          summary:
+            verdict === 'fail'
+              ? 'The volume holding the backups has no room left — the next one will not be written.'
+              : 'The volume holding the backups is running out of room.',
+          detail: `${formatFree(free)} where the archives are kept · ${archive}`,
+        };
+      }
+    }
+
     if (age > BACKUP_STALE_MS) {
       return {
         name: 'backup',

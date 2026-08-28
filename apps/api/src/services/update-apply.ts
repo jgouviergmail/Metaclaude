@@ -15,7 +15,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { link, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { UpdateApplyStatus } from '@metaclaude/shared';
 
@@ -107,7 +107,8 @@ export class UpdateApplier {
       await rm(lock, { force: true });
       await writeFile(lock, body, { encoding: 'utf8', flag: 'wx' });
     }
-    await rename(lock, join(dir, 'request.json'));
+
+    await publishRequest(lock, join(dir, 'request.json'));
   }
 
   async status(): Promise<UpdateApplyStatus> {
@@ -154,6 +155,64 @@ export class UpdateApplier {
       at: typeof outcome.at === 'number' ? outcome.at : null,
     };
   }
+}
+
+/**
+ * Move a claimed request into place, and let exactly one of them arrive.
+ *
+ * Exported because it carries an invariant of its own, and one that no test of
+ * `request()` can reach: the window it closes exists only between two
+ * concurrent callers, and a single-threaded test can never stand inside it.
+ * Tested here, it is a plain question — publishing over something that is
+ * already there must refuse.
+ *
+ * This used to be a `rename`, which overwrites its destination. The lock that
+ * precedes it only excludes writers whose attempts *overlap*: a contender that
+ * claimed the lock after the winner had already renamed it away found the name
+ * free, took it, and renamed a second request over the first. Both callers
+ * were told they had won, and the version that actually deployed was the
+ * later one. Two operators pressing Apply in the same instant is all it takes,
+ * and it is silent on both sides.
+ *
+ * `link` refuses an existing destination, so the ordering stops mattering:
+ * whoever arrives first publishes, everyone else is refused. It needs a
+ * filesystem with hard links — every layout this ships on has them — and
+ * anything else fails loudly here rather than racing quietly.
+ */
+export async function publishRequest(lock: string, published: string): Promise<void> {
+  const drop = async (): Promise<void> => {
+    await rm(lock, { force: true });
+  };
+  const lost = new UpdateApplyError('Another update request was accepted a moment ago.', 409);
+
+  try {
+    await link(lock, published);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+      await drop();
+      throw error;
+    }
+
+    // Something is already there. Either a genuine concurrent winner — this
+    // caller loses, which is the point — or a leftover nobody can act on,
+    // which must not brick the button until someone shells in. The same
+    // judgement the stale lock gets, and for the same reason.
+    const existing = await readJson(published);
+    if (existing && typeof existing.version === 'string') {
+      await drop();
+      throw lost;
+    }
+
+    await rm(published, { force: true });
+    try {
+      await link(lock, published);
+    } catch {
+      await drop();
+      throw lost;
+    }
+  }
+
+  await drop();
 }
 
 async function readJson(path: string): Promise<Record<string, unknown> | null> {

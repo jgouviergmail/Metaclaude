@@ -10,6 +10,7 @@ import { ChevronRight, FileDiff, Minus, Plus } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
 import { parseDiff, type DiffLine } from '@/lib/markdown';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 /** Diffs longer than this start collapsed. */
 const COLLAPSE_THRESHOLD = 40;
@@ -27,6 +28,7 @@ export const DiffView = memo(function DiffView({
   deletions?: number;
   collapsible?: boolean;
 }) {
+  const t = useT();
   const lines = useMemo(() => parseDiff(patch), [patch]);
   const long = lines.length > COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState(!collapsible || !long);
@@ -109,7 +111,7 @@ export const DiffView = memo(function DiffView({
               onClick={() => setExpanded(true)}
               className="w-full bg-sunken py-1.5 text-[11px] text-muted hover:bg-raised hover:text-ink"
             >
-              Show {lines.length - visible.length} more lines
+              {t('Show {n} more lines', { n: lines.length - visible.length })}
             </button>
           ) : null}
         </div>

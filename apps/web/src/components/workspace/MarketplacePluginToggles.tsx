@@ -10,6 +10,7 @@
 import type { ReactNode } from 'react';
 import { Switch } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/primitives';
+import { useT } from '@/lib/i18n';
 
 export function MarketplacePluginToggles({
   available,
@@ -21,13 +22,14 @@ export function MarketplacePluginToggles({
   enabled: Record<string, boolean>;
   onChange: (key: string, on: boolean) => void;
 }) {
+  const t = useT();
   const availableKeys = new Set(available.map((plugin) => plugin.key));
   const orphans = Object.entries(enabled).filter(([key, on]) => on && !availableKeys.has(key));
 
   if (available.length === 0 && orphans.length === 0) {
     return (
       <p className="text-[12px] text-muted">
-        No marketplace offers plugins yet — add one under Plugins.
+        {t('No marketplace offers plugins yet — add one under Plugins.')}
       </p>
     );
   }
@@ -63,9 +65,9 @@ export function MarketplacePluginToggles({
           true,
           <p className="text-[11.5px] text-warning">
             <Badge tone="warning" className="mr-1.5">
-              source missing
+              {t('source missing')}
             </Badge>
-            Its marketplace is disabled or removed, so runs no longer load it.
+            {t('Its marketplace is disabled or removed, so runs no longer load it.')}
           </p>,
         ),
       )}

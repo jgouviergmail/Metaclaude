@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 /** A file the user has clicked, and which side of the index to diff it against. */
 interface Selection {
@@ -50,6 +51,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string; staged: boolean }> = [
 ];
 
 export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const t = useT();
   const queryClient = useQueryClient();
 
   const [message, setMessage] = useState('');
@@ -85,25 +87,25 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
   const stage = useMutation({
     mutationFn: (paths: string[]) => api.gitStage(workspaceId, paths),
     onSuccess: invalidate,
-    onError: (error) => fail(error, 'Could not stage those files.'),
+    onError: (error) => fail(error, t('Could not stage those files.')),
   });
 
   const unstage = useMutation({
     mutationFn: (paths: string[]) => api.gitUnstage(workspaceId, paths),
     onSuccess: invalidate,
-    onError: (error) => fail(error, 'Could not unstage those files.'),
+    onError: (error) => fail(error, t('Could not unstage those files.')),
   });
 
   const commit = useMutation({
     mutationFn: (text: string) => api.gitCommit(workspaceId, text),
     onSuccess: (result) => {
-      toast.success(`Committed ${result.hash.slice(0, 7)}`);
+      toast.success(t('Committed {hash}', { hash: result.hash.slice(0, 7) }));
       setMessage('');
       setSelected(null);
       invalidate();
       void queryClient.invalidateQueries({ queryKey: ['git-log', workspaceId] });
     },
-    onError: (error) => fail(error, 'The commit failed.'),
+    onError: (error) => fail(error, t('The commit failed.')),
   });
 
   const data = status.data;
@@ -111,7 +113,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
 
   const header = (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
-      <h2 className="shrink-0 text-sm font-semibold text-ink">Source control</h2>
+      <h2 className="shrink-0 text-sm font-semibold text-ink">{t('Source control')}</h2>
 
       {data?.isRepo && data.branch ? (
         <Badge tone="accent" className="min-w-0">
@@ -135,11 +137,11 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
       ) : null}
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        <Tooltip content="Refresh">
+        <Tooltip content={t('Refresh')}>
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Refresh source control"
+            aria-label={t('Refresh source control')}
             onClick={() => {
               invalidate();
               void queryClient.invalidateQueries({ queryKey: ['git-log', workspaceId] });
@@ -149,7 +151,9 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
           </Button>
         </Tooltip>
 
-        <Button variant="ghost" size="icon-sm" aria-label="Close source control" onClick={onClose}>
+        <Button variant="ghost" size="icon-sm" aria-label={t(
+          'Close source control',
+        )} onClick={onClose}>
           <X className="size-4" />
         </Button>
       </div>
@@ -173,11 +177,11 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
         {header}
         <EmptyState
           icon={<GitBranch />}
-          title="Git status is unavailable"
+          title={t('Git status is unavailable')}
           description={
             status.error instanceof ApiError
               ? status.error.message
-              : 'The repository status could not be read.'
+              : t('The repository status could not be read.')
           }
         />
       </div>
@@ -204,14 +208,14 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
         <Textarea
           value={message}
           onChange={(event) => setMessage(event.target.value)}
-          placeholder="Commit message"
-          aria-label="Commit message"
+          placeholder={t('Commit message')}
+          aria-label={t('Commit message')}
           rows={2}
           className="text-[13px]"
         />
         <div className="flex items-center gap-2">
           <span className="text-[11px] tabular-nums text-subtle">
-            {data.staged.length} staged
+            {data.staged.length} {t('staged')}
           </span>
           <Button
             variant="primary"
@@ -222,7 +226,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
             loading={commit.isPending}
           >
             <GitCommitHorizontal className="size-3.5" aria-hidden />
-            Commit
+            {t('Commit')}
           </Button>
         </div>
       </div>
@@ -237,7 +241,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
               disabled={busy}
             >
               <Plus className="size-3" aria-hidden />
-              Stage all
+              {t('Stage all')}
             </Button>
           </div>
         ) : null}
@@ -265,7 +269,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
                   aria-hidden
                 />
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
-                  {section.label}
+                  {t(section.label)}
                 </span>
                 <span className="text-[11px] tabular-nums text-subtle">{paths.length}</span>
               </button>
@@ -306,13 +310,15 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
               <p className="px-1 py-4 text-center text-[12.5px] text-danger">
                 {diff.error instanceof ApiError
                   ? diff.error.message
-                  : 'That diff could not be loaded.'}
+                  : t('That diff could not be loaded.')}
               </p>
             ) : diff.data.diff.trim() === '' ? (
               // `git diff` says nothing about a path it has never seen, which is
               // exactly the case for every untracked file.
               <p className="px-1 py-4 text-center text-[12.5px] text-muted">
-                No diff to show — an untracked file has no previous version to compare against.
+                {t(
+                  'No diff to show — an untracked file has no previous version to compare against.',
+                )}
               </p>
             ) : (
               <DiffView patch={diff.data.diff} path={selected.path} />
@@ -394,10 +400,11 @@ function RecentCommits({
   commits: Array<{ hash: string; author: string; date: number; subject: string }>;
   loading: boolean;
 }) {
+  const t = useT();
   return (
     <section className="p-2">
       <h3 className="px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-subtle">
-        Recent commits
+        {t('Recent commits')}
       </h3>
 
       {loading ? (
@@ -405,7 +412,7 @@ function RecentCommits({
           <Spinner />
         </div>
       ) : commits.length === 0 ? (
-        <p className="px-1.5 py-3 text-[12.5px] text-muted">No commits yet.</p>
+        <p className="px-1.5 py-3 text-[12.5px] text-muted">{t('No commits yet.')}</p>
       ) : (
         <ul className="space-y-0.5">
           {commits.map((entry) => (
@@ -446,6 +453,7 @@ function ConnectRepository({
   workspaceId: string;
   onConnected: () => void;
 }) {
+  const t = useT();
   const [url, setUrl] = useState('');
 
   const connect = useMutation({
@@ -455,15 +463,17 @@ function ConnectRepository({
       if (result.mode === 'cloned') {
         toast.success(`Cloned${result.branch ? ` — on ${result.branch}` : ''}.`);
       } else if (result.mode === 'initialised') {
-        toast.success('Now tracking this workspace with git.');
+        toast.success(t('Now tracking this workspace with git.'));
       } else {
         // Deliberately not a plain success: the working tree was left alone and
         // the owner needs to know that before they go looking for the files.
-        toast.info('Remote added and fetched. Your existing files were left untouched.');
+        toast.info(t('Remote added and fetched. Your existing files were left untouched.'));
       }
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not connect that repository.'),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not connect that repository.',
+      )),
   });
 
   return (
@@ -473,14 +483,14 @@ function ConnectRepository({
       </div>
 
       <div className="space-y-1">
-        <h3 className="text-[15px] font-semibold text-ink">No repository yet</h3>
+        <h3 className="text-[15px] font-semibold text-ink">{t('No repository yet')}</h3>
         <p className="max-w-sm text-[13px] text-muted">
-          Clone one into this workspace, or start tracking the files that are already here.
+          {t('Clone one into this workspace, or start tracking the files that are already here.')}
         </p>
       </div>
 
       <div className="w-full max-w-sm space-y-2 text-left">
-        <Label htmlFor="git-connect-url">Repository URL</Label>
+        <Label htmlFor="git-connect-url">{t('Repository URL')}</Label>
         <Input
           id="git-connect-url"
           type="url"
@@ -495,7 +505,7 @@ function ConnectRepository({
           }}
         />
         <p className="text-[12px] text-subtle">
-          https or ssh. A private repository needs its credentials already on the server.
+          {t('https or ssh. A private repository needs its credentials already on the server.')}
         </p>
       </div>
 
@@ -507,7 +517,7 @@ function ConnectRepository({
           loading={connect.isPending && connect.variables !== null}
           onClick={() => connect.mutate(url.trim())}
         >
-          Clone into this workspace
+          {t('Clone into this workspace')}
         </Button>
         <Button
           variant="ghost"
@@ -515,7 +525,7 @@ function ConnectRepository({
           loading={connect.isPending && connect.variables === null}
           onClick={() => connect.mutate(null)}
         >
-          Just track it locally
+          {t('Just track it locally')}
         </Button>
       </div>
     </div>

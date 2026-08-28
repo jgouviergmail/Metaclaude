@@ -13,13 +13,14 @@ import { Fingerprint, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { PasskeyRecord } from '@metaclaude/shared';
-import { useT } from '@/lib/i18n';
+import { usePlural, useT } from '@/lib/i18n';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, Button, Card, CardHeader, Input, Label } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { createPasskey, isCeremonyCancelled, passkeyDomainOk, passkeySupported } from '@/lib/passkeys';
 
 export function PasskeysCard() {
+  const plural = usePlural();
   const t = useT();
   const queryClient = useQueryClient();
   const supported = passkeySupported();
@@ -76,17 +77,27 @@ export function PasskeysCard() {
     <Card>
       <CardHeader
         title={t('Passkeys')}
-        description={t("Sign in with your device's own unlock — Face ID, a fingerprint, a security key — instead of the password.")}
-        actions={list.length > 0 ? <Badge tone="success">{t('{n} enrolled', { n: list.length })}</Badge> : null}
+        description={t(
+          "Sign in with your device's own unlock — Face ID, a fingerprint, a security key — instead of the password.",
+        )}
+        actions={
+          list.length > 0 ? (
+            <Badge tone="success">{plural(list.length, '{n} key enrolled', '{n} keys enrolled')}</Badge>
+          ) : null
+        }
       />
       <div className="space-y-3 px-4 pb-4">
         {!supported ? (
           <p className="text-[12.5px] leading-relaxed text-muted">
-            {t('This browser does not support passkeys (WebAuthn). Password and authenticator-app sign-in are unaffected.')}
+            {t(
+              'This browser does not support passkeys (WebAuthn). Password and authenticator-app sign-in are unaffected.',
+            )}
           </p>
         ) : !domainOk ? (
           <p className="text-[12.5px] leading-relaxed text-muted">
-            {t('Passkeys need a domain name: the WebAuthn standard scopes a credential to a domain, and this deployment is being reached by IP address. Give the server a hostname (METACLAUDE_SITE — see the deployment guide) and enrol from there. Password and authenticator-app sign-in are unaffected.')}
+            {t(
+              'Passkeys need a domain name: the WebAuthn standard scopes a credential to a domain, and this deployment is being reached by IP address. Give the server a hostname (METACLAUDE_SITE — see the deployment guide) and enrol from there. Password and authenticator-app sign-in are unaffected.',
+            )}
           </p>
         ) : (
           <>
@@ -100,7 +111,9 @@ export function PasskeysCard() {
                       <p className="truncate text-[11.5px] text-subtle">
                         {passkey.rpId}
                         {passkey.lastUsedAt
-                          ? ` · ${t('last used')} ${new Date(passkey.lastUsedAt).toLocaleDateString()}`
+                          ? ` · ${t(
+                            'last used',
+                          )} ${new Date(passkey.lastUsedAt).toLocaleDateString()}`
                           : ` · ${t('never used')}`}
                       </p>
                     </div>
@@ -120,7 +133,9 @@ export function PasskeysCard() {
               </ul>
             ) : (
               <p className="text-[12.5px] text-muted">
-                {t('No passkey yet. The password keeps working either way — a passkey is an addition, never a replacement.')}
+                {t(
+                  'No passkey yet. The password keeps working either way — a passkey is an addition, never a replacement.',
+                )}
               </p>
             )}
             <Button
@@ -196,12 +211,14 @@ export function PasskeysCard() {
         open={removing !== null}
         onOpenChange={(open) => (open ? undefined : closeDialogs())}
         title={t('Remove "{label}"', { label: removing?.label ?? '' })}
-        description={t('That device will no longer sign you in. Removing a sign-in method needs your password.')}
+        description={t(
+          'That device will no longer sign you in. Removing a sign-in method needs your password.',
+        )}
         size="sm"
         footer={
           <>
             <Button variant="ghost" size="sm" onClick={closeDialogs}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               variant="danger"

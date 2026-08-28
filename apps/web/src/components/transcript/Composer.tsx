@@ -38,6 +38,7 @@ import { cycleMcpServer, mcpServerState, steeredCount, toggleRequiredSkill } fro
 import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
 import { cn, formatBytes, isModifier } from '@/lib/utils';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
+import { useT } from '@/lib/i18n';
 
 const MODES: PermissionMode[] = ['plan', 'default', 'acceptEdits', 'auto', 'dontAsk'];
 
@@ -70,7 +71,9 @@ export function Composer({
   onAttachFiles,
   onRemoveAttachment,
   toolOptions,
-  placeholder = 'Ask Metaclaude to do something…',
+  // Defaulted at the point of use, not here: `t` is this component's own hook
+  // and does not exist yet where a parameter default is evaluated.
+  placeholder,
 }: {
   value: ComposerValue;
   onChange: (value: ComposerValue) => void;
@@ -89,6 +92,7 @@ export function Composer({
   toolOptions?: ToolPickerOptions;
   placeholder?: string;
 }) {
+  const t = useT();
   const [text, setText] = useState('');
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
@@ -232,7 +236,7 @@ export function Composer({
           {slash.length > 0 ? (
             <ul
               role="listbox"
-              aria-label="Slash commands"
+              aria-label={t('Slash commands')}
               className={cn(
                 'absolute bottom-full left-3 right-3 z-10 mb-2 max-h-64 overflow-y-auto',
                 'rounded-xl border border-line bg-surface p-1 shadow-lg',
@@ -277,10 +281,10 @@ export function Composer({
                 pickFiles(event.clipboardData.files);
               }
             }}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t('Ask Metaclaude to do something…')}
             disabled={disabled}
             rows={1}
-            aria-label="Prompt"
+            aria-label={t('Prompt')}
             className={cn(
               'block w-full resize-none bg-transparent px-4 pt-3 pb-2',
               'text-[15px] leading-relaxed text-ink placeholder:text-subtle',
@@ -289,7 +293,9 @@ export function Composer({
           />
 
           {attachments.length > 0 ? (
-            <ul className="flex flex-wrap gap-1.5 px-3 pb-1.5" aria-label="Pending attachments">
+            <ul className="flex flex-wrap gap-1.5 px-3 pb-1.5" aria-label={t(
+              'Pending attachments',
+            )}>
               {attachments.map((item) => (
                 <li
                   key={item.key}
@@ -301,7 +307,9 @@ export function Composer({
                   )}
                 >
                   {item.status === 'uploading' ? (
-                    <Loader2 className="size-3.5 shrink-0 animate-spin" aria-label="Uploading" />
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" aria-label={t(
+                      'Uploading',
+                    )} />
                   ) : (
                     <Paperclip className="size-3.5 shrink-0" aria-hidden />
                   )}
@@ -315,7 +323,7 @@ export function Composer({
                     <button
                       type="button"
                       onClick={() => onRemoveAttachment(item.key)}
-                      aria-label={`Remove ${item.name}`}
+                      aria-label={t('Remove {name}', { name: item.name })}
                       className="shrink-0 rounded p-0.5 hover:bg-surface hover:text-ink"
                     >
                       <X className="size-3" aria-hidden />
@@ -345,13 +353,16 @@ export function Composer({
                   }}
                 />
                 <Tooltip
-                  content={`Attach files — up to ${ATTACHMENT_LIMITS.maxPerMessage} per message. Drag & drop and pasted screenshots work too.`}
+                  content={t(
+                    'Attach files — up to {maxPerMessage} per message. Drag & drop and pasted screenshots work too.',
+                    { maxPerMessage: ATTACHMENT_LIMITS.maxPerMessage },
+                  )}
                 >
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={disabled || attachments.length >= ATTACHMENT_LIMITS.maxPerMessage}
-                    aria-label="Attach files"
+                    aria-label={t('Attach files')}
                     className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-raised hover:text-ink disabled:opacity-50"
                   >
                     <Paperclip className="size-3.5" aria-hidden />
@@ -369,7 +380,7 @@ export function Composer({
                   className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-raised hover:text-ink"
                 >
                   <Wand2 className="size-3.5" aria-hidden />
-                  {activeModel?.label}
+                  {activeModel ? t(activeModel.label) : null}
                   <ChevronDown className="size-3" aria-hidden />
                 </button>
               }
@@ -381,7 +392,7 @@ export function Composer({
                   onSelect={() => onChange({ ...value, model: model.value })}
                   description={model.hint}
                 >
-                  {model.label}
+                  {t(model.label)}
                 </MenuItem>
               ))}
             </Menu>
@@ -394,7 +405,7 @@ export function Composer({
                   className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-raised hover:text-ink"
                 >
                   <Gauge className="size-3.5" aria-hidden />
-                  {activeEffort?.label}
+                  {activeEffort ? t(activeEffort.label) : null}
                   <ChevronDown className="size-3" aria-hidden />
                 </button>
               }
@@ -405,7 +416,7 @@ export function Composer({
                   selected={effort.value === value.effort}
                   onSelect={() => onChange({ ...value, effort: effort.value })}
                 >
-                  {effort.label}
+                  {t(effort.label)}
                 </MenuItem>
               ))}
             </Menu>
@@ -445,7 +456,9 @@ export function Composer({
 
             {/* Ultracode --------------------------------------------------- */}
             {offerUltracode ? (
-              <Tooltip content="Fan the work out across sub-agents that explore, verify and contradict each other. Maximum effort — and token spend to match.">
+              <Tooltip content={t(
+                'Fan the work out across sub-agents that explore, verify and contradict each other. Maximum effort — and token spend to match.',
+              )}>
                 <button
                   type="button"
                   aria-pressed={value.ultracode}
@@ -458,20 +471,22 @@ export function Composer({
                   )}
                 >
                   <Network className="size-3.5" aria-hidden />
-                  Ultracode
+                  {t('Ultracode')}
                 </button>
               </Tooltip>
             ) : value.model === 'default' ? (
               // Withheld under Auto is a design decision; withheld *silently*
               // was how it read as missing. The inert button says why.
-              <Tooltip content="Ultracode needs a model that can orchestrate — under Auto the learner may pick one that cannot. Choose a model (Fable, Opus…) to enable it.">
+              <Tooltip content={t(
+                'Ultracode needs a model that can orchestrate — under Auto the learner may pick one that cannot. Choose a model (Fable, Opus…) to enable it.',
+              )}>
                 <button
                   type="button"
                   aria-disabled="true"
                   className="inline-flex h-7 cursor-not-allowed items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-subtle opacity-70"
                 >
                   <Network className="size-3.5" aria-hidden />
-                  Ultracode
+                  {t('Ultracode')}
                 </button>
               </Tooltip>
             ) : null}
@@ -482,7 +497,7 @@ export function Composer({
                 trigger={
                   <button
                     type="button"
-                    aria-label="Tools"
+                    aria-label={t('Tools')}
                     className={cn(
                       'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium',
                       steered > 0
@@ -491,7 +506,7 @@ export function Composer({
                     )}
                   >
                     <Wrench className="size-3.5" aria-hidden />
-                    Tools
+                    {t('Tools')}
                     {steered > 0 ? <span>{steered}</span> : null}
                     <ChevronDown className="size-3" aria-hidden />
                   </button>
@@ -499,7 +514,7 @@ export function Composer({
               >
                 {toolOptions.skills.length > 0 ? (
                   <>
-                    <MenuLabel>Require skills</MenuLabel>
+                    <MenuLabel>{t('Require skills')}</MenuLabel>
                     {toolOptions.skills.map((skill) => (
                       <MenuItem
                         key={skill}
@@ -517,7 +532,7 @@ export function Composer({
                 ) : null}
                 {toolOptions.mcpServers.length > 0 ? (
                   <>
-                    <MenuLabel>MCP servers</MenuLabel>
+                    <MenuLabel>{t('MCP servers')}</MenuLabel>
                     {toolOptions.mcpServers.map((server) => {
                       const state = mcpServerState(controls, server);
                       return (
@@ -544,7 +559,7 @@ export function Composer({
                   <>
                     <MenuSeparator />
                     <MenuItem onSelect={() => onChange({ ...value, toolControls: null })}>
-                      Reset — back to Auto
+                      {t('Reset — back to Auto')}
                     </MenuItem>
                   </>
                 ) : null}
@@ -555,12 +570,14 @@ export function Composer({
               {isRunning ? (
                 <Button variant="danger" size="sm" onClick={onInterrupt}>
                   <Square className="size-3.5 fill-current" aria-hidden />
-                  Stop
+                  {t('Stop')}
                 </Button>
               ) : (
                 <Tooltip
                   content={
-                    uploading ? 'Waiting for the upload to finish' : 'Enter to send · Shift+Enter for a new line'
+                    uploading ? t(
+                      'Waiting for the upload to finish',
+                    ) : t('Enter to send · Shift+Enter for a new line')
                   }
                 >
                   <Button
@@ -568,10 +585,10 @@ export function Composer({
                     size="sm"
                     onClick={submit}
                     disabled={!text.trim() || disabled || uploading}
-                    aria-label="Send"
+                    aria-label={t('Send')}
                   >
                     <CornerDownLeft className="size-3.5" aria-hidden />
-                    Send
+                    {t('Send')}
                   </Button>
                 </Tooltip>
               )}
@@ -582,8 +599,9 @@ export function Composer({
         {value.ultracode && offerUltracode ? (
           <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-accent">
             <Network className="size-3" aria-hidden />
-            Ultracode: this message fans out across sub-agents at maximum effort. Expect
-            multi-agent token spend.
+            {t(
+              'Ultracode: this message fans out across sub-agents at maximum effort. Expect multi-agent token spend.',
+            )}
           </p>
         ) : null}
         {steered > 0 ? (
@@ -591,7 +609,7 @@ export function Composer({
             <Wrench className="size-3" aria-hidden />
             {[
               controls && controls.requiredSkills.length > 0
-                ? `Skills required: ${controls.requiredSkills.join(', ')}`
+                ? t('Skills required: {skills}', { skills: controls.requiredSkills.join(', ') })
                 : null,
               controls && controls.preferredMcpServers.length > 0
                 ? `MCP preferred: ${controls.preferredMcpServers.join(', ')}`
@@ -607,12 +625,12 @@ export function Composer({
         {value.permissionMode === 'bypassPermissions' ? (
           <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-danger">
             <Zap className="size-3" aria-hidden />
-            Bypass mode: the agent will run commands and edit files without asking.
+            {t('Bypass mode: the agent will run commands and edit files without asking.')}
           </p>
         ) : value.permissionMode === 'plan' ? (
           <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted">
             <Brain className="size-3" aria-hidden />
-            Plan mode: the agent will research and propose, but execute nothing.
+            {t('Plan mode: the agent will research and propose, but execute nothing.')}
           </p>
         ) : null}
       </div>

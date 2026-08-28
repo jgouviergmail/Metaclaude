@@ -36,10 +36,13 @@ import {
   Tooltip,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { usePlural, useT } from '@/lib/i18n';
 import { useUiStore } from '@/lib/store';
 import { formatRelative } from '@/lib/utils';
 
 export function WorkspacePage() {
+  const plural = usePlural();
+  const t = useT();
   const { workspaceId = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -64,7 +67,7 @@ export function WorkspacePage() {
       void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
       navigate(`/w/${workspaceId}/s/${result.session.id}`);
     },
-    onError: () => toast.error('Could not start a session.'),
+    onError: () => toast.error(t('Could not start a session.')),
   });
 
   const workspace = data?.workspace;
@@ -86,7 +89,7 @@ export function WorkspacePage() {
       navigate(`/w/${workspaceId}/s/${result.session.id}`);
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not adopt that session.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not adopt that session.')),
   });
 
   // Land directly in a session when this workspace has none yet.
@@ -122,10 +125,10 @@ export function WorkspacePage() {
     return (
       <AppShell>
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <p className="text-sm text-muted">That workspace could not be loaded.</p>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces')}>
-            All workspaces
-          </Button>
+          <p className="text-sm text-muted">{t('That workspace could not be loaded.')}</p>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces')}>{t(
+            'All workspaces',
+          )}</Button>
         </div>
       </AppShell>
     );
@@ -151,11 +154,11 @@ export function WorkspacePage() {
         }
         actions={
           <>
-            <Tooltip content="Workspace settings">
+            <Tooltip content={t('Workspace settings')}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Workspace settings"
+                aria-label={t('Workspace settings')}
                 onClick={() => setShowSettings(true)}
               >
                 <Settings2 className="size-4" />
@@ -167,9 +170,7 @@ export function WorkspacePage() {
               onClick={() => createSession.mutate()}
               loading={createSession.isPending}
             >
-              <Plus className="size-4" aria-hidden />
-              New session
-            </Button>
+              <Plus className="size-4" aria-hidden />{t('New session')}</Button>
           </>
         }
       />
@@ -181,9 +182,9 @@ export function WorkspacePage() {
           ) : null}
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Sessions" value={sessions.length} />
+            <Stat label={t('Sessions')} value={sessions.length} />
             <Stat
-              label="Memories"
+              label={t('Memories')}
               value={totalMemories}
               hint={
                 memoryStats
@@ -192,7 +193,7 @@ export function WorkspacePage() {
               }
             />
             <Stat
-              label="Permission mode"
+              label={t('Permission mode')}
               value={
                 <span className="text-base">
                   {PERMISSION_MODE_INFO[workspace.settings.defaultPermissionMode].label}
@@ -205,12 +206,12 @@ export function WorkspacePage() {
               }
             />
             <Stat
-              label="Branch"
+              label={t('Branch')}
               value={<span className="text-base">{git?.branch ?? '—'}</span>}
               hint={
                 git?.isRepo
                   ? `${git.modified.length} modified · ${git.untracked.length} untracked`
-                  : 'Not a git repository'
+                  : t('Not a git repository')
               }
             />
           </div>
@@ -219,7 +220,7 @@ export function WorkspacePage() {
             <Card>
               <div className="flex items-center gap-2 border-b border-line px-4 py-3">
                 <GitBranch className="size-4 shrink-0 text-muted" aria-hidden />
-                <h2 className="text-sm font-semibold text-ink">Uncommitted changes</h2>
+                <h2 className="text-sm font-semibold text-ink">{t('Uncommitted changes')}</h2>
                 <Badge tone="warning" className="ml-auto">
                   {git.modified.length + git.untracked.length}
                 </Badge>
@@ -244,12 +245,10 @@ export function WorkspacePage() {
 
           <Card>
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-              <h2 className="text-sm font-semibold text-ink">Sessions</h2>
+              <h2 className="text-sm font-semibold text-ink">{t('Sessions')}</h2>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setShowCliSessions(true)}>
-                  <TerminalSquare className="size-4" aria-hidden />
-                  From the CLI
-                </Button>
+                  <TerminalSquare className="size-4" aria-hidden />{t('From the CLI')}</Button>
                 <span className="text-[12px] text-subtle">{sessions.length}</span>
               </div>
             </div>
@@ -257,8 +256,8 @@ export function WorkspacePage() {
             {sessions.length === 0 ? (
               <EmptyState
                 icon={<Loader2 className="animate-spin" />}
-                title="Starting your first session"
-                description="One moment."
+                title={t('Starting your first session')}
+                description={t('One moment.')}
               />
             ) : (
               <ul className="divide-y divide-[var(--mc-border)]">
@@ -270,18 +269,18 @@ export function WorkspacePage() {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13.5px] font-medium text-ink">
-                          {session.title || 'New session'}
+                          {session.title || t('New session')}
                         </p>
                         <p className="text-[11.5px] text-subtle">
-                          {session.runCount} run{session.runCount === 1 ? '' : 's'} ·{' '}
+                          {plural(session.runCount, '{n} run', '{n} runs')} ·{' '}
                           {formatRelative(session.lastActivityAt)}
                         </p>
                       </div>
-                      {session.status === 'running' ? <Badge tone="accent">running</Badge> : null}
+                      {session.status === 'running' ? <Badge tone="accent">{t('running')}</Badge> : null}
                       {session.status === 'waiting_approval' ? (
-                        <Badge tone="warning">waiting</Badge>
+                        <Badge tone="warning">{t('waiting')}</Badge>
                       ) : null}
-                      {session.status === 'error' ? <Badge tone="danger">error</Badge> : null}
+                      {session.status === 'error' ? <Badge tone="danger">{t('error')}</Badge> : null}
                     </Link>
                   </li>
                 ))}
@@ -303,8 +302,10 @@ export function WorkspacePage() {
       <Modal
         open={showCliSessions}
         onOpenChange={setShowCliSessions}
-        title="Sessions from the Claude CLI"
-        description="Conversations the CLI holds for this directory — including ones started in a terminal. Adopting one binds it here, so resuming and steering work as usual."
+        title={t('Sessions from the Claude CLI')}
+        description={t(
+          'Conversations the CLI holds for this directory — including ones started in a terminal. Adopting one binds it here, so resuming and steering work as usual.',
+        )}
         size="lg"
       >
         {cliSessions.isLoading ? (
@@ -312,7 +313,9 @@ export function WorkspacePage() {
             <Spinner className="size-5" />
           </div>
         ) : cliSessions.isError ? (
-          <p className="py-4 text-[13px] text-muted">The CLI's session store could not be read.</p>
+          <p className="py-4 text-[13px] text-muted">{t(
+            "The CLI's session store could not be read.",
+          )}</p>
         ) : (
           <CliSessionList
             sessions={cliSessions.data?.sessions ?? []}
@@ -334,6 +337,19 @@ export function WorkspacePage() {
 const MODELS = ['default', 'opus', 'sonnet', 'haiku', 'opusplan'];
 const EFFORTS: Array<EffortLevel | null> = [null, 'low', 'medium', 'high', 'xhigh', 'max'];
 
+/** `auto` is first because it is the default, and because it costs nothing. */
+const LANGUAGE_INFO: Record<
+  WorkspaceSettings['language'],
+  { label: string; description: string }
+> = {
+  auto: {
+    label: 'Follow the request',
+    description: 'No instruction at all — the agent answers in the language it was written to.',
+  },
+  fr: { label: 'Français', description: 'Every answer in French, subagents included.' },
+  en: { label: 'English', description: 'Every answer in English, subagents included.' },
+};
+
 function WorkspaceSettingsModal({
   open,
   onOpenChange,
@@ -349,6 +365,7 @@ function WorkspaceSettingsModal({
   name: string;
   description: string;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<WorkspaceSettings>(settings);
   const [draftName, setDraftName] = useState(name);
@@ -397,11 +414,11 @@ function WorkspaceSettingsModal({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-      toast.success('Settings saved');
+      toast.success(t('Settings saved'));
       onOpenChange(false);
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not save the settings.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not save the settings.')),
   });
 
   const update = <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]): void =>
@@ -411,24 +428,22 @@ function WorkspaceSettingsModal({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Workspace settings"
-      description="Defaults for every session started in this workspace."
+      title={t('Workspace settings')}
+      description={t('Defaults for every session started in this workspace.')}
       size="lg"
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button variant="primary" size="sm" loading={save.isPending} onClick={() => save.mutate()}>
-            Save
-          </Button>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>{t(
+            'Cancel',
+          )}</Button>
+          <Button variant="primary" size="sm" loading={save.isPending} onClick={() => save.mutate()}>{t(
+            'Save',
+          )}</Button>
         </>
       }
     >
       <div className="space-y-5">
-        <Label htmlFor="ws-edit-name">
-          Name
-          <Input
+        <Label htmlFor="ws-edit-name">{t('Name')}<Input
             id="ws-edit-name"
             value={draftName}
             onChange={(event) => setDraftName(event.target.value)}
@@ -436,9 +451,7 @@ function WorkspaceSettingsModal({
           />
         </Label>
 
-        <Label htmlFor="ws-edit-description">
-          Description
-          <Textarea
+        <Label htmlFor="ws-edit-description">{t('Description')}<Textarea
             id="ws-edit-description"
             value={draftDescription}
             onChange={(event) => setDraftDescription(event.target.value)}
@@ -449,7 +462,9 @@ function WorkspaceSettingsModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">Default model</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+              'Default model',
+            )}</span>
             <Menu
               side="bottom"
               trigger={
@@ -471,7 +486,9 @@ function WorkspaceSettingsModal({
           </div>
 
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">Default effort</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+              'Default effort',
+            )}</span>
             <Menu
               side="bottom"
               trigger={
@@ -494,9 +511,9 @@ function WorkspaceSettingsModal({
         </div>
 
         <div>
-          <span className="mb-1.5 block text-[13px] font-medium text-ink">
-            Default permission mode
-          </span>
+          <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+            'Default permission mode',
+          )}</span>
           <Menu
             side="bottom"
             trigger={
@@ -505,7 +522,7 @@ function WorkspaceSettingsModal({
               </Button>
             }
           >
-            <MenuLabel>How much to ask before acting</MenuLabel>
+            <MenuLabel>{t('How much to ask before acting')}</MenuLabel>
             {(Object.keys(PERMISSION_MODE_INFO) as PermissionMode[]).map((mode) => (
               <MenuItem
                 key={mode}
@@ -523,57 +540,65 @@ function WorkspaceSettingsModal({
         <MenuSeparator />
 
         <fieldset className="space-y-3">
-          <legend className="text-[13px] font-semibold text-ink">Learning</legend>
+          <legend className="text-[13px] font-semibold text-ink">{t('Learning')}</legend>
 
           <CheckboxField
             checked={draft.memoryEnabled}
             onChange={(value) => update('memoryEnabled', value)}
-            label="Recall long-term memory"
-            hint="Inject what Metaclaude learned in earlier sessions into each run's context."
+            label={t('Recall long-term memory')}
+            hint={t("Inject what Metaclaude learned in earlier sessions into each run's context.")}
           />
           <CheckboxField
             checked={draft.knowledgeEnabled}
             onChange={(value) => update('knowledgeEnabled', value)}
-            label="Consult the knowledge library"
-            hint="Retrieve relevant passages from your reference documents — this workspace's shelf plus the global one."
+            label={t('Consult the knowledge library')}
+            hint={t(
+              "Retrieve relevant passages from your reference documents — this workspace's shelf plus the global one.",
+            )}
           />
           <CheckboxField
             checked={draft.autoPolicyEnabled}
             onChange={(value) => update('autoPolicyEnabled', value)}
-            label="Choose the model automatically"
-            hint="Pick model and effort from what has performed best on similar tasks here."
+            label={t('Choose the model automatically')}
+            hint={t('Pick model and effort from what has performed best on similar tasks here.')}
           />
           <CheckboxField
             checked={draft.reflexionEnabled}
             onChange={(value) => update('reflexionEnabled', value)}
-            label="Reflect after each run"
-            hint="Run a small, tool-less pass that extracts durable lessons from what happened."
+            label={t('Reflect after each run')}
+            hint={t(
+              'Run a small, tool-less pass that extracts durable lessons from what happened.',
+            )}
           />
           <CheckboxField
             checked={draft.checkpointing}
             onChange={(value) => update('checkpointing', value)}
-            label="File checkpointing"
-            hint="Track file changes so a run can be rewound."
+            label={t('File checkpointing')}
+            hint={t('Track file changes so a run can be rewound.')}
           />
         </fieldset>
 
         <MenuSeparator />
 
         <fieldset className="space-y-3">
-          <legend className="text-[13px] font-semibold text-ink">Autonomy</legend>
+          <legend className="text-[13px] font-semibold text-ink">{t('Autonomy')}</legend>
 
           <CheckboxField
             checked={draft.autoWorkBoard}
             onChange={(value) => update('autoWorkBoard', value)}
-            label="Work the board by itself"
-            hint="When a card run ends, start the top To do card automatically — one card at a time, success lands in Review, and the quota guard pauses automatic starts near the plan's ceiling."
+            label={t('Work the board by itself')}
+            hint={t(
+              "When a card run ends, start the top To do card automatically — one card at a time, success lands in Review, and the quota guard pauses automatic starts near the plan's ceiling.",
+            )}
           />
 
           <CheckboxField
             checked={draft.advisorAuto}
             onChange={(value) => update('advisorAuto', value)}
-            label="Let the advisor study this workspace daily"
-            hint="At most once a day, an advisor run reads recent runs, the board and the registry, creates backlog tickets and disabled automations, and leaves anything that would act — skills, agents, vetted MCP servers — in the Dashboard inbox for you to accept. The manual button works either way."
+            label={t('Let the advisor study this workspace daily')}
+            hint={t(
+              'At most once a day, an advisor run reads recent runs, the board and the registry, creates backlog tickets and disabled automations, and leaves anything that would act — skills, agents, vetted MCP servers — in the Dashboard inbox for you to accept. The manual button works either way.',
+            )}
           />
         </fieldset>
 
@@ -585,18 +610,23 @@ function WorkspaceSettingsModal({
           <CheckboxField
             checked={draft.mirrorSessions}
             onChange={(value) => update('mirrorSessions', value)}
-            label="Mirror sessions to claude.ai"
-            hint="Publish view-only copies of this workspace's sessions to your Claude account. Works only while the CLI account sign-in is the live credential — a paired token is inference-only. See the guide's sessions chapter."
+            label={t('Mirror sessions to claude.ai')}
+            hint={t(
+              "Publish view-only copies of this workspace's sessions to your Claude account. Works only while the CLI account sign-in is the live credential — a paired token is inference-only. See the guide's sessions chapter.",
+            )}
           />
         </fieldset>
 
         <MenuSeparator />
 
         <fieldset className="space-y-2">
-          <legend className="text-[13px] font-semibold text-ink">Marketplace plugins</legend>
+          <legend className="text-[13px] font-semibold text-ink">{t(
+            'Marketplace plugins',
+          )}</legend>
           <p className="text-[12px] text-muted">
-            Plugins the CLI installs from the marketplaces added under Plugins. Enabled ones load
-            into every run of this workspace.
+            {t(
+              'Plugins the CLI installs from the marketplaces added under Plugins. Enabled ones load into every run of this workspace.',
+            )}
           </p>
           <MarketplacePluginToggles
             available={availablePlugins}
@@ -610,9 +640,9 @@ function WorkspaceSettingsModal({
         <MenuSeparator />
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Label htmlFor="ws-max-turns" hint="Blank means no limit.">
-            Max turns per run
-            <Input
+          <Label htmlFor="ws-max-turns" hint={t(
+            'Blank means no limit.',
+          )}>{t('Max turns per run')}<Input
               id="ws-max-turns"
               type="number"
               min={1}
@@ -625,8 +655,8 @@ function WorkspaceSettingsModal({
             />
           </Label>
 
-          <Label htmlFor="ws-max-budget" hint="Stops a run once it reaches this cost.">
-            Cost ceiling (USD)
+          <Label htmlFor="ws-max-budget" hint={t('Stops a run once it reaches this cost.')}>
+            {t('Cost ceiling (USD)')}
             <Input
               id="ws-max-budget"
               type="number"
@@ -641,12 +671,41 @@ function WorkspaceSettingsModal({
           </Label>
         </div>
 
+        <div>
+          <p className="text-[13px] font-medium text-ink">{t('Answer language')}</p>
+          <p className="mb-1.5 text-xs leading-relaxed text-muted">
+            {t(
+              'Subagents carry English prompts, so delegated work comes back in English however you wrote the request. Pinning a language settles the whole run, delegations included. Code and command output are never translated.',
+            )}
+          </p>
+          <Menu
+            side="bottom"
+            trigger={
+              <Button variant="secondary" size="sm" className="w-full justify-between">
+                {LANGUAGE_INFO[draft.language].label}
+              </Button>
+            }
+          >
+            <MenuLabel>{t('What the agent answers in')}</MenuLabel>
+            {(Object.keys(LANGUAGE_INFO) as WorkspaceSettings['language'][]).map((value) => (
+              <MenuItem
+                key={value}
+                selected={draft.language === value}
+                onSelect={() => update('language', value)}
+                description={LANGUAGE_INFO[value].description}
+              >
+                {LANGUAGE_INFO[value].label}
+              </MenuItem>
+            ))}
+          </Menu>
+        </div>
+
         <Label
           htmlFor="ws-system-prompt"
-          hint="Appended to Claude Code's own system prompt for every run here. Project conventions, things to avoid, house style."
-        >
-          Additional instructions
-          <Textarea
+          hint={t(
+            "Appended to Claude Code's own system prompt for every run here. Project conventions, things to avoid, house style.",
+          )}
+        >{t('Additional instructions')}<Textarea
             id="ws-system-prompt"
             value={draft.systemPromptAppend}
             onChange={(event) => update('systemPromptAppend', event.target.value)}

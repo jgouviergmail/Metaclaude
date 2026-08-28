@@ -12,6 +12,7 @@ import { GitBranch, TerminalSquare } from 'lucide-react';
 import type { ClaudeCliSession } from '@metaclaude/shared';
 import { Badge, Button, EmptyState } from '@/components/ui/primitives';
 import { formatRelative } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export function CliSessionList({
   sessions,
@@ -25,12 +26,15 @@ export function CliSessionList({
   onAdopt: (claudeSessionId: string) => void;
   onOpen: (sessionId: string) => void;
 }) {
+  const t = useT();
   if (sessions.length === 0) {
     return (
       <EmptyState
         icon={<TerminalSquare />}
-        title="No CLI sessions here"
-        description="Conversations started with the claude command in this directory will appear here."
+        title={t('No CLI sessions here')}
+        description={t(
+          'Conversations started with the claude command in this directory will appear here.',
+        )}
       />
     );
   }
@@ -56,9 +60,9 @@ export function CliSessionList({
           </div>
           {session.adoptedBy ? (
             <>
-              <Badge tone="accent">adopted</Badge>
+              <Badge tone="accent">{t('adopted')}</Badge>
               <Button variant="secondary" size="sm" onClick={() => onOpen(session.adoptedBy!)}>
-                Open
+                {t('Open')}
               </Button>
             </>
           ) : (
@@ -68,7 +72,7 @@ export function CliSessionList({
               loading={adoptingId === session.sessionId}
               onClick={() => onAdopt(session.sessionId)}
             >
-              Adopt
+              {t('Adopt')}
             </Button>
           )}
         </li>

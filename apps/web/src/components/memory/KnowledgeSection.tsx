@@ -112,7 +112,9 @@ export function KnowledgeSection({
     },
     onSuccess: refresh,
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('Could not update that document.')),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not update that document.',
+      )),
   });
 
   // The twin of memory's re-index: after switching embedding provider the
@@ -143,7 +145,9 @@ export function KnowledgeSection({
       });
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('Could not delete that document.')),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not delete that document.',
+      )),
   });
 
   const openFor = async (meta: KnowledgeDocumentMeta) => {
@@ -184,7 +188,9 @@ export function KnowledgeSection({
             // The app's Tooltip, not a `title` attribute: the native one is
             // unstyled, sits outside the charter, and never appears on touch —
             // where this screen is used as much as on a desktop.
-            <Tooltip content={t('Recompute every passage’s embedding — needed after changing embedding provider.')}>
+            <Tooltip content={t(
+              'Recompute every passage’s embedding — needed after changing embedding provider.',
+            )}>
               <Button
                 variant="ghost"
                 size="sm"
@@ -238,7 +244,10 @@ export function KnowledgeSection({
                     {!doc.enabled ? <Badge tone="warning">{t('Paused')}</Badge> : null}
                   </div>
                   <p className="text-[12px] text-subtle">
-                    {t('{n} passages', { n: String(doc.chunkCount) })} · {formatBytes(doc.contentLength)} ·{' '}
+                    {t(
+                      '{n} passages',
+                      { n: String(doc.chunkCount) },
+                    )} · {formatBytes(doc.contentLength)} ·{' '}
                     {formatRelative(doc.updatedAt)}
                   </p>
                 </div>
@@ -250,7 +259,9 @@ export function KnowledgeSection({
                     label={t('Retrieve from “{name}”', { name: doc.title })}
                     tooltip={
                       doc.enabled
-                        ? t('On: runs can retrieve these passages. Switch off to pause without deleting.')
+                        ? t(
+                          'On: runs can retrieve these passages. Switch off to pause without deleting.',
+                        )
                         : t('Paused: kept and editable, but never retrieved.')
                     }
                   />
@@ -379,7 +390,9 @@ export function KnowledgeSection({
                 rows={12}
                 value={editing.content}
                 onChange={(event) => setEditing({ ...editing, content: event.target.value })}
-                placeholder={t('Paste the text. Markdown headings become the sections passages are cited under.')}
+                placeholder={t(
+                  'Paste the text. Markdown headings become the sections passages are cited under.',
+                )}
               />
             </div>
 

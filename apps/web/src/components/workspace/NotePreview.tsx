@@ -16,6 +16,7 @@ import { resolveLink } from '@metaclaude/shared';
 import { api } from '@/lib/api';
 import { renderNoteMarkdown } from '@/lib/markdown';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export function NotePreview({
   workspaceId,
@@ -28,6 +29,7 @@ export function NotePreview({
   content: string;
   onOpenNote: (path: string) => void;
 }) {
+  const t = useT();
   const graph = useQuery({
     queryKey: ['notes-graph', workspaceId],
     queryFn: () => api.notesGraph(workspaceId),
@@ -65,16 +67,18 @@ export function NotePreview({
       />
 
       {me && (incoming.length > 0 || outgoing.length > 0) ? (
-        <section className="border-t border-line px-4 py-3 sm:px-6" aria-label="Local graph">
-          <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">Graph</h3>
+        <section className="border-t border-line px-4 py-3 sm:px-6" aria-label={t('Local graph')}>
+          <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t(
+            'Graph',
+          )}</h3>
           <LocalGraph note={me} incoming={incoming} outgoing={outgoing} onOpenNote={onOpenNote} />
         </section>
       ) : null}
 
-      <section className="border-t border-line px-4 py-3 sm:px-6" aria-label="Backlinks">
+      <section className="border-t border-line px-4 py-3 sm:px-6" aria-label={t('Backlinks')}>
         <h3 className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-subtle">
           <Link2 className="size-3.5" aria-hidden />
-          Backlinks
+          {t('Backlinks')}
           {backlinks.data ? <span>({backlinks.data.backlinks.length})</span> : null}
         </h3>
         {backlinks.data && backlinks.data.backlinks.length > 0 ? (
@@ -97,13 +101,13 @@ export function NotePreview({
             ))}
           </ul>
         ) : (
-          <p className="mt-1.5 text-[12.5px] text-muted">Nothing links here yet.</p>
+          <p className="mt-1.5 text-[12.5px] text-muted">{t('Nothing links here yet.')}</p>
         )}
         {me && me.unresolved.length > 0 ? (
           <p className="mt-3 flex items-start gap-1.5 text-[12px] text-muted">
             <Unlink className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
-              Links to notes that do not exist yet:{' '}
+              {t('Links to notes that do not exist yet:')}{' '}
               {me.unresolved.map((target, index) => (
                 <span key={target}>
                   {index > 0 ? ', ' : ''}
@@ -145,6 +149,7 @@ function LocalGraph({
   outgoing: NoteEntry[];
   onOpenNote: (path: string) => void;
 }) {
+  const t = useT();
   const left = incoming.slice(0, MAX_SIDE);
   const right = outgoing.slice(0, MAX_SIDE);
   const rows = Math.max(left.length, right.length, 1);
@@ -168,7 +173,7 @@ function LocalGraph({
       transform={`translate(${x}, ${y - NODE_H / 2})`}
       role="button"
       tabIndex={0}
-      aria-label={`Open ${entry.title}`}
+      aria-label={t('Open {title}', { title: entry.title })}
       className="cursor-pointer focus:outline-none"
       onClick={() => onOpenNote(entry.path)}
       onKeyDown={(event) => {
@@ -211,7 +216,7 @@ function LocalGraph({
         width="100%"
         style={{ maxWidth: width, minWidth: 460 }}
         role="img"
-        aria-label={`Local graph of ${note.title}`}
+        aria-label={t('Local graph of {title}', { title: note.title })}
       >
         {left.map((entry, index) =>
           edge(NODE_W, rowY(index, left.length), NODE_W + GAP, midY, `in-${entry.path}`),
@@ -225,8 +230,12 @@ function LocalGraph({
       </svg>
       {incoming.length > MAX_SIDE || outgoing.length > MAX_SIDE ? (
         <p className="mt-1 text-[11.5px] text-subtle">
-          Showing {Math.min(incoming.length, MAX_SIDE)} of {incoming.length} in,{' '}
-          {Math.min(outgoing.length, MAX_SIDE)} of {outgoing.length} out.
+          {t('Showing {shownIn} of {totalIn} in, {shownOut} of {totalOut} out.', {
+            shownIn: Math.min(incoming.length, MAX_SIDE),
+            totalIn: incoming.length,
+            shownOut: Math.min(outgoing.length, MAX_SIDE),
+            totalOut: outgoing.length,
+          })}
         </p>
       ) : null}
     </div>

@@ -8,9 +8,11 @@
 
 import type { DoctorReport } from '@metaclaude/shared';
 import { Badge } from '@/components/ui/primitives';
+import { useT } from '@/lib/i18n';
 
 const TONE = { ok: 'success', warn: 'warning', fail: 'danger' } as const;
 
+/** English as data — translated at render; see the note in `lib/i18n.tsx`. */
 const VERDICT: Record<DoctorReport['status'], string> = {
   ok: 'Everything checks out.',
   warn: 'Working, with something worth a look.',
@@ -18,11 +20,12 @@ const VERDICT: Record<DoctorReport['status'], string> = {
 };
 
 export function DoctorReportView({ report }: { report: DoctorReport }) {
+  const t = useT();
   return (
     <div className="space-y-3">
       <p className="flex items-center gap-2 text-[13px] text-ink">
-        <Badge tone={TONE[report.status]}>{report.status}</Badge>
-        {VERDICT[report.status]}
+        <Badge tone={TONE[report.status]}>{t(report.status)}</Badge>
+        {t(VERDICT[report.status])}
       </p>
 
       <ul className="divide-y divide-[var(--mc-border)]">

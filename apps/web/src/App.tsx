@@ -47,6 +47,9 @@ const SettingsPage = lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPag
 const WorkspacePage = lazyPage(() => import('@/pages/WorkspacePage'), 'WorkspacePage');
 const WorkspacesPage = lazyPage(() => import('@/pages/WorkspacesPage'), 'WorkspacesPage');
 
+/** The one notification this app raises itself; the rest carry server copy. */
+const APPROVAL_NEEDED = 'Permission needed';
+
 export function App() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -138,7 +141,10 @@ export function App() {
           if (frame.topic === SYSTEM_TOPIC) {
             addNotification({
               level: frame.request.risk === 'high' ? 'error' : 'warning',
-              title: 'Permission needed',
+              // English as data: the bell translates at render, which is what
+              // keeps a notification raised before a language switch readable
+              // after it. See the note in `lib/i18n.tsx`.
+              title: APPROVAL_NEEDED,
               message: frame.request.summary,
               href: `/w/${frame.request.workspaceId}/s/${frame.request.sessionId}`,
             });

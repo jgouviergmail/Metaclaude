@@ -360,6 +360,15 @@ healthy **and** answer through the proxy, or the previous digest is restored
 automatically. Digests, not tags — GHCR tags are mutable, so a recorded tag would
 resolve to wherever it had since been moved.
 
+A successful deploy also reclaims the disk it just filled: it keeps the newest
+`IMAGE_KEEP` images of the pinned repository (three by default,
+`/opt/metaclaude/deploy.conf`), always sparing whatever `releases/current` and
+`releases/previous` resolve to so the rollback button keeps its target, and
+drops the build cache — nothing on this host builds. Retention by count and
+not by age is deliberate: at several releases a day, an age-based filter never
+fires at all, which is how one host reached 97% full with 23 images and 15 GB
+of build cache it had never used.
+
 ### When you change `compose.yml` or the Caddyfile
 
 Those live on the server, deliberately: `compose.yml` is what confines the
@@ -479,6 +488,22 @@ Destination and retention are `METACLAUDE_BACKUP_DIR` and
 `METACLAUDE_BACKUP_KEEP` in `/opt/metaclaude/deploy.conf`. Archives live
 outside `/opt/metaclaude` on purpose — `uninstall.sh` deletes that tree, and
 backups must survive it.
+
+Retention is applied **before** the new archive is written as well as after,
+so lowering `METACLAUDE_BACKUP_KEEP` frees the room on the very next run
+rather than needing one more archive's worth of space first. A run that would
+not fit refuses while the app is still serving, and says so: it never buys an
+outage for a truncated archive. What counts as "would not fit" is twice the
+last archive, or `METACLAUDE_BACKUP_MIN_FREE_BYTES` (1 GiB by default),
+whichever is larger. It will not prune below the ceiling to make room —
+trading a known-good archive for one that has not been written yet can leave
+you with less than you started with.
+
+Point `METACLAUDE_BACKUP_DIR` at a separate volume if you have one; that is
+the recommended layout, and it is also a volume nothing else watches. The
+container does not mount it, so the app cannot measure it — which is why each
+marker records the space left where the archives are kept, and why the doctor
+can warn about a filling backup volume it has no other way of seeing.
 
 The four volumes, in order of how much it hurts to lose them: the database
 and sealed vault (`metaclaude-data`), the agent's files

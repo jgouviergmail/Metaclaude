@@ -16,8 +16,10 @@ import { ConfirmDialog } from '@/components/ui/Modal';
 import { Badge, Button, Card, CardHeader, Spinner } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { nextUpdateWatch, type UpdateWatch } from '@/lib/update-watch';
+import { Trans, useT } from '@/lib/i18n';
 
 export function UpdateCard() {
+  const t = useT();
   const updateQuery = useQuery({
     queryKey: ['update-check'],
     // Forced past the server's hour-long cache on purpose: with
@@ -45,7 +47,9 @@ export function UpdateCard() {
     mutationFn: (version: string) => api.applyUpdate(version),
     onSuccess: () => void applyStatus.refetch(),
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'The update could not be requested.'),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'The update could not be requested.',
+      )),
   });
 
   const result = updateQuery.data;
@@ -62,7 +66,9 @@ export function UpdateCard() {
   useEffect(() => {
     watch.current = nextUpdateWatch(watch.current, status?.state);
     if (watch.current.reload) {
-      toast.success(`Updated to ${status?.version ?? 'the new version'} — reloading…`);
+      toast.success(t('Updated to {version} — reloading…', {
+        version: status?.version ?? t('the new version'),
+      }));
       const timer = setTimeout(() => window.location.reload(), 1500);
       return () => clearTimeout(timer);
     }
@@ -75,8 +81,10 @@ export function UpdateCard() {
   return (
     <Card>
       <CardHeader
-        title="Updates"
-        description="Compares this version against the latest published release. Applying runs the same health-gated, auto-rolling-back deploy as CI."
+        title={t('Updates')}
+        description={t(
+          'Compares this version against the latest published release. Applying runs the same health-gated, auto-rolling-back deploy as CI.',
+        )}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -85,12 +93,12 @@ export function UpdateCard() {
               loading={updateQuery.isFetching}
               onClick={() => void updateQuery.refetch()}
             >
-              Check
+              {t('Check')}
             </Button>
             {canApply ? (
               <Button variant="primary" size="sm" onClick={() => setConfirming(true)}>
                 <ArrowUpCircle className="size-3.5" aria-hidden />
-                Apply {check?.latest}
+                {t('Apply')} {check?.latest}
               </Button>
             ) : null}
           </div>
@@ -98,19 +106,22 @@ export function UpdateCard() {
       />
       <div className="space-y-2 px-4 pb-4 text-[12.5px]">
         {!result ? (
-          <p className="text-subtle">Not checked yet.</p>
+          <p className="text-subtle">{t('Not checked yet.')}</p>
         ) : 'disabled' in result ? (
-          <p className="text-muted">The update check is switched off for this deployment.</p>
+          <p className="text-muted">{t('The update check is switched off for this deployment.')}</p>
         ) : result.error ? (
           <p className="text-muted">
-            No release visible: <span className="font-mono">{result.error}</span>
+            {t('No release visible:')} <span className="font-mono">{result.error}</span>
           </p>
         ) : result.updateAvailable === true ? (
           <p className="text-ink">
             <Badge tone="warning" className="mr-2">
-              update
+              {t('update')}
             </Badge>
-            {result.latest} is published; this server runs {result.current}.{' '}
+            {t('{latest} is published; this server runs {current}.', {
+              latest: result.latest ?? '',
+              current: result.current,
+            })}{' '}
             {result.releaseUrl ? (
               <a
                 className="text-accent underline"
@@ -118,39 +129,53 @@ export function UpdateCard() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Release notes
+                {t('Release notes')}
               </a>
             ) : null}
           </p>
         ) : result.updateAvailable === false ? (
-          <p className="text-muted">Up to date — {result.current} is the latest release.</p>
+          <p className="text-muted">
+            {t('Up to date — {current} is the latest release.', { current: result.current })}
+          </p>
         ) : (
           <p className="text-muted">
-            The latest tag ({result.latest ?? 'none'}) is not a version, so no comparison is
-            possible.
+            {t('The latest tag ({latest}) is not a version, so no comparison is possible.', {
+              latest: result.latest ?? t('none'),
+            })}
           </p>
         )}
 
         {applying ? (
           <p className="flex items-center gap-2 text-ink" role="status">
             <Spinner className="size-3.5" />
-            Updating to {status?.version ?? '…'} — the app restarts during this; the page
-            reconnects and reloads itself.
+            {t(
+              'Updating to {version} — the app restarts during this; the page reconnects and reloads itself.',
+              { version: status?.version ?? '…' },
+            )}
           </p>
         ) : status?.state === 'failed' ? (
           <p className="flex items-start gap-2 text-[12px] text-warning">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
-              The last update{status.version ? ` (${status.version})` : ''} did not go healthy
-              {status.message ? ` — ${status.message}` : '.'}
+              {/* The version and the reason are both optional, so the sentence
+                  is one template with two slots rather than three concatenated
+                  pieces — French puts them in a different order. */}
+              {t('The last update{version} did not go healthy{reason}', {
+                version: status.version ? ` (${status.version})` : '',
+                reason: status.message ? ` — ${status.message}` : '.',
+              })}
             </span>
           </p>
         ) : null}
 
         {check?.updateAvailable === true && status?.available === false ? (
           <p className="text-[12px] text-muted">
-            Applying from here needs the host updater — re-run <code>deploy/install-app.sh</code>{' '}
-            on the server to add it.
+            <Trans
+              template={t(
+                'Applying from here needs the host updater — re-run {script} on the server to add it.',
+              )}
+              values={{ script: <code>deploy/install-app.sh</code> }}
+            />
           </p>
         ) : null}
       </div>
@@ -158,15 +183,15 @@ export function UpdateCard() {
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
-        title={`Update to ${check?.latest ?? ''}?`}
+        title={t('Update to {version}?', { version: check?.latest ?? '' })}
         description={
           <>
-            The server pulls the new image, restarts, and must pass the health gate — otherwise it
-            rolls back to the current version by itself. Runs in flight are interrupted, and this
-            page will lose the server for a minute before reloading on the new version.
+            {t(
+              'The server pulls the new image, restarts, and must pass the health gate — otherwise it rolls back to the current version by itself. Runs in flight are interrupted, and this page will lose the server for a minute before reloading on the new version.',
+            )}
           </>
         }
-        confirmLabel="Update now"
+        confirmLabel={t('Update now')}
         onConfirm={() => {
           if (check?.latest) apply.mutate(check.latest);
         }}

@@ -12,6 +12,7 @@ import { AlertTriangle, Package, Store, Trash2 } from 'lucide-react';
 import type { Marketplace, MarketplaceCatalogue } from '@metaclaude/shared';
 import { Switch } from '@/components/ui/controls';
 import { Badge, Button, Card, EmptyState, Spinner } from '@/components/ui/primitives';
+import { useT } from '@/lib/i18n';
 
 function sourceLabel(marketplace: Marketplace): string {
   return marketplace.source.source === 'github' ? marketplace.source.repo : marketplace.source.url;
@@ -29,13 +30,16 @@ export function MarketplaceList({
   onToggle: (marketplace: Marketplace) => void;
   onRemove: (marketplace: Marketplace) => void;
 }) {
+  const t = useT();
   if (marketplaces.length === 0) {
     return (
       <Card>
         <EmptyState
           icon={<Store />}
-          title="No marketplaces yet"
-          description="A marketplace is a repository of plugins the Claude CLI installs from directly — add one by its GitHub repo or its marketplace.json URL."
+          title={t('No marketplaces yet')}
+          description={t(
+            'A marketplace is a repository of plugins the Claude CLI installs from directly — add one by its GitHub repo or its marketplace.json URL.',
+          )}
         />
       </Card>
     );
@@ -53,7 +57,7 @@ export function MarketplaceList({
                   <code className="font-mono text-[13px] font-medium text-ink">
                     {marketplace.name}
                   </code>
-                  {!marketplace.enabled ? <Badge tone="neutral">disabled</Badge> : null}
+                  {!marketplace.enabled ? <Badge tone="neutral">{t('disabled')}</Badge> : null}
                 </div>
                 <p className="truncate font-mono text-[12px] text-muted">
                   {sourceLabel(marketplace)}
@@ -86,7 +90,9 @@ export function MarketplaceList({
                       </li>
                     ))}
                     {catalogue.plugins.length === 0 ? (
-                      <li className="text-[12px] text-subtle">This marketplace lists no plugins.</li>
+                      <li className="text-[12px] text-subtle">{t(
+                        'This marketplace lists no plugins.',
+                      )}</li>
                     ) : null}
                   </ul>
                 )}
@@ -101,7 +107,7 @@ export function MarketplaceList({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Remove marketplace ${marketplace.name}`}
+                  aria-label={t('Remove marketplace {name}', { name: marketplace.name })}
                   onClick={() => onRemove(marketplace)}
                 >
                   <Trash2 className="size-4" />

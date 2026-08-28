@@ -2,6 +2,7 @@
 
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { currentLang } from './lang';
 
 /** Merge Tailwind classes, letting later conditional classes win. */
 export function cn(...inputs: ClassValue[]): string {
@@ -53,16 +54,49 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
-/** Relative time, switching to an absolute date once "days ago" stops helping. */
-export function formatRelative(timestamp: number, now: number = Date.now()): string {
-  const delta = now - timestamp;
-  if (delta < 0) return 'just now';
-  if (delta < 45_000) return 'just now';
-  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
-  if (delta < 86_400_000) return `${Math.round(delta / 3_600_000)}h ago`;
-  if (delta < 7 * 86_400_000) return `${Math.round(delta / 86_400_000)}d ago`;
+/**
+ * The short forms, per language.
+ *
+ * Not in the catalogue: these are called from inside `.map()` bodies where no
+ * hook can run, so they cannot go through `t()`, and a table of eight strings
+ * is clearer than eight keys whose values are "m" and "h". French drops the
+ * period after an abbreviated unit ("min", "h", "j") and puts the elapsing
+ * *before* the amount, which is why this is a table and not a suffix.
+ */
+const RELATIVE = {
+  en: {
+    now: 'just now',
+    minutes: (n: number) => `${n}m ago`,
+    hours: (n: number) => `${n}h ago`,
+    days: (n: number) => `${n}d ago`,
+  },
+  fr: {
+    now: 'à l’instant',
+    minutes: (n: number) => `il y a ${n} min`,
+    hours: (n: number) => `il y a ${n} h`,
+    days: (n: number) => `il y a ${n} j`,
+  },
+} as const;
 
-  return new Date(timestamp).toLocaleDateString(undefined, {
+/**
+ * Relative time, switching to an absolute date once "days ago" stops helping.
+ *
+ * The language comes from `lib/lang`, not from a parameter: this is called from
+ * about thirty places, most of them inside a `.map()` where a hook cannot go,
+ * and every one of them said "2h ago" under a French heading. `undefined` as
+ * the locale would follow the *browser*, which is a different question from the
+ * one the operator answered in Settings.
+ */
+export function formatRelative(timestamp: number, now: number = Date.now()): string {
+  const words = RELATIVE[currentLang()];
+  const delta = now - timestamp;
+  // A timestamp in the future is a clock disagreement, not a prediction.
+  if (delta < 45_000) return words.now;
+  if (delta < 3_600_000) return words.minutes(Math.round(delta / 60_000));
+  if (delta < 86_400_000) return words.hours(Math.round(delta / 3_600_000));
+  if (delta < 7 * 86_400_000) return words.days(Math.round(delta / 86_400_000));
+
+  return new Date(timestamp).toLocaleDateString(currentLang(), {
     month: 'short',
     day: 'numeric',
     ...(new Date(timestamp).getFullYear() !== new Date(now).getFullYear()
@@ -72,7 +106,7 @@ export function formatRelative(timestamp: number, now: number = Date.now()): str
 }
 
 export function formatDateTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString(undefined, {
+  return new Date(timestamp).toLocaleString(currentLang(), {
     dateStyle: 'medium',
     timeStyle: 'short',
   });

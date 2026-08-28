@@ -267,6 +267,24 @@ export class AttachmentService {
     return rows.length;
   }
 
+  /**
+   * Remove one attachment, row and bytes.
+   *
+   * Public because deleting a *run* has to go through here rather than let
+   * `attachments.run_id ON DELETE CASCADE` do it: the cascade takes the row
+   * and leaves the file on the volume forever, since the unlink is application
+   * code that no foreign key reaches. Returns false when the id is unknown, so
+   * a caller sweeping a list is not stopped by a row that has already gone.
+   */
+  async delete(id: string): Promise<boolean> {
+    const row = this.db
+      .prepare<[string], AttachmentRow>('SELECT * FROM attachments WHERE id = ?')
+      .get(id);
+    if (!row) return false;
+    await this.deleteRowAndMaybeFile(row);
+    return true;
+  }
+
   private async deleteRowAndMaybeFile(row: AttachmentRow): Promise<void> {
     this.db.prepare('DELETE FROM attachments WHERE id = ?').run(row.id);
 

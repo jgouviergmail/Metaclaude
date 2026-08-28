@@ -665,6 +665,73 @@ export type GoogleConnectionState = {
   restrictedGrants: GoogleGrant[];
 };
 
+/**
+ * What the machine is doing, as the app can actually see it.
+ *
+ * Every figure is nullable, and that is the contract's main job: this runs in a
+ * container on Linux in production and bare on macOS or Windows in
+ * development, where neither `/proc` nor `/sys/fs/cgroup` exists. A missing
+ * measurement must read as "not measured" everywhere it is displayed — never
+ * as a zero, which would draw an empty meter on a machine under load.
+ *
+ * Two vantage points, deliberately kept apart rather than blended. The cgroup
+ * figures are the container's own, and they are the ones that matter: the
+ * ceiling that gets a process OOM-killed is its cgroup's, not the host's. The
+ * host figures are context — what the box has, and what everything else on it
+ * is doing.
+ */
+export const SystemResources = z.object({
+  cpu: z.object({
+    /**
+     * Percentage of the container's allowance, 0–100 across all the cores it
+     * may use. Null until two samples exist: usage is a rate, and the first
+     * reading after a boot has nothing to subtract from. Reporting zero there
+     * would show an idle machine mid-run.
+     */
+    usagePct: z.number().min(0).max(100).nullable(),
+    /** Cores the container may use — its quota, or the host's count when unbounded. */
+    cores: z.number().positive().nullable(),
+    /** The host's one-minute load average, for context. */
+    load1: z.number().nonnegative().nullable(),
+  }),
+  memory: z.object({
+    /** The container's own usage and ceiling, from its cgroup. */
+    usedBytes: z.number().int().nonnegative().nullable(),
+    limitBytes: z.number().int().nonnegative().nullable(),
+    /** What the machine has in total. Context for the two above. */
+    hostTotalBytes: z.number().int().nonnegative().nullable(),
+    /** This process's resident set — the app's own share of the container's usage. */
+    rssBytes: z.number().int().nonnegative(),
+  }),
+  /**
+   * The filesystem holding the data directory. On the shipped layout that is
+   * the host's root filesystem, which is also what fills up.
+   */
+  disk: z.object({
+    freeBytes: z.number().int().nonnegative().nullable(),
+    totalBytes: z.number().int().nonnegative().nullable(),
+  }),
+});
+export type SystemResources = z.infer<typeof SystemResources>;
+
+/**
+ * What one MCP server says about itself, asked directly.
+ *
+ * Separate from `ClaudeMcpServerStatus` on purpose, and the difference is the
+ * point: that one is the CLI's verdict on whether a server *connects*, mounted
+ * exactly as a run would mount it, and it is the only thing allowed to answer
+ * that question. This one is text — each tool's description, which the CLI's
+ * status drops, and the `instructions` string the protocol has for "what this
+ * server is for". Never a health signal.
+ */
+export const McpServerDescription = z.object({
+  instructions: z.string().nullable(),
+  serverName: z.string().nullable(),
+  serverVersion: z.string().nullable(),
+  tools: z.array(z.object({ name: z.string(), description: z.string() })),
+});
+export type McpServerDescription = z.infer<typeof McpServerDescription>;
+
 export const SystemHealth = z.object({
   version: z.string(),
   uptimeMs: z.number().int().nonnegative(),
@@ -687,8 +754,7 @@ export const SystemHealth = z.object({
   queuedRuns: z.number().int().nonnegative(),
   memoryCount: z.number().int().nonnegative(),
   embeddingProvider: z.string(),
-  diskFreeBytes: z.number().int().nonnegative(),
-  rssBytes: z.number().int().nonnegative(),
+  resources: SystemResources,
 });
 export type SystemHealth = z.infer<typeof SystemHealth>;
 

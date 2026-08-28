@@ -38,6 +38,7 @@ const workspace: Workspace = {
     defaultModel: 'default',
     defaultEffort: null,
     defaultPermissionMode: 'default',
+    language: 'auto',
     thinking: 'adaptive',
     thinkingBudgetTokens: null,
     maxTurns: 40,

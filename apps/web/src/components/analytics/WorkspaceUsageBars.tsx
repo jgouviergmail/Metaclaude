@@ -21,12 +21,15 @@
 
 import type { WorkspaceUsage } from '@metaclaude/shared';
 import { formatCost, formatTokens } from '@/lib/utils';
+import { usePlural, useT } from '@/lib/i18n';
 
 export function WorkspaceUsageBars({ rows }: { rows: WorkspaceUsage[] }) {
+  const plural = usePlural();
+  const t = useT();
   if (rows.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-subtle">
-        No usage in this period.
+        {t('No usage in this period.')}
       </p>
     );
   }
@@ -65,7 +68,7 @@ export function WorkspaceUsageBars({ rows }: { rows: WorkspaceUsage[] }) {
                     free", which is exactly backwards. */}
                 {row.costUsd > 0 ? <span>{formatCost(row.costUsd)}</span> : null}
                 <span>
-                  {row.runs} run{row.runs === 1 ? '' : 's'}
+                  {plural(row.runs, '{n} run', '{n} runs')}
                 </span>
                 {comparable ? <span className="w-8 text-right text-ink">{share}%</span> : null}
               </span>
@@ -75,9 +78,14 @@ export function WorkspaceUsageBars({ rows }: { rows: WorkspaceUsage[] }) {
               className="h-2 w-full overflow-hidden rounded-full bg-raised"
               // The bar itself is invisible to a screen reader, so the row says
               // what it depicts rather than leaving a decorative div.
-              aria-label={`${row.name}: ${formatTokens(tokens)} tokens across ${row.runs} run${
-                row.runs === 1 ? '' : 's'
-              }${comparable ? `, ${share}% of the period` : ''}`}
+              aria-label={
+                plural(
+                  row.runs,
+                  '{name}: {tokens} tokens across {n} run',
+                  '{name}: {tokens} tokens across {n} runs',
+                  { name: row.name, tokens: formatTokens(tokens) },
+                ) + (comparable ? t(', {share}% of the period', { share }) : '')
+              }
             >
               <div
                 data-testid="usage-bar"

@@ -16,6 +16,7 @@
 
 import {
   createContext,
+  Fragment,
   useCallback,
   useContext,
   useEffect,
@@ -24,7 +25,9 @@ import {
   type ReactNode,
 } from 'react';
 
-export type Lang = 'en' | 'fr';
+import { currentLang, publishLang, type Lang } from './lang';
+
+export type { Lang };
 
 const STORAGE_KEY = 'mc-lang';
 
@@ -51,16 +54,49 @@ function defaultLang(): Lang {
   return storedLang() ?? (navigator.language?.toLowerCase().startsWith('fr') ? 'fr' : 'en');
 }
 
+/**
+ * Which of the two forms a count takes.
+ *
+ * English pluralises everything but 1; French keeps the singular for 0 as well
+ * ("0 échec consécutif"). That one-language difference is the whole reason this
+ * lives here rather than as a `n === 1` ternary at each call site: the ternary
+ * is written in English and silently stays English once the sentence is
+ * translated.
+ */
+function isPlural(lang: Lang, count: number): boolean {
+  return lang === 'fr' ? Math.abs(count) >= 2 : count !== 1;
+}
+
 interface I18nContextValue {
   lang: Lang;
   setLang: (lang: Lang) => Promise<void>;
   t: (text: string, vars?: Record<string, string | number>) => string;
+  /**
+   * A counted sentence, as two whole catalogue keys.
+   *
+   * Both forms are translated in full — `'{n} run'` and `'{n} runs'` — because
+   * a language that inflects the noun cannot be served by gluing an `s` onto
+   * the singular, and `'{n} run(s)'` reads as a form to fill in rather than a
+   * sentence. `{n}` is supplied; anything else comes from `vars`.
+   */
+  plural: (
+    count: number,
+    one: string,
+    other: string,
+    vars?: Record<string, string | number>,
+  ) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(defaultLang);
+  // Published during the initialiser, so a date formatted in the very first
+  // render already reads the stored choice rather than the default.
+  const [lang, setLangState] = useState<Lang>(() => {
+    const initial = defaultLang();
+    publishLang(initial);
+    return initial;
+  });
   const [dict, setDict] = useState<Dict | null>(null);
 
   const loadDict = useCallback(async (next: Lang): Promise<Dict | null> => {
@@ -72,6 +108,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const setLang = useCallback(
     async (next: Lang) => {
       const nextDict = await loadDict(next).catch(() => null);
+      // Before the state update, so the render it triggers already formats
+      // dates in the language it is about to show. See lib/lang.ts.
+      publishLang(next);
       setDict(nextDict);
       setLangState(next);
       try {
@@ -103,7 +142,17 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [lang, dict],
   );
 
-  const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);
+  const plural = useCallback(
+    (
+      count: number,
+      one: string,
+      other: string,
+      vars?: Record<string, string | number>,
+    ) => t(isPlural(lang, count) ? other : one, { n: count, ...vars }),
+    [lang, t],
+  );
+
+  const value = useMemo(() => ({ lang, setLang, t, plural }), [lang, setLang, t, plural]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
@@ -113,7 +162,67 @@ export function useI18n(): I18nContextValue {
   return context;
 }
 
+/**
+ * `t` as a value, for the handful of helpers that are not components.
+ *
+ * A plain function — `sessionTitle(session)`, `describeUserAgent(ua)` — cannot
+ * call a hook, so it takes the translator as an argument instead of pretending
+ * to be a component. Anything that merely *returns* a key ("Good morning") does
+ * not need this: the caller translates.
+ */
+export type TranslateFn = I18nContextValue['t'];
+
+/** Its counted sibling, for the same reason. */
+export type PluralFn = I18nContextValue['plural'];
+
 /** The everyday hook: `const t = useT()` then `t('Sign in')`. */
 export function useT(): I18nContextValue['t'] {
   return useI18n().t;
+}
+
+/** Its counted sibling: `const plural = usePlural()` then `plural(n, '{n} run', '{n} runs')`. */
+export function usePlural(): I18nContextValue['plural'] {
+  return useI18n().plural;
+}
+
+/**
+ * A translated sentence with elements inside it.
+ *
+ * `interpolate` substitutes strings, which covers most of the catalogue and
+ * none of the sentences that carry a `<code>`, a `<Link>` or a number in a
+ * different weight. Those were the ones left in English — not because nobody
+ * got to them, but because splitting a sentence into `t('The last update')`
+ * plus a hard-coded tail translates the first three words and leaves the rest
+ * as it was, in an order French would not use anyway.
+ *
+ * So the placeholder stays in the template and the *node* is substituted here:
+ *
+ *   <Trans template={t('Everything under {path} is erased.')}
+ *          values={{ path: <code>{workspace.path}</code> }} />
+ *
+ * The template arrives already translated — `t()` with no variables returns it
+ * with the `{name}` markers intact — so this needs no access to the catalogue
+ * and stays a pure function of its props. A placeholder with no value is left
+ * as written rather than dropped: a missing translation should read oddly, not
+ * silently lose a path.
+ */
+export function Trans({
+  template,
+  values,
+}: {
+  template: string;
+  values: Record<string, ReactNode>;
+}): ReactNode {
+  const parts = template.split(/(\{\w+\})/g);
+  return (
+    <>
+      {parts.map((part, index) => {
+        const name = /^\{(\w+)\}$/.exec(part)?.[1];
+        const value = name !== undefined ? values[name] : undefined;
+        // eslint-disable-next-line react/no-array-index-key -- the split is
+        // positional and stable for a given template; there is no other key.
+        return <Fragment key={index}>{name !== undefined && name in values ? value : part}</Fragment>;
+      })}
+    </>
+  );
 }

@@ -8,7 +8,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import { AgentsPage } from './AgentsPage';
+import { AgentsPage, withDescriptions } from './AgentsPage';
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -49,6 +49,15 @@ const { apiMock } = vi.hoisted(() => ({
     })),
     saveSkill: vi.fn(async () => ({
       skill: { id: 'skill_2', name: 'sql-review' },
+    })),
+    claudeCatalogue: vi.fn(async () => ({
+      models: [],
+      commands: [],
+      agents: [],
+      mcpServers: [],
+      account: null,
+      unavailable: [],
+      fetchedAt: 0,
     })),
     connectors: vi.fn(async () => ({
       connectors: [
@@ -219,5 +228,85 @@ describe('the connector directory', () => {
     await waitFor(() =>
       expect(apiMock.installConnector).toHaveBeenCalledWith('sequential-thinking', undefined),
     );
+  });
+});
+
+/**
+ * The MCP tab's connection test.
+ *
+ * The trap it exists to avoid: with no workspace named, the server probes
+ * from the data directory, resolves no runtime for it and mounts nothing — so
+ * the answer is an empty list of servers. The first version of this button
+ * asked anyway and reported "every server answered" while testing none of
+ * them, which is a worse outcome than having no button at all.
+ */
+describe('the MCP tab', () => {
+  it('does not offer to test connections while the scope is global', async () => {
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+
+    const button = await screen.findByRole('button', { name: /Test connections/i });
+    expect(button.hasAttribute('disabled')).toBe(true);
+    // And the probe is not even asked: an empty answer would have been cached
+    // as though it meant something.
+    expect(apiMock.claudeCatalogue).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Merging two sources that each know half the answer.
+ *
+ * The catalogue is the authority on which tools a run would see and on the
+ * hints the server advertises; it drops the descriptions. The direct probe has
+ * the text and nothing else that should be trusted. Merged by name, with the
+ * catalogue deciding what exists.
+ */
+describe('withDescriptions', () => {
+  const tools = [
+    { name: 'a', description: '', readOnly: true, destructive: null },
+    { name: 'b', description: '', readOnly: null, destructive: true },
+  ];
+
+  it('fills in the descriptions the catalogue dropped', () => {
+    const merged = withDescriptions(tools, {
+      instructions: null,
+      serverName: 's',
+      serverVersion: '1',
+      tools: [
+        { name: 'a', description: 'Lists things.' },
+        { name: 'b', description: 'Deletes things.' },
+      ],
+    });
+
+    expect(merged.map((tool) => tool.description)).toEqual(['Lists things.', 'Deletes things.']);
+    // The annotations are the catalogue's, and survive untouched.
+    expect(merged[0]?.readOnly).toBe(true);
+    expect(merged[1]?.destructive).toBe(true);
+  });
+
+  it('never adds a tool the catalogue did not list', () => {
+    // A run mounts what the catalogue mounts. A tool visible only to the
+    // direct probe is one no run would ever have.
+    const merged = withDescriptions(tools, {
+      instructions: null,
+      serverName: 's',
+      serverVersion: '1',
+      tools: [{ name: 'c', description: 'Invisible to runs.' }],
+    });
+
+    expect(merged.map((tool) => tool.name)).toEqual(['a', 'b']);
+  });
+
+  it('keeps a description the catalogue did provide', () => {
+    const merged = withDescriptions(
+      [{ name: 'a', description: 'From the CLI.', readOnly: null, destructive: null }],
+      { instructions: null, serverName: 's', serverVersion: '1', tools: [{ name: 'a', description: 'From the probe.' }] },
+    );
+
+    expect(merged[0]?.description).toBe('From the CLI.');
+  });
+
+  it('is a no-op when nothing was asked', () => {
+    expect(withDescriptions(tools, undefined)).toEqual(tools);
   });
 });

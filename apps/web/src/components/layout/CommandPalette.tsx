@@ -74,20 +74,36 @@ export function CommandPalette() {
   };
 
   const actions: Action[] = [
-    { id: 'nav-dashboard', label: 'Dashboard', icon: <LayoutDashboard />, group: 'Go to', run: go('/') },
-    { id: 'nav-workspaces', label: 'Workspaces', icon: <FolderGit2 />, group: 'Go to', run: go('/workspaces') },
-    { id: 'nav-board', label: 'Board', icon: <SquareKanban />, group: 'Go to', run: go('/board') },
-    { id: 'nav-memory', label: 'Memory', icon: <Brain />, group: 'Go to', run: go('/memory') },
-    { id: 'nav-automations', label: 'Automations', icon: <Timer />, group: 'Go to', run: go('/automations') },
-    { id: 'nav-agents', label: 'Agents & skills', icon: <Bot />, group: 'Go to', run: go('/agents') },
-    { id: 'nav-analytics', label: 'Analytics', icon: <Activity />, group: 'Go to', run: go('/analytics') },
-    { id: 'nav-plugins', label: 'Plugins', icon: <Blocks />, group: 'Go to', run: go('/plugins') },
-    { id: 'nav-help', label: 'Help', icon: <CircleHelp />, group: 'Go to', run: go('/help') },
-    { id: 'nav-settings', label: 'Settings', icon: <Settings />, group: 'Go to', run: go('/settings') },
+    { id: 'nav-dashboard', label: 'Dashboard', icon: <LayoutDashboard />, group: t(
+      'Go to',
+    ), run: go('/') },
+    { id: 'nav-workspaces', label: 'Workspaces', icon: <FolderGit2 />, group: t(
+      'Go to',
+    ), run: go('/workspaces') },
+    { id: 'nav-board', label: 'Board', icon: <SquareKanban />, group: t(
+      'Go to',
+    ), run: go('/board') },
+    { id: 'nav-memory', label: 'Memory', icon: <Brain />, group: t('Go to'), run: go('/memory') },
+    { id: 'nav-automations', label: 'Automations', icon: <Timer />, group: t(
+      'Go to',
+    ), run: go('/automations') },
+    { id: 'nav-agents', label: 'Agents & skills', icon: <Bot />, group: t(
+      'Go to',
+    ), run: go('/agents') },
+    { id: 'nav-analytics', label: 'Analytics', icon: <Activity />, group: t(
+      'Go to',
+    ), run: go('/analytics') },
+    { id: 'nav-plugins', label: 'Plugins', icon: <Blocks />, group: t(
+      'Go to',
+    ), run: go('/plugins') },
+    { id: 'nav-help', label: 'Help', icon: <CircleHelp />, group: t('Go to'), run: go('/help') },
+    { id: 'nav-settings', label: 'Settings', icon: <Settings />, group: t(
+      'Go to',
+    ), run: go('/settings') },
     {
       id: 'new-workspace',
-      label: 'New workspace',
-      hint: 'Create a project',
+      label: t('New workspace'),
+      hint: t('Create a project'),
       icon: <Plus />,
       group: 'Create',
       run: go('/workspaces?new=1'),
@@ -119,7 +135,7 @@ export function CommandPalette() {
       label: run.prompt.split('\n')[0]?.slice(0, 80) || t('Untitled run'),
       hint: `${run.status} · ${formatRelative(run.startedAt)}`,
       icon: <MessageSquare />,
-      group: 'Recent sessions',
+      group: t('Recent sessions'),
       run: go(`/w/${run.workspaceId}/s/${run.sessionId}`),
     });
   }
@@ -130,7 +146,7 @@ export function CommandPalette() {
     <Command.Dialog
       open={open}
       onOpenChange={setOpen}
-      label="Command palette"
+      label={t('Command palette')}
       shouldFilter
       className="fixed inset-0 z-50"
       // cmdk renders its own dialog; the overlay and panel are styled below.

@@ -13,12 +13,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { useT } from '@/lib/i18n';
+import { usePlural, useT } from '@/lib/i18n';
 import { Badge, Button, Card, CardHeader } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
 
 export function NotificationsCard() {
+  const plural = usePlural();
   const t = useT();
   const queryClient = useQueryClient();
   const supported = pushSupported();
@@ -88,15 +89,17 @@ export function NotificationsCard() {
     // subscribed" — devices exist but every delivery failed.
     onSuccess: (outcome) => {
       if (outcome.sent > 0) {
-        toast.success(t('Sent to {n} device(s).', { n: outcome.sent }));
+        toast.success(plural(outcome.sent, 'Sent to {n} device.', 'Sent to {n} devices.'));
       } else if (outcome.devices === 0) {
         toast.success(t('No device is subscribed yet.'));
       } else {
         toast.error(
-          t('{n} device(s) subscribed but the test could not be delivered{err}.', {
-            n: outcome.devices,
-            err: outcome.lastError ? ` — ${outcome.lastError}` : '',
-          }),
+          plural(
+            outcome.devices,
+            '{n} device subscribed but the test could not be delivered{err}.',
+            '{n} devices subscribed but the test could not be delivered{err}.',
+            { err: outcome.lastError ? ` — ${outcome.lastError}` : '' },
+          ),
         );
       }
     },
@@ -107,12 +110,16 @@ export function NotificationsCard() {
     <Card>
       <CardHeader
         title={t('Notifications')}
-        description={t('A push when a run waits on your approval, and when a run you started ends. Automations stay silent by design.')}
+        description={t(
+          'A push when a run waits on your approval, and when a run you started ends. Automations stay silent by design.',
+        )}
       />
       <div className="space-y-3 px-4 pb-4">
         {!supported ? (
           <p className="text-[12.5px] leading-relaxed text-muted">
-            {t('This browser cannot receive push notifications. On iPhone and iPad they need the app installed to the Home Screen (Share → Add to Home Screen), then enabled from here.')}
+            {t(
+              'This browser cannot receive push notifications. On iPhone and iPad they need the app installed to the Home Screen (Share → Add to Home Screen), then enabled from here.',
+            )}
           </p>
         ) : (
           <>
@@ -144,7 +151,11 @@ export function NotificationsCard() {
             </div>
             <p className="text-[12px] text-subtle">
               {status.data
-                ? t('{n} device(s) subscribed across the deployment.', { n: status.data.devices })
+                ? plural(
+                    status.data.devices,
+                    '{n} device subscribed across the deployment.',
+                    '{n} devices subscribed across the deployment.',
+                  )
                 : t('Reading the push status…')}{' '}
               {t('The app icon also shows a badge while approvals wait.')}
             </p>

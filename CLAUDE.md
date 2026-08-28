@@ -276,6 +276,27 @@ restates the code is noise; one that records a decision or a trap is not.
   two curves. Every gradient, mask and filter id goes through React's
   `useId()`; the visual components do this already, so copy the pattern rather
   than a literal id.
+- **The nearest enclosing function is not the component.** A codemod that
+  inserts `const t = useT()` beside the call it introduced puts the hook inside
+  `onSuccess: () => {…}` or `rows.map(row => …)` — a callback, where React
+  throws on the first call, outside render. Forty-five of those shipped into one
+  working tree: TypeScript is happy, the component renders in every test that
+  does not reach the branch, and there is no ESLint here to carry
+  `react-hooks/rules-of-hooks`. Walk up to a function *named* in PascalCase or
+  `useSomething`; the `misplacedHooks` ratchet counts the rest.
+- **A translation that is not a whole sentence is not translated.** Three
+  shapes escape a check that only knows `t('…')`: both arms of `plural(n, one,
+  other)`, copy held as a module constant and translated at render
+  (`t(entry.label)` — the *correct* pattern, and invisible), and any literal
+  that never reaches `t()` at all, which is every toast and every
+  `cond ? 'Archive' : 'Restore'`. `deploy/ratchets.mjs` has one measure per
+  shape; `--list` prints what each one found. And pluralise with `plural()`,
+  never a ternary: `n === 1` is an English rule, French keeps the singular at
+  zero, and the ternary silently stays English once the sentence is translated.
+- **`attr=t('x')` is not JSX.** A codemod replacing a string literal has to know
+  whether it sat in `attr="x"` (needs braces) or inside `attr={…}` (already has
+  them). The parser reports the resulting error lines away from the edit, in a
+  file that looks structurally broken.
 
 ## Testing
 

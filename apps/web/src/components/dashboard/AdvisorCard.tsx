@@ -72,14 +72,18 @@ export function AdvisorCard() {
       });
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('Could not accept that proposal.')),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not accept that proposal.',
+      )),
   });
 
   const dismiss = useMutation({
     mutationFn: (id: string) => api.dismissAdvisorProposal(id),
     onSuccess: () => refresh(),
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('Could not dismiss that proposal.')),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not dismiss that proposal.',
+      )),
   });
 
   if (!canAct) return null;

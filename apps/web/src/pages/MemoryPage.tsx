@@ -43,6 +43,7 @@ import {
   EmptyState,
   Input,
   Label,
+  Meter,
   Skeleton,
   Spinner,
   Stat,
@@ -51,6 +52,7 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatPercent, formatRelative } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 type KindFilter = 'all' | MemoryKind;
 
@@ -101,6 +103,7 @@ const INSIGHT_TONE: Record<Insight['kind'], 'info' | 'accent' | 'danger' | 'succ
 };
 
 export function MemoryPage() {
+  const t = useT();
   const queryClient = useQueryClient();
 
   /** `all` = every memory, `global` = unscoped only, anything else = a workspace id. */
@@ -178,14 +181,14 @@ export function MemoryPage() {
       // A merge is not a failure, but the operator will look for a new row that
       // is not there unless we say what happened.
       if (result.merged) {
-        toast.success('Merged into an existing memory', {
+        toast.success(t('Merged into an existing memory'), {
           description: `A near-duplicate of “${result.memory.title}” already existed, so this was folded into it rather than stored twice.`,
         });
       } else {
-        toast.success('Memory added');
+        toast.success(t('Memory added'));
       }
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not save that memory.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not save that memory.'))),
   });
 
   const updateMemory = useMutation({
@@ -195,16 +198,16 @@ export function MemoryPage() {
       refreshMemory();
       setEditing(null);
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not update that memory.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not update that memory.'))),
   });
 
   const deleteMemory = useMutation({
     mutationFn: (id: string) => api.deleteMemory(id),
     onSuccess: () => {
       refreshMemory();
-      toast.success('Memory deleted');
+      toast.success(t('Memory deleted'));
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not delete that memory.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not delete that memory.'))),
   });
 
   const maintenance = useMutation({
@@ -215,7 +218,7 @@ export function MemoryPage() {
         description: `${result.affected} ${result.affected === 1 ? 'memory' : 'memories'} affected.`,
       });
     },
-    onError: (error) => toast.error(messageFor(error, 'Maintenance failed.')),
+    onError: (error) => toast.error(messageFor(error, t('Maintenance failed.'))),
   });
 
   const setInsightStatus = useMutation({
@@ -223,9 +226,11 @@ export function MemoryPage() {
       api.setInsightStatus(id, status),
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['insights'] });
-      toast.success(variables.status === 'accepted' ? 'Insight accepted' : 'Insight rejected');
+      toast.success(variables.status === 'accepted' ? t(
+        'Insight accepted',
+      ) : t('Insight rejected'));
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not update that insight.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not update that insight.'))),
   });
 
   const synthesise = useMutation({
@@ -235,13 +240,13 @@ export function MemoryPage() {
       if (result === undefined) {
         // 204: the model judged the procedures do not cohere — a legitimate
         // answer, reported as such rather than as silence or failure.
-        toast.info('Nothing distilled — the procedures do not cohere into one skill yet.');
+        toast.info(t('Nothing distilled — the procedures do not cohere into one skill yet.'));
       } else {
         toast.success('A skill was drafted. Review it below.');
       }
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'The synthesis could not run.'),
+      toast.error(error instanceof ApiError ? error.message : t('The synthesis could not run.')),
   });
 
   const installSkill = useMutation({
@@ -249,11 +254,11 @@ export function MemoryPage() {
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['insights'] });
       void queryClient.invalidateQueries({ queryKey: ['skills'] });
-      toast.success(`Installed “${result.skill.name}”`, {
-        description: 'It is now in the skills registry and available to future runs.',
+      toast.success(t('Installed “{name}”', { name: result.skill.name }), {
+        description: t('It is now in the skills registry and available to future runs.'),
       });
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not install that skill.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not install that skill.'))),
   });
 
   /* -------------------------------- Render -------------------------------- */
@@ -263,15 +268,15 @@ export function MemoryPage() {
   const insights = insightsQuery.data?.insights ?? [];
   const scopeLabel =
     scope === 'all'
-      ? 'All memory'
+      ? t('All memory')
       : scope === 'global'
-        ? 'Global only'
+        ? t('Global only')
         : (workspacesQuery.data?.workspaces.find((w) => w.id === scope)?.name ?? 'Workspace');
 
   return (
     <AppShell>
       <ContentHeader
-        title="Memory"
+        title={t('Memory')}
         subtitle={scopeLabel}
         showSidebarToggle={false}
         icon={<Brain />}
@@ -281,23 +286,26 @@ export function MemoryPage() {
               side="bottom"
               align="end"
               trigger={
-                <Button variant="ghost" size="sm" aria-label={`Memory scope: ${scopeLabel}`}>
+                <Button variant="ghost" size="sm" aria-label={t(
+                  'Memory scope: {scope}',
+                  { scope: scopeLabel },
+                )}>
                   <Filter className="size-4" />
                   <span className="hidden sm:inline">{scopeLabel}</span>
                   <ChevronDown className="size-3.5" aria-hidden />
                 </Button>
               }
             >
-              <MenuLabel>Scope</MenuLabel>
+              <MenuLabel>{t('Scope')}</MenuLabel>
               <MenuItem selected={scope === 'all'} onSelect={() => setScope('all')}>
-                All memory
+                {t('All memory')}
               </MenuItem>
               <MenuItem
                 selected={scope === 'global'}
-                description="Memories that apply everywhere"
+                description={t('Memories that apply everywhere')}
                 onSelect={() => setScope('global')}
               >
-                Global only
+                {t('Global only')}
               </MenuItem>
               {(workspacesQuery.data?.workspaces.length ?? 0) > 0 ? <MenuSeparator /> : null}
               {workspacesQuery.data?.workspaces.map((workspace) => (
@@ -322,13 +330,13 @@ export function MemoryPage() {
               side="bottom"
               align="end"
               trigger={
-                <Button variant="ghost" size="sm" aria-label="Memory maintenance">
+                <Button variant="ghost" size="sm" aria-label={t('Memory maintenance')}>
                   <Wrench className="size-4" />
-                  <span className="hidden md:inline">Maintenance</span>
+                  <span className="hidden md:inline">{t('Maintenance')}</span>
                 </Button>
               }
             >
-              <MenuLabel>Maintenance</MenuLabel>
+              <MenuLabel>{t('Maintenance')}</MenuLabel>
               {MAINTENANCE.map((entry) => (
                 <MenuItem
                   key={entry.action}
@@ -338,7 +346,7 @@ export function MemoryPage() {
                   {/* The tooltip wraps the label rather than the item: `MenuItem`
                       does not forward the trigger props Radix needs. */}
                   <Tooltip content={entry.explanation} side="left">
-                    <span className="inline-block">{entry.label}</span>
+                    <span className="inline-block">{t(entry.label)}</span>
                   </Tooltip>
                 </MenuItem>
               ))}
@@ -346,7 +354,7 @@ export function MemoryPage() {
 
             <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
               <Plus className="size-4" />
-              <span className="hidden sm:inline">Add memory</span>
+              <span className="hidden sm:inline">{t('Add memory')}</span>
             </Button>
           </>
         }
@@ -362,10 +370,14 @@ export function MemoryPage() {
               ))
             ) : (
               <>
-                <Stat label="Total" value={memoryQuery.data?.total ?? 0} icon={<Brain />} />
-                <Stat label="Episodic" value={stats.episodic} hint="What happened in a run" />
-                <Stat label="Semantic" value={stats.semantic} hint="Durable facts" />
-                <Stat label="Procedural" value={stats.procedural} hint="How to do something" />
+                <Stat label={t('Total')} value={memoryQuery.data?.total ?? 0} icon={<Brain />} />
+                <Stat label={t(
+                  'Episodic',
+                )} value={stats.episodic} hint={t('What happened in a run')} />
+                <Stat label={t('Semantic')} value={stats.semantic} hint={t('Durable facts')} />
+                <Stat label={t(
+                  'Procedural',
+                )} value={stats.procedural} hint={t('How to do something')} />
               </>
             )}
           </div>
@@ -376,11 +388,12 @@ export function MemoryPage() {
               <div className="space-y-1">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
                   <Search className="size-4 text-subtle" aria-hidden />
-                  Filter
+                  {t('Filter')}
                 </h2>
                 <p className="text-xs leading-relaxed text-muted">
-                  Plain keyword matching over titles, bodies and tags. It narrows the list below and
-                  nothing more.
+                  {t(
+                    'Plain keyword matching over titles, bodies and tags. It narrows the list below and nothing more.',
+                  )}
                 </p>
               </div>
 
@@ -388,13 +401,13 @@ export function MemoryPage() {
                 id="memory-filter"
                 value={filterInput}
                 onChange={(event) => setFilterInput(event.target.value)}
-                placeholder="e.g. migration, tsconfig, deploy"
-                aria-label="Filter memories by keyword"
+                placeholder={t('e.g. migration, tsconfig, deploy')}
+                aria-label={t('Filter memories by keyword')}
               />
 
               <div
                 role="group"
-                aria-label="Filter by memory kind"
+                aria-label={t('Filter by memory kind')}
                 className="inline-flex flex-wrap gap-0.5 rounded-lg border border-line bg-sunken p-0.5"
               >
                 {KIND_FILTERS.map((entry) => (
@@ -422,11 +435,12 @@ export function MemoryPage() {
               <div className="space-y-1">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
                   <Sparkles className="size-4 text-accent" aria-hidden />
-                  Semantic recall
+                  {t('Semantic recall')}
                 </h2>
                 <p className="text-xs leading-relaxed text-muted">
-                  Runs the same embedding search the agent runs before a prompt. Results are ranked
-                  by meaning, not wording — this is what would actually be injected into context.
+                  {t(
+                    'Runs the same embedding search the agent runs before a prompt. Results are ranked by meaning, not wording — this is what would actually be injected into context.',
+                  )}
                 </p>
               </div>
 
@@ -441,12 +455,12 @@ export function MemoryPage() {
                   id="memory-recall"
                   value={recallInput}
                   onChange={(event) => setRecallInput(event.target.value)}
-                  placeholder="Describe a task, as you would to the agent"
-                  aria-label="Search memory by meaning"
+                  placeholder={t('Describe a task, as you would to the agent')}
+                  aria-label={t('Search memory by meaning')}
                   className="bg-surface"
                 />
                 <Button type="submit" variant="primary" size="md" className="shrink-0">
-                  Recall
+                  {t('Recall')}
                 </Button>
               </form>
 
@@ -454,7 +468,7 @@ export function MemoryPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
-                      Top matches
+                      {t('Top matches')}
                     </p>
                     <button
                       type="button"
@@ -464,7 +478,7 @@ export function MemoryPage() {
                       }}
                       className="text-[11.5px] text-muted hover:text-ink"
                     >
-                      Clear
+                      {t('Clear')}
                     </button>
                   </div>
 
@@ -472,8 +486,9 @@ export function MemoryPage() {
                     <Spinner />
                   ) : (recall.data?.results.length ?? 0) === 0 ? (
                     <p className="text-[13px] text-muted">
-                      Nothing scored high enough. The agent would run this prompt with no recalled
-                      memory.
+                      {t(
+                        'Nothing scored high enough. The agent would run this prompt with no recalled memory.',
+                      )}
                     </p>
                   ) : (
                     <ul className="space-y-1.5">
@@ -484,7 +499,10 @@ export function MemoryPage() {
                         >
                           <span
                             className="mt-0.5 shrink-0 rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent"
-                            aria-label={`Similarity score ${result.score.toFixed(2)}`}
+                            aria-label={t(
+                              'Similarity score {score}',
+                              { score: result.score.toFixed(2) },
+                            )}
                           >
                             {result.score.toFixed(2)}
                           </span>
@@ -493,8 +511,10 @@ export function MemoryPage() {
                               {result.memory.title}
                             </span>
                             <span className="mt-0.5 block text-[11.5px] text-muted">
-                              {result.memory.kind} · confidence{' '}
-                              {formatPercent(result.memory.confidence)}
+                              {t('{kind} · confidence {value}', {
+                                kind: result.memory.kind,
+                                value: formatPercent(result.memory.confidence),
+                              })}
                             </span>
                           </span>
                         </li>
@@ -510,10 +530,10 @@ export function MemoryPage() {
           <section className="space-y-3" aria-labelledby="memory-list-heading">
             <div className="flex items-baseline justify-between gap-3">
               <h2 id="memory-list-heading" className="text-sm font-semibold text-ink">
-                Stored memories
+                {t('Stored memories')}
               </h2>
               <p className="text-xs tabular-nums text-muted">
-                {memories.length} shown
+                {memories.length} {t('shown')}
                 {memoryQuery.data && memoryQuery.data.total > memories.length
                   ? ` of ${memoryQuery.data.total}`
                   : ''}
@@ -530,11 +550,11 @@ export function MemoryPage() {
               <Card>
                 <EmptyState
                   icon={<Brain />}
-                  title="Memory could not be loaded"
-                  description={messageFor(memoryQuery.error, 'The server did not answer.')}
+                  title={t('Memory could not be loaded')}
+                  description={messageFor(memoryQuery.error, t('The server did not answer.'))}
                   action={
                     <Button size="sm" variant="secondary" onClick={() => void memoryQuery.refetch()}>
-                      Try again
+                      {t('Try again')}
                     </Button>
                   }
                 />
@@ -543,16 +563,20 @@ export function MemoryPage() {
               <Card>
                 <EmptyState
                   icon={<Brain />}
-                  title={filter || kind !== 'all' ? 'Nothing matches those filters' : 'No memories yet'}
+                  title={filter || kind !== 'all' ? t(
+                    'Nothing matches those filters',
+                  ) : t('No memories yet')}
                   description={
                     filter || kind !== 'all'
-                      ? 'Try a broader kind, or clear the keyword filter.'
-                      : 'Memories accumulate as runs finish and the reflexion pass distils them. You can also write one yourself.'
+                      ? t('Try a broader kind, or clear the keyword filter.')
+                      : t(
+                        'Memories accumulate as runs finish and the reflexion pass distils them. You can also write one yourself.',
+                      )
                   }
                   action={
                     <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
                       <Plus className="size-4" />
-                      Add memory
+                      {t('Add memory')}
                     </Button>
                   }
                 />
@@ -595,15 +619,18 @@ export function MemoryPage() {
                   className="flex items-center gap-2 text-sm font-semibold text-ink"
                 >
                   <Lightbulb className="size-4 text-warning" aria-hidden />
-                  Insights awaiting review
+                  {t('Insights awaiting review')}
                 </h2>
                 <p className="text-xs leading-relaxed text-muted">
-                  Distilled by the reflexion pass after a run. Proposals are never installed
-                  automatically — nothing here changes the agent's behaviour until you accept it.
+                  {t(
+                    "Distilled by the reflexion pass after a run. Proposals are never installed automatically — nothing here changes the agent's behaviour until you accept it.",
+                  )}
                 </p>
               </div>
               {workspaceId ? (
-                <Tooltip content="Read this workspace's accumulated procedures and, if they cohere, draft one skill — as a proposal below, never installed directly.">
+                <Tooltip content={t(
+                  "Read this workspace's accumulated procedures and, if they cohere, draft one skill — as a proposal below, never installed directly.",
+                )}>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -611,7 +638,7 @@ export function MemoryPage() {
                     onClick={() => synthesise.mutate(workspaceId)}
                   >
                     <Sparkles className="size-4" aria-hidden />
-                    Distil a skill
+                    {t('Distil a skill')}
                   </Button>
                 </Tooltip>
               ) : null}
@@ -623,8 +650,8 @@ export function MemoryPage() {
               <Card>
                 <EmptyState
                   icon={<Lightbulb />}
-                  title="Nothing waiting"
-                  description="New lessons appear here as runs complete."
+                  title={t('Nothing waiting')}
+                  description={t('New lessons appear here as runs complete.')}
                 />
               </Card>
             ) : (
@@ -636,7 +663,7 @@ export function MemoryPage() {
                         {insight.kind.replace('_', ' ')}
                       </Badge>
                       <span className="text-[11.5px] text-muted">
-                        confidence {formatPercent(insight.confidence)}
+                        {t('confidence')} {formatPercent(insight.confidence)}
                       </span>
                       <span className="text-[11.5px] text-subtle">
                         {formatRelative(insight.createdAt)}
@@ -664,7 +691,7 @@ export function MemoryPage() {
                         }
                       >
                         <Check className="size-4" />
-                        Accept
+                        {t('Accept')}
                       </Button>
                       <Button
                         size="sm"
@@ -674,7 +701,7 @@ export function MemoryPage() {
                         }
                       >
                         <X className="size-4" />
-                        Reject
+                        {t('Reject')}
                       </Button>
                       {insight.kind === 'skill_proposal' ? (
                         <Button
@@ -684,7 +711,7 @@ export function MemoryPage() {
                           loading={installSkill.isPending && installSkill.variables === insight.id}
                         >
                           <Sparkles className="size-4" />
-                          Install skill
+                          {t('Install skill')}
                         </Button>
                       ) : null}
                     </div>
@@ -703,9 +730,11 @@ export function MemoryPage() {
       <MemoryModal
         open={adding}
         onOpenChange={setAdding}
-        title="Add a memory"
-        description="Written straight into long-term memory and eligible for retrieval on the next run."
-        confirmLabel="Add memory"
+        title={t('Add a memory')}
+        description={t(
+          'Written straight into long-term memory and eligible for retrieval on the next run.',
+        )}
+        confirmLabel={t('Add memory')}
         busy={createMemory.isPending}
         onSubmit={(draft) => createMemory.mutate(draft)}
       />
@@ -716,9 +745,11 @@ export function MemoryPage() {
         onOpenChange={(open) => {
           if (!open) setEditing(null);
         }}
-        title="Edit memory"
-        description="Corrections take effect immediately; the embedding is recomputed on save."
-        confirmLabel="Save changes"
+        title={t('Edit memory')}
+        description={t(
+          'Corrections take effect immediately; the embedding is recomputed on save.',
+        )}
+        confirmLabel={t('Save changes')}
         busy={updateMemory.isPending}
         initial={editing ? draftFrom(editing) : undefined}
         onSubmit={(draft) => {
@@ -742,14 +773,12 @@ export function MemoryPage() {
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
-        title="Delete this memory?"
-        description={
-          <>
-            <span className="font-medium text-ink">{deleting?.title}</span> is removed permanently
-            and will no longer be retrieved into any run.
-          </>
-        }
-        confirmLabel="Delete memory"
+        title={t('Delete this memory?')}
+        description={t(
+          '{title} is removed permanently and will no longer be retrieved into any run.',
+          { title: deleting?.title ?? '' },
+        )}
+        confirmLabel={t('Delete memory')}
         danger
         onConfirm={async () => {
           if (deleting) await deleteMemory.mutateAsync(deleting.id);
@@ -775,6 +804,7 @@ function MemoryCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -783,7 +813,7 @@ function MemoryCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={KIND_TONE[memory.kind]}>{memory.kind}</Badge>
-            {memory.pinned ? <Badge tone="warning">pinned</Badge> : null}
+            {memory.pinned ? <Badge tone="warning">{t('pinned')}</Badge> : null}
             <h3 className="min-w-0 text-[13.5px] font-medium text-ink">{memory.title}</h3>
           </div>
 
@@ -797,7 +827,10 @@ function MemoryCard({
               size="icon-sm"
               onClick={onTogglePin}
               aria-pressed={memory.pinned}
-              aria-label={memory.pinned ? `Unpin ${memory.title}` : `Pin ${memory.title}`}
+              aria-label={memory.pinned ? t(
+                'Unpin {title}',
+                { title: memory.title },
+              ) : t('Pin {title}', { title: memory.title })}
               className={cn(memory.pinned && 'text-warning')}
             >
               <Pin className="size-4" />
@@ -808,17 +841,20 @@ function MemoryCard({
             side="bottom"
             align="end"
             trigger={
-              <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${memory.title}`}>
+              <Button variant="ghost" size="icon-sm" aria-label={t(
+                'Actions for {title}',
+                { title: memory.title },
+              )}>
                 <MoreHorizontal className="size-4" />
               </Button>
             }
           >
             <MenuItem icon={<Pencil />} onSelect={onEdit}>
-              Edit
+              {t('Edit')}
             </MenuItem>
             <MenuSeparator />
             <MenuItem icon={<Trash2 />} tone="danger" onSelect={onDelete}>
-              Delete
+              {t('Delete')}
             </MenuItem>
           </Menu>
         </div>
@@ -840,7 +876,7 @@ function MemoryCard({
           aria-expanded={expanded}
           className="mt-1 text-[12px] font-medium text-accent hover:underline"
         >
-          {expanded ? 'Show less' : 'Show more'}
+          {expanded ? t('Show less') : t('Show more')}
         </button>
       ) : null}
 
@@ -856,30 +892,30 @@ function MemoryCard({
         ) : null}
 
         <span className="tabular-nums">
-          used {memory.useCount}× · {memory.successCount} succeeded
+          {t('used')} {memory.useCount}× · {memory.successCount} {t('succeeded')}
         </span>
-        <span>updated {formatRelative(memory.updatedAt)}</span>
+        <span>{t('updated')} {formatRelative(memory.updatedAt)}</span>
       </div>
     </Card>
   );
 }
 
-/** 0–1 confidence, with the colour thresholds the decay job also uses. */
+/**
+ * 0–1 confidence, with the colour thresholds the decay job also uses.
+ *
+ * Higher is better here, which is why the tone is decided at the call site:
+ * the same bar draws memory pressure, where higher is worse.
+ */
 function ConfidenceBar({ value }: { value: number }) {
-  const tone = value >= 0.7 ? 'bg-success' : value >= 0.4 ? 'bg-warning' : 'bg-danger';
+  const t = useT();
+  const tone = value >= 0.7 ? 'success' : value >= 0.4 ? 'warning' : 'danger';
 
   return (
     <div className="flex items-center gap-2">
-      <div
-        className="h-1.5 w-20 overflow-hidden rounded-full bg-sunken"
-        role="img"
-        aria-label={`Confidence ${formatPercent(value)}`}
-      >
-        <div
-          className={cn('h-full rounded-full transition-[width]', tone)}
-          style={{ width: `${Math.round(value * 100)}%` }}
-        />
-      </div>
+      <Meter value={value} tone={tone} label={t(
+        'Confidence {value}',
+        { value: formatPercent(value) },
+      )} className="w-20" />
       <span className="text-[11px] tabular-nums text-muted">{formatPercent(value)}</span>
     </div>
   );
@@ -947,6 +983,7 @@ function MemoryModal({
   initial?: MemoryDraft;
   onSubmit: (draft: MemoryDraft) => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState<MemoryDraft>(initial ?? EMPTY_DRAFT);
   const valid = draft.title.trim().length > 0 && draft.content.trim().length > 0;
 
@@ -966,7 +1003,7 @@ function MemoryModal({
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             variant="primary"
@@ -981,34 +1018,38 @@ function MemoryModal({
       }
     >
       <div className="space-y-4">
-        <Label htmlFor="memory-kind" hint="Chooses how the retriever weights this against a prompt.">
-          Kind
+        <Label htmlFor="memory-kind" hint={t(
+          'Chooses how the retriever weights this against a prompt.',
+        )}>
+          {t('Kind')}
           <select
             id="memory-kind"
             value={draft.kind}
             onChange={(event) => setDraft({ ...draft, kind: event.target.value as MemoryKind })}
             className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
           >
-            <option value="episodic">Episodic — what happened in a run</option>
-            <option value="semantic">Semantic — a durable fact</option>
-            <option value="procedural">Procedural — how to do something</option>
+            <option value="episodic">{t('Episodic — what happened in a run')}</option>
+            <option value="semantic">{t('Semantic — a durable fact')}</option>
+            <option value="procedural">{t('Procedural — how to do something')}</option>
           </select>
         </Label>
 
-        <Label htmlFor="memory-title" hint="The retrieval key. One sentence works best.">
-          Title
+        <Label htmlFor="memory-title" hint={t('The retrieval key. One sentence works best.')}>
+          {t('Title')}
           <Input
             id="memory-title"
             value={draft.title}
             onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-            placeholder="Prefer pnpm over npm in this repo"
+            placeholder={t('Prefer pnpm over npm in this repo')}
             className="mt-1.5"
             maxLength={300}
           />
         </Label>
 
-        <Label htmlFor="memory-content" hint="Injected verbatim into the system prompt when recalled.">
-          Content
+        <Label htmlFor="memory-content" hint={t(
+          'Injected verbatim into the system prompt when recalled.',
+        )}>
+          {t('Content')}
           <Textarea
             id="memory-content"
             value={draft.content}
@@ -1019,22 +1060,24 @@ function MemoryModal({
           />
         </Label>
 
-        <Label htmlFor="memory-tags" hint="Comma separated.">
-          Tags
+        <Label htmlFor="memory-tags" hint={t('Comma separated.')}>
+          {t('Tags')}
           <Input
             id="memory-tags"
             value={draft.tags}
             onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
-            placeholder="tooling, conventions"
+            placeholder={t('tooling, conventions')}
             className="mt-1.5"
           />
         </Label>
 
         <Label
           htmlFor="memory-confidence"
-          hint="How much the retriever should trust this. Reinforced when runs that used it succeed."
+          hint={t(
+            'How much the retriever should trust this. Reinforced when runs that used it succeed.',
+          )}
         >
-          Confidence — {formatPercent(draft.confidence)}
+          {t('Confidence — {value}', { value: formatPercent(draft.confidence) })}
           <input
             id="memory-confidence"
             type="range"
@@ -1055,9 +1098,9 @@ function MemoryModal({
             className="mt-0.5 size-4 accent-[var(--mc-accent)]"
           />
           <span>
-            Pinned
+            {t('Pinned')}
             <span className="mt-0.5 block text-xs text-muted">
-              Exempt from decay and garbage collection.
+              {t('Exempt from decay and garbage collection.')}
             </span>
           </span>
         </label>

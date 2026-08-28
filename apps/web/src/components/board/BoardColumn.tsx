@@ -55,17 +55,26 @@ export function BoardColumn({
         touchOver && 'border-accent bg-accent-soft/30',
       )}
     >
-      <header className="flex items-center gap-2 px-3 pb-2 pt-3" title={t(hint)}>
-        <h2 className="text-[13px] font-semibold tracking-tight text-ink">{t(label)}</h2>
-        <span className="text-[12px] text-subtle">{tasks.length}</span>
-        <button
-          type="button"
-          onClick={() => onQuickAdd(status)}
-          aria-label={t('Add a task to {column}', { column: t(label) })}
-          className="ml-auto rounded-md p-1 text-muted transition-colors hover:bg-surface hover:text-ink"
-        >
-          <Plus className="size-4" aria-hidden />
-        </button>
+      {/* The hint is rendered, not hovered.
+          It used to be a `title` on this header — text that exists only for a
+          mouse. This is a board, the screen most likely to be read on a phone,
+          and the hint is what tells someone what the column *means*: it exists
+          nowhere else on the page. One line under the title costs 16px and
+          works for everybody. */}
+      <header className="px-3 pb-2 pt-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[13px] font-semibold tracking-tight text-ink">{t(label)}</h2>
+          <span className="text-[12px] text-subtle">{tasks.length}</span>
+          <button
+            type="button"
+            onClick={() => onQuickAdd(status)}
+            aria-label={t('Add a task to {column}', { column: t(label) })}
+            className="ml-auto rounded-md p-1 text-muted transition-colors hover:bg-surface hover:text-ink"
+          >
+            <Plus className="size-4" aria-hidden />
+          </button>
+        </div>
+        <p className="mt-0.5 text-[11.5px] leading-snug text-subtle">{t(hint)}</p>
       </header>
 
       <div
@@ -95,8 +104,12 @@ export function BoardColumn({
             onDropAfter={(draggedId) => onMove(draggedId, status, task.id)}
           />
         ))}
+        {/* The hint used to live here, so a column only explained itself while
+            it was empty — and it is a full column that raises the question.
+            It moved to the header; what an empty column needs instead is to
+            look like somewhere a card can land. */}
         {tasks.length === 0 ? (
-          <p className="px-1 py-3 text-center text-[12px] text-subtle">{hint}</p>
+          <p className="px-1 py-3 text-center text-[12px] text-subtle">{t('Drop a card here')}</p>
         ) : null}
       </div>
     </section>

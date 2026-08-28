@@ -149,6 +149,57 @@ describe('escalations', () => {
     expect(check?.detail).toContain('metaclaude-backup-x.tar.gz');
   });
 
+  // The archives moved off the system disk and onto a volume the container
+  // does not mount, so nothing inside the app can measure it. The backup
+  // script writes what it saw into the marker; these three pin that the doctor
+  // reads it, and that a marker written before the field existed still passes.
+  it('warns when the volume holding the archives is filling up', async () => {
+    const report = await makeDoctor({
+      readBackupMarker: async () =>
+        JSON.stringify({
+          at: NOW - 3_600_000,
+          archive: 'metaclaude-backup-x.tar.gz',
+          freeBytes: 1.5 * GB,
+        }),
+    }).run();
+    const check = report.checks.find((entry) => entry.name === 'backup');
+
+    expect(check?.status).toBe('warn');
+    expect(check?.summary).toMatch(/room/i);
+    expect(check?.detail).toContain('1.5 GB free');
+  });
+
+  // A full volume is the *cause* of a backup that stopped happening, so it is
+  // the more useful sentence even when the archive is also stale.
+  it('fails on a critically low volume and says that rather than the age', async () => {
+    const report = await makeDoctor({
+      readBackupMarker: async () =>
+        JSON.stringify({
+          at: NOW - 30 * 3_600_000,
+          archive: 'metaclaude-backup-old.tar.gz',
+          freeBytes: 0.2 * GB,
+        }),
+    }).run();
+    const check = report.checks.find((entry) => entry.name === 'backup');
+
+    expect(check?.status).toBe('fail');
+    expect(check?.summary).toMatch(/room/i);
+    expect(check?.detail).toContain('0.2 GB free');
+  });
+
+  // Two shapes mean "not measured", and neither may be read as zero: a marker
+  // written before the field existed, and one written on a host where `df`
+  // declined to answer. A sentinel number here would report a healthy volume
+  // as critically full, which is why the script writes null rather than -1.
+  it.each([
+    ['written before the free-space field existed', { at: NOW - 3_600_000, archive: 'a.tar.gz' }],
+    ['where free space could not be measured', { at: NOW - 3_600_000, archive: 'a.tar.gz', freeBytes: null }],
+  ])('accepts a marker %s', async (_label, marker) => {
+    const report = await makeDoctor({ readBackupMarker: async () => JSON.stringify(marker) }).run();
+
+    expect(report.checks.find((entry) => entry.name === 'backup')?.status).toBe('ok');
+  });
+
   it('warns rather than trusting a marker it cannot parse', async () => {
     const garbage = await makeDoctor({ readBackupMarker: async () => 'not json' }).run();
     expect(garbage.checks.find((entry) => entry.name === 'backup')?.status).toBe('warn');

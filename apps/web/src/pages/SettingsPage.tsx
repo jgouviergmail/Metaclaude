@@ -6,8 +6,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
   Copy,
-  Cpu,
-  HardDrive,
   KeyRound,
   Monitor,
   Moon,
@@ -18,12 +16,13 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useState } from 'react';
-import { useI18n, useT, type Lang } from '@/lib/i18n';
+import { type Lang, type TranslateFn, useI18n, usePlural, useT } from '@/lib/i18n';
 import * as Tabs from '@radix-ui/react-tabs';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { TotpQr } from '@/components/auth/TotpQr';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
+import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
 import { GoogleConnectionCard } from '@/components/settings/GoogleConnectionCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
@@ -47,7 +46,6 @@ import { useAuthStore, useUiStore, type ThemeMode } from '@/lib/store';
 import {
   cn,
   copyToClipboard,
-  formatBytes,
   formatDateTime,
   formatDuration,
   formatRelative,
@@ -78,7 +76,10 @@ export function SettingsPage() {
     <AppShell>
       <ContentHeader
         title={t('Settings')}
-        subtitle={user ? t('Signed in as {name} ({role})', { name: user.username, role: user.role }) : undefined}
+        subtitle={user ? t(
+          'Signed in as {name} ({role})',
+          { name: user.username, role: user.role },
+        ) : undefined}
         showSidebarToggle={false}
       />
 
@@ -191,7 +192,9 @@ function PasswordCard() {
           />
         </Label>
 
-        <Label htmlFor="pw-new" hint={t('At least 12 characters. Length matters more than symbols.')}>
+        <Label htmlFor="pw-new" hint={t(
+          'At least 12 characters. Length matters more than symbols.',
+        )}>
           {t('New password')}
           <Input
             id="pw-new"
@@ -215,7 +218,9 @@ function PasswordCard() {
           />
         </Label>
 
-        {mismatch ? <p className="text-[12.5px] text-danger">{t('The passwords do not match.')}</p> : null}
+        {mismatch ? <p className="text-[12.5px] text-danger">{t(
+          'The passwords do not match.',
+        )}</p> : null}
         {tooShort ? (
           <p className="text-[12.5px] text-warning">{t('Use at least 12 characters.')}</p>
         ) : null}
@@ -236,6 +241,7 @@ function PasswordCard() {
 }
 
 function TotpCard() {
+  const plural = usePlural();
   const t = useT();
   const { user, recoveryCodesRemaining, setUser } = useAuthStore();
   const [enrolling, setEnrolling] = useState<{ secret: string; uri: string } | null>(null);
@@ -292,7 +298,9 @@ function TotpCard() {
     <Card>
       <CardHeader
         title={t('Two-factor authentication')}
-        description={t('A second factor is what keeps a leaked password from becoming a compromised agent OS.')}
+        description={t(
+          'A second factor is what keeps a leaked password from becoming a compromised agent OS.',
+        )}
         actions={
           user?.totpEnabled ? (
             <Badge tone="success">
@@ -309,9 +317,15 @@ function TotpCard() {
         {user?.totpEnabled ? (
           <>
             <p className="text-[13px] text-muted">
-              {t('{n} recovery code(s) remaining.', { n: recoveryCodesRemaining })}
+              {plural(
+                recoveryCodesRemaining,
+                '{n} recovery code remaining.',
+                '{n} recovery codes remaining.',
+              )}
               {recoveryCodesRemaining <= 2 ? (
-                <span className="text-warning"> {t('Consider re-enrolling to get a fresh set.')}</span>
+                <span className="text-warning"> {t(
+                  'Consider re-enrolling to get a fresh set.',
+                )}</span>
               ) : null}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -386,7 +400,9 @@ function TotpCard() {
           if (!open) closeEnrolment();
         }}
         title={t('Set up two-factor authentication')}
-        description={t('Add this secret to your authenticator app, then confirm with the code it shows.')}
+        description={t(
+          'Add this secret to your authenticator app, then confirm with the code it shows.',
+        )}
         footer={
           <>
             <Button variant="ghost" size="sm" onClick={closeEnrolment}>
@@ -438,7 +454,9 @@ function TotpCard() {
         open={Boolean(recoveryCodes)}
         onOpenChange={(open) => !open && setRecoveryCodes(null)}
         title={t('Save your recovery codes')}
-        description={t('Each works once, in place of a code from your app. This is the only time they are shown.')}
+        description={t(
+          'Each works once, in place of a code from your app. This is the only time they are shown.',
+        )}
         footer={
           <Button variant="primary" size="sm" onClick={() => setRecoveryCodes(null)}>
             {t('I have saved them')}
@@ -508,6 +526,7 @@ function TotpCard() {
 }
 
 function SessionsCard() {
+  const plural = usePlural();
   const t = useT();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -527,7 +546,9 @@ function SessionsCard() {
     mutationFn: () => api.revokeOtherSessions(),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['auth-sessions'] });
-      toast.success(t('Signed out {n} other device(s)', { n: result.revoked }));
+      toast.success(
+        plural(result.revoked, 'Signed out {n} other device', 'Signed out {n} other devices'),
+      );
     },
   });
 
@@ -562,7 +583,7 @@ function SessionsCard() {
             <li key={session.id} className="flex items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-[13px] text-ink">
-                  <span className="truncate">{describeUserAgent(session.userAgent)}</span>
+                  <span className="truncate">{describeUserAgent(session.userAgent, t)}</span>
                   {session.current ? <Badge tone="accent">{t('this device')}</Badge> : null}
                 </p>
                 <p className="text-[11.5px] text-subtle">
@@ -735,7 +756,9 @@ function DoctorCard() {
     <Card>
       <CardHeader
         title={t('Doctor')}
-        description={t('Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations.')}
+        description={t(
+          'Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations.',
+        )}
         actions={
           <Button
             variant="secondary"
@@ -781,16 +804,16 @@ function SystemCard() {
       <div className="grid grid-cols-2 gap-3">
         <Stat label={t('Version')} value={data.version} />
         <Stat label={t('Uptime')} value={formatDuration(data.uptimeMs)} />
-        <Stat
-          label={t('Memory (RSS)')}
-          value={formatBytes(data.rssBytes)}
-          icon={<Cpu />}
-        />
-        <Stat label={t('Disk free')} value={formatBytes(data.diskFreeBytes)} icon={<HardDrive />} />
       </div>
+      {/* The same three meters the dashboard shows, from the same payload.
+          Two separate renderings of "how full is the disk" would eventually
+          disagree, and the one nobody is looking at would be the wrong one. */}
+      <ResourceMeters resources={data.resources} />
 
       <Card>
-        <CardHeader title="Claude CLI" description={t('Every agent run goes through this binary.')} />
+        <CardHeader title={t(
+          'Claude CLI',
+        )} description={t('Every agent run goes through this binary.')} />
         <dl className="divide-y divide-[var(--mc-border)]">
           <Row label={t('Available')}>
             {data.claudeCli.available ? (
@@ -873,7 +896,10 @@ function AuditCard() {
       if (result.ok) {
         toast.success(t('Chain intact across {n} entries.', { n: result.entries }));
       } else {
-        toast.error(t('Chain broken at entry {id}. The log may have been altered.', { id: result.brokenAt ?? '?' }));
+        toast.error(t(
+          'Chain broken at entry {id}. The log may have been altered.',
+          { id: result.brokenAt ?? '?' },
+        ));
       }
       setVerifying(false);
     },
@@ -889,7 +915,9 @@ function AuditCard() {
     <Card>
       <CardHeader
         title={t('Audit log')}
-        description={t('Every entry commits to the hash of the one before it, so an edit anywhere invalidates everything after.')}
+        description={t(
+          'Every entry commits to the hash of the one before it, so an edit anywhere invalidates everything after.',
+        )}
         actions={
           <Button
             variant="outline"
@@ -954,8 +982,8 @@ function AuditCard() {
 
 
 /** Turn a user-agent string into something a human can recognise. */
-function describeUserAgent(userAgent: string | null): string {
-  if (!userAgent) return 'Unknown device';
+function describeUserAgent(userAgent: string | null, t: TranslateFn): string {
+  if (!userAgent) return t('Unknown device');
 
   const browser =
     /Firefox\/[\d.]+/.test(userAgent)
@@ -966,7 +994,7 @@ function describeUserAgent(userAgent: string | null): string {
           ? 'Chrome'
           : /Safari\//.test(userAgent)
             ? 'Safari'
-            : 'Browser';
+            : t('Browser');
 
   const platform = /iPhone|iPad/.test(userAgent)
     ? 'iOS'
@@ -978,7 +1006,9 @@ function describeUserAgent(userAgent: string | null): string {
           ? 'Windows'
           : /Linux/.test(userAgent)
             ? 'Linux'
-            : 'Unknown';
+            : t('Unknown');
 
-  return `${browser} on ${platform}`;
+  // The platform names are proper nouns and stay as they are; only the
+  // joining word is copy.
+  return t('{browser} on {platform}', { browser, platform });
 }

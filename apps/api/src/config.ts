@@ -63,6 +63,22 @@ const EnvSchema = z.object({
   METACLAUDE_RUN_TIMEOUT_MS: z.coerce.number().int().min(30_000).default(45 * 60 * 1000),
 
   /**
+   * How long a finished run and its transcript are kept. 0 keeps everything.
+   *
+   * `transcript_events` is the one table that grows without limit — every
+   * message, tool call and streamed delta of every run — and it had no window
+   * at all while the audit log and the insights both had one. Six months is
+   * generous on purpose: this is the only sweep that destroys something the
+   * operator wrote.
+   */
+  METACLAUDE_RUN_RETENTION_DAYS: z.coerce.number().int().min(0).default(180),
+  /**
+   * Newest runs kept per workspace regardless of age, so a workspace that has
+   * been quiet for a year still has its history when someone comes back to it.
+   */
+  METACLAUDE_RUN_KEEP_PER_WORKSPACE: z.coerce.number().int().min(1).default(50),
+
+  /**
    * The VAPID `sub` claim — who a push relay contacts about a misbehaving
    * sender. Relays require the shape and none deliver anything to it, but
    * they do validate it: Apple answers 400 BadJwtToken for a token it does
@@ -112,6 +128,8 @@ export interface Config {
   maxConcurrentRuns: number;
   quotaGuardPct: number;
   runTimeoutMs: number;
+  /** Run retention: how long finished runs live, and the per-workspace floor. */
+  runRetention: { days: number; keepPerWorkspace: number };
   embeddings: { provider: 'hash' | 'local'; model: string };
   /** VAPID `sub` claim for push; relays validate its shape. */
   pushSubject: string;
@@ -268,6 +286,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     maxConcurrentRuns: env.METACLAUDE_MAX_CONCURRENT_RUNS,
     quotaGuardPct: env.METACLAUDE_QUOTA_GUARD_PCT,
     runTimeoutMs: env.METACLAUDE_RUN_TIMEOUT_MS,
+    runRetention: {
+      days: env.METACLAUDE_RUN_RETENTION_DAYS,
+      keepPerWorkspace: env.METACLAUDE_RUN_KEEP_PER_WORKSPACE,
+    },
     embeddings: { provider: env.METACLAUDE_EMBEDDINGS, model: env.METACLAUDE_EMBEDDING_MODEL },
     pushSubject: env.METACLAUDE_PUSH_SUBJECT,
     claude: {

@@ -45,6 +45,7 @@ import { ClaudeCredentials } from './services/claude-credentials.js';
 import { ClaudePairing } from './services/claude-pairing.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { AttachmentService } from './services/attachments.js';
+import { RunRetention } from './services/run-retention.js';
 import { BoardService } from './services/board.js';
 import { BoardGateway } from './services/board-gateway.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
@@ -110,6 +111,7 @@ export interface AppContext {
   workspaces: WorkspaceService;
   files: FileService;
   attachments: AttachmentService;
+  runRetention: RunRetention;
   board: BoardGateway;
   git: GitService;
   analytics: AnalyticsService;
@@ -397,6 +399,15 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   // HTTP routes (upload, serve, delete) — one ledger, one jail.
   const attachments = new AttachmentService(db);
 
+  // The only sweep that destroys something the operator wrote, so both of its
+  // conditions are configurable and both are generous by default.
+  const runRetention = new RunRetention({
+    db,
+    attachments,
+    retentionDays: config.runRetention.days,
+    keepPerWorkspace: config.runRetention.keepPerWorkspace,
+  });
+
   const kernel = new Kernel({
     db,
     bus,
@@ -658,6 +669,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     workspaces,
     files: new FileService(),
     attachments,
+    runRetention,
     board,
     git: new GitService(),
     analytics,

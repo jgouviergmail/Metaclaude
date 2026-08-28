@@ -14,6 +14,7 @@
 
 import type { ClaudeUsage } from '@metaclaude/shared';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 function untilLabel(resetsAt: number, now: number): string {
   const delta = resetsAt - now;
@@ -31,18 +32,22 @@ function tone(utilization: number | null): string {
 }
 
 export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; now?: number }) {
+  const t = useT();
   if (usage.unavailable.includes('rate_limits')) {
     return (
       <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-subtle">
-        Plan quota windows do not apply here — this credential is an API key or a third-party
-        provider, billed per token instead.
+        {t(
+          'Plan quota windows do not apply here — this credential is an API key or a third-party provider, billed per token instead.',
+        )}
       </p>
     );
   }
   if (usage.unavailable.includes('usage') || usage.unavailable.includes('session')) {
     return (
       <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-subtle">
-        The CLI could not report quota here — its usage endpoint is unavailable in this version.
+        {t(
+          'The CLI could not report quota here — its usage endpoint is unavailable in this version.',
+        )}
       </p>
     );
   }
@@ -90,7 +95,7 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
 
       {usage.extraUsage?.isEnabled ? (
         <p className="text-[12px] tabular-nums text-muted">
-          Extra usage credits: {usage.extraUsage.usedCredits ?? 0}
+          {t('Extra usage credits:')} {usage.extraUsage.usedCredits ?? 0}
           {usage.extraUsage.monthlyLimit !== null ? ` of ${usage.extraUsage.monthlyLimit}` : ''}
           {usage.extraUsage.utilization !== null ? ` (${Math.round(usage.extraUsage.utilization)}%)` : ''}
         </p>
@@ -99,9 +104,12 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
       {day && attributions.length > 0 ? (
         <div className="space-y-1.5">
           <p className="text-[12px] font-medium text-ink">
-            What consumed it today
+            {t('What consumed it today')}
             <span className="ml-2 font-normal text-subtle">
-              {day.requestCount} requests · {day.sessionCount} sessions
+              {t('{requests} requests · {sessions} sessions', {
+                requests: day.requestCount,
+                sessions: day.sessionCount,
+              })}
             </span>
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -115,8 +123,9 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
             ))}
           </div>
           <p className="text-[11.5px] text-subtle">
-            Approximate — read from this machine's transcripts, so other devices and claude.ai are
-            not counted. Categories overlap.
+            {t(
+              "Approximate — read from this machine's transcripts, so other devices and claude.ai are not counted. Categories overlap.",
+            )}
           </p>
         </div>
       ) : null}

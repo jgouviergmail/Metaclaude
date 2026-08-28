@@ -80,7 +80,7 @@ describe('BriefView', () => {
     const link = screen.getByRole('link', { name: /board:/i });
     expect(link.getAttribute('href')).toBe('/board');
     expect(link.textContent).toContain('2 in review');
-    expect(link.textContent).toContain('1 blocked');
+    expect(link.textContent).toContain('1 card blocked');
     expect(link.textContent).toContain('3 being worked');
     expect(link.textContent).not.toContain('due soon');
   });
@@ -90,18 +90,25 @@ describe('BriefView', () => {
     expect(screen.queryByRole('link', { name: /board:/i })).toBeNull();
   });
 
+  // The headline is composed here from the counts rather than read from
+  // `brief.headline`: that field is English prose the server assembled, and a
+  // finished sentence cannot be translated. The fixture carries a *different*
+  // headline on purpose, so a component that went back to reading the
+  // server's would fail this rather than pass it by coincidence.
   it('stays calm on a quiet day', () => {
     render(
       <BriefView
         brief={brief({
-          headline: 'A quiet day.',
+          headline: 'this sentence must not reach the screen',
+          activity: { ...activity, totalRuns: 0 },
           failures: [],
           automations: { disabledByGuard: [], nextRun: null },
         })}
       />,
     );
 
-    expect(screen.getByText('A quiet day.')).toBeDefined();
+    expect(screen.getByText(/A quiet day — no runs in the last 24 hours/)).toBeDefined();
+    expect(screen.queryByText(/this sentence must not reach the screen/)).toBeNull();
     expect(screen.queryByText(/failure guard/)).toBeNull();
   });
 });

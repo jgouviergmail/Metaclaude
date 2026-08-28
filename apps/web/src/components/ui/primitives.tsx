@@ -18,6 +18,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 /* -------------------------------------------------------------------------- */
 /* Button                                                                      */
@@ -268,8 +269,11 @@ export function CardHeader({
 /* -------------------------------------------------------------------------- */
 
 export function Spinner({ className }: { className?: string }) {
+  const t = useT();
   return (
-    <Loader2 className={cn('size-4 animate-spin text-muted', className)} aria-label="Loading" />
+    <Loader2 className={cn('size-4 animate-spin text-muted', className)} aria-label={t(
+      'Loading',
+    )} />
   );
 }
 
@@ -381,6 +385,59 @@ export function PageHeader({
 }
 
 /** A labelled statistic, used across the dashboard and analytics. */
+/**
+ * A proportion, drawn.
+ *
+ * `value` is 0–1, or null for "not measured" — which is a state the resource
+ * meters genuinely have on a machine without cgroups, and which must not be
+ * drawn as an empty bar: an empty bar reads as "nothing is happening", and
+ * that is the opposite of unknown.
+ *
+ * The tone is passed in rather than derived, because the direction differs by
+ * caller: a memory that is 90% full is bad, a confidence that is 90% is good.
+ */
+export function Meter({
+  value,
+  tone = 'accent',
+  label,
+  className,
+}: {
+  value: number | null;
+  tone?: 'accent' | 'success' | 'warning' | 'danger';
+  label: string;
+  className?: string;
+}) {
+  const fill = {
+    accent: 'bg-accent',
+    success: 'bg-success',
+    warning: 'bg-warning',
+    danger: 'bg-danger',
+  }[tone];
+
+  return (
+    <div
+      className={cn(
+        'h-1.5 overflow-hidden rounded-full bg-sunken',
+        // Faded, not hidden: the track holds the card's height so a row of
+        // meters stays aligned whether or not each one has a reading — but at
+        // full strength an empty track reads as a gauge sitting at zero,
+        // which is a measurement, and the opposite of what it means here.
+        value === null && 'opacity-50',
+        className,
+      )}
+      role="img"
+      aria-label={label}
+    >
+      {value === null ? null : (
+        <div
+          className={cn('h-full rounded-full transition-[width]', fill)}
+          style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%` }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function Stat({
   label,
   value,

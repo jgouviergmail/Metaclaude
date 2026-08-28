@@ -25,17 +25,19 @@ import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { BriefView } from '@/components/analytics/BriefView';
 import { AdvisorCard } from '@/components/dashboard/AdvisorCard';
+import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { SystemPulse } from '@/components/dashboard/SystemPulse';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { useT } from '@/lib/i18n';
+import { usePlural, useT } from '@/lib/i18n';
 import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
 import { useAuthStore } from '@/lib/store';
 import { cn, formatCost, formatDuration, formatRelative, formatPercent } from '@/lib/utils';
 
 export function DashboardPage() {
+  const plural = usePlural();
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -46,9 +48,15 @@ export function DashboardPage() {
   const systemQuery = useQuery({
     queryKey: ['system'],
     queryFn: () => api.system(),
-    // Uptime and disk are not pushed over the socket, so this one polls — but
-    // slowly, since none of it changes fast.
-    refetchInterval: 60_000,
+    // Polled rather than pushed: none of this arrives over the socket. Ten
+    // seconds because CPU and memory do change fast, and a meter that lags a
+    // minute behind the run it is meant to explain is worse than no meter.
+    //
+    // Affordable: the CLI version probe behind this route is cached for a
+    // minute, and everything else is a counter or a file read. The first two
+    // polls also earn their keep on their own — CPU usage is a rate, so the
+    // very first reading has nothing to compare against and reports nothing.
+    refetchInterval: 10_000,
   });
 
   const runsQuery = useQuery({
@@ -82,7 +90,7 @@ export function DashboardPage() {
   });
 
   const createWorkspace = useMutation({
-    mutationFn: () => api.createWorkspace({ name: 'New workspace' }),
+    mutationFn: () => api.createWorkspace({ name: t('New workspace') }),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       navigate(`/w/${data.workspace.id}`);
@@ -100,7 +108,9 @@ export function DashboardPage() {
     (run) => run.status === 'running' || run.status === 'waiting_approval' || run.status === 'queued',
   );
 
-  const greeting = `${t(timeOfDayGreeting())}, ${user?.displayName || user?.username || t('there')}.`;
+  const greeting = `${t(
+    timeOfDayGreeting(),
+  )}, ${user?.displayName || user?.username || t('there')}.`;
 
   return (
     <AppShell>
@@ -108,9 +118,13 @@ export function DashboardPage() {
         title={greeting}
         subtitle={
           system?.claudeCli.authenticated
-            ? `Claude CLI ${system.claudeCli.version ?? ''} · ${
-                system.claudeCli.authMode === 'subscription' ? t('subscription') : t('API key')
-              }`
+            ? t('Claude CLI {version} · {auth}', {
+                version: system.claudeCli.version ?? '',
+                auth:
+                  system.claudeCli.authMode === 'subscription'
+                    ? t('subscription')
+                    : t('API key'),
+              })
             : t('No Claude credentials configured')
         }
         showSidebarToggle={false}
@@ -151,8 +165,12 @@ export function DashboardPage() {
                   <Link to="/settings" className="font-medium text-accent underline-offset-2 hover:underline">
                     {t('Settings → System')}
                   </Link>
-                  {t(': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from')}{' '}
-                  <code className="rounded bg-raised px-1 font-mono text-[12px]">claude setup-token</code>{' '}
+                  {t(
+                    ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from',
+                  )}{' '}
+                  <code className="rounded bg-raised px-1 font-mono text-[12px]">{t(
+                    'claude setup-token',
+                  )}</code>{' '}
                   {t('can be pasted there too.')}
                 </p>
               </div>
@@ -179,7 +197,11 @@ export function DashboardPage() {
               <div className="flex items-center gap-2 border-b border-warning/25 px-4 py-3">
                 <ShieldQuestion className="size-4 shrink-0 text-warning" aria-hidden />
                 <h2 className="text-sm font-semibold text-ink">
-                  {t('{n} action(s) waiting for you', { n: approvals.length })}
+                  {plural(
+                    approvals.length,
+                    '{n} action waiting for you',
+                    '{n} actions waiting for you',
+                  )}
                 </h2>
               </div>
               <ul className="divide-y divide-[var(--mc-border)]">
@@ -238,7 +260,10 @@ export function DashboardPage() {
             <Stat
               label={t('Active runs')}
               value={system?.activeRuns ?? 0}
-              hint={system?.queuedRuns ? t('{n} queued', { n: system.queuedRuns }) : t('Nothing queued')}
+              hint={system?.queuedRuns ? t(
+                '{n} queued',
+                { n: system.queuedRuns },
+              ) : t('Nothing queued')}
               icon={<Cpu />}
               tone={system && system.activeRuns > 0 ? 'success' : undefined}
             />
@@ -274,6 +299,12 @@ export function DashboardPage() {
               icon={<Brain />}
             />
           </div>
+
+          {/* The machine itself. Below the work it is doing, because the
+              question "what is running?" comes before "can the box take it?"
+              — and above the history, because it is the only part of this
+              screen that can turn into an incident. */}
+          <ResourceMeters resources={system?.resources} />
 
           {/* In-flight work */}
           {activeRuns.length > 0 ? (
@@ -311,7 +342,9 @@ export function DashboardPage() {
                 <EmptyState
                   icon={<FolderGit2 />}
                   title={t('No workspaces yet')}
-                  description={t('A workspace is a project directory plus the agent policy that applies inside it.')}
+                  description={t(
+                    'A workspace is a project directory plus the agent policy that applies inside it.',
+                  )}
                   action={
                     <Button
                       variant="primary"
@@ -370,7 +403,9 @@ export function DashboardPage() {
               {(insightsQuery.data?.insights ?? []).length === 0 ? (
                 <EmptyState
                   title={t('Nothing new')}
-                  description={t('After each run, Metaclaude reflects on what happened and records anything worth remembering.')}
+                  description={t(
+                    'After each run, Metaclaude reflects on what happened and records anything worth remembering.',
+                  )}
                   className="py-8"
                 />
               ) : (
@@ -414,7 +449,9 @@ export function DashboardPage() {
             </div>
 
             {runs.length === 0 ? (
-              <EmptyState title={t('No runs yet')} description={t('Start a session to see history here.')} />
+              <EmptyState title={t(
+                'No runs yet',
+              )} description={t('Start a session to see history here.')} />
             ) : (
               <ul className="divide-y divide-[var(--mc-border)]">
                 {runs
@@ -435,6 +472,7 @@ export function DashboardPage() {
 /* -------------------------------------------------------------------------- */
 
 function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
+  const t = useT();
   const tone =
     run.status === 'succeeded'
       ? 'success'
@@ -459,7 +497,7 @@ function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
         </p>
 
         {run.policy.source === 'learned' ? (
-          <Tooltip content="Model chosen by the learned policy">
+          <Tooltip content={t('Model chosen by the learned policy')}>
             <span className="hidden shrink-0 sm:block">
               <Badge tone="thinking">
                 <Brain className="size-2.5" aria-hidden />
@@ -481,10 +519,18 @@ function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
   );
 }
 
+/** English as data — the caller translates. See the note in `lib/i18n.tsx`. */
+const GREETINGS = {
+  night: 'Still up',
+  morning: 'Good morning',
+  afternoon: 'Good afternoon',
+  evening: 'Good evening',
+};
+
 function timeOfDayGreeting(): string {
   const hour = new Date().getHours();
-  if (hour < 5) return 'Still up';
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 5) return GREETINGS.night;
+  if (hour < 12) return GREETINGS.morning;
+  if (hour < 18) return GREETINGS.afternoon;
+  return GREETINGS.evening;
 }

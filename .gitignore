@@ -44,3 +44,7 @@ logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+METACLAUDEEXPLOITATION.local.md
+metaclaude_deploy
+metaclaude_admin
+PROMP_PROJET.txt

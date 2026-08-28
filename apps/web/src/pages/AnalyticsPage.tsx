@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatCost, formatDuration, formatPercent } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 type Granularity = 'hour' | 'day' | 'week';
 
@@ -129,6 +130,7 @@ function useChartColors(): ChartColors {
 /* -------------------------------------------------------------------------- */
 
 export function AnalyticsPage() {
+  const t = useT();
   const queryClient = useQueryClient();
 
   const [days, setDays] = useState(30);
@@ -169,19 +171,19 @@ export function AnalyticsPage() {
       api.resetPolicy({ workspaceId: workspaceId ?? null, includeClassifier: true }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['policy'] });
-      toast.success('Learning reset', {
+      toast.success(t('Learning reset'), {
         description: `${result.arms} arms and ${result.exemplars} classifier exemplars discarded. The next runs will explore from scratch.`,
       });
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not reset the policy.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not reset the policy.')),
   });
 
   const summary = analyticsQuery.data?.summary;
   const series = analyticsQuery.data?.series ?? [];
   const scopeLabel =
     scope === 'all'
-      ? 'All workspaces'
+      ? t('All workspaces')
       : (workspacesQuery.data?.workspaces.find((w) => w.id === scope)?.name ?? 'Workspace');
   const periodLabel = PERIODS.find((p) => p.days === days)?.label ?? `${days} days`;
 
@@ -193,7 +195,7 @@ export function AnalyticsPage() {
   return (
     <AppShell>
       <ContentHeader
-        title="Analytics"
+        title={t('Analytics')}
         subtitle={`${periodLabel} · ${scopeLabel}`}
         showSidebarToggle={false}
         icon={<Activity />}
@@ -203,22 +205,28 @@ export function AnalyticsPage() {
               side="bottom"
               align="end"
               trigger={
-                <Button variant="ghost" size="sm" aria-label={`Period: ${periodLabel}`}>
+                <Button variant="ghost" size="sm" aria-label={t(
+                  'Period: {period}',
+                  { period: periodLabel },
+                )}>
                   <CalendarRange className="size-4" />
                   <span className="hidden sm:inline">{periodLabel}</span>
                   <ChevronDown className="size-3.5" aria-hidden />
                 </Button>
               }
             >
-              <MenuLabel>Period</MenuLabel>
+              <MenuLabel>{t('Period')}</MenuLabel>
               {PERIODS.map((period) => (
                 <MenuItem
                   key={period.days}
                   selected={days === period.days}
-                  description={`Bucketed by ${granularityFor(period.days)}`}
+                  description={t(
+                    'Bucketed by {granularity}',
+                    { granularity: granularityFor(period.days) },
+                  )}
                   onSelect={() => setDays(period.days)}
                 >
-                  {period.label}
+                  {t(period.label)}
                 </MenuItem>
               ))}
             </Menu>
@@ -227,16 +235,19 @@ export function AnalyticsPage() {
               side="bottom"
               align="end"
               trigger={
-                <Button variant="ghost" size="sm" aria-label={`Scope: ${scopeLabel}`}>
+                <Button variant="ghost" size="sm" aria-label={t(
+                  'Scope: {scope}',
+                  { scope: scopeLabel },
+                )}>
                   <Filter className="size-4" />
                   <span className="hidden md:inline">{scopeLabel}</span>
                   <ChevronDown className="size-3.5" aria-hidden />
                 </Button>
               }
             >
-              <MenuLabel>Scope</MenuLabel>
+              <MenuLabel>{t('Scope')}</MenuLabel>
               <MenuItem selected={scope === 'all'} onSelect={() => setScope('all')}>
-                All workspaces
+                {t('All workspaces')}
               </MenuItem>
               {(workspacesQuery.data?.workspaces.length ?? 0) > 0 ? <MenuSeparator /> : null}
               {workspacesQuery.data?.workspaces.map((workspace) => (
@@ -267,11 +278,14 @@ export function AnalyticsPage() {
               wall is close — which is not when someone is browsing history. */}
           <Card>
             <CardHeader
-              title="Subscription quota"
+              title={t('Subscription quota')}
               description={
                 usageQuery.data?.subscriptionType
-                  ? `The ${usageQuery.data.subscriptionType} plan's windows, as the CLI reports them.`
-                  : 'The plan windows, as the CLI reports them.'
+                  ? t(
+                    "The {subscriptionType} plan's windows, as the CLI reports them.",
+                    { subscriptionType: usageQuery.data.subscriptionType },
+                  )
+                  : t('The plan windows, as the CLI reports them.')
               }
             />
             <div className="px-4 pb-4">
@@ -280,7 +294,7 @@ export function AnalyticsPage() {
               ) : usageQuery.data ? (
                 <QuotaPanel usage={usageQuery.data} />
               ) : (
-                <p className="text-[12.5px] text-subtle">The quota could not be read.</p>
+                <p className="text-[12.5px] text-subtle">{t('The quota could not be read.')}</p>
               )}
             </div>
           </Card>
@@ -298,15 +312,15 @@ export function AnalyticsPage() {
             <Card>
               <EmptyState
                 icon={<Activity />}
-                title="Analytics could not be loaded"
+                title={t('Analytics could not be loaded')}
                 description={
                   analyticsQuery.error instanceof ApiError
                     ? analyticsQuery.error.message
-                    : 'The server did not answer.'
+                    : t('The server did not answer.')
                 }
                 action={
                   <Button size="sm" variant="secondary" onClick={() => void analyticsQuery.refetch()}>
-                    Try again
+                    {t('Try again')}
                   </Button>
                 }
               />
@@ -315,17 +329,20 @@ export function AnalyticsPage() {
             <Card>
               <EmptyState
                 icon={<Activity />}
-                title="No runs in this period"
-                description={`Nothing was executed in ${scopeLabel.toLowerCase()} over the last ${periodLabel}. Widen the period, or start a session.`}
+                title={t('No runs in this period')}
+                description={t(
+                  'Nothing was executed in {scope} over the last {period}. Widen the period, or start a session.',
+                  { scope: scopeLabel.toLowerCase(), period: periodLabel },
+                )}
               />
             </Card>
           ) : (
             <>
               {/* ------------------------------ Stats -------------------------- */}
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-                <Stat label="Runs" value={summary.totalRuns.toLocaleString()} />
+                <Stat label={t('Runs')} value={summary.totalRuns.toLocaleString()} />
                 <Stat
-                  label="Success"
+                  label={t('Success')}
                   value={formatPercent(summary.successRate)}
                   tone={
                     summary.successRate >= 0.8
@@ -335,21 +352,21 @@ export function AnalyticsPage() {
                         : 'danger'
                   }
                 />
-                <Stat label="Cost" value={formatCost(summary.totalCostUsd)} />
+                <Stat label={t('Cost')} value={formatCost(summary.totalCostUsd)} />
                 <Stat
-                  label="Median"
+                  label={t('Median')}
                   value={formatDuration(summary.medianDurationMs)}
-                  hint="Run duration"
+                  hint={t('Run duration')}
                 />
                 <Stat
                   label="p95"
                   value={formatDuration(summary.p95DurationMs)}
-                  hint="Slowest 1 in 20"
+                  hint={t('Slowest 1 in 20')}
                 />
                 <Stat
-                  label="Avg reward"
+                  label={t('Avg reward')}
                   value={summary.averageReward === null ? '—' : summary.averageReward.toFixed(2)}
-                  hint="0–1, what the learner optimises"
+                  hint={t('0–1, what the learner optimises')}
                 />
               </div>
 
@@ -357,8 +374,8 @@ export function AnalyticsPage() {
               <div className="grid gap-3 xl:grid-cols-2">
                 <ChartFrame
                   id="chart-runs"
-                  title="Runs over time"
-                  description={`Executions per ${granularity}.`}
+                  title={t('Runs over time')}
+                  description={t('Executions per {granularity}.', { granularity: granularity })}
                 >
                   <AreaChart data={chartData} margin={CHART_MARGIN}>
                     <defs>
@@ -391,7 +408,7 @@ export function AnalyticsPage() {
 
                 <ChartFrame
                   id="chart-cost"
-                  title="Cost over time"
+                  title={t('Cost over time')}
                   description={`US dollars per ${granularity}.`}
                 >
                   <BarChart data={chartData} margin={CHART_MARGIN}>
@@ -417,8 +434,8 @@ export function AnalyticsPage() {
 
                 <ChartFrame
                   id="chart-success"
-                  title="Success rate over time"
-                  description="Share of runs that finished without error."
+                  title={t('Success rate over time')}
+                  description={t('Share of runs that finished without error.')}
                   className="xl:col-span-2"
                 >
                   <LineChart data={chartData} margin={CHART_MARGIN}>
@@ -442,7 +459,7 @@ export function AnalyticsPage() {
                     <Line
                       type="monotone"
                       dataKey="successPercent"
-                      name="Success rate"
+                      name={t('Success rate')}
                       stroke={colors.success}
                       strokeWidth={2}
                       dot={false}
@@ -460,8 +477,10 @@ export function AnalyticsPage() {
               {scope === 'all' ? (
                 <Card>
                   <CardHeader
-                    title="Where the usage went"
-                    description="Every workspace over this period, ranked by tokens. On a subscription this is the view that matters: the per-workspace filter tells you what one cost, and only this tells you which one is spending the ceiling."
+                    title={t('Where the usage went')}
+                    description={t(
+                      'Every workspace over this period, ranked by tokens. On a subscription this is the view that matters: the per-workspace filter tells you what one cost, and only this tells you which one is spending the ceiling.',
+                    )}
                   />
                   <div className="px-4 pb-4">
                     <WorkspaceUsageBars rows={summary.byWorkspace} />
@@ -473,17 +492,17 @@ export function AnalyticsPage() {
               <div className="grid gap-3 lg:grid-cols-2">
                 <Card>
                   <CardHeader
-                    title="By model"
-                    description="Where the spend and the successes actually went."
+                    title={t('By model')}
+                    description={t('Where the spend and the successes actually went.')}
                   />
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[22rem] text-[13px]">
                       <thead>
                         <tr className="text-left text-[11px] uppercase tracking-wide text-subtle">
-                          <th className="px-4 py-2 font-semibold">Model</th>
-                          <th className="px-4 py-2 text-right font-semibold">Runs</th>
-                          <th className="px-4 py-2 text-right font-semibold">Cost</th>
-                          <th className="px-4 py-2 text-right font-semibold">Success</th>
+                          <th className="px-4 py-2 font-semibold">{t('Model')}</th>
+                          <th className="px-4 py-2 text-right font-semibold">{t('Runs')}</th>
+                          <th className="px-4 py-2 text-right font-semibold">{t('Cost')}</th>
+                          <th className="px-4 py-2 text-right font-semibold">{t('Success')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -510,16 +529,18 @@ export function AnalyticsPage() {
 
                 <Card>
                   <CardHeader
-                    title="By category"
-                    description="The classifier labels every prompt before it runs, and the learner keeps a separate policy per label — so a category with few runs is simply one it has not had much chance to tune."
+                    title={t('By category')}
+                    description={t(
+                      'The classifier labels every prompt before it runs, and the learner keeps a separate policy per label — so a category with few runs is simply one it has not had much chance to tune.',
+                    )}
                   />
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[22rem] text-[13px]">
                       <thead>
                         <tr className="text-left text-[11px] uppercase tracking-wide text-subtle">
-                          <th className="px-4 py-2 font-semibold">Category</th>
-                          <th className="px-4 py-2 text-right font-semibold">Runs</th>
-                          <th className="px-4 py-2 text-right font-semibold">Avg reward</th>
+                          <th className="px-4 py-2 font-semibold">{t('Category')}</th>
+                          <th className="px-4 py-2 text-right font-semibold">{t('Runs')}</th>
+                          <th className="px-4 py-2 text-right font-semibold">{t('Avg reward')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -547,18 +568,18 @@ export function AnalyticsPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
                 <h2 id="policy-heading" className="text-sm font-semibold text-ink">
-                  Learned policy
+                  {t('Learned policy')}
                 </h2>
                 <p className="max-w-2xl text-xs leading-relaxed text-muted">
-                  One Beta posterior per (category, model, effort) arm. The posterior mean is the
-                  learner's current belief that the arm succeeds; it samples from these rather than
-                  always taking the leader, which is why a weaker arm still gets occasional trials.
+                  {t(
+                    "One Beta posterior per (category, model, effort) arm. The posterior mean is the learner's current belief that the arm succeeds; it samples from these rather than always taking the leader, which is why a weaker arm still gets occasional trials.",
+                  )}
                 </p>
               </div>
 
               <Button variant="outline" size="sm" onClick={() => setResetting(true)}>
                 <RotateCcw className="size-4" />
-                Reset learning
+                {t('Reset learning')}
               </Button>
             </div>
 
@@ -568,8 +589,10 @@ export function AnalyticsPage() {
               <Card>
                 <EmptyState
                   icon={<Activity />}
-                  title="Nothing learned yet"
-                  description="The bandit starts forming a policy once runs finish and produce a reward."
+                  title={t('Nothing learned yet')}
+                  description={t(
+                    'The bandit starts forming a policy once runs finish and produce a reward.',
+                  )}
                 />
               </Card>
             ) : (
@@ -594,17 +617,13 @@ export function AnalyticsPage() {
       <ConfirmDialog
         open={resetting}
         onOpenChange={setResetting}
-        title="Reset what the system learned?"
-        description={
-          <>
-            Every policy arm and every classifier exemplar for{' '}
-            <span className="font-medium text-ink">{scopeLabel.toLowerCase()}</span> is discarded.
-            The system forgets which model and effort worked for which kind of task, and starts
-            exploring from nothing. Runs, costs and memories are untouched, and this cannot be
-            undone.
-          </>
+        title={t('Reset what the system learned?')}
+        description={t(
+          'Every policy arm and every classifier exemplar for {scope} is discarded. The system forgets which model and effort worked for which kind of task, and starts exploring from nothing. Runs, costs and memories are untouched, and this cannot be undone.',
+          { scope: scopeLabel.toLowerCase() },
+        )
         }
-        confirmLabel="Discard learning"
+        confirmLabel={t('Discard learning')}
         danger
         onConfirm={async () => {
           await resetPolicy.mutateAsync();
@@ -629,6 +648,7 @@ function PolicyCard({
   explanation: string;
   arms: PolicyArm[];
 }) {
+  const t = useT();
   // Best-first: the operator's question is almost always "what did it settle on".
   const ordered = [...arms].sort((a, b) => posteriorMean(b) - posteriorMean(a));
 
@@ -636,20 +656,20 @@ function PolicyCard({
     <Card>
       <CardHeader
         title={category}
-        description={explanation || 'No explanation recorded for this category yet.'}
-        actions={<Badge tone="neutral">{trials} trials</Badge>}
+        description={explanation || t('No explanation recorded for this category yet.')}
+        actions={<Badge tone="neutral">{trials} {t('trials')}</Badge>}
       />
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[34rem] text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wide text-subtle">
-              <th className="px-4 py-2 font-semibold">Model</th>
-              <th className="px-4 py-2 font-semibold">Effort</th>
-              <th className="px-4 py-2 text-right font-semibold">Trials</th>
-              <th className="px-4 py-2 font-semibold">Posterior</th>
-              <th className="px-4 py-2 text-right font-semibold">Cost</th>
-              <th className="px-4 py-2 text-right font-semibold">Duration</th>
+              <th className="px-4 py-2 font-semibold">{t('Model')}</th>
+              <th className="px-4 py-2 font-semibold">{t('Effort')}</th>
+              <th className="px-4 py-2 text-right font-semibold">{t('Trials')}</th>
+              <th className="px-4 py-2 font-semibold">{t('Posterior')}</th>
+              <th className="px-4 py-2 text-right font-semibold">{t('Cost')}</th>
+              <th className="px-4 py-2 text-right font-semibold">{t('Duration')}</th>
             </tr>
           </thead>
           <tbody>

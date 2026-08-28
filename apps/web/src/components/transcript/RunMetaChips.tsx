@@ -15,6 +15,7 @@ import { Cpu, Network, Wrench } from 'lucide-react';
 import type { RunPolicy } from '@metaclaude/shared';
 import { PERMISSION_MODE_INFO } from '@metaclaude/shared';
 import { Tooltip } from '@/components/ui/primitives';
+import { useT } from '@/lib/i18n';
 
 const SOURCE_LABEL: Record<RunPolicy['source'], string | null> = {
   // The interesting provenances get a word; an explicit choice is not news.
@@ -30,6 +31,7 @@ export function RunMetaChips({
   policy: RunPolicy;
   servedModel: string | null;
 }) {
+  const t = useT();
   const requested = String(policy.model);
   const model = servedModel ?? (requested !== 'default' ? requested : 'auto');
   const sourceLabel = SOURCE_LABEL[policy.source];
@@ -39,7 +41,7 @@ export function RunMetaChips({
       <Tooltip
         content={
           <span>
-            Requested: {requested === 'default' ? 'auto (CLI default)' : requested}
+            {t('Requested:')} {requested === 'default' ? 'auto (CLI default)' : requested}
             {servedModel ? ` — served by ${servedModel}` : ' — the CLI did not report which model served'}
             {sourceLabel ? '. Chosen by the learner from past performance here.' : ''}
           </span>
@@ -69,7 +71,9 @@ export function RunMetaChips({
             <span>
               {[
                 policy.toolControls.requiredSkills.length > 0
-                  ? `Skills required: ${policy.toolControls.requiredSkills.join(', ')}`
+                  ? t('Skills required: {skills}', {
+                      skills: policy.toolControls.requiredSkills.join(', '),
+                    })
                   : null,
                 policy.toolControls.preferredMcpServers.length > 0
                   ? `MCP preferred: ${policy.toolControls.preferredMcpServers.join(', ')}`
@@ -85,7 +89,7 @@ export function RunMetaChips({
         >
           <span className="flex cursor-help items-center gap-1 text-accent">
             <Wrench className="size-3" aria-hidden />
-            tools steered
+            {t('tools steered')}
           </span>
         </Tooltip>
       ) : null}

@@ -1104,3 +1104,133 @@ describe('resolve', () => {
     expect(entry.env).toEqual({ B: 'secret-b' });
   });
 });
+
+/**
+ * Acting on many rows at once.
+ *
+ * The screen already offered a per-row toggle, and the only way to reach it
+ * was `upsertSkill` with the whole record — so switching 34 skills off meant
+ * 34 requests each carrying up to 200 000 characters of body, 34 audit
+ * entries, and no atomicity at all: a failure on the twelfth left the
+ * operator looking at a half-applied intention.
+ *
+ * Explicit ids rather than a scope, and that is the safety property. The
+ * listing a workspace sees deliberately includes the global entries
+ * (`workspace_id IS ? OR workspace_id IS NULL`), so a server-side "everything
+ * in this scope" would let a workspace screen delete the global library. Ids
+ * mean the server acts on exactly the rows the operator was looking at.
+ */
+describe('bulk actions', () => {
+  let seeded = 0;
+
+  // Names are validated as lowercase-and-dashes, and a workspace id is
+  // neither — so the counter, not the scope, makes them unique.
+  function seedSkills(count: number, workspaceId: string | null = null): string[] {
+    return Array.from({ length: count }, () => {
+      seeded += 1;
+      return registry.upsertSkill({
+        workspaceId,
+        name: `skill-${seeded}`,
+        description: 'd',
+        body: 'b',
+      }).id;
+    });
+  }
+
+  it('switches many skills off in one call, and reports how many moved', () => {
+    const ids = seedSkills(4);
+
+    expect(registry.setSkillsEnabled(ids, false)).toBe(4);
+    expect(registry.listSkills(null).every((skill) => !skill.enabled)).toBe(true);
+
+    expect(registry.setSkillsEnabled(ids, true)).toBe(4);
+    expect(registry.listSkills(null).every((skill) => skill.enabled)).toBe(true);
+  });
+
+  it('touches only the ids it was given, never the rest of the scope', () => {
+    const [first, second] = seedSkills(3);
+    const untouched = registry.listSkills(null).find((s) => s.id !== first && s.id !== second)!;
+
+    registry.setSkillsEnabled([first!, second!], false);
+
+    expect(registry.getSkill(untouched.id)?.enabled).toBe(true);
+  });
+
+  it('does not reach into another workspace even when an id is offered', () => {
+    // The ids are real, so this is not a lookup failure: it is the guard that
+    // a caller cannot widen its own scope by naming rows outside it.
+    const mine = seedSkills(1, wsA.id);
+    const theirs = seedSkills(1, wsB.id);
+
+    expect(registry.setSkillsEnabled([...mine, ...theirs], false, wsA.id)).toBe(1);
+    expect(registry.getSkill(theirs[0]!)?.enabled).toBe(true);
+    expect(registry.getSkill(mine[0]!)?.enabled).toBe(false);
+  });
+
+  it('reaches the global entries from a workspace scope, because that is what the screen lists', () => {
+    // `listSkills(wsA)` returns the workspace's own *and* the global ones,
+    // because a run there mounts both. A bulk action that could not touch the
+    // globals would silently do less than the button says.
+    const global = seedSkills(1);
+    const mine = seedSkills(1, wsA.id);
+
+    expect(registry.setSkillsEnabled([...global, ...mine], false, wsA.id)).toBe(2);
+    expect(registry.getSkill(global[0]!)?.enabled).toBe(false);
+  });
+
+  it('refuses another workspace’s rows even under the widest scope it was given', () => {
+    const theirs = seedSkills(1, wsB.id);
+
+    // Global scope means global only — a workspace row is out of it.
+    expect(registry.setSkillsEnabled(theirs, false, null)).toBe(0);
+    expect(registry.getSkill(theirs[0]!)?.enabled).toBe(true);
+  });
+
+  it('deletes many at once and leaves nothing half-applied', () => {
+    const ids = seedSkills(5);
+
+    expect(registry.deleteSkills(ids.slice(0, 3))).toBe(3);
+    expect(registry.listSkills(null)).toHaveLength(2);
+  });
+
+  it('answers zero for an empty list rather than treating it as everything', () => {
+    seedSkills(3);
+
+    expect(registry.setSkillsEnabled([], false)).toBe(0);
+    expect(registry.deleteSkills([])).toBe(0);
+    expect(registry.listSkills(null)).toHaveLength(3);
+  });
+
+  it('ignores ids that do not exist without failing the ones that do', () => {
+    const ids = seedSkills(2);
+
+    expect(registry.deleteSkills([...ids, 'skl_nope'])).toBe(2);
+    expect(registry.listSkills(null)).toHaveLength(0);
+  });
+
+  it('does the same for agents, which are the other half of the screen', () => {
+    const ids = ['a', 'b'].map(
+      (name) =>
+        registry.upsertAgent({
+          workspaceId: null,
+          name: `agent-${name}`,
+          description: 'd',
+          prompt: 'p',
+          tools: null,
+          model: null,
+        }).id,
+    );
+
+    expect(registry.setAgentsEnabled(ids, false)).toBe(2);
+    expect(registry.listAgents(null).every((agent) => !agent.enabled)).toBe(true);
+    expect(registry.deleteAgents(ids)).toBe(2);
+    expect(registry.listAgents(null)).toHaveLength(0);
+  });
+
+  it('bounds one statement rather than issuing one per id', () => {
+    // A thousand ids is a payload, not a thousand round trips: the point of
+    // the endpoint is that it is one statement and one transaction.
+    const ids = seedSkills(60);
+    expect(registry.setSkillsEnabled(ids, false)).toBe(60);
+  });
+});

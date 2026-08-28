@@ -33,6 +33,7 @@ import { cn, formatBytes, formatCost, formatDuration, formatTokens } from '@/lib
 import { SubagentEvent } from './Delegation';
 import { ToolCallCard } from './ToolCallCard';
 import { DiffView } from './DiffView';
+import { usePlural, useT } from '@/lib/i18n';
 
 /* -------------------------------------------------------------------------- */
 /* User message                                                                */
@@ -92,6 +93,7 @@ export const UserMessage = memo(function UserMessage({
 }: {
   event: Extract<TranscriptEvent, { kind: 'user_message' }>;
 }) {
+  const t = useT();
   return (
     <div className="flex justify-end">
       <div className="flex max-w-[min(46rem,88%)] items-start gap-2.5">
@@ -101,7 +103,7 @@ export const UserMessage = memo(function UserMessage({
             {event.text}
           </p>
           {event.attachments.length > 0 ? (
-            <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Attachments">
+            <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={t('Attachments')}>
               {event.attachments.map((attachment) => (
                 <li key={`${attachment.path}-${attachment.name}`} className="max-w-full">
                   <MessageAttachment attachment={attachment} />
@@ -212,6 +214,7 @@ export const TodoList = memo(function TodoList({
 }: {
   event: Extract<TranscriptEvent, { kind: 'todo' }>;
 }) {
+  const t = useT();
   const done = event.items.filter((item) => item.status === 'completed').length;
   const total = event.items.length;
 
@@ -219,7 +222,7 @@ export const TodoList = memo(function TodoList({
     <div className="rounded-lg border border-line bg-surface">
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <ListChecks className="size-3.5 shrink-0 text-accent" aria-hidden />
-        <span className="text-[13px] font-medium text-ink">Plan</span>
+        <span className="text-[13px] font-medium text-ink">{t('Plan')}</span>
         <span className="ml-auto text-[11px] tabular-nums text-subtle">
           {done}/{total}
         </span>
@@ -307,6 +310,7 @@ export const SystemNote = memo(function SystemNote({
   /** Injectable so the countdown is testable without freezing the clock. */
   now?: number;
 }) {
+  const t = useT();
   const Icon = event.level === 'error' ? AlertCircle : event.level === 'warn' ? TriangleAlert : Info;
   const resets = resetsIn(event.data, now);
 
@@ -336,7 +340,7 @@ export const SystemNote = memo(function SystemNote({
         {event.message}
         {resets ? (
           <span className="ml-1.5 whitespace-nowrap tabular-nums text-muted">
-            Resets in {resets}.
+            {t('Resets in')} {resets}.
           </span>
         ) : null}
       </span>
@@ -365,6 +369,8 @@ export const ResultFooter = memo(function ResultFooter({
   canRewind: boolean;
   onRewind: () => void;
 }) {
+  const plural = usePlural();
+  const t = useT();
   const failed = event.status === 'failed';
   const interrupted = event.status === 'interrupted';
 
@@ -399,7 +405,7 @@ export const ResultFooter = memo(function ResultFooter({
 
         {event.usage.turns > 0 ? (
           <span className="tabular-nums">
-            {event.usage.turns} turn{event.usage.turns === 1 ? '' : 's'}
+            {plural(event.usage.turns, '{n} turn', '{n} turns')}
           </span>
         ) : null}
 
@@ -407,14 +413,16 @@ export const ResultFooter = memo(function ResultFooter({
           <Tooltip
             content={
               <span className="tabular-nums">
-                {formatTokens(event.usage.inputTokens)} in ·{' '}
-                {formatTokens(event.usage.outputTokens)} out ·{' '}
-                {formatTokens(event.usage.cacheReadTokens)} cached
+                {t('{in} in · {out} out · {cached} cached', {
+                  in: formatTokens(event.usage.inputTokens),
+                  out: formatTokens(event.usage.outputTokens),
+                  cached: formatTokens(event.usage.cacheReadTokens),
+                })}
               </span>
             }
           >
             <span className="cursor-help tabular-nums underline decoration-dotted underline-offset-2">
-              {formatTokens(event.usage.inputTokens + event.usage.outputTokens)} tokens
+              {formatTokens(event.usage.inputTokens + event.usage.outputTokens)} {t('tokens')}
             </span>
           </Tooltip>
         ) : null}
@@ -433,23 +441,23 @@ export const ResultFooter = memo(function ResultFooter({
               operator wants it is the moment they finish reading the result,
               and it is the one action here that is time-sensitive. */}
           {canRewind ? (
-            <Tooltip content="Restore the files this run changed">
+            <Tooltip content={t('Restore the files this run changed')}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Rewind the files this run changed"
+                aria-label={t('Rewind the files this run changed')}
                 onClick={onRewind}
               >
                 <History className="size-3.5" />
               </Button>
             </Tooltip>
           ) : null}
-          <span className="mr-1 hidden sm:inline">Was this useful?</span>
-          <Tooltip content="Good — reinforce this approach">
+          <span className="mr-1 hidden sm:inline">{t('Was this useful?')}</span>
+          <Tooltip content={t('Good — reinforce this approach')}>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Rate this run as good"
+              aria-label={t('Rate this run as good')}
               aria-pressed={rating === 1}
               onClick={() => onRate(rating === 1 ? 0 : 1)}
               className={cn(rating === 1 && 'bg-success-soft text-success')}
@@ -457,11 +465,11 @@ export const ResultFooter = memo(function ResultFooter({
               <ThumbsUp className="size-3.5" />
             </Button>
           </Tooltip>
-          <Tooltip content="Poor — try something else next time">
+          <Tooltip content={t('Poor — try something else next time')}>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Rate this run as poor"
+              aria-label={t('Rate this run as poor')}
               aria-pressed={rating === -1}
               onClick={() => onRate(rating === -1 ? 0 : -1)}
               className={cn(rating === -1 && 'bg-danger-soft text-danger')}

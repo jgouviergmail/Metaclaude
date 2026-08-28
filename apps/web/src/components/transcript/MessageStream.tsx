@@ -115,7 +115,9 @@ export function MessageStream({
         <EmptyState
           icon={<Sparkles />}
           title={t('Nothing here yet')}
-          description={t('Describe what you want done. Metaclaude picks the model, recalls what it learned from earlier sessions, and asks before it does anything irreversible.')}
+          description={t(
+            'Describe what you want done. Metaclaude picks the model, recalls what it learned from earlier sessions, and asks before it does anything irreversible.',
+          )}
           action={emptyHint}
         />
       </div>

@@ -104,7 +104,10 @@ export const TaskCard = memo(function TaskCard({
 
       <div className="mt-2 flex flex-wrap items-center gap-2 pl-5 text-[11.5px] text-muted">
         <Tooltip content={t('Priority: {p}', { p: t(task.priority) })}>
-          <span className={cn('inline-block size-2 rounded-full', PRIORITY_TONE[task.priority])} aria-label={t('Priority: {p}', { p: t(task.priority) })} />
+          <span className={cn('inline-block size-2 rounded-full', PRIORITY_TONE[task.priority])} aria-label={t(
+            'Priority: {p}',
+            { p: t(task.priority) },
+          )} />
         </Tooltip>
         {task.assignee ? (
           <Tooltip
@@ -147,7 +150,7 @@ export const TaskCard = memo(function TaskCard({
             </span>
           </Tooltip>
         ) : null}
-        {task.parentId ? <span className="text-subtle">sub-task</span> : null}
+        {task.parentId ? <span className="text-subtle">{t('sub-task')}</span> : null}
       </div>
     </div>
   );

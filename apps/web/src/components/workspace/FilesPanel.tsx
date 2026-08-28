@@ -36,8 +36,10 @@ import { NotePreview } from '@/components/workspace/NotePreview';
 import { Button, EmptyState, Input, Spinner, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatBytes, isModifier, shortcut, truncate } from '@/lib/utils';
+import { useT, type TranslateFn } from '@/lib/i18n';
 
 export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
+  const t = useT();
   const queryClient = useQueryClient();
 
   const [path, setPath] = useState('');
@@ -90,15 +92,15 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">Files</h2>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{t('Files')}</h2>
 
-        <Tooltip content="Refresh">
-          <Button variant="ghost" size="icon-sm" aria-label="Refresh files" onClick={refresh}>
+        <Tooltip content={t('Refresh')}>
+          <Button variant="ghost" size="icon-sm" aria-label={t('Refresh files')} onClick={refresh}>
             <RefreshCw className="size-4" />
           </Button>
         </Tooltip>
 
-        <Button variant="ghost" size="icon-sm" aria-label="Close files" onClick={onClose}>
+        <Button variant="ghost" size="icon-sm" aria-label={t('Close files')} onClick={onClose}>
           <X className="size-4" />
         </Button>
       </header>
@@ -127,8 +129,8 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Find a file by name"
-                aria-label="Find a file by name"
+                placeholder={t('Find a file by name')}
+                aria-label={t('Find a file by name')}
                 className="h-8 pl-8 text-[13px]"
               />
             </div>
@@ -136,8 +138,10 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
 
           {listingCut ? (
             <TruncationNotice>
-              Only the first {entries.length.toLocaleString()} entries are listed — this folder
-              holds more. Use the box above to find a file by name.
+              {t(
+                'Only the first {n} entries are listed — this folder holds more. Use the box above to find a file by name.',
+                { n: entries.length.toLocaleString() },
+              )}
             </TruncationNotice>
           ) : null}
 
@@ -149,24 +153,27 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
             ) : listing.isError && !searching ? (
               <EmptyState
                 icon={<FileWarning />}
-                title="This folder could not be read"
+                title={t('This folder could not be read')}
                 description={
                   listing.error instanceof ApiError
                     ? listing.error.message
-                    : 'The directory may have been moved or deleted.'
+                    : t('The directory may have been moved or deleted.')
                 }
                 action={
                   <Button variant="secondary" size="sm" onClick={() => setPath('')}>
-                    Back to the root
+                    {t('Back to the root')}
                   </Button>
                 }
               />
             ) : entries.length === 0 ? (
               <EmptyState
                 icon={<Folder />}
-                title={searching ? 'Nothing matched' : 'This folder is empty'}
+                title={searching ? t('Nothing matched') : t('This folder is empty')}
                 description={
-                  searching ? `No file name contains “${debouncedQuery}”.` : undefined
+                  searching ? t(
+                    'No file name contains “{query}”.',
+                    { query: debouncedQuery },
+                  ) : undefined
                 }
               />
             ) : (
@@ -251,14 +258,15 @@ function TruncationNotice({ children }: { children: ReactNode }) {
 /* -------------------------------------------------------------------------- */
 
 function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (path: string) => void }) {
+  const t = useT();
   const segments = path ? path.split('/').filter(Boolean) : [];
 
   return (
-    <nav className="flex flex-wrap items-center gap-0.5 text-[12px]" aria-label="Folder path">
+    <nav className="flex flex-wrap items-center gap-0.5 text-[12px]" aria-label={t('Folder path')}>
       <button
         type="button"
         onClick={() => onNavigate('')}
-        aria-label="Workspace root"
+        aria-label={t('Workspace root')}
         className="flex items-center rounded px-1 py-0.5 text-subtle transition-colors hover:bg-raised hover:text-ink"
       >
         <Home className="size-3.5" aria-hidden />
@@ -306,6 +314,7 @@ function FileEditor({
   /** Open another file in this panel — how a wikilink click navigates. */
   onOpen: (path: string) => void;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const dark = useDarkTheme();
 
@@ -352,12 +361,12 @@ function FileEditor({
     mutationFn: (content: string) => api.writeFile(workspaceId, path, content),
     onSuccess: (_data, content) => {
       setBaseline(content);
-      toast.success(`Saved ${path.split('/').pop() ?? path}`);
+      toast.success(t('Saved {path}', { path: path.split('/').pop() ?? path }));
       // The listing carries size and mtime, both of which just changed.
       void queryClient.invalidateQueries({ queryKey: ['files', workspaceId] });
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not save the file.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not save the file.')),
   });
 
   const truncated = file.data?.truncated ?? false;
@@ -381,7 +390,7 @@ function FileEditor({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-line px-2 py-2">
-        <Button variant="ghost" size="icon-sm" aria-label="Back to files" onClick={onBack}>
+        <Button variant="ghost" size="icon-sm" aria-label={t('Back to files')} onClick={onBack}>
           <ArrowLeft className="size-4" />
         </Button>
 
@@ -393,13 +402,15 @@ function FileEditor({
           <span
             className="size-1.5 shrink-0 rounded-full bg-warning"
             role="img"
-            aria-label="Unsaved changes"
-            title="Unsaved changes"
+            aria-label={t('Unsaved changes')}
+            title={t('Unsaved changes')}
           />
         ) : null}
 
         {isNote ? (
-          <div className="flex shrink-0 rounded-lg border border-line p-0.5" role="group" aria-label="View mode">
+          <div className="flex shrink-0 rounded-lg border border-line p-0.5" role="group" aria-label={t(
+            'View mode',
+          )}>
             <button
               type="button"
               aria-pressed={mode === 'preview'}
@@ -410,7 +421,7 @@ function FileEditor({
               )}
             >
               <BookOpen className="size-3.5" aria-hidden />
-              Read
+              {t('Read')}
             </button>
             <button
               type="button"
@@ -422,12 +433,12 @@ function FileEditor({
               )}
             >
               <PencilLine className="size-3.5" aria-hidden />
-              Edit
+              {t('Edit')}
             </button>
           </div>
         ) : null}
 
-        <Tooltip content={`Save (${shortcut('S')})`}>
+        <Tooltip content={t('Save ({shortcut})', { shortcut: shortcut('S') })}>
           <Button
             variant="primary"
             size="sm"
@@ -436,7 +447,7 @@ function FileEditor({
             loading={save.isPending}
           >
             <Save className="size-3.5" aria-hidden />
-            Save
+            {t('Save')}
           </Button>
         </Tooltip>
       </div>
@@ -448,16 +459,16 @@ function FileEditor({
       ) : file.isError ? (
         <EmptyState
           icon={<FileWarning />}
-          title={readErrorTitle(file.error)}
+          title={readErrorTitle(file.error, t)}
           description={
             file.error instanceof ApiError
               ? file.error.message
-              : 'The file could not be read.'
+              : t('The file could not be read.')
           }
           action={
             <Button variant="secondary" size="sm" onClick={onBack}>
               <ArrowLeft className="size-4" />
-              Back to files
+              {t('Back to files')}
             </Button>
           }
         />
@@ -465,8 +476,10 @@ function FileEditor({
         <>
           {truncated ? (
             <TruncationNotice>
-              This file is {formatBytes(file.data.size)} — only the beginning is shown. Editing is
-              disabled, because saving what is on screen would truncate the file on disk.
+              {t(
+                'This file is {size} — only the beginning is shown. Editing is disabled, because saving what is on screen would truncate the file on disk.',
+                { size: formatBytes(file.data.size) },
+              )}
             </TruncationNotice>
           ) : null}
 
@@ -489,7 +502,7 @@ function FileEditor({
                 editable={!truncated}
                 height="100%"
                 basicSetup={{ foldGutter: false, highlightActiveLine: !truncated }}
-                aria-label={`Contents of ${path}`}
+                aria-label={t('Contents of {path}', { path: path })}
               />
             </div>
           )}
@@ -499,10 +512,11 @@ function FileEditor({
   );
 }
 
-function readErrorTitle(error: unknown): string {
-  if (error instanceof ApiError && error.status === 415) return 'This file is not text';
-  if (error instanceof ApiError && error.status === 404) return 'This file no longer exists';
-  return 'This file could not be opened';
+/** Not a component, so `t` arrives as an argument rather than from a hook. */
+function readErrorTitle(error: unknown, t: TranslateFn): string {
+  if (error instanceof ApiError && error.status === 415) return t('This file is not text');
+  if (error instanceof ApiError && error.status === 404) return t('This file no longer exists');
+  return t('This file could not be opened');
 }
 
 /** The theme switch only toggles a class, so watch for it rather than polling. */

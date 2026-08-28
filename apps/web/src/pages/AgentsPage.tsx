@@ -30,6 +30,8 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type {
   AgentDefinitionRecord,
+  ClaudeMcpServerStatus,
+  McpServerDescription,
   ConnectorListingEntry,
   LibraryCategory,
   LibraryListingEntry,
@@ -38,6 +40,8 @@ import type {
 } from '@metaclaude/shared';
 import { LIBRARY_CATEGORIES } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { BulkActions } from '@/components/registry/BulkActions';
+import { McpToolList } from '@/components/registry/McpToolList';
 import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel';
 import { CheckboxField, Switch } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
@@ -51,9 +55,10 @@ import {
   Label,
   Skeleton,
   Textarea,
+  Tooltip,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { interpolate, useT } from '@/lib/i18n';
+import { interpolate, usePlural, useT } from '@/lib/i18n';
 import { cn, formatRelative } from '@/lib/utils';
 
 type TabKey = 'skills' | 'agents' | 'mcp' | 'library' | 'claude';
@@ -79,9 +84,20 @@ const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
 const AGENT_NAME = /^[a-z0-9][a-z0-9-]*$/;
 const MCP_NAME = /^[a-zA-Z0-9_-]+$/;
 
-const MCP_STATUS_TONE: Record<McpServerRecord['status'], 'success' | 'danger' | 'neutral'> = {
+/**
+ * Covers both status vocabularies, because the card shows whichever is more
+ * truthful: the stored one from the last run, or the live one from the probe.
+ * The probe's is wider — `pending` and `needs-auth` are states a connection
+ * can be in that a finished run never recorded.
+ */
+const MCP_STATUS_TONE: Record<
+  McpServerRecord['status'] | ClaudeMcpServerStatus['status'],
+  'success' | 'danger' | 'warning' | 'neutral'
+> = {
   connected: 'success',
   failed: 'danger',
+  'needs-auth': 'warning',
+  pending: 'neutral',
   disabled: 'neutral',
   unknown: 'neutral',
 };
@@ -123,27 +139,30 @@ export function AgentsPage() {
             side="bottom"
             align="end"
             trigger={
-              <Button variant="ghost" size="sm" aria-label={`Scope: ${scopeLabel}`}>
+              <Button variant="ghost" size="sm" aria-label={t(
+                'Scope: {scope}',
+                { scope: scopeLabel },
+              )}>
                 <Filter className="size-4" />
                 <span className="hidden sm:inline">{scopeLabel}</span>
                 <ChevronDown className="size-3.5" aria-hidden />
               </Button>
             }
           >
-            <MenuLabel>Scope</MenuLabel>
+            <MenuLabel>{t('Scope')}</MenuLabel>
             <MenuItem
               selected={scope === 'global'}
-              description="Available in every workspace"
+              description={t('Available in every workspace')}
               onSelect={() => setScope('global')}
             >
-              Global
+              {t('Global')}
             </MenuItem>
             {(workspacesQuery.data?.workspaces.length ?? 0) > 0 ? <MenuSeparator /> : null}
             {workspacesQuery.data?.workspaces.map((workspace) => (
               <MenuItem
                 key={workspace.id}
                 selected={scope === workspace.id}
-                description="Its own definitions, plus the global ones"
+                description={t('Its own definitions, plus the global ones')}
                 onSelect={() => setScope(workspace.id)}
                 icon={
                   <span
@@ -163,7 +182,7 @@ export function AgentsPage() {
       <div className="flex-1 overflow-y-auto">
         <Tabs.Root value={tab} onValueChange={(value) => setTab(value as TabKey)}>
           <Tabs.List
-            aria-label="Extension type"
+            aria-label={t('Extension type')}
             className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-line bg-bg px-3 sm:px-6"
           >
             {(
@@ -177,7 +196,7 @@ export function AgentsPage() {
                 // What the CLI itself offers, as opposed to what Metaclaude
                 // defines. Same conceptual space, so it belongs beside them
                 // rather than on a page of its own.
-                { value: 'claude', label: 'From Claude', icon: <Wand2 className="size-4" /> },
+                { value: 'claude', label: t('From Claude'), icon: <Wand2 className="size-4" /> },
               ] as const
             ).map((entry) => (
               <Tabs.Trigger
@@ -270,18 +289,18 @@ function SkillsTab({
     onSuccess: (result) => {
       onChanged();
       setEditing(null);
-      toast.success(`Saved “${result.skill.name}”`);
+      toast.success(t('Saved “{name}”', { name: result.skill.name }));
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not save that skill.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not save that skill.'))),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteSkill(id),
     onSuccess: () => {
       onChanged();
-      toast.success('Skill deleted');
+      toast.success(t('Skill deleted'));
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not delete that skill.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not delete that skill.'))),
   });
 
   const toggle = useMutation({
@@ -295,7 +314,7 @@ function SkillsTab({
         enabled: !skill.enabled,
       }),
     onSuccess: () => onChanged(),
-    onError: (error) => toast.error(messageFor(error, 'Could not change that skill.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not change that skill.'))),
   });
 
   const skills = query.data?.skills ?? [];
@@ -303,7 +322,9 @@ function SkillsTab({
   return (
     <div className="space-y-4">
       <SectionIntro
-        description="Enabled skills are written into the workspace's .claude/skills/ directory before every run, which is how the Claude CLI discovers them — nothing is injected into the prompt."
+        description={t(
+          "Enabled skills are written into the workspace's .claude/skills/ directory before every run, which is how the Claude CLI discovers them — nothing is injected into the prompt.",
+        )}
         action={
           <Button
             variant="primary"
@@ -313,10 +334,22 @@ function SkillsTab({
             }
           >
             <Plus className="size-4" />
-            New skill
+            {t('New skill')}
           </Button>
         }
       />
+
+      {/* The scope matches the listing exactly — absent means global here, as
+          the GET resolves it — so the buttons cannot reach further than the
+          rows above them. */}
+      <div className="flex justify-end">
+        <BulkActions
+          kind="skill"
+          items={skills}
+          workspaceId={workspaceId ?? null}
+          onChanged={onChanged}
+        />
+      </div>
 
       {query.isLoading ? (
         <ListSkeleton />
@@ -324,8 +357,10 @@ function SkillsTab({
         <Card>
           <EmptyState
             icon={<Sparkles />}
-            title="No skills in this scope"
-            description="Write one, or accept a skill proposal from the Memory page — the reflexion pass drafts them from runs that went well."
+            title={t('No skills in this scope')}
+            description={t(
+              'Write one, or accept a skill proposal from the Memory page — the reflexion pass drafts them from runs that went well.',
+            )}
           />
         </Card>
       ) : (
@@ -338,16 +373,19 @@ function SkillsTab({
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <code className="font-mono text-[13px] font-medium text-ink">{skill.name}</code>
-                    {skill.autoGenerated ? <Badge tone="thinking">auto-generated</Badge> : null}
+                    {skill.autoGenerated ? <Badge tone="thinking">{t('auto-generated')}</Badge> : null}
                     {skill.category !== 'general' ? (
                       <Badge tone="info">{t(CATEGORY_LABELS[skill.category])}</Badge>
                     ) : null}
-                    {skill.workspaceId === null ? <Badge tone="neutral">global</Badge> : null}
-                    {!skill.enabled ? <Badge tone="neutral">disabled</Badge> : null}
+                    {skill.workspaceId === null ? <Badge tone="neutral">{t('global')}</Badge> : null}
+                    {!skill.enabled ? <Badge tone="neutral">{t('disabled')}</Badge> : null}
                   </div>
                   <p className="text-[13px] leading-relaxed text-muted">{skill.description}</p>
                   <p className="text-[11.5px] tabular-nums text-subtle">
-                    used {skill.useCount}× · updated {formatRelative(skill.updatedAt)}
+                    {t('used {count}× · updated {when}', {
+                      count: skill.useCount,
+                      when: formatRelative(skill.updatedAt),
+                    })}
                   </p>
                 </div>
 
@@ -371,12 +409,12 @@ function SkillsTab({
                       })
                     }
                   >
-                    Edit
+                    {t('Edit')}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Delete skill ${skill.name}`}
+                    aria-label={t('Delete skill {name}', { name: skill.name })}
                     onClick={() => setDeleting(skill)}
                   >
                     <Trash2 className="size-4" />
@@ -400,14 +438,12 @@ function SkillsTab({
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
-        title="Delete this skill?"
-        description={
-          <>
-            <span className="font-mono text-ink">{deleting?.name}</span> is removed from the registry
-            and will not be written into any workspace again.
-          </>
-        }
-        confirmLabel="Delete skill"
+        title={t('Delete this skill?')}
+        description={t(
+          '{name} is removed from the registry and will not be written into any workspace again.',
+          { name: deleting?.name ?? '' },
+        )}
+        confirmLabel={t('Delete skill')}
         danger
         onConfirm={async () => {
           if (deleting) await remove.mutateAsync(deleting.id);
@@ -449,7 +485,9 @@ function SkillEditor({
 
   const nameError =
     value.name.length > 0 && !SKILL_NAME.test(value.name)
-      ? 'Use lowercase letters, digits and dashes only, starting with a letter or digit — for example “review-migrations”. It becomes a directory name.'
+      ? t(
+        'Use lowercase letters, digits and dashes only, starting with a letter or digit — for example “review-migrations”. It becomes a directory name.',
+      )
       : null;
   const valid =
     SKILL_NAME.test(value.name) && value.description.trim().length > 0 && !busy;
@@ -460,13 +498,15 @@ function SkillEditor({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={draft?.id ? 'Edit skill' : 'New skill'}
-      description="The description is what the model reads when deciding whether to open the skill, so make it say when to use it."
+      title={draft?.id ? t('Edit skill') : t('New skill')}
+      description={t(
+        'The description is what the model reads when deciding whether to open the skill, so make it say when to use it.',
+      )}
       size="lg"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             variant="primary"
@@ -475,14 +515,14 @@ function SkillEditor({
             disabled={!valid}
             onClick={() => onSubmit(value)}
           >
-            Save skill
+            {t('Save skill')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Label htmlFor="skill-name" hint="Lowercase and dashes; this is the directory name.">
-          Name
+        <Label htmlFor="skill-name" hint={t('Lowercase and dashes; this is the directory name.')}>
+          {t('Name')}
           <Input
             id="skill-name"
             value={value.name}
@@ -500,13 +540,15 @@ function SkillEditor({
           </p>
         ) : null}
 
-        <Label htmlFor="skill-description" hint="One sentence, written as a trigger condition.">
-          Description
+        <Label htmlFor="skill-description" hint={t(
+          'One sentence, written as a trigger condition.',
+        )}>
+          {t('Description')}
           <Input
             id="skill-description"
             value={value.description}
             onChange={(event) => setValue({ ...value, description: event.target.value })}
-            placeholder="Use when reviewing a database migration before it ships."
+            placeholder={t('Use when reviewing a database migration before it ships.')}
             className="mt-1.5"
             maxLength={1024}
           />
@@ -533,8 +575,8 @@ function SkillEditor({
           </select>
         </Label>
 
-        <Label htmlFor="skill-body" hint="Markdown. Written verbatim to SKILL.md.">
-          Body
+        <Label htmlFor="skill-body" hint={t('Markdown. Written verbatim to SKILL.md.')}>
+          {t('Body')}
           <Textarea
             id="skill-body"
             value={value.body}
@@ -548,8 +590,8 @@ function SkillEditor({
         <CheckboxField
           checked={value.enabled}
           onChange={(enabled) => setValue({ ...value, enabled })}
-          label="Enabled"
-          hint="Disabled skills stay in the registry but are not written to disk."
+          label={t('Enabled')}
+          hint={t('Disabled skills stay in the registry but are not written to disk.')}
         />
       </div>
     </Modal>
@@ -609,18 +651,18 @@ function AgentsTab({
     onSuccess: (result) => {
       onChanged();
       setEditing(null);
-      toast.success(`Saved “${result.agent.name}”`);
+      toast.success(t('Saved “{name}”', { name: result.agent.name }));
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not save that subagent.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not save that subagent.'))),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteAgent(id),
     onSuccess: () => {
       onChanged();
-      toast.success('Subagent deleted');
+      toast.success(t('Subagent deleted'));
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not delete that subagent.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not delete that subagent.'))),
   });
 
   const toggle = useMutation({
@@ -636,7 +678,7 @@ function AgentsTab({
         enabled: !agent.enabled,
       }),
     onSuccess: () => onChanged(),
-    onError: (error) => toast.error(messageFor(error, 'Could not change that subagent.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not change that subagent.'))),
   });
 
   const agents = query.data?.agents ?? [];
@@ -644,7 +686,9 @@ function AgentsTab({
   return (
     <div className="space-y-4">
       <SectionIntro
-        description="A subagent runs in its own context window with its own prompt and tool budget, and reports a summary back. Use them to keep long side-quests out of the main transcript."
+        description={t(
+          'A subagent runs in its own context window with its own prompt and tool budget, and reports a summary back. Use them to keep long side-quests out of the main transcript.',
+        )}
         action={
           <Button
             variant="primary"
@@ -662,10 +706,19 @@ function AgentsTab({
             }
           >
             <Plus className="size-4" />
-            New subagent
+            {t('New subagent')}
           </Button>
         }
       />
+
+      <div className="flex justify-end">
+        <BulkActions
+          kind="agent"
+          items={agents}
+          workspaceId={workspaceId ?? null}
+          onChanged={onChanged}
+        />
+      </div>
 
       {query.isLoading ? (
         <ListSkeleton />
@@ -673,8 +726,10 @@ function AgentsTab({
         <Card>
           <EmptyState
             icon={<Bot />}
-            title="No subagents in this scope"
-            description="Define one to give a recurring job — code review, release notes, dependency triage — its own instructions."
+            title={t('No subagents in this scope')}
+            description={t(
+              'Define one to give a recurring job — code review, release notes, dependency triage — its own instructions.',
+            )}
           />
         </Card>
       ) : (
@@ -688,16 +743,16 @@ function AgentsTab({
                     {agent.category !== 'general' ? (
                       <Badge tone="info">{t(CATEGORY_LABELS[agent.category])}</Badge>
                     ) : null}
-                    {agent.workspaceId === null ? <Badge tone="neutral">global</Badge> : null}
-                    {!agent.enabled ? <Badge tone="neutral">disabled</Badge> : null}
+                    {agent.workspaceId === null ? <Badge tone="neutral">{t('global')}</Badge> : null}
+                    {!agent.enabled ? <Badge tone="neutral">{t('disabled')}</Badge> : null}
                   </div>
                   <p className="text-[13px] leading-relaxed text-muted">{agent.description}</p>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-subtle">
                     <span>
-                      model: <span className="text-muted">{agent.model ?? 'inherit'}</span>
+                      {t('model:')} <span className="text-muted">{agent.model ?? 'inherit'}</span>
                     </span>
                     <span>
-                      tools:{' '}
+                      {t('tools:')}{' '}
                       <span className="text-muted">
                         {agent.tools === null ? 'all tools' : agent.tools.join(', ') || 'none'}
                       </span>
@@ -727,12 +782,12 @@ function AgentsTab({
                       })
                     }
                   >
-                    Edit
+                    {t('Edit')}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Delete subagent ${agent.name}`}
+                    aria-label={t('Delete subagent {name}', { name: agent.name })}
                     onClick={() => setDeleting(agent)}
                   >
                     <Trash2 className="size-4" />
@@ -756,14 +811,12 @@ function AgentsTab({
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
-        title="Delete this subagent?"
-        description={
-          <>
-            <span className="font-mono text-ink">{deleting?.name}</span> is removed from the
-            registry. Sessions that name it will fall back to the main agent.
-          </>
-        }
-        confirmLabel="Delete subagent"
+        title={t('Delete this subagent?')}
+        description={t(
+          '{name} is removed from the registry. Sessions that name it will fall back to the main agent.',
+          { name: deleting?.name ?? '' },
+        )}
+        confirmLabel={t('Delete subagent')}
         danger
         onConfirm={async () => {
           if (deleting) await remove.mutateAsync(deleting.id);
@@ -804,7 +857,9 @@ function AgentEditor({
 
   const nameError =
     value.name.length > 0 && !AGENT_NAME.test(value.name)
-      ? 'Use lowercase letters, digits and dashes only — for example “release-notes”. This is the name a run refers to.'
+      ? t(
+        'Use lowercase letters, digits and dashes only — for example “release-notes”. This is the name a run refers to.',
+      )
       : null;
   const valid =
     AGENT_NAME.test(value.name) &&
@@ -818,13 +873,15 @@ function AgentEditor({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={draft?.id ? 'Edit subagent' : 'New subagent'}
-      description="The description tells the main agent when to delegate; the prompt is the subagent's entire system prompt."
+      title={draft?.id ? t('Edit subagent') : t('New subagent')}
+      description={t(
+        "The description tells the main agent when to delegate; the prompt is the subagent's entire system prompt.",
+      )}
       size="lg"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             variant="primary"
@@ -833,14 +890,14 @@ function AgentEditor({
             disabled={!valid}
             onClick={() => onSubmit(value)}
           >
-            Save subagent
+            {t('Save subagent')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Label htmlFor="agent-name" hint="Lowercase and dashes.">
-          Name
+        <Label htmlFor="agent-name" hint={t('Lowercase and dashes.')}>
+          {t('Name')}
           <Input
             id="agent-name"
             value={value.name}
@@ -858,20 +915,22 @@ function AgentEditor({
           </p>
         ) : null}
 
-        <Label htmlFor="agent-description" hint="When should the main agent hand work to this one?">
-          Description
+        <Label htmlFor="agent-description" hint={t(
+          'When should the main agent hand work to this one?',
+        )}>
+          {t('Description')}
           <Input
             id="agent-description"
             value={value.description}
             onChange={(event) => setValue({ ...value, description: event.target.value })}
-            placeholder="Summarises merged pull requests into release notes."
+            placeholder={t('Summarises merged pull requests into release notes.')}
             className="mt-1.5"
             maxLength={1024}
           />
         </Label>
 
-        <Label htmlFor="agent-prompt" hint="The subagent's system prompt, in full.">
-          Prompt
+        <Label htmlFor="agent-prompt" hint={t("The subagent's system prompt, in full.")}>
+          {t('Prompt')}
           <Textarea
             id="agent-prompt"
             value={value.prompt}
@@ -902,15 +961,17 @@ function AgentEditor({
           </select>
         </Label>
 
-        <Label htmlFor="agent-model" hint="Leave blank to inherit whatever the parent run is using.">
-          Model
+        <Label htmlFor="agent-model" hint={t(
+          'Leave blank to inherit whatever the parent run is using.',
+        )}>
+          {t('Model')}
           <select
             id="agent-model"
             value={value.model}
             onChange={(event) => setValue({ ...value, model: event.target.value })}
             className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
           >
-            <option value="">Inherit</option>
+            <option value="">{t('Inherit')}</option>
             {AGENT_MODELS.map((model) => (
               <option key={model} value={model}>
                 {model}
@@ -921,14 +982,16 @@ function AgentEditor({
 
         <Label
           htmlFor="agent-tools"
-          hint="Comma separated, e.g. Read, Grep, Glob. Leave blank to allow every tool the run has."
+          hint={t(
+            'Comma separated, e.g. Read, Grep, Glob. Leave blank to allow every tool the run has.',
+          )}
         >
-          Tools
+          {t('Tools')}
           <Input
             id="agent-tools"
             value={value.tools}
             onChange={(event) => setValue({ ...value, tools: event.target.value })}
-            placeholder="Read, Grep, Glob"
+            placeholder={t('Read, Grep, Glob')}
             className="mt-1.5 font-mono"
           />
         </Label>
@@ -936,8 +999,8 @@ function AgentEditor({
         <CheckboxField
           checked={value.enabled}
           onChange={(enabled) => setValue({ ...value, enabled })}
-          label="Enabled"
-          hint="Disabled subagents cannot be selected by a run."
+          label={t('Enabled')}
+          hint={t('Disabled subagents cannot be selected by a run.')}
         />
       </div>
     </Modal>
@@ -1128,13 +1191,100 @@ function McpTab({
   workspaceId: string | undefined;
   onChanged: () => void;
 }) {
+  const plural = usePlural();
   const [editing, setEditing] = useState<McpDraft | null>(null);
   const [deleting, setDeleting] = useState<McpServerRecord | null>(null);
+
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [testing, setTesting] = useState(false);
+  /** By server name, filled in by a test. Not cached: it costs a connection. */
+  const [descriptions, setDescriptions] = useState<Record<string, McpServerDescription>>({});
 
   const query = useQuery({
     queryKey: ['mcp-servers', workspaceId ?? null],
     queryFn: () => api.mcpServers(workspaceId),
   });
+
+  /**
+   * Whether each server actually connected, and what it exposes.
+   *
+   * The row's own `status` column is what the *last run* recorded, which on a
+   * server nobody has used yet is `unknown` forever. This is the live answer,
+   * from a probe that mounts exactly what a run would mount — same setting
+   * sources, same managed locks, same strict MCP config. Connecting from here
+   * with our own MCP client would be easier and would answer a different
+   * question: it could report a server connected that a run would never see.
+   *
+   * The same query key as the Claude tab, so switching between them costs
+   * nothing and one refresh serves both.
+   */
+  /**
+   * Connecting is a per-workspace act, so testing has to be one too.
+   *
+   * With no workspace named, the probe runs from the data directory and the
+   * server resolves no runtime for it: nothing is mounted, and the answer is
+   * an empty list. Asking anyway would report "every server answered" while
+   * testing none of them — which is worse than not offering the button, and
+   * is exactly what the first version of this did.
+   */
+  const canProbe = workspaceId !== undefined;
+
+  const catalogueQuery = useQuery({
+    queryKey: ['claude-catalogue', workspaceId ?? null],
+    queryFn: () => api.claudeCatalogue({ workspaceId: workspaceId! }),
+    enabled: canProbe,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+
+  const live = new Map(
+    (catalogueQuery.data?.mcpServers ?? []).map((server) => [server.name, server]),
+  );
+
+  const test = async (): Promise<void> => {
+    if (!canProbe) return;
+    setTesting(true);
+    try {
+      const fresh = await api.claudeCatalogue({ workspaceId: workspaceId!, refresh: true });
+      queryClient.setQueryData(['claude-catalogue', workspaceId ?? null], fresh);
+
+      // The CLI reports each tool's *name* and the server's annotations, and
+      // drops the descriptions — measured, not assumed. So the servers it just
+      // declared connected are asked directly for the text, one round each.
+      // A failure here costs a description and nothing else: the status above
+      // is the verdict, and this never touches it.
+      const connected = fresh.mcpServers.filter((server) => server.status === 'connected');
+      const asked = await Promise.all(
+        connected.map(async (server) => {
+          const record = servers.find((row) => row.name === server.name);
+          if (!record) return null;
+          try {
+            const { description } = await api.describeMcpServer(record.id);
+            return [server.name, description] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setDescriptions(Object.fromEntries(asked.filter((entry) => entry !== null)));
+
+      const failed = fresh.mcpServers.filter((server) => server.status === 'failed');
+      if (failed.length > 0) {
+        toast.error(
+          plural(failed.length, '{n} server did not connect', '{n} servers did not connect'),
+          {
+          description: failed.map((server) => server.name).join(', '),
+        });
+      } else {
+        toast.success(t('Every server answered'));
+      }
+    } catch (error) {
+      toast.error(messageFor(error, t('Could not ask the CLI.')));
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const save = useMutation({
     mutationFn: (draft: McpDraft) => {
@@ -1167,20 +1317,22 @@ function McpTab({
     onSuccess: (result) => {
       onChanged();
       setEditing(null);
-      toast.success(`Saved “${result.server.name}”`, {
-        description: 'The connection is retried on the next run in this workspace.',
+      toast.success(t('Saved “{name}”', { name: result.server.name }), {
+        description: t('The connection is retried on the next run in this workspace.'),
       });
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not save that server.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not save that server.'))),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteMcpServer(id),
     onSuccess: () => {
       onChanged();
-      toast.success('Server deleted', { description: 'Its stored secrets were deleted with it.' });
+      toast.success(t(
+        'Server deleted',
+      ), { description: t('Its stored secrets were deleted with it.') });
     },
-    onError: (error) => toast.error(messageFor(error, 'Could not delete that server.')),
+    onError: (error) => toast.error(messageFor(error, t('Could not delete that server.'))),
   });
 
   const servers = query.data?.servers ?? [];
@@ -1188,27 +1340,58 @@ function McpTab({
   return (
     <div className="space-y-4">
       <SectionIntro
-        description="Each enabled server is started or connected at the beginning of a run, and its tools join the agent's tool list. A server that fails to connect is skipped rather than failing the run."
+        description={t(
+          "Each enabled server is started or connected at the beginning of a run, and its tools join the agent's tool list. A server that fails to connect is skipped rather than failing the run.",
+        )}
         action={
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() =>
-              setEditing({
-                name: '',
-                transport: 'stdio',
-                command: '',
-                args: '',
-                url: '',
-                env: [],
-                headers: [],
-                enabled: true,
-              })
-            }
-          >
-            <Plus className="size-4" />
-            New server
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Asks the CLI to connect them all, exactly as a run would, and
+                fills in the status and the tool list below. */}
+            <Tooltip
+              content={
+                canProbe
+                  ? t('Connects every enabled server exactly as a run would.')
+                  : t(
+                    'Pick a workspace first — a server is connected for a run, and a run happens in one.',
+                  )
+              }
+            >
+              {/* The span keeps the tooltip reachable while the button is
+                  disabled: a disabled button fires no pointer events, so the
+                  explanation would be unreadable precisely when it is needed. */}
+              <span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={testing}
+                  disabled={!canProbe}
+                  onClick={() => void test()}
+                >
+                  <Plug className="size-4" aria-hidden />
+                  {t('Test connections')}
+                </Button>
+              </span>
+            </Tooltip>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() =>
+                setEditing({
+                  name: '',
+                  transport: 'stdio',
+                  command: '',
+                  args: '',
+                  url: '',
+                  env: [],
+                  headers: [],
+                  enabled: true,
+                })
+              }
+            >
+              <Plus className="size-4" />
+              {t('New server')}
+            </Button>
+          </div>
         }
       />
 
@@ -1218,8 +1401,10 @@ function McpTab({
         <Card>
           <EmptyState
             icon={<Plug />}
-            title="No MCP servers in this scope"
-            description="Connect one to give the agent tools this system does not ship with — a database, an issue tracker, an internal API."
+            title={t('No MCP servers in this scope')}
+            description={t(
+              'Connect one to give the agent tools this system does not ship with — a database, an issue tracker, an internal API.',
+            )}
           />
         </Card>
       ) : (
@@ -1231,8 +1416,15 @@ function McpTab({
                   <div className="flex flex-wrap items-center gap-2">
                     <code className="font-mono text-[13px] font-medium text-ink">{server.name}</code>
                     <Badge tone="info">{server.transport}</Badge>
-                    <Badge tone={MCP_STATUS_TONE[server.status]}>{server.status}</Badge>
-                    {server.workspaceId === null ? <Badge tone="neutral">global</Badge> : null}
+                    {/* The live answer when the probe has one; otherwise what
+                        the last run recorded, which is `unknown` on a server
+                        nobody has used yet. */}
+                    <Badge
+                      tone={MCP_STATUS_TONE[live.get(server.name)?.status ?? server.status] ?? 'neutral'}
+                    >
+                      {live.get(server.name)?.status ?? server.status}
+                    </Badge>
+                    {server.workspaceId === null ? <Badge tone="neutral">{t('global')}</Badge> : null}
                   </div>
 
                   <p className="break-all font-mono text-[12px] leading-relaxed text-muted">
@@ -1244,16 +1436,40 @@ function McpTab({
                   {server.envKeys.length > 0 ? (
                     <p className="flex flex-wrap items-center gap-1 text-[11.5px] text-subtle">
                       <ShieldCheck className="size-3.5" aria-hidden />
-                      {server.envKeys.length} encrypted secret
-                      {server.envKeys.length === 1 ? '' : 's'}: {server.envKeys.join(', ')}
+                      {plural(
+                        server.envKeys.length,
+                        '{n} encrypted secret: {keys}',
+                        '{n} encrypted secrets: {keys}',
+                        { keys: server.envKeys.join(', ') },
+                      )}
                     </p>
                   ) : null}
 
-                  {server.lastError ? (
+                  {/* The probe's error where there is one — it is about the
+                      connection as a run would make it, so it supersedes
+                      whatever the last run happened to record. */}
+                  {live.get(server.name)?.error ?? server.lastError ? (
                     <p className="rounded-lg border border-danger/25 bg-danger-soft px-2.5 py-1.5 text-[12px] leading-relaxed text-danger">
-                      {server.lastError}
+                      {live.get(server.name)?.error ?? server.lastError}
                     </p>
                   ) : null}
+
+                  {/* The server's own account of itself. The protocol's place
+                      for it, and what the CLI already hands the model as an
+                      MCP instructions block — so this shows the operator what
+                      the agent is working from, rather than inventing one. */}
+                  {descriptions[server.name]?.instructions ? (
+                    <p className="rounded-lg border border-line bg-sunken/40 px-2.5 py-1.5 text-[12px] leading-relaxed text-muted">
+                      {descriptions[server.name]?.instructions}
+                    </p>
+                  ) : null}
+
+                  <McpToolList
+                    tools={withDescriptions(
+                      live.get(server.name)?.tools ?? [],
+                      descriptions[server.name],
+                    )}
+                  />
                 </div>
 
                 <div className="flex items-center gap-2 sm:shrink-0">
@@ -1273,12 +1489,12 @@ function McpTab({
                     tooltip={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} — opens the editor, because saving replaces this server's stored secrets`}
                   />
                   <Button variant="ghost" size="sm" onClick={() => setEditing(draftFromServer(server))}>
-                    Edit
+                    {t('Edit')}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Delete server ${server.name}`}
+                    aria-label={t('Delete server {name}', { name: server.name })}
                     onClick={() => setDeleting(server)}
                   >
                     <Trash2 className="size-4" />
@@ -1304,14 +1520,12 @@ function McpTab({
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
-        title="Delete this MCP server?"
-        description={
-          <>
-            <span className="font-mono text-ink">{deleting?.name}</span> is removed and its stored
-            secrets are erased from the vault. Its tools disappear from every run in this scope.
-          </>
-        }
-        confirmLabel="Delete server"
+        title={t('Delete this MCP server?')}
+        description={t(
+          '{name} is removed and its stored secrets are erased from the vault. Its tools disappear from every run in this scope.',
+          { name: deleting?.name ?? '' },
+        )}
+        confirmLabel={t('Delete server')}
         danger
         onConfirm={async () => {
           if (deleting) await remove.mutateAsync(deleting.id);
@@ -1326,6 +1540,25 @@ function McpTab({
  * Secret *values* are never returned by the API, so an existing server's env
  * rows come back key-only with an empty value — see the notice in the editor.
  */
+/**
+ * The catalogue's tools, with the descriptions it does not carry.
+ *
+ * Two sources by necessity, not by accident. The catalogue is the authority on
+ * *which* tools a run would see and on the read-only and destructive hints the
+ * server advertises; asking the server directly is the only way to get the
+ * text. Merged by name, and the catalogue's list is the one that decides what
+ * exists — a tool the direct probe saw and the catalogue did not is a tool no
+ * run would have.
+ */
+export function withDescriptions(
+  tools: ClaudeMcpServerStatus['tools'],
+  described: McpServerDescription | undefined,
+): ClaudeMcpServerStatus['tools'] {
+  if (!described) return tools;
+  const byName = new Map(described.tools.map((tool) => [tool.name, tool.description]));
+  return tools.map((tool) => ({ ...tool, description: tool.description || byName.get(tool.name) || '' }));
+}
+
 function draftFromServer(server: McpServerRecord): McpDraft {
   return {
     id: server.id,
@@ -1379,7 +1612,9 @@ function ConnectorDirectory({ onInstalled }: { onInstalled: () => void }) {
       });
       setArming(null);
       toast.success(interpolate(t('Added “{name}”'), { name: result.connector.name }), {
-        description: t('Global and disabled. Switch it on above, then check From Claude to see whether it actually connected.'),
+        description: t(
+          'Global and disabled. Switch it on above, then check From Claude to see whether it actually connected.',
+        ),
       });
     },
     onError: (error) => toast.error(messageFor(error, t('Could not add that connector.'))),
@@ -1526,7 +1761,9 @@ function ConnectorCard({
               value={secret}
               aria-describedby={`${fieldId}-hint`}
               onChange={(event) => onSecretChange(event.target.value)}
-              placeholder={credential.prefix ? t('the token alone — no scheme word') : t('paste the key')}
+              placeholder={credential.prefix ? t(
+                'the token alone — no scheme word',
+              ) : t('paste the key')}
             />
           </div>
         ) : null}
@@ -1546,6 +1783,7 @@ function McpEditor({
   onClose: () => void;
   onSubmit: (draft: McpDraft) => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState<McpDraft>(
     draft ?? {
       name: '',
@@ -1580,13 +1818,15 @@ function McpEditor({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={draft?.id ? 'Edit MCP server' : 'New MCP server'}
-      description="Connection details are stored in the clear so they stay auditable; anything secret goes to the encrypted vault."
+      title={draft?.id ? t('Edit MCP server') : t('New MCP server')}
+      description={t(
+        'Connection details are stored in the clear so they stay auditable; anything secret goes to the encrypted vault.',
+      )}
       size="lg"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             variant="primary"
@@ -1595,14 +1835,14 @@ function McpEditor({
             disabled={!valid}
             onClick={() => onSubmit(value)}
           >
-            Save server
+            {t('Save server')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Label htmlFor="mcp-name" hint="Prefixes every tool this server exposes.">
-          Name
+        <Label htmlFor="mcp-name" hint={t('Prefixes every tool this server exposes.')}>
+          {t('Name')}
           <Input
             id="mcp-name"
             value={value.name}
@@ -1620,8 +1860,10 @@ function McpEditor({
           </p>
         ) : null}
 
-        <Label htmlFor="mcp-transport" hint="stdio launches a local process; sse and http reach a remote one.">
-          Transport
+        <Label htmlFor="mcp-transport" hint={t(
+          'stdio launches a local process; sse and http reach a remote one.',
+        )}>
+          {t('Transport')}
           <select
             id="mcp-transport"
             value={value.transport}
@@ -1630,16 +1872,16 @@ function McpEditor({
             }
             className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
           >
-            <option value="stdio">stdio — local process</option>
-            <option value="sse">sse — server-sent events</option>
-            <option value="http">http — streamable HTTP</option>
+            <option value="stdio">{t('stdio — local process')}</option>
+            <option value="sse">{t('sse — server-sent events')}</option>
+            <option value="http">{t('http — streamable HTTP')}</option>
           </select>
         </Label>
 
         {isStdio ? (
           <>
-            <Label htmlFor="mcp-command" hint="The executable, without its arguments.">
-              Command
+            <Label htmlFor="mcp-command" hint={t('The executable, without its arguments.')}>
+              {t('Command')}
               <Input
                 id="mcp-command"
                 value={value.command}
@@ -1650,8 +1892,8 @@ function McpEditor({
               />
             </Label>
 
-            <Label htmlFor="mcp-args" hint="One per line, or separated by spaces.">
-              Arguments
+            <Label htmlFor="mcp-args" hint={t('One per line, or separated by spaces.')}>
+              {t('Arguments')}
               <Textarea
                 id="mcp-args"
                 value={value.args}
@@ -1664,8 +1906,8 @@ function McpEditor({
             </Label>
           </>
         ) : (
-          <Label htmlFor="mcp-url" hint="Must be http or https.">
-            URL
+          <Label htmlFor="mcp-url" hint={t('Must be http or https.')}>
+            {t('URL')}
             <Input
               id="mcp-url"
               value={value.url}
@@ -1683,24 +1925,27 @@ function McpEditor({
           <div className="flex items-start gap-2">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
             <div className="space-y-1 text-[12.5px] leading-relaxed">
-              <p className="font-medium text-ink">Secrets are encrypted and never read back</p>
+              <p className="font-medium text-ink">{t(
+                'Secrets are encrypted and never read back',
+              )}</p>
               <p className="text-muted">
-                Values go into the encrypted vault; only the key names are stored on the record and
-                only key names are ever returned. That is why every value box below is blank on an
-                existing server — the value cannot be shown, not even to you.
+                {t(
+                  'Values go into the encrypted vault; only the key names are stored on the record and only key names are ever returned. That is why every value box below is blank on an existing server — the value cannot be shown, not even to you.',
+                )}
               </p>
               <p className="text-muted">
-                A value left blank keeps whatever is stored, so you only re-enter the ones you want
-                to change. Delete a row to remove that key and its value for good.
+                {t(
+                  'A value left blank keeps whatever is stored, so you only re-enter the ones you want to change. Delete a row to remove that key and its value for good.',
+                )}
               </p>
             </div>
           </div>
 
           <PairEditor
             idPrefix="mcp-env"
-            legend="Environment secrets"
+            legend={t('Environment secrets')}
             keyPlaceholder="LINEAR_API_KEY"
-            valuePlaceholder="Paste the value"
+            valuePlaceholder={t('Paste the value')}
             secret
             pairs={value.env}
             onChange={(env) => setValue({ ...value, env })}
@@ -1709,7 +1954,9 @@ function McpEditor({
           <PairEditor
             idPrefix="mcp-headers"
             legend="Headers"
-            hint="Sent with every request. Sealed like the secrets above — an HTTP server usually authenticates with one."
+            hint={t(
+              'Sent with every request. Sealed like the secrets above — an HTTP server usually authenticates with one.',
+            )}
             keyPlaceholder="Authorization"
             valuePlaceholder="Bearer …"
             secret
@@ -1721,8 +1968,8 @@ function McpEditor({
         <CheckboxField
           checked={value.enabled}
           onChange={(enabled) => setValue({ ...value, enabled })}
-          label="Enabled"
-          hint="Disabled servers are skipped when a run starts."
+          label={t('Enabled')}
+          hint={t('Disabled servers are skipped when a run starts.')}
         />
       </div>
     </Modal>
@@ -1778,6 +2025,7 @@ function PairEditor({
   pairs: Pair[];
   onChange: (pairs: Pair[]) => void;
 }) {
+  const t = useT();
   const update = (index: number, patch: Partial<Pair>): void => {
     onChange(pairs.map((pair, i) => (i === index ? { ...pair, ...patch } : pair)));
   };
@@ -1788,7 +2036,7 @@ function PairEditor({
       {hint ? <p className="text-xs leading-relaxed text-muted">{hint}</p> : null}
 
       {pairs.length === 0 ? (
-        <p className="text-xs text-subtle">None.</p>
+        <p className="text-xs text-subtle">{t('None.')}</p>
       ) : (
         <ul className="space-y-2">
           {pairs.map((pair, index) => (
@@ -1812,7 +2060,10 @@ function PairEditor({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={`Remove ${pair.key || `entry ${index + 1}`}`}
+                aria-label={t(
+                  'Remove {name}',
+                  { name: pair.key || t('entry {n}', { n: index + 1 }) },
+                )}
                 onClick={() => onChange(pairs.filter((_, i) => i !== index))}
                 className="self-end sm:self-auto"
               >
@@ -1830,7 +2081,7 @@ function PairEditor({
         id={`${idPrefix}-add`}
       >
         <Plus className="size-3.5" />
-        Add {legend.toLowerCase()}
+        {t('Add')} {legend.toLowerCase()}
       </Button>
     </fieldset>
   );
@@ -1881,6 +2132,7 @@ export { AgentsPage as default };
  * every visit for a panel most of them are not looking at.
  */
 function ClaudeTab({ workspaceId }: { workspaceId: string | undefined }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -1903,7 +2155,9 @@ function ClaudeTab({ workspaceId }: { workspaceId: string | undefined }) {
       });
       queryClient.setQueryData(['claude-catalogue', workspaceId ?? null], fresh);
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : 'Could not read what Claude offers.');
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not read what Claude offers.',
+      ));
     } finally {
       setRefreshing(false);
     }

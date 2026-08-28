@@ -49,6 +49,11 @@ ALLOWED_IMAGE_PREFIX="${ALLOWED_IMAGE_PREFIX:-}"
 # How long the container gets to report healthy before it is judged a failure.
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-180}"
 
+# How many images of the pinned repository survive a deploy, newest first.
+# Whatever `current` and `previous` resolve to is spared on top of this, so the
+# rollback button always has a target — see prune_images().
+IMAGE_KEEP="${IMAGE_KEEP:-3}"
+
 # How long the proxy gets to complete a TLS handshake once compose calls it
 # healthy. Separate from the above because it covers a different thing: not
 # whether the container came up, but whether its certificate is usable yet.
@@ -56,6 +61,14 @@ PROXY_WAIT_SECONDS="${PROXY_WAIT_SECONDS:-60}"
 
 # shellcheck source=/dev/null
 [ -f "$APP_DIR/deploy.conf" ] && . "$APP_DIR/deploy.conf"
+
+# After the file that may set it, and forgiving rather than fatal: a typo in a
+# retention ceiling must not be able to block a deployment. It ends up on the
+# right of `-le`, where a non-number is a bash error rather than a wrong answer.
+case "$IMAGE_KEEP" in
+  '' | *[!0-9]*) IMAGE_KEEP=3 ;;
+  *) [ "$IMAGE_KEEP" -ge 1 ] || IMAGE_KEEP=1 ;;
+esac
 
 log()  { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die()  { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
@@ -210,6 +223,75 @@ print_infra_digests() {
   done
 }
 
+# Reclaim the disk a deploy fills, without ever removing what rollback needs.
+#
+# What shipped before was `docker image prune -f --filter 'until=168h'`. At
+# several releases a day no image ever reaches seven days, so it removed
+# nothing, ever — found on a real host at 97% full, 23 images and 19 GB, next
+# to 15 GB of build cache on a box whose whole premise is that it never builds
+# anything. An age is the wrong axis when the release cadence is faster than
+# the age.
+#
+# So: cardinality, plus two names that are spared whatever their age. Both are
+# resolved to image *ids* first, because `current` records a digest reference
+# while the same image usually also wears a version tag — sparing the literal
+# string would delete it under its other name and leave the rollback button
+# with nothing, which is discovered during an incident.
+#
+# Removal is by reference rather than by id: an image keeps its layers until
+# its last tag is gone, and `docker rmi <id>` refuses outright while more than
+# one name points at it. Only an untagged image is addressed by id.
+prune_images() {
+  local spared="" doomed="" seen="" kept=0 listing ref_file ref id created
+
+  for ref_file in "$CURRENT" "$PREVIOUS"; do
+    [ -f "$ref_file" ] || continue
+    ref="$(cat "$ref_file" 2>/dev/null)" || continue
+    [ -n "$ref" ] || continue
+    id="$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null)" || continue
+    spared="$spared$id "
+  done
+
+  listing="$(docker images --filter "reference=${ALLOWED_IMAGE_PREFIX}*" \
+    --format '{{.CreatedAt}}	{{.ID}}	{{.Repository}}:{{.Tag}}' 2>/dev/null | sort -r)" || listing=""
+  [ -n "$listing" ] || return 0
+
+  # Newest first. One image can appear on several rows, once per tag, so the
+  # ceiling counts distinct images rather than rows.
+  while IFS=$'\t' read -r created id ref; do
+    [ -n "$id" ] || continue
+    case " $seen " in *" $id "*) continue ;; esac
+    seen="$seen$id "
+    kept=$((kept + 1))
+    [ "$kept" -le "$IMAGE_KEEP" ] && continue
+    case " $spared " in *" $id "*) continue ;; esac
+    doomed="$doomed$id "
+  done <<< "$listing"
+
+  while IFS=$'\t' read -r created id ref; do
+    [ -n "$id" ] || continue
+    case " $doomed " in *" $id "*) ;; *) continue ;; esac
+    case "$ref" in
+      *':<none>') docker rmi "$id" >/dev/null 2>&1 || true ;;
+      *) docker rmi "$ref" >/dev/null 2>&1 || true ;;
+    esac
+  done <<< "$listing"
+
+  # Nothing on this host builds — the deploy pipeline exists precisely so that
+  # what runs here is the artefact CI tested — so any build cache is dead
+  # weight. It was the single largest consumer on the host that filled up.
+  docker builder prune -af >/dev/null 2>&1 || true
+
+  # Dangling images have no repository at all, so the reference filter above
+  # cannot see them and the loops never judge them. Without this they are the
+  # one thing the old `image prune` did catch that the new one would not.
+  # Untagged and unreferenced by definition: nothing can be spared by mistake.
+  docker image prune -f >/dev/null 2>&1 || true
+
+  [ -n "$doomed" ] && log "reclaimed $(printf '%s' "$doomed" | wc -w) image(s) and the build cache"
+  return 0
+}
+
 if [ "$ACTION" = "status" ]; then
   printf 'current:  %s\n' "$( [ -f "$CURRENT" ] && cat "$CURRENT" || echo '(none recorded)')"
   printf 'previous: %s\n' "$( [ -f "$PREVIOUS" ] && cat "$PREVIOUS" || echo '(none recorded)')"
@@ -301,7 +383,7 @@ fi
 if proxy_answers; then
   log "healthy, and answering through the proxy"
   print_infra_digests
-  docker image prune -f --filter 'until=168h' >/dev/null 2>&1 || true
+  prune_images
   log "deployed $TARGET"
   exit 0
 fi

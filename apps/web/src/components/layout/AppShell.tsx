@@ -86,7 +86,7 @@ export function AppShell({
       {/* Icon rail — hidden on phones, where the tab bar takes over. */}
       <nav
         className="hidden w-14 shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-3 sm:flex"
-        aria-label="Sections"
+        aria-label={t('Sections')}
       >
         <NavLink to="/" className="mb-3 flex size-9 items-center justify-center" aria-label="Metaclaude">
           <Logo />
@@ -129,7 +129,7 @@ export function AppShell({
               'hidden lg:flex lg:flex-col',
               !sidebarOpen && 'lg:hidden',
             )}
-            aria-label="Context"
+            aria-label={t('Context')}
           >
             {sidebar}
           </aside>
@@ -141,7 +141,7 @@ export function AppShell({
                 type="button"
                 className="absolute inset-0 bg-black/50"
                 onClick={() => setSidebar(false)}
-                aria-label="Close panel"
+                aria-label={t('Close panel')}
               />
               <aside className="animate-in-up absolute inset-y-0 left-0 flex w-[min(20rem,85vw)] flex-col border-r border-line bg-surface shadow-[var(--mc-shadow-lg)]">
                 {sidebar}
@@ -166,12 +166,12 @@ export function AppShell({
             type="button"
             className="absolute inset-0 bg-black/50"
             onClick={() => setMoreOpen(false)}
-            aria-label="Close sections"
+            aria-label={t('Close sections')}
           />
           <div
             className="animate-in-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-line bg-surface p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[var(--mc-shadow-lg)]"
             role="menu"
-            aria-label="More sections"
+            aria-label={t('More sections')}
           >
             {secondary.map((entry) => (
               <NavLink
@@ -207,7 +207,7 @@ export function AppShell({
           keeps its full 3.5rem, matching what <main> reserves. */}
       <nav
         className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
-        aria-label="Sections"
+        aria-label={t('Sections')}
       >
         <div className="flex h-14 items-stretch">
           {NAV.filter((entry) => entry.primary).map((entry) => (
@@ -234,7 +234,7 @@ export function AppShell({
           <button
             type="button"
             onClick={() => setMoreOpen((current) => !current)}
-            aria-label="More sections"
+            aria-label={t('More sections')}
             aria-expanded={moreOpen}
             className={cn(
               'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
@@ -255,6 +255,7 @@ export function AppShell({
 
 /** Toolbar button that reveals the contextual sidebar on narrow screens. */
 export function SidebarToggle({ className }: { className?: string }) {
+  const t = useT();
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   return (
     <button
@@ -264,7 +265,7 @@ export function SidebarToggle({ className }: { className?: string }) {
         'flex size-8 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink',
         className,
       )}
-      aria-label="Toggle panel"
+      aria-label={t('Toggle panel')}
     >
       <MenuIcon className="size-4" />
     </button>

@@ -33,8 +33,11 @@ const FilesPanel = lazy(async () => ({
 
 /** Holds the panel's shape while the editor chunk arrives, so nothing reflows. */
 function PanelLoading() {
+  const t = useT();
   return (
-    <div className="flex h-full items-center justify-center" role="status" aria-label="Loading the editor">
+    <div className="flex h-full items-center justify-center" role="status" aria-label={t(
+      'Loading the editor',
+    )}>
       <Spinner className="size-5" />
     </div>
   );
@@ -47,10 +50,12 @@ import { usePendingAttachments } from '@/lib/attachments';
 import { socket } from '@/lib/socket';
 import { useSessionStore, useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 type SidePanel = 'none' | 'files' | 'git';
 
 export function SessionPage() {
+  const t = useT();
   const { workspaceId = '', sessionId = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -223,7 +228,7 @@ export function SessionPage() {
     // chips stay, ready to ride the retry.
     onSuccess: () => pending.clear(),
     onError: (error) => {
-      toast.error(error instanceof ApiError ? error.message : 'Could not start the run.');
+      toast.error(error instanceof ApiError ? error.message : t('Could not start the run.'));
     },
   });
 
@@ -238,10 +243,10 @@ export function SessionPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
       navigate(`/w/${workspaceId}`, { replace: true });
-      toast.success('Session deleted');
+      toast.success(t('Session deleted'));
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not delete the session.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not delete the session.')),
   });
 
   const newSession = useMutation({
@@ -282,10 +287,10 @@ export function SessionPage() {
     return (
       <AppShell sidebar={sidebar}>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="text-sm text-muted">That session could not be loaded.</p>
+          <p className="text-sm text-muted">{t('That session could not be loaded.')}</p>
           <Button variant="secondary" size="sm" onClick={() => navigate(`/w/${workspaceId}`)}>
             <ArrowLeft className="size-4" />
-            Back to the workspace
+            {t('Back to the workspace')}
           </Button>
         </div>
       </AppShell>
@@ -295,7 +300,7 @@ export function SessionPage() {
   return (
     <AppShell sidebar={sidebar}>
       <ContentHeader
-        title={session.title || 'New session'}
+        title={session.title || t('New session')}
         subtitle={
           <span className="flex items-center gap-1.5">
             <span
@@ -308,11 +313,11 @@ export function SessionPage() {
         }
         actions={
           <>
-            <Tooltip content="Files">
+            <Tooltip content={t('Files')}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Files"
+                aria-label={t('Files')}
                 aria-pressed={panel === 'files'}
                 onClick={() => setPanel(panel === 'files' ? 'none' : 'files')}
                 className={cn(panel === 'files' && 'bg-accent-soft text-accent')}
@@ -321,11 +326,11 @@ export function SessionPage() {
               </Button>
             </Tooltip>
 
-            <Tooltip content="Source control">
+            <Tooltip content={t('Source control')}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Source control"
+                aria-label={t('Source control')}
                 aria-pressed={panel === 'git'}
                 onClick={() => setPanel(panel === 'git' ? 'none' : 'git')}
                 className={cn(panel === 'git' && 'bg-accent-soft text-accent')}
@@ -334,11 +339,11 @@ export function SessionPage() {
               </Button>
             </Tooltip>
 
-            <Tooltip content="New session">
+            <Tooltip content={t('New session')}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="New session"
+                aria-label={t('New session')}
                 onClick={() => newSession.mutate()}
                 loading={newSession.isPending}
               >
@@ -346,11 +351,11 @@ export function SessionPage() {
               </Button>
             </Tooltip>
 
-            <Tooltip content="Delete session">
+            <Tooltip content={t('Delete session')}>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Delete session"
+                aria-label={t('Delete session')}
                 onClick={() => setConfirmDelete(true)}
               >
                 <Trash2 className="size-4" />
@@ -377,11 +382,11 @@ export function SessionPage() {
                   <button
                     key={suggestion}
                     type="button"
-                    onClick={() => submitRun.mutate(suggestion)}
+                    onClick={() => submitRun.mutate(t(suggestion))}
                     className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] text-muted transition-colors hover:border-accent hover:text-ink"
                   >
                     <Sparkles className="mr-1 inline size-3" aria-hidden />
-                    {suggestion}
+                    {t(suggestion)}
                   </button>
                 ))}
               </div>
@@ -443,9 +448,11 @@ export function SessionPage() {
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title="Delete this session?"
-        description="The transcript and its run history are removed permanently. Files in the workspace are untouched."
-        confirmLabel="Delete session"
+        title={t('Delete this session?')}
+        description={t(
+          'The transcript and its run history are removed permanently. Files in the workspace are untouched.',
+        )}
+        confirmLabel={t('Delete session')}
         danger
         onConfirm={async () => {
           await deleteSession.mutateAsync();
@@ -476,6 +483,7 @@ export function SessionPage() {
   );
 }
 
+/** English as data — translated at render; see the note in `lib/i18n.tsx`. */
 const SUGGESTIONS = [
   'Explain how this project is structured',
   'Find and fix any failing tests',

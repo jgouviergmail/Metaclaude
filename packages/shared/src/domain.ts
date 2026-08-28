@@ -145,6 +145,18 @@ export const WorkspaceSettings = z.object({
   disallowedTools: z.array(z.string()).default([]),
   additionalDirectories: z.array(z.string()).default([]),
   systemPromptAppend: z.string().max(20_000).default(''),
+  /**
+   * The language the agent answers in.
+   *
+   * `auto` is the default and changes nothing: the model follows the language
+   * it is written to, which is right most of the time. It is *sub*agents that
+   * drift — the 23 in the library carry English prompts and English
+   * descriptions, so work delegated out of a French conversation comes back in
+   * English, and nothing in the run stack had an opinion about it. One line in
+   * the system prompt settles it for the whole run, delegations included,
+   * which is cheaper and more reliable than translating a catalogue.
+   */
+  language: z.enum(['auto', 'fr', 'en']).default('auto'),
   /** Inject retrieved long-term memory into the system prompt. */
   memoryEnabled: z.boolean().default(true),
   /**

@@ -229,7 +229,7 @@ present the list for review.`,
     name: 'meal-planner',
     category: 'home',
     description:
-      "Plans a week of meals around the household's constraints and what the kitchen already holds, then writes the shopping list.",
+      "Plans a week of meals around the household's constraints and what the kitchen already holds, then writes the shopping list. Use before the weekly shop.",
     prompt: `You plan meals for a real week, not an ideal one.
 
 Ask before planning, and wait for the answers: how many people, and any
@@ -258,7 +258,7 @@ itself belongs to them and their clinician, not to you.`,
     name: 'trip-planner',
     category: 'travel',
     description:
-      'Builds an itinerary that survives a real day — travel time, opening hours, energy — and says plainly what it could not verify.',
+      'Builds an itinerary that survives a real day — travel time, opening hours, energy. Use when planning a trip, before anything is booked.',
     prompt: `You plan trips that survive contact with an actual day.
 
 Establish first: the dates, who is going (ages and mobility change
@@ -286,7 +286,7 @@ them as fact.`,
     name: 'admin-navigator',
     category: 'home',
     description:
-      'Works out what an administrative task actually requires — which form, what evidence, what deadline — and drafts what you must send.',
+      'Works out what an administrative task requires — which form, what evidence, what deadline. Use when facing an official process or a letter to send.',
     prompt: `You help get an administrative task done. You are not a lawyer, and what
 you produce is **not legal advice**.
 
@@ -312,7 +312,7 @@ prepare the file that makes that appointment short.`,
     name: 'budget-coach',
     category: 'money',
     description:
-      'Reads what a household actually spends, names the patterns behind it, and proposes a budget it could keep. Not financial advice.',
+      'Reads what a household spends, names the patterns, and proposes a budget it could keep. Use when money leaks and nobody knows where. Not financial advice.',
     prompt: `You help someone see their money clearly. What you produce is **not
 financial advice**: no investment picks, no product recommendations, no
 opinions on debt instruments or insurance contracts. If a question needs a
@@ -340,7 +340,7 @@ asking for a verdict on their choices.`,
     name: 'tutor',
     category: 'learning',
     description:
-      'Teaches a topic by finding what you already understand and building from there, testing recall instead of lecturing.',
+      'Teaches a topic by finding what you already understand and building from there. Use when learning something new, or stuck partway through it.',
     prompt: `You teach. You do not lecture.
 
 How you work:
@@ -368,7 +368,7 @@ name the one thing to review first.`,
     name: 'home-project-planner',
     category: 'home',
     description:
-      'Turns a DIY, moving or renovation job into ordered steps with tools, materials, and the parts that must go to a professional.',
+      'Turns a DIY, moving or renovation job into ordered steps with tools and materials. Use before starting one, while the scope can still change.',
     prompt: `You plan work on a home so that it can actually be done in the evenings and
 weekends that exist.
 
@@ -395,7 +395,7 @@ appointment instead of around a shortcut.`,
     name: 'fitness-coach',
     category: 'health',
     description:
-      'Builds a training plan around the goal, the time genuinely available and the body you have today. Not medical advice.',
+      'Builds a training plan around the goal, the time genuinely available and the body you have today. Use when starting or restarting. Not medical advice.',
     prompt: `You write training plans for the life someone actually has. What you produce
 is **not medical advice** and never a diagnosis.
 
@@ -426,7 +426,7 @@ composition the measure of a person.`,
     name: 'week-planner',
     category: 'general',
     description:
-      "Turns the week's obligations, appointments and intentions into a plan that still stands on Wednesday.",
+      "Turns the week's obligations, appointments and intentions into a plan that still stands on Wednesday. Use to plan a week, or to rescue one that has slipped.",
     prompt: `You plan a week that can actually be lived.
 
 Gather first: what is fixed (appointments, school runs, deadlines that will
@@ -453,7 +453,7 @@ the same plan harder — find which assumption was false.`,
     name: 'tax-preparer',
     category: 'money',
     description:
-      "Gathers a year's tax documents, sorts what is declarable and deductible, and prepares the questions worth an accountant's hour.",
+      "Gathers a year's tax documents and sorts what is declarable and deductible. Use before a filing deadline, or before paying for an accountant's hour.",
     prompt: `You prepare a tax return. You do not file it, and this is **not financial
 advice** or tax advice — an accountant or the tax authority itself is who
 answers a contested point.
@@ -487,7 +487,7 @@ each with its document attached. That list is the real output.`,
     name: 'housing-navigator',
     category: 'home',
     description:
-      'Handles a tenancy step by step — inventory, deposit, notice, repairs, disputes — and drafts the letters each step needs.',
+      'Handles a tenancy step by step — inventory, deposit, notice, repairs, disputes. Use for any of them that needs a letter or a decision.',
     prompt: `You help someone through a housing situation, as tenant or as landlord. This
 is **not legal advice**; where a home or real money turns on it, a lawyer, an
 ADIL adviser or a conciliateur de justice is the next step, and your job is to
@@ -524,7 +524,7 @@ sentence, the deadline, the evidence listed, proof of sending kept.`,
     name: 'career-coach',
     category: 'career',
     description:
-      'Works a job search end to end: what to target, the CV that lands it, the interview, and the offer conversation.',
+      'Works a job search end to end: what to target, the CV that lands it, the interview, the offer. Use when changing job, or preparing to.',
     prompt: `You help someone find work, from targeting to signature.
 
 Establish the search honestly first: what they can do (evidenced, not
@@ -558,7 +558,7 @@ a season.`,
     name: 'caregiver-organiser',
     category: 'health',
     description:
-      'Organises the care of a relative — appointments, medication, paperwork, home help — and the respite the caregiver forgets.',
+      'Organises the care of a relative — appointments, medication, paperwork, home help. Use when it has outgrown what one person can hold in their head.',
     prompt: `You help someone caring for an ageing or ill relative hold the practical side
 together. This is **not medical advice** and never a clinical judgement: the
 treating doctor decides care. Your job is to make that consultation effective
@@ -593,7 +593,7 @@ when something needs a doctor now rather than at the next appointment.`,
     name: 'negotiator',
     category: 'money',
     description:
-      'Prepares a negotiation — salary, rent, a quote, a car — with your walk-away, your opening, and the sentences to actually say.',
+      'Prepares a negotiation — salary, rent, a quote, a car — with your walk-away, your opening and the sentences to say. Use before the conversation.',
     prompt: `You prepare people for a negotiation. This is preparation, **not financial
 advice** and not legal advice; a contract that binds for years deserves a
 professional read before signature.
@@ -625,7 +625,7 @@ cannot say no has not been negotiating.`,
     name: 'gardener',
     category: 'home',
     description:
-      'Plans what to plant and when for your climate, your space and the hours you have — and what to do in the garden this month.',
+      'Plans what to plant and when for your climate, your space and the hours you have. Use when starting a garden, or to know what this month needs.',
     prompt: `You plan a garden that matches its climate, its soil and the hours someone
 will genuinely give it.
 

@@ -162,7 +162,9 @@ export function MemoryConstellation({
         viewBox={`0 0 ${width} ${height}`}
         className="w-full"
         role="group"
-        aria-label={t('The memory as a constellation — recent at the centre, fading toward the rim')}
+        aria-label={t(
+          'The memory as a constellation — recent at the centre, fading toward the rim',
+        )}
       >
         <defs>
           {/* The sky: a touch deeper than the card, lifting at the centre —

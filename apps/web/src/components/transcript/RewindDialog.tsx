@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import type { RewindResult } from '@metaclaude/shared';
 import { Button, Spinner } from '@/components/ui/primitives';
 import { Modal } from '@/components/ui/Modal';
+import { usePlural, useT } from '@/lib/i18n';
 
 export interface RewindDialogProps {
   open: boolean;
@@ -27,6 +28,8 @@ export interface RewindDialogProps {
 }
 
 export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindDialogProps) {
+  const plural = usePlural();
+  const t = useT();
   const [preview, setPreview] = useState<RewindResult | null>(null);
   const [outcome, setOutcome] = useState<RewindResult | null>(null);
   const [applying, setApplying] = useState(false);
@@ -89,10 +92,12 @@ export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindD
       title={
         <span className="flex items-center gap-2">
           <History className="size-4 text-accent" aria-hidden />
-          Rewind this run
+          {t('Rewind this run')}
         </span>
       }
-      description="Restore every file this run changed to the state it was in before the run started. Nothing else in the workspace is touched."
+      description={t(
+        'Restore every file this run changed to the state it was in before the run started. Nothing else in the workspace is touched.',
+      )}
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
@@ -111,10 +116,8 @@ export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindD
             >
               <Undo2 className="size-4" />
               {preview === null
-                ? 'Restore files'
-                : `Restore ${preview.filesChanged.length} file${
-                    preview.filesChanged.length === 1 ? '' : 's'
-                  }`}
+                ? t('Restore files')
+                : plural(preview.filesChanged.length, 'Restore {n} file', 'Restore {n} files')}
             </Button>
           ) : null}
         </div>
@@ -123,15 +126,15 @@ export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindD
       {preview === null ? (
         <div className="flex items-center gap-3 py-6 text-[13px] text-muted">
           <Spinner className="size-4" />
-          Checking what this would restore…
+          {t('Checking what this would restore…')}
         </div>
       ) : !preview.canRewind ? (
-        <Notice tone="warning" text={preview.error ?? 'This run cannot be rewound.'} />
+        <Notice tone="warning" text={preview.error ?? t('This run cannot be rewound.')} />
       ) : outcome ? (
         <Outcome result={outcome} />
       ) : empty ? (
         <p className="py-4 text-[13px] leading-relaxed text-muted">
-          This run made no file changes, so there is nothing to undo.
+          {t('This run made no file changes, so there is nothing to undo.')}
         </p>
       ) : (
         <Changes result={preview} />
@@ -160,11 +163,12 @@ function Notice({ tone, text }: { tone: 'warning' | 'success'; text: string }) {
 
 /** The line-count summary, shared by the preview and the outcome. */
 function DiffSummary({ result }: { result: RewindResult }) {
+  const plural = usePlural();
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] tabular-nums text-muted">
       <span className="flex items-center gap-1.5">
         <FileDiff className="size-3.5 text-accent" aria-hidden />
-        {result.filesChanged.length} file{result.filesChanged.length === 1 ? '' : 's'}
+        {plural(result.filesChanged.length, '{n} file', '{n} files')}
       </span>
       {result.insertions > 0 ? <span className="text-success">+{result.insertions}</span> : null}
       {result.deletions > 0 ? <span className="text-danger">−{result.deletions}</span> : null}
@@ -191,24 +195,28 @@ function FileList({ paths }: { paths: string[] }) {
 }
 
 function Changes({ result }: { result: RewindResult }) {
+  const t = useT();
   return (
     <div className="space-y-3">
       <DiffSummary result={result} />
       <FileList paths={result.filesChanged} />
       <p className="text-[12px] leading-relaxed text-muted">
-        This cannot be undone from here. Anything written since the run finished is overwritten
-        too — the restore is to the point the run began, not a merge.
+        {t(
+          'This cannot be undone from here. Anything written since the run finished is overwritten too — the restore is to the point the run began, not a merge.',
+        )}
       </p>
     </div>
   );
 }
 
 function Outcome({ result }: { result: RewindResult }) {
+  const plural = usePlural();
+  const t = useT();
   // The preview can succeed and the restore still fail — the CLI session can go
   // away in between. Reporting the count from a refused attempt would be the
   // worst lie available here: the operator stops looking for their changes.
   if (!result.applied) {
-    return <Notice tone="warning" text={result.error ?? 'Nothing was restored.'} />;
+    return <Notice tone="warning" text={result.error ?? t('Nothing was restored.')} />;
   }
 
   return (
@@ -219,16 +227,20 @@ function Outcome({ result }: { result: RewindResult }) {
         // clean when part of it is not.
         <Notice
           tone="warning"
-          text={`Restored, but ${result.skippedLinks} file${
-            result.skippedLinks === 1 ? ' was' : 's were'
-          } left alone: a symbolic link, a hard link or a moved directory made restoring them unsafe. Check those paths by hand.`}
+          text={plural(
+            result.skippedLinks,
+            'Restored, but {n} file was left alone: a symbolic link, a hard link or a moved directory made restoring it unsafe. Check that path by hand.',
+            'Restored, but {n} files were left alone: a symbolic link, a hard link or a moved directory made restoring them unsafe. Check those paths by hand.',
+          )}
         />
       ) : (
         <Notice
           tone="success"
-          text={`Restored ${result.filesChanged.length} file${
-            result.filesChanged.length === 1 ? '' : 's'
-          } to their state before the run.`}
+          text={plural(
+            result.filesChanged.length,
+            'Restored {n} file to its state before the run.',
+            'Restored {n} files to their state before the run.',
+          )}
         />
       )}
       {result.filesChanged.length > 0 ? <FileList paths={result.filesChanged} /> : null}

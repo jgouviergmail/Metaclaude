@@ -20,6 +20,7 @@ import { ConfirmDialog } from '@/components/ui/Modal';
 import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
+import { usePlural, useT, type TranslateFn } from '@/lib/i18n';
 
 export function SessionList({
   workspaceId,
@@ -34,6 +35,7 @@ export function SessionList({
   onCreate: () => void;
   creating: boolean;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState('');
@@ -51,49 +53,51 @@ export function SessionList({
     mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) =>
       api.updateSession(id, { pinned }),
     onSuccess: invalidate,
-    onError: (error) => fail(error, 'Could not pin the session.'),
+    onError: (error) => fail(error, t('Could not pin the session.')),
   });
 
   const archive = useMutation({
     mutationFn: (id: string) => api.updateSession(id, { archived: true }),
     onSuccess: (_data, id) => {
       invalidate();
-      toast.success('Session archived');
+      toast.success(t('Session archived'));
       // Archiving drops the session out of the list; staying on it would leave
       // the transcript pointing at something the sidebar no longer offers.
       if (id === activeSessionId) navigate(`/w/${workspaceId}`);
     },
-    onError: (error) => fail(error, 'Could not archive the session.'),
+    onError: (error) => fail(error, t('Could not archive the session.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteSession(id),
     onSuccess: (_data, id) => {
       invalidate();
-      toast.success('Session deleted');
+      toast.success(t('Session deleted'));
       if (id === activeSessionId) navigate(`/w/${workspaceId}`, { replace: true });
     },
-    onError: (error) => fail(error, 'Could not delete the session.'),
+    onError: (error) => fail(error, t('Could not delete the session.')),
   });
 
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     if (!needle) return sessions;
-    return sessions.filter((session) => sessionTitle(session).toLowerCase().includes(needle));
+    return sessions.filter((session) => sessionTitle(session, t).toLowerCase().includes(needle));
   }, [sessions, filter]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-2 border-b border-line px-3 py-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-subtle">Sessions</h2>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-subtle">{t(
+            'Sessions',
+          )}</h2>
           <span className="text-[11px] tabular-nums text-subtle">{sessions.length}</span>
 
           <Button
             variant="ghost"
             size="icon-sm"
             className="ml-auto"
-            aria-label="New session"
+            aria-label={t('New session')}
             onClick={onCreate}
             loading={creating}
           >
@@ -112,31 +116,31 @@ export function SessionList({
               type="search"
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter sessions"
-              aria-label="Filter sessions"
+              placeholder={t('Filter sessions')}
+              aria-label={t('Filter sessions')}
               className="h-8 pl-8 text-[13px]"
             />
           </div>
         ) : null}
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto p-2" aria-label="Sessions">
+      <nav className="min-h-0 flex-1 overflow-y-auto p-2" aria-label={t('Sessions')}>
         {sessions.length === 0 ? (
           <EmptyState
             icon={<MessageSquarePlus />}
-            title="No sessions yet"
-            description="Start one to give Metaclaude something to work on in this workspace."
+            title={t('No sessions yet')}
+            description={t('Start one to give Metaclaude something to work on in this workspace.')}
             action={
               <Button variant="primary" size="sm" onClick={onCreate} loading={creating}>
                 <Plus className="size-4" />
-                New session
+                {t('New session')}
               </Button>
             }
             className="py-10"
           />
         ) : visible.length === 0 ? (
           <p className="px-3 py-8 text-center text-[13px] text-muted">
-            No session matches “{filter.trim()}”.
+            {t('No session matches “{filter}”.', { filter: filter.trim() })}
           </p>
         ) : (
           <ul className="space-y-0.5">
@@ -162,14 +166,12 @@ export function SessionList({
         onOpenChange={(open) => {
           if (!open) setPendingDelete(null);
         }}
-        title="Delete this session?"
-        description={
-          <>
-            “{pendingDelete ? sessionTitle(pendingDelete) : ''}” and its run history are removed
-            permanently. Files in the workspace are untouched.
-          </>
-        }
-        confirmLabel="Delete session"
+        title={t('Delete this session?')}
+        description={t(
+          '“{title}” and its run history are removed permanently. Files in the workspace are untouched.',
+          { title: pendingDelete ? sessionTitle(pendingDelete, t) : '' },
+        )}
+        confirmLabel={t('Delete session')}
         danger
         onConfirm={async () => {
           if (pendingDelete) await remove.mutateAsync(pendingDelete.id);
@@ -195,8 +197,10 @@ function SessionRow({
   onArchive: () => void;
   onDelete: () => void;
 }) {
+  const plural = usePlural();
+  const t = useT();
   const menuTrigger = useRef<HTMLButtonElement>(null);
-  const title = sessionTitle(session);
+  const title = sessionTitle(session, t);
 
   return (
     <li
@@ -220,7 +224,7 @@ function SessionRow({
       >
         <div className="flex items-center gap-1.5">
           {session.pinned ? (
-            <Pin className="size-3 shrink-0 text-subtle" aria-label="Pinned" />
+            <Pin className="size-3 shrink-0 text-subtle" aria-label={t('Pinned')} />
           ) : null}
           <StatusDot status={session.status} />
           <span
@@ -237,7 +241,7 @@ function SessionRow({
           <span>{formatRelative(session.lastActivityAt)}</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">
-            {session.runCount} {session.runCount === 1 ? 'run' : 'runs'}
+            {plural(session.runCount, '{n} run', '{n} runs')}
           </span>
         </div>
       </Link>
@@ -249,7 +253,7 @@ function SessionRow({
           <button
             ref={menuTrigger}
             type="button"
-            aria-label={`Actions for ${title}`}
+            aria-label={t('Actions for {title}', { title: title })}
             className={cn(
               'absolute right-1 top-1.5 flex size-7 items-center justify-center rounded-md',
               'text-subtle transition-colors hover:bg-raised hover:text-ink',
@@ -267,14 +271,14 @@ function SessionRow({
           icon={session.pinned ? <PinOff /> : <Pin />}
           onSelect={onTogglePin}
         >
-          {session.pinned ? 'Unpin' : 'Pin to top'}
+          {session.pinned ? 'Unpin' : t('Pin to top')}
         </MenuItem>
         <MenuItem icon={<Archive />} onSelect={onArchive}>
-          Archive
+          {t('Archive')}
         </MenuItem>
         <MenuSeparator />
         <MenuItem icon={<Trash2 />} tone="danger" onSelect={onDelete}>
-          Delete
+          {t('Delete')}
         </MenuItem>
       </Menu>
     </li>
@@ -283,12 +287,13 @@ function SessionRow({
 
 /** Idle sessions get no dot at all — quiet is the common case and needs no ink. */
 function StatusDot({ status }: { status: SessionStatus }) {
+  const t = useT();
   if (status === 'running') {
     return (
       <span
         role="img"
-        aria-label="Running"
-        title="Running"
+        aria-label={t('Running')}
+        title={t('Running')}
         className="pulse-ring relative size-1.5 shrink-0 rounded-full bg-accent"
       />
     );
@@ -298,8 +303,8 @@ function StatusDot({ status }: { status: SessionStatus }) {
     return (
       <span
         role="img"
-        aria-label="Waiting for approval"
-        title="Waiting for approval"
+        aria-label={t('Waiting for approval')}
+        title={t('Waiting for approval')}
         className="size-1.5 shrink-0 rounded-full bg-warning"
       />
     );
@@ -309,8 +314,8 @@ function StatusDot({ status }: { status: SessionStatus }) {
     return (
       <span
         role="img"
-        aria-label="Failed"
-        title="Failed"
+        aria-label={t('Failed')}
+        title={t('Failed')}
         className="size-1.5 shrink-0 rounded-full bg-danger"
       />
     );
@@ -319,6 +324,7 @@ function StatusDot({ status }: { status: SessionStatus }) {
   return null;
 }
 
-function sessionTitle(session: Session): string {
-  return session.title || 'New session';
+/** Not a component, so `t` arrives as an argument rather than from a hook. */
+function sessionTitle(session: Session, t: TranslateFn): string {
+  return session.title || t('New session');
 }

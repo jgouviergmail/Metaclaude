@@ -22,6 +22,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -31,6 +32,19 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE = join(ROOT, 'deploy', 'ratchets.json');
 
 const UPDATE = process.argv.includes('--update');
+
+/**
+ * `--list` prints what the i18n ratchets actually found, on stderr.
+ *
+ * A ceiling that says "21" and nothing else is a number you cannot act on: the
+ * first thing anyone does is re-implement the measurement in a throwaway
+ * script to see the twenty-one. This is that script, kept beside the rule it
+ * reports on so the two cannot disagree.
+ */
+const LIST = process.argv.includes('--list');
+function note(kind, file, text) {
+  if (LIST) process.stderr.write(`  ${kind}  ${file}  ${String(text).replace(/\s+/g, ' ')}\n`);
+}
 
 /* -------------------------------------------------------------------------- */
 /* Measurements                                                               */
@@ -102,19 +116,29 @@ function countDeployChecks() {
  * it. Measured once by hand at 411 keys and one gap; a ratchet is what keeps
  * that from drifting back, since each new feature adds keys.
  *
- * Matches `t('…')` / `t("…")` in non-test components. Template literals and
- * computed keys are not counted: they cannot be resolved statically, and a
- * ratchet that guesses is worse than one with a stated blind spot.
+ * Matches `t('…')` / `t("…")` in non-test components, and both arms of
+ * `plural(n, '…', '…')` — a counted sentence carries two whole keys and
+ * neither of them passes through `t()` at the call site, so a check that only
+ * knew about `t()` reported a complete catalogue while every plural was
+ * English. Template literals and computed keys are still not counted: they
+ * cannot be resolved statically, and a ratchet that guesses is worse than one
+ * with a stated blind spot.
  */
 function countUntranslatedStrings() {
   const CALL = /\bt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g;
+  const PLURAL = /\bplural\(\s*[^,]+?,\s*'((?:[^'\\]|\\.)*)',\s*'((?:[^'\\]|\\.)*)'/gs;
   const catalogue = read('apps/web/src/locales/fr.ts');
   const keys = new Set();
   for (const file of tracked('apps/web/src/*')) {
     if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
-    for (const match of read(file).matchAll(CALL)) {
+    const body = read(file);
+    for (const match of body.matchAll(CALL)) {
       const key = match[1] ?? match[2];
       if (key) keys.add(key);
+    }
+    for (const match of body.matchAll(PLURAL)) {
+      keys.add(match[1]);
+      keys.add(match[2]);
     }
   }
   let missing = 0;
@@ -125,29 +149,325 @@ function countUntranslatedStrings() {
 }
 
 /**
- * User-visible English left hard-coded in a component that already translates.
+ * User-visible English left hard-coded, anywhere in the web app.
  *
  * The third and last way a string escapes the catalogue, and the only one the
- * other two cannot see: the component calls `t()` elsewhere, so the hook
- * check passes, and the literal never reaches `t()` at all, so the
+ * other two cannot see: the literal never reaches `t()` at all, so the
  * missing-key check has nothing to look for. `UserMenu` shipped six of these
  * — `Light`, `Transcript`, `Sign out` — with their French already sitting in
  * `fr.ts`, unreachable.
  *
- * A ceiling rather than a floor of zero: `AgentsPage` carries most of what is
- * left, and lowering it is ordinary follow-up work. `lib/i18n.tsx` is skipped
- * because it is the translator itself, where the pattern matches type
- * annotations rather than prose.
+ * It measured far less than it appeared to. All three i18n checks filtered on
+ * `body.includes('useT')`, which is exactly right for the two that ask "does
+ * this component translate correctly?" and exactly wrong for this one, which
+ * asks "is anything left in English?". A component that never adopted i18n at
+ * all was invisible to all three at once — and 28 of the 52 text-bearing ones
+ * had not: about 270 strings nobody was counting, while the ceiling stood at
+ * 31 and read like a rounding error. `MemoryPage` rendered entirely in English
+ * next to a French dashboard, and every measurement agreed that i18n was
+ * essentially finished.
+ *
+ * Attributes are counted for the same reason. `title`, `aria-label`,
+ * `placeholder` and `alt` are read by somebody — the last two by everybody,
+ * the middle one by exactly the users with the least recourse — and a JSX text
+ * scan cannot see them. `AppShell` had its whole navigation labelled in
+ * English behind `aria-label`, silently.
+ *
+ * Two exclusions, both narrow. `lib/i18n.tsx` is the translator itself, where
+ * the pattern matches type annotations rather than prose. Product names are
+ * not translatable strings, so counting them would put a floor under the
+ * ceiling that no amount of work could reach.
+ *
+ * The lookbehind is load-bearing: `() => Promise<Record<K, C>>` in a `.tsx`
+ * file offers a `>`, a capitalised word and a `<` in that order, and reads as
+ * prose to a regex. A ratchet that cries wolf gets disabled.
  */
-function countHardcodedUiText() {
-  const TEXT = />\s*([A-Z][a-z]+(?: [A-Za-z’']+){0,5})\s*</g;
-  let n = 0;
+const PRODUCT_NAMES = new Set(['Metaclaude', 'Claude', 'Anthropic']);
+
+/**
+ * Terms rendered verbatim in every language: commands, paths, env vars, token
+ * prefixes, the name of a feature. Named one by one, because "looks like an
+ * identifier" is the rule that hid `failed`, `paused` and `staged` — every
+ * badge label in the app — behind a pattern written for `sk-ant-oat`.
+ */
+const VERBATIM = new Set([
+  'sk-ant-oat',
+  'sk-ant-api',
+  'claude setup-token',
+  'deploy/install-app.sh',
+  'METACLAUDE_BOOTSTRAP_USER',
+  'METACLAUDE_BOOTSTRAP_PASSWORD',
+  '.env',
+  'plugin@',
+  'claude.ai',
+  'ultracode',
+  'Bearer …',
+]);
+
+/**
+ * The TypeScript compiler, or null where it is not installed.
+ *
+ * `deploy/check.sh` runs this file off-box, where there may be no
+ * `node_modules`; the metrics that need a parser then report as skipped, the
+ * same contract the bundle measurement already has. CI installs before running
+ * it, so nothing is skipped where it counts.
+ */
+let cachedTs;
+function typescript() {
+  if (cachedTs === undefined) {
+    try {
+      cachedTs = createRequire(join(ROOT, 'package.json'))('typescript');
+    } catch {
+      cachedTs = null;
+    }
+  }
+  return cachedTs;
+}
+
+/** Every non-test component, parsed. */
+function* webComponents(ts) {
   for (const file of tracked('apps/web/src/*')) {
     if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
     if (file.endsWith('lib/i18n.tsx')) continue;
+    // The error boundary is a class, and deliberately carries its own copy in
+    // both languages: it may be catching the very provider `t` comes from, so
+    // it must not depend on it. See the comment on `boundaryCopy`.
+    if (file.endsWith('components/RootBoundary.tsx')) continue;
     const body = read(file);
-    if (!body.includes('useT')) continue;
-    n += (body.match(TEXT) ?? []).length;
+    yield {
+      file,
+      body,
+      sf: ts.createSourceFile(file, body, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX),
+    };
+  }
+}
+
+/** A path, a package name, a URL, a slug: the same in every language. */
+const CODEISH = /^[a-z0-9_.:/@#-]+$/i;
+
+/**
+ * Diagnostics are not copy: `console.error(…)` and `throw new Error(…)` are
+ * read in a devtools console, by a developer, in English.
+ */
+function isDiagnostic(ts, sf, node) {
+  for (let p = node.parent; p; p = p.parent) {
+    if (ts.isNewExpression(p) || ts.isThrowStatement(p)) return true;
+    if (ts.isCallExpression(p) && /^console\./.test(p.expression.getText(sf))) return true;
+  }
+  return false;
+}
+
+/**
+ * A literal outside every function is a module constant, which is the
+ * *documented* way to hold copy that must not bake a language in at import time
+ * — `t(entry.label)` translates it at render. `hardcodedUiText` therefore skips
+ * those (counting them would penalise the correct pattern) and
+ * `untranslatedConstants` takes them, by asking the catalogue rather than the
+ * syntax.
+ */
+function insideFunction(ts, node) {
+  for (let p = node.parent; p; p = p.parent) {
+    if (ts.isFunctionDeclaration(p) || ts.isFunctionExpression(p) || ts.isArrowFunction(p)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Attributes read by somebody, as opposed to the ones that carry machinery. */
+const TEXT_ATTRS = new Set([
+  'title', 'aria-label', 'placeholder', 'alt', 'description', 'label', 'subtitle',
+  'hint', 'tooltip', 'confirmLabel', 'summary', 'content', 'valuePlaceholder',
+]);
+
+function countHardcodedUiText() {
+  const ts = typescript();
+  if (!ts) return null;
+
+  let n = 0;
+  for (const { file, sf } of webComponents(ts)) {
+    const inTranslator = (node) => {
+      for (let p = node.parent; p; p = p.parent) {
+        if (
+          ts.isCallExpression(p) &&
+          ts.isIdentifier(p.expression) &&
+          (p.expression.text === 't' || p.expression.text === 'plural')
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const walk = (node) => {
+      // JSX text. Lowercase included: a `<Badge>` says `paused`, and the
+      // previous pattern required a capital, so every status label in the app
+      // was invisible to it.
+      if (ts.isJsxText(node)) {
+        const text = node.text.replace(/\s+/g, ' ').trim();
+        if (/[A-Za-z]{2,}/.test(text) && !PRODUCT_NAMES.has(text) && !VERBATIM.has(text)) {
+          n += 1;
+          note('jsx ', file, text);
+        }
+      }
+      // A text-bearing attribute given a bare literal. Here — unlike in JSX
+      // text, where the same rule hid every lowercase badge — a code-shaped
+      // value really is code: these attributes carry the *example* a
+      // placeholder shows, and `https://github.com/owner/repo.git` and
+      // `release-notes` are the same string in every language.
+      if (ts.isJsxAttribute(node) && node.initializer && ts.isStringLiteral(node.initializer)) {
+        const value = node.initializer.text;
+        if (
+          TEXT_ATTRS.has(node.name.getText(sf)) &&
+          /[A-Za-z]{2,}/.test(value) &&
+          !CODEISH.test(value) &&
+          !PRODUCT_NAMES.has(value) &&
+          !VERBATIM.has(value)
+        ) {
+          n += 1;
+          note('attr', file, value);
+        }
+      }
+      // A sentence in a string literal that never reaches the translator —
+      // every toast, every `cond ? 'Archive' : 'Restore'`, every
+      // `aria-label={`Actions for ${name}`}`. None of those are JSX text, so
+      // no scan of JSX could see them, and they were the larger half.
+      if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+        const text = node.text.trim();
+        if (
+          SENTENCE.test(text) &&
+          !VERBATIM.has(text) &&
+          insideFunction(ts, node) &&
+          !isDiagnostic(ts, sf, node) &&
+          !inTranslator(node)
+        ) {
+          n += 1;
+          note('lit ', file, text);
+        }
+      }
+      if (ts.isTemplateExpression(node)) {
+        const text = (node.head.text + node.templateSpans.map((s) => s.literal.text).join(' ')).trim();
+        if (
+          SENTENCE.test(text) &&
+          insideFunction(ts, node) &&
+          !isDiagnostic(ts, sf, node) &&
+          !inTranslator(node)
+        ) {
+          n += 1;
+          note('tpl ', file, text);
+        }
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(sf);
+  }
+  return n;
+}
+
+/** Two words or more, opening on a capital: the shape of a sentence, not a key. */
+const SENTENCE = /^[A-Z][a-z’'-]+(?:[ ,:’'-][A-Za-z0-9“”’'(){}.…-]+){1,}/;
+
+/**
+ * Copy held as a module constant that the catalogue does not carry.
+ *
+ * `i18n.tsx` documents the pattern: a nav entry, a preset list, a risk table
+ * keeps its English as *data* and is translated at render with `t(entry.label)`
+ * — a constant evaluated at import time must never bake a language in. That is
+ * correct, and it is also invisible to both other i18n checks: no `t('…')`
+ * call names the string, and it is not JSX text. `DoctorReportView`'s three
+ * verdicts and `SessionPage`'s three starter prompts sat in English that way
+ * while every measurement said the catalogue was complete.
+ *
+ * Asking the catalogue rather than the syntax is what makes this safe: a
+ * constant whose French exists is right whether or not the render site could
+ * be proved to call `t`.
+ */
+function countUntranslatedConstants() {
+  const ts = typescript();
+  if (!ts) return null;
+
+  const catalogue = read('apps/web/src/locales/fr.ts');
+  const missing = new Set();
+  for (const { file, sf } of webComponents(ts)) {
+    const walk = (node) => {
+      if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+        const text = node.text.trim();
+        if (
+          SENTENCE.test(text) &&
+          !VERBATIM.has(text) &&
+          !PRODUCT_NAMES.has(text) &&
+          !insideFunction(ts, node) &&
+          !isDiagnostic(ts, sf, node) &&
+          !catalogue.includes(text)
+        ) {
+          missing.add(text);
+          note('cst ', file, text);
+        }
+        return;
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(sf);
+  }
+  return missing.size;
+}
+
+/**
+ * Hooks called somewhere React will not run them.
+ *
+ * The i18n codemods put `const t = useT()` in the *innermost* enclosing
+ * function, which for a toast inside `onSuccess: () => {…}` or a row inside
+ * `rows.map(row => …)` is a plain callback. React throws on the first call —
+ * outside render — and nothing here could see it: TypeScript is happy, the
+ * component renders in every test that does not reach that branch, and there
+ * is no ESLint in this repo to carry `react-hooks/rules-of-hooks`. Forty-five
+ * of them shipped into one working tree before anything noticed.
+ *
+ * "Where React will run them" is: directly in the body of a function named in
+ * PascalCase (a component) or `useSomething` (a hook). Anything else counts.
+ */
+function countMisplacedHooks() {
+  const ts = typescript();
+  if (!ts) return null;
+
+  let n = 0;
+  for (const { sf } of webComponents(ts)) {
+    const nameOf = (fn) => {
+      if (ts.isFunctionDeclaration(fn) && fn.name) return fn.name.getText(sf);
+      let node = fn.parent;
+      while (node && (ts.isCallExpression(node) || ts.isParenthesizedExpression(node))) {
+        node = node.parent;
+      }
+      if (node && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+        return node.name.getText(sf);
+      }
+      return fn.name ? fn.name.getText(sf) : null;
+    };
+
+    const walk = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        /^use[A-Z]/.test(node.expression.text)
+      ) {
+        let owner = null;
+        for (let cur = node.parent; cur && !owner; cur = cur.parent) {
+          if (
+            ts.isFunctionDeclaration(cur) ||
+            ts.isFunctionExpression(cur) ||
+            ts.isArrowFunction(cur)
+          ) {
+            owner = cur;
+          }
+        }
+        const name = owner ? nameOf(owner) : null;
+        // No enclosing function at all is a module-level `useSomething()`,
+        // which is equally wrong; an unnamed one cannot be a component.
+        if (!name || !(/^[A-Z]/.test(name) || /^use[A-Z]/.test(name))) n += 1;
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(sf);
   }
   return n;
 }
@@ -169,11 +489,16 @@ function countHardcodedUiText() {
  * calling it has no legitimate form.
  */
 function countUnusedTranslationHooks() {
+  // The *import*, not the word. `body.includes('useT')` also matches a comment
+  // explaining why a component does not use the hook — which is exactly what
+  // `RootBoundary` says, and it tripped this check on prose. Same family as
+  // the raw-palette ratchet, and easier to fix here: an import is unambiguous.
+  const IMPORTS_HOOK = /import\s*\{[^}]*\buseT\b[^}]*\}\s*from\s*'@\/lib\/i18n'/;
   let n = 0;
   for (const file of tracked('apps/web/src/*')) {
     if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
     const body = read(file);
-    if (!body.includes('useT')) continue;
+    if (!IMPORTS_HOOK.test(body)) continue;
     if (!/\bt\(/.test(body)) n += 1;
   }
   return n;
@@ -298,6 +623,22 @@ const METRICS = [
     direction: 'down',
     label: 'user-visible English not routed through t()',
     measure: countHardcodedUiText,
+    // Needs a parser; skipped where `node_modules` is absent.
+    optional: true,
+  },
+  {
+    key: 'untranslatedConstants',
+    direction: 'down',
+    label: 'module-level copy the French catalogue does not carry',
+    measure: countUntranslatedConstants,
+    optional: true,
+  },
+  {
+    key: 'misplacedHooks',
+    direction: 'down',
+    label: 'hooks called outside a component or a hook',
+    measure: countMisplacedHooks,
+    optional: true,
   },
   {
     key: 'unusedTranslationHooks',

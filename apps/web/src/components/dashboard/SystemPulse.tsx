@@ -16,7 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useId } from 'react';
 import type { UsagePoint } from '@metaclaude/shared';
 import { api } from '@/lib/api';
-import { useT } from '@/lib/i18n';
+import { usePlural, useT } from '@/lib/i18n';
 import { cn, formatRelative } from '@/lib/utils';
 
 const HOUR_MS = 60 * 60_000;
@@ -61,6 +61,7 @@ export function SystemPulse({
   lastFinishedAt: number | null;
   now?: number;
 }) {
+  const plural = usePlural();
   const t = useT();
   const uid = useId();
 
@@ -78,16 +79,21 @@ export function SystemPulse({
   const sentence =
     activeRuns > 0
       ? [
-          t('{n} run(s) working right now', { n: activeRuns }),
+          plural(activeRuns, '{n} run working right now', '{n} runs working right now'),
           queuedRuns > 0 ? t('{n} queued', { n: queuedRuns }) : null,
-          approvals > 0 ? t('{n} decision(s) waiting on you', { n: approvals }) : null,
+          approvals > 0
+            ? plural(approvals, '{n} decision waiting on you', '{n} decisions waiting on you')
+            : null,
         ]
           .filter(Boolean)
           .join(' · ')
       : approvals > 0
-        ? t('{n} decision(s) waiting on you', { n: approvals })
+        ? plural(approvals, '{n} decision waiting on you', '{n} decisions waiting on you')
         : lastFinishedAt
-          ? t('All quiet — the last run finished {when}.', { when: formatRelative(lastFinishedAt) })
+          ? t(
+            'All quiet — the last run finished {when}.',
+            { when: formatRelative(lastFinishedAt) },
+          )
           : t('All quiet. Send a message, or fill the board and let it work.');
 
   const W = BARS * 9;

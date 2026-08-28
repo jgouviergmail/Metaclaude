@@ -18,8 +18,10 @@
 
 import { useMemo } from 'react';
 import { encode } from 'uqr';
+import { useT } from '@/lib/i18n';
 
 export function TotpQr({ uri }: { uri: string }) {
+  const t = useT();
   const { path, size } = useMemo(() => {
     const qr = encode(uri, { ecc: 'M', border: 2 });
     // One subpath per dark module. Crude but tiny, and a path compresses far
@@ -36,7 +38,7 @@ export function TotpQr({ uri }: { uri: string }) {
   return (
     <div
       role="img"
-      aria-label="QR code — scan it with your authenticator app"
+      aria-label={t('QR code — scan it with your authenticator app')}
       className="inline-block rounded-lg border border-line bg-white p-2"
     >
       <svg

@@ -46,6 +46,7 @@ import {
   type KnowledgeSearchHit,
   type SaveKnowledgeRequest,
   type LibraryListingEntry,
+  type McpServerDescription,
   type McpServerRecord,
   type Memory,
   type MemoryKind,
@@ -184,6 +185,20 @@ export interface MeResponse {
   user: User;
   csrfToken: string | null;
   recoveryCodesRemaining: number;
+}
+
+/**
+ * A registry action applied to many rows.
+ *
+ * `workspaceId` is three-way, like the listings it mirrors: absent means every
+ * scope, `null` means global only, a string means that workspace *and* the
+ * globals it also lists. Omitting it is not the same as sending null, which is
+ * why it is optional rather than nullable-with-a-default.
+ */
+export interface BulkRegistryInput {
+  action: 'enable' | 'disable' | 'delete';
+  ids: string[];
+  workspaceId?: string | null;
 }
 
 export const api = {
@@ -658,12 +673,30 @@ export const api = {
   saveSkill: (body: Record<string, unknown>) =>
     request<{ skill: SkillDefinition }>('/api/skills', { method: 'POST', body }),
   deleteSkill: (id: string) => request<{ ok: boolean }>(`/api/skills/${id}`, { method: 'DELETE' }),
+  /**
+   * Many at once, by id.
+   *
+   * Ids rather than "everything in this scope": a workspace listing includes
+   * the global entries, so a scope wildcard would let one screen delete the
+   * shared library. What the operator saw is what travels.
+   */
+  bulkSkills: (body: BulkRegistryInput) =>
+    request<{ changed: number }>('/api/skills/bulk', { method: 'POST', body }),
 
   agents: (workspaceId?: string) =>
     request<{ agents: AgentDefinitionRecord[] }>(`/api/agents${qs({ workspaceId })}`),
   saveAgent: (body: Record<string, unknown>) =>
     request<{ agent: AgentDefinitionRecord }>('/api/agents', { method: 'POST', body }),
   deleteAgent: (id: string) => request<{ ok: boolean }>(`/api/agents/${id}`, { method: 'DELETE' }),
+  /**
+   * One server's own account of itself — tool descriptions and instructions.
+   * Never a health check: the catalogue decides whether a server connects.
+   */
+  describeMcpServer: (id: string) =>
+    request<{ description: McpServerDescription }>(`/api/mcp/${id}/describe`, { method: 'POST' }),
+
+  bulkAgents: (body: BulkRegistryInput) =>
+    request<{ changed: number }>('/api/agents/bulk', { method: 'POST', body }),
 
   library: () => request<{ entries: LibraryListingEntry[] }>('/api/library'),
   installLibraryEntry: (name: string) =>

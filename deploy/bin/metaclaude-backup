@@ -55,9 +55,26 @@ VOLUMES=(metaclaude-data metaclaude-workspaces metaclaude-home caddy-data)
 
 BACKUP_DIR="${METACLAUDE_BACKUP_DIR:-/var/backups/metaclaude}"
 KEEP="${METACLAUDE_BACKUP_KEEP:-14}"
+# Floor on the room an archive needs, used when there is no previous archive to
+# size the next one from. A separate volume for the archives is the recommended
+# layout, and a separate volume is one nobody watches until it is full.
+MIN_FREE_BYTES="${METACLAUDE_BACKUP_MIN_FREE_BYTES:-}"
+[ -n "$MIN_FREE_BYTES" ] || MIN_FREE_BYTES=$((1024 * 1024 * 1024))
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf '[%s] ERROR: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
+
+# Both knobs end up on the right of `-ge`, where a non-numeric value is a bash
+# error rather than a wrong answer. An operator who writes `2GB` in deploy.conf
+# deserves a sentence naming the setting, not `integer expression expected`
+# from inside a function three calls down.
+case "$KEEP" in
+  '' | *[!0-9]*) die "METACLAUDE_BACKUP_KEEP must be a whole number of archives, got '$KEEP'" ;;
+esac
+[ "$KEEP" -ge 1 ] || die "METACLAUDE_BACKUP_KEEP must keep at least one archive, got '$KEEP'"
+case "$MIN_FREE_BYTES" in
+  '' | *[!0-9]*) die "METACLAUDE_BACKUP_MIN_FREE_BYTES must be a whole number of bytes, got '$MIN_FREE_BYTES'" ;;
+esac
 
 usage() {
   cat <<'USAGE'
@@ -101,6 +118,54 @@ marker_path() {
   local data_mnt
   data_mnt="$(mountpoint_of metaclaude-data)" || return 1
   printf '%s/backup-marker.json' "$data_mnt"
+}
+
+# Free bytes on the filesystem holding $1, or nothing when df cannot say.
+#
+# Guarded on both sides. Under `set -e` with pipefail an assignment from a
+# failing command substitution exits the script — uninstall.sh died exactly
+# there — and a backup must never abort because df disliked a path. A
+# non-numeric answer is treated as "not measured", never as zero.
+free_bytes_at() {
+  local kb
+  kb="$(df -P -k "$1" 2>/dev/null | awk 'NR == 2 { print $4 }')" || kb=""
+  case "$kb" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s' "$((kb * 1024))"
+}
+
+# Refuse a backup there is no room for, while the app is still serving.
+#
+# The alternative is discovering it half-way through tar, with the app already
+# stopped: the partial is removed, but the outage was bought for nothing. The
+# requirement is sized from the last archive rather than from the volumes,
+# because reading it costs one stat where `du` over the volumes costs a walk
+# of everything the agent has ever written — and the last archive is the best
+# available predictor of the next one.
+#
+# It deliberately does not prune below the ceiling to make room. That would
+# trade an archive that is known good for one that has not been written yet,
+# and if the new one then fails the operator is left with strictly less than
+# they had. Refusing keeps every existing archive and names the three knobs
+# that fix it.
+require_room() {
+  local free last size need
+  free="$(free_bytes_at "$BACKUP_DIR")" || {
+    log "could not measure free space at $BACKUP_DIR — continuing"
+    return 0
+  }
+
+  last="$(ls -1t "$BACKUP_DIR"/metaclaude-backup-*.tar.gz 2>/dev/null | head -1)" || last=""
+  size=0
+  [ -n "$last" ] && { size="$(stat -c %s "$last" 2>/dev/null)" || size=0; }
+
+  # Twice the last archive: one for the archive being written, one for the
+  # margin that keeps a growing deployment from failing on the run *after*
+  # the one that just fitted.
+  need=$((size * 2))
+  [ "$need" -ge "$MIN_FREE_BYTES" ] || need="$MIN_FREE_BYTES"
+
+  [ "$free" -ge "$need" ] || die \
+    "only $((free / 1024 / 1024)) MB free at $BACKUP_DIR, and this backup needs about $((need / 1024 / 1024)) MB — nothing was stopped. Free space there, lower METACLAUDE_BACKUP_KEEP, or point METACLAUDE_BACKUP_DIR at a larger volume."
 }
 
 prune_archives() {
@@ -177,6 +242,15 @@ trap cleanup EXIT
 
 if [ "$ACTION" = "backup" ]; then
   install -d -m 0700 "$BACKUP_DIR"
+
+  # Retention first, then the room check, then anything that touches the app.
+  # Pruning afterwards alone was enough while the archives shared the system
+  # disk; on a volume of their own it is not, because lowering the ceiling has
+  # to free the room on the very next run rather than needing one more
+  # archive's worth of space before it can take effect.
+  prune_archives
+  require_room
+
   STAMP="$(date -u +%Y%m%d-%H%M%SZ)"
   ARCHIVE="$BACKUP_DIR/metaclaude-backup-$STAMP.tar.gz"
   # Second-resolution names collide only when two backups start inside one
@@ -219,9 +293,16 @@ if [ "$ACTION" = "backup" ]; then
   # that died mid-tar never advances the doctor's clock. Atomic for the same
   # reason: the app may be reading it.
   SIZE="$(stat -c %s "$ARCHIVE")"
+  # The archives sit on a volume the container does not mount, so the app can
+  # never measure it. This figure is the doctor's only view of it, and the
+  # reason the check there can escalate before the volume is actually full.
+  # `null`, never a number, when df could not answer: the doctor treats a
+  # finite figure as a measurement, so a sentinel like -1 would report a
+  # perfectly healthy volume as critically full.
+  FREE="$(free_bytes_at "$BACKUP_DIR")" || FREE=null
   MARKER="${MOUNT[metaclaude-data]}/backup-marker.json"
-  printf '{"at":%s,"archive":"%s","sizeBytes":%s}\n' \
-    "$(( $(date -u +%s) * 1000 ))" "$(basename "$ARCHIVE")" "$SIZE" > "$MARKER.tmp"
+  printf '{"at":%s,"archive":"%s","sizeBytes":%s,"freeBytes":%s}\n' \
+    "$(( $(date -u +%s) * 1000 ))" "$(basename "$ARCHIVE")" "$SIZE" "$FREE" > "$MARKER.tmp"
   chmod 0644 "$MARKER.tmp"
   mv "$MARKER.tmp" "$MARKER"
 

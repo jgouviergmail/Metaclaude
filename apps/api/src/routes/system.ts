@@ -3,8 +3,10 @@
  */
 
 import { execFile } from 'node:child_process';
-import { statfs } from 'node:fs/promises';
+import { readFile, statfs } from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 import { promisify } from 'node:util';
+import { HostMetrics } from '../services/host-metrics.js';
 import type { App } from '../http/types.js';
 import {
   APP_VERSION,
@@ -25,6 +27,34 @@ const execFileAsync = promisify(execFile);
 /** Cached CLI probe — spawning a process on every health poll would be wasteful. */
 let cliProbe: { at: number; version: string | null } | null = null;
 const CLI_PROBE_TTL_MS = 60_000;
+
+/**
+ * One instance for the process, because CPU usage is a rate: it is the
+ * difference between this read and the last one, so the sample has to outlive
+ * the request that took it. Module-level for the same reason `cliProbe` is —
+ * the judgement all lives in the class, which is tested on its own.
+ */
+const hostMetrics = new HostMetrics({
+  readFile: async (path) => {
+    try {
+      return await readFile(path, 'utf8');
+    } catch {
+      // Absent on macOS and Windows, and absent inside a container without
+      // cgroup v2. Not an error: a figure nobody can measure.
+      return null;
+    }
+  },
+  statfs: async (path) => {
+    const stats = await statfs(path);
+    return {
+      freeBytes: Number(stats.bavail) * Number(stats.bsize),
+      totalBytes: Number(stats.blocks) * Number(stats.bsize),
+    };
+  },
+  rss: () => process.memoryUsage().rss,
+  cpuCount: () => availableParallelism(),
+  now: () => Date.now(),
+});
 
 async function probeClaudeCli(binPath: string | null): Promise<string | null> {
   if (cliProbe && Date.now() - cliProbe.at < CLI_PROBE_TTL_MS) return cliProbe.version;
@@ -53,13 +83,7 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
     const version = await probeClaudeCli(context.config.claude.binPath);
     const credential = context.claudeCredentials.status();
 
-    let diskFreeBytes = 0;
-    try {
-      const stats = await statfs(context.config.dataDir);
-      diskFreeBytes = Number(stats.bavail) * Number(stats.bsize);
-    } catch {
-      // statfs is unavailable on some filesystems; report zero rather than fail.
-    }
+    const resources = await hostMetrics.read(context.config.dataDir);
 
     const health: SystemHealth = {
       version: APP_VERSION,
@@ -80,8 +104,7 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       queuedRuns: context.kernel.queuedCount,
       memoryCount: context.memory.count(),
       embeddingProvider: context.embedder.id,
-      diskFreeBytes,
-      rssBytes: process.memoryUsage().rss,
+      resources,
     };
     return reply.send(health);
   });

@@ -121,10 +121,20 @@ ALLOWED_IMAGE_PREFIX="$IMAGE_PREFIX"
 # How long a new container may take to report healthy before it is rolled back.
 HEALTH_TIMEOUT_SECONDS=180
 
+# How many images of the repository above survive a deploy, newest first.
+# Whatever releases/current and releases/previous resolve to is spared on top,
+# so the rollback button always has a target.
+# IMAGE_KEEP=3
+
 # Read by bin/metaclaude-backup. Archives deliberately live outside the app
-# directory (uninstall.sh deletes that tree, and backups must survive it).
+# directory (uninstall.sh deletes that tree, and backups must survive it) —
+# and on a separate volume where you have one, which is also a volume nothing
+# else watches. A run that would not fit refuses while the app is still
+# serving rather than half-way through tar; MIN_FREE_BYTES is the floor used
+# when there is no previous archive to size the next one from.
 # METACLAUDE_BACKUP_DIR=/var/backups/metaclaude
 # METACLAUDE_BACKUP_KEEP=14
+# METACLAUDE_BACKUP_MIN_FREE_BYTES=1073741824
 CONF
 chown root:"$DEPLOY_USER" "$APP_DIR/deploy.conf"
 chmod 0640 "$APP_DIR/deploy.conf"

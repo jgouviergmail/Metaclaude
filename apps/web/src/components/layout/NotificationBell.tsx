@@ -33,7 +33,10 @@ export function NotificationBell() {
         <button
           type="button"
           className="relative flex size-8 items-center justify-center rounded-lg text-subtle hover:bg-raised hover:text-ink"
-          aria-label={unread > 0 ? t('Notifications ({n} unread)', { n: unread }) : t('Notifications')}
+          aria-label={unread > 0 ? t(
+            'Notifications ({n} unread)',
+            { n: unread },
+          ) : t('Notifications')}
         >
           <Bell className="size-4" aria-hidden />
           {unread > 0 ? (
@@ -56,7 +59,9 @@ export function NotificationBell() {
             <h3 className="text-[13px] font-semibold text-ink">{t('Notifications')}</h3>
             {items.length > 0 ? (
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon-sm" onClick={markAllRead} aria-label={t('Mark all read')}>
+                <Button variant="ghost" size="icon-sm" onClick={markAllRead} aria-label={t(
+                  'Mark all read',
+                )}>
                   <CheckCheck className="size-3.5" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" onClick={clear} aria-label={t('Clear all')}>
@@ -96,7 +101,7 @@ export function NotificationBell() {
                             to a hue. */}
                         <span className="sr-only">{t(LEVEL_LABEL[item.level])}</span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-medium text-ink">{item.title}</p>
+                          <p className="truncate text-[13px] font-medium text-ink">{t(item.title)}</p>
                           <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">
                             {item.message}
                           </p>

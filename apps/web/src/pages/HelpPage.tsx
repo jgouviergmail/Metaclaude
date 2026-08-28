@@ -30,6 +30,7 @@ import {
 import { renderMarkdown } from '@/lib/markdown';
 import { cn } from '@/lib/utils';
 import { APP_VERSION } from '@metaclaude/shared';
+import { useT } from '@/lib/i18n';
 
 type Tab = 'guide' | 'changelog';
 
@@ -38,6 +39,7 @@ const TAB_CLASS =
   'px-3 py-2 text-[13px] font-medium text-muted border-b-2 border-transparent transition-colors data-[state=active]:border-accent data-[state=active]:text-ink hover:text-ink';
 
 export function HelpPage() {
+  const t = useT();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('guide');
   const [active, setActive] = useState(guideChapters[0]?.slug ?? '');
@@ -93,7 +95,7 @@ export function HelpPage() {
       const { workspaceId, sessionId } = await ensureHelpSession(api, trimmed);
       navigate(`/w/${workspaceId}/s/${sessionId}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not start the help session.');
+      toast.error(error instanceof Error ? error.message : t('Could not start the help session.'));
       setAsking(false);
     }
   };
@@ -103,8 +105,10 @@ export function HelpPage() {
   return (
     <AppShell>
       <ContentHeader
-        title="Help"
-        subtitle={`You are on Metaclaude ${APP_VERSION}. The guide below ships with it.`}
+        title={t('Help')}
+        subtitle={t('You are on Metaclaude {version}. The guide below ships with it.', {
+          version: APP_VERSION,
+        })}
       />
 
       {/* The standard page scroll container: without it the content column
@@ -116,11 +120,12 @@ export function HelpPage() {
           <Card className="p-4">
             <div className="mb-2 flex items-center gap-2 text-[13px] font-medium text-ink">
               <Sparkles className="size-4 text-accent" aria-hidden />
-              Ask Metaclaude about itself
+              {t('Ask Metaclaude about itself')}
             </div>
             <p className="mb-3 text-[12.5px] text-muted">
-              Opens a plan-mode session in a workspace seeded with this guide — the assistant
-              answers from these pages, with citations, and can execute nothing.
+              {t(
+                'Opens a plan-mode session in a workspace seeded with this guide — the assistant answers from these pages, with citations, and can execute nothing.',
+              )}
             </p>
             <form
               className="flex gap-2"
@@ -132,27 +137,29 @@ export function HelpPage() {
               <Input
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                placeholder="How do automations avoid overlapping runs?"
-                aria-label="Question for the help assistant"
+                placeholder={t('How do automations avoid overlapping runs?')}
+                aria-label={t('Question for the help assistant')}
                 disabled={asking}
               />
               <Button type="submit" variant="primary" disabled={!question.trim() || asking}>
                 {asking ? <Spinner className="size-3.5" /> : <Send className="size-3.5" aria-hidden />}
-                Ask
+                {t('Ask')}
               </Button>
             </form>
           </Card>
 
           {/* Tabs ----------------------------------------------------------- */}
           <Tabs.Root value={tab} onValueChange={(value) => setTab(value as Tab)}>
-            <Tabs.List className="mb-4 flex items-center gap-1 border-b border-line" aria-label="Help sections">
+            <Tabs.List className="mb-4 flex items-center gap-1 border-b border-line" aria-label={t(
+              'Help sections',
+            )}>
               <Tabs.Trigger value="guide" className={TAB_CLASS}>
                 <BookOpen className="mr-1.5 inline size-3.5" aria-hidden />
-                User guide
+                {t('User guide')}
               </Tabs.Trigger>
               <Tabs.Trigger value="changelog" className={TAB_CLASS}>
                 <History className="mr-1.5 inline size-3.5" aria-hidden />
-                What's new
+                {t("What's new")}
               </Tabs.Trigger>
             </Tabs.List>
 
@@ -168,17 +175,17 @@ export function HelpPage() {
                     <Input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search the guide"
-                      aria-label="Search the guide"
+                      placeholder={t('Search the guide')}
+                      aria-label={t('Search the guide')}
                       className="pl-8"
                     />
                   </div>
 
                   {query.trim() ? (
-                    <div className="space-y-1" aria-label="Search results">
+                    <div className="space-y-1" aria-label={t('Search results')}>
                       {hits.length === 0 ? (
                         <p className="px-1 text-[12.5px] text-subtle">
-                          Nothing in the guide matches all of those words.
+                          {t('Nothing in the guide matches all of those words.')}
                         </p>
                       ) : (
                         hits.map((hit) => (
@@ -198,7 +205,7 @@ export function HelpPage() {
                       )}
                     </div>
                   ) : (
-                    <nav aria-label="Guide chapters" className="space-y-0.5">
+                    <nav aria-label={t('Guide chapters')} className="space-y-0.5">
                       {(corpus.data ?? guideChapters).map((chapter) => (
                         <button
                           key={chapter.slug}
@@ -238,7 +245,7 @@ export function HelpPage() {
                       dangerouslySetInnerHTML={{ __html: activeHtml }}
                     />
                   ) : (
-                    <p className="text-[13px] text-muted">The guide could not be loaded.</p>
+                    <p className="text-[13px] text-muted">{t('The guide could not be loaded.')}</p>
                   )}
                 </Card>
               </div>

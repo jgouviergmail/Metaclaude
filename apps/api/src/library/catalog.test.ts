@@ -56,6 +56,24 @@ describe('the built-in library catalogue', () => {
     }
   });
 
+  /**
+   * The file's own header states the rule: an agent's description is what the
+   * *main* agent reads when deciding whether to delegate, so it has to say
+   * when to reach for it and not only what it does. The four engineering
+   * agents written first all carry one — "Use before merging", "Use after a
+   * feature lands without coverage" — and the ten personal-life agents added
+   * later carry none at all. A convention nothing enforces is a convention
+   * that survives exactly one batch of new entries.
+   */
+  it('tells the delegating agent when to reach for each subagent', () => {
+    const TRIGGER = /\b(use (when|before|after|for|to)|reach for)\b/i;
+    const missing = LIBRARY.filter(
+      (entry) => entry.kind === 'agent' && !TRIGGER.test(entry.description),
+    ).map((entry) => entry.name);
+
+    expect(missing, 'agent descriptions with no trigger clause').toEqual([]);
+  });
+
   it('gives every agent a working prompt, not a slogan', () => {
     for (const entry of LIBRARY) {
       if (entry.kind !== 'agent') continue;

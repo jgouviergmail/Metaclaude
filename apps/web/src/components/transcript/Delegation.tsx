@@ -19,6 +19,7 @@ import { memo } from 'react';
 import type { TranscriptEvent } from '@metaclaude/shared';
 import { Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 type SubagentEventType = Extract<TranscriptEvent, { kind: 'subagent' }>;
 type Status = SubagentEventType['status'];
@@ -105,6 +106,7 @@ export function summariseDelegation(events: TranscriptEvent[]): Delegate[] {
 }
 
 export function DelegationStrip({ events }: { events: TranscriptEvent[] }) {
+  const t = useT();
   const delegates = summariseDelegation(events);
   // Most runs delegate nothing. An empty strip on every one of them is a line
   // of chrome to scan past on the way to the answer.
@@ -112,7 +114,7 @@ export function DelegationStrip({ events }: { events: TranscriptEvent[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] uppercase tracking-wide text-subtle">Delegated to</span>
+      <span className="text-[11px] uppercase tracking-wide text-subtle">{t('Delegated to')}</span>
       {delegates.map((delegate) => {
         const status = STATUS[delegate.status];
         return (

@@ -172,7 +172,7 @@ export function ApprovalCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 id={`approval-${request.id}-title`} className="text-sm font-semibold text-ink">
-              Permission needed
+              {t('Permission needed')}
             </h3>
             <Badge
               tone={
@@ -238,7 +238,9 @@ export function ApprovalCard({
         >
           <X className="size-4" aria-hidden />
           {t('Deny')}
-          <kbd className="ml-1 hidden rounded bg-black/20 px-1 text-[10px] sm:inline">Esc</kbd>
+          <kbd className="ml-1 hidden rounded bg-black/20 px-1 text-[10px] sm:inline">{t(
+            'Esc',
+          )}</kbd>
         </Button>
 
         <Button variant="success" size="sm" onClick={() => decide(true)} disabled={submitting}>

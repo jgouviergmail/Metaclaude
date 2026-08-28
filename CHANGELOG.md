@@ -11,6 +11,255 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-08-28
+
+### Added
+
+- **The dashboard says what the machine is doing.** Three meters — CPU, RAM,
+  disk — polled every ten seconds, beside the work they explain. The figures
+  are the *container's*, from its cgroup, because the ceiling that gets a
+  process killed is its cgroup's and not the host's; the host's load average
+  and total memory ride along as context. Settings → System renders the same
+  component from the same payload, replacing two lonely numbers: two separate
+  answers to "how full is the disk" would eventually disagree, and nobody
+  would be looking at the wrong one.
+- **Every reading may be absent, and says so.** Production is Linux with
+  cgroup v2; development is bare macOS or Windows, where none of those files
+  exist. An unmeasured figure travels as null all the way to a dash and a
+  dimmed track, never as a zero — a confident empty gauge on a machine that is
+  working hard is worse than no gauge. CPU usage is a rate, so the first poll
+  after a restart reports nothing rather than idle, and it distinguishes "not
+  yet" from "not here": on a host that can measure it says so and resolves ten
+  seconds later; on one that cannot it says that instead of waiting forever.
+- **A workspace can pin the language its agent answers in.** `auto` stays the
+  default and adds nothing to the prompt — the model follows the language it
+  is written to, which is right most of the time. What it does not follow is a
+  *subagent's* prompt, and all twenty-three in the library are English: work
+  delegated out of a French conversation came back in English, with nothing
+  anywhere in the run stack having an opinion about it. One line settles the
+  whole run, delegations included, and exempts code, identifiers, paths and
+  command output.
+- **Finished runs and their transcripts now have a retention window.**
+  `transcript_events` holds every message, tool call and streamed delta of
+  every run, and it was the one table with no ceiling at all while the audit
+  log and the distilled insights both had a one-year window. Six months by
+  default (`METACLAUDE_RUN_RETENTION_DAYS`), and deliberately generous: this is
+  the only background sweep that destroys something the operator wrote. A run
+  has to be past *both* conditions — the window **and** the per-workspace floor
+  of the newest 50 (`METACLAUDE_RUN_KEEP_PER_WORKSPACE`) — because age alone
+  would empty a workspace nobody has opened in a year, and losing the only
+  three runs someone has is a far worse outcome than a few megabytes. Runs
+  still in flight are never touched, and sessions are never deleted: a session
+  carries the CLI session id that resumes a conversation, long after its
+  transcript stops being interesting.
+- **The retention sweep deletes the files, not only the rows.**
+  `attachments.run_id` is `ON DELETE CASCADE`, so a plain `DELETE FROM runs`
+  takes the attachment rows and leaves their bytes on the volume forever — the
+  unlink is application code that no foreign key reaches. Written the obvious
+  way, this feature would have fixed a leak of rows by creating a leak of
+  files. Attachments go through their own service, and a file two runs share
+  survives until the last of them goes.
+- **Enable, disable or delete a whole listing at once.** Skills and subagents
+  both, from the screen that lists them. The per-row toggle went through the
+  upsert route, which needs the entire record — so switching 34 skills off
+  meant 34 requests carrying up to 200 000 characters of body each, 34 audit
+  entries, and no atomicity: a failure on the twelfth left a half-applied
+  intention. One statement, one transaction, one audit entry carrying the
+  count.
+- **The bulk routes act on ids, never on a scope they expand themselves.** A
+  workspace's listing deliberately includes the global entries, because a run
+  there mounts both — so a server-side "everything in this scope" would let a
+  workspace screen delete the shared library. The ids are the rows the
+  operator was shown, and the scope is checked again underneath so a caller
+  cannot widen its own reach by naming rows outside it. The confirmation says
+  how many, says that a workspace listing carries the global entries too, and
+  says that anything from the Library comes back.
+- **An MCP server's tool descriptions, asked for directly.** Measured against a
+  real server that sends them: the CLI's status reports every tool description
+  as empty while the annotations arrive intact — so the list the operator was
+  shown was a row of bare identifiers. Testing a workspace's servers now also
+  asks each connected one for its own text, over the same configuration a run
+  mounts, and shows the `instructions` string the protocol has for "what this
+  server is for". The two sources stay separate on purpose: the catalogue
+  decides what exists and whether it connects, the direct probe only fills in
+  words. A tool the probe sees and the catalogue does not is a tool no run
+  would have, and it is not shown.
+- **Nothing needed injecting into the system prompt for the agent's sake.**
+  The question this started from — does an agent need a description per MCP
+  server to choose between them — has a checkable answer: it chooses on each
+  *tool's* description, which reaches it from the server, and a server's
+  `instructions` reach it as an MCP instructions block. Both were already
+  arriving. What was missing was the operator's view of them.
+- **The MCP tab says whether each server actually connected, where the servers
+  are configured.** The answer already existed — the catalogue probe mounts
+  exactly what a run mounts and reports connection status and tools — but it
+  lived on the Claude tab, so an operator configured a server on one screen and
+  found out whether it worked on another. A **Test connections** button asks
+  the probe directly, and the status badge and errors on each card now come
+  from it, falling back to what the last run recorded.
+- **Testing is offered only where it can answer.** A server is connected for a
+  run and a run happens in a workspace, so with the scope set to Global the
+  probe mounts nothing and returns an empty list. The first version of the
+  button asked anyway and reported "every server answered" while testing none
+  of them; it is now disabled there, and says why.
+- **Dates and times follow the language, not the browser.** `formatRelative`
+  is called from about thirty places, most of them inside a `.map()` where a
+  hook cannot go, so every session row said "2h ago" under a French heading and
+  `toLocaleDateString(undefined, …)` answered to the browser rather than to the
+  choice made in Settings. The provider publishes the language to a
+  dependency-free module the formatters read; it is set before the state
+  update, so the render a switch triggers already shows "il y a 2 h".
+- **The dashboard headline is composed by the reader, not by the server.** It is
+  "the one sentence to read when nothing else gets read", and it was English
+  prose the API assembled from counts — untranslatable by construction, since
+  there is no catalogue on that side. Every number it needs is already in the
+  payload, so the same sentence is now built from the same figures in whichever
+  language is on screen. `brief.headline` stays on the contract for anything
+  that is not a browser.
+- **Counted sentences are translated whole, in both forms.** `plural(n, '{n}
+  run', '{n} runs')` picks a key rather than gluing an `s` onto a word, and it
+  knows that English pluralises at zero and French does not — "0 échec
+  consécutif", not "0 échecs". That difference is the entire reason it is not
+  an `n === 1` ternary at each call site: the ternary is written in English and
+  silently stays English once the sentence around it is translated. Fifteen
+  counters moved onto it; the interim `failure(s)` spelling, which reads as a
+  form to fill in, is gone.
+- **The catalogue check reads both arms of a plural.** Neither passes through
+  `t()`, so a check that only knew about `t()` reported a complete catalogue
+  while every counted sentence in the app was English.
+- **A ratchet for copy held as a module constant.** Nav entries, preset lists
+  and risk tables keep their English as *data* and are translated at render —
+  a constant evaluated at import time must never bake a language in — which is
+  correct and invisible to every other check: no `t('…')` names the string and
+  it is not JSX text. `DoctorReportView`'s three verdicts and `SessionPage`'s
+  three starter prompts sat in English that way. This one asks the catalogue
+  rather than the syntax, so the pattern stays legal and the gap does not.
+- **`node deploy/ratchets.mjs --list` prints what the i18n ratchets found.** A
+  ceiling that says "21" and nothing else is a number nobody can act on; the
+  first thing anyone does is re-implement the measurement in a throwaway script
+  to see the twenty-one. That script now lives beside the rule it reports on,
+  so the two cannot disagree.
+- **The embedder's fallback is pinned by tests.** `METACLAUDE_EMBEDDINGS=local`
+  needs an optional package that is in no manifest and not in the shipped
+  image, so on every deployment that asks for it the branch that actually
+  executes is the *fallback* — and nothing exercised it. A factory that threw
+  instead of falling back would have taken the service down at boot with the
+  suite still green. No mocking involved: the optional import fails in the
+  test run for exactly the reason it fails in production.
+
+### Changed
+
+- **The initial JS ceiling moves from 185 kB to 187, one kilobyte at a time.**
+  `ResourceMeters` is imported by two lazily-loaded pages — the dashboard and
+  Settings → System — so Rollup hoists it into the entry chunk, where it costs
+  about a kilobyte gzipped downloaded before either screen is visited; the
+  alternative was two renderings of the same three meters, which would have
+  cost more and eventually disagreed. The second kilobyte is the translation
+  sweep: the English string *is* the key, so every newly wrapped call carries
+  its own text, and the entry-reachable components gained a few hundred of
+  them. The French dictionary itself stays out of it — 37 kB gzipped in its own
+  chunk, fetched only when someone switches. Both recorded rather than
+  absorbed: the point of the ceiling is that a kilobyte has to be argued for.
+- **The whole interface speaks French.** Every screen, and the parts of a
+  screen that are not text: the toasts, the confirmations, the `aria-label`s,
+  the status badges, the tooltips. About six hundred strings, ending at zero
+  hard-coded English by a measure that can see all four of the ways a string
+  used to escape.
+- **The hard-coded-English ratchet was measuring a tenth of what it claimed,
+  then a third.** It filtered on whether a file imports `useT` — right for the
+  checks asking "does this component translate correctly?", wrong for the one
+  asking "is anything left in English?"; 28 of the 52 text-bearing components
+  had never adopted i18n and were invisible to all three at once, which is how
+  `MemoryPage` came to render entirely in English beside a French dashboard
+  while every measurement agreed i18n was essentially finished. Widening it to
+  every component took the honest count from 31 to 314. Then the *same* ratchet
+  at 0 still had two blind spots of its own, and between them they held about
+  three hundred strings: it required a capital letter, so every lowercase
+  `<Badge>paused</Badge>` in the app was invisible, and it only looked at JSX
+  text, so no toast, no `cond ? 'Archive' : 'Restore'` and no
+  `` aria-label={`Actions for ${name}`} `` was ever a candidate. It is a
+  parser now rather than four regexes, and it counts the string literals too.
+- **A tool call's label is a table rather than a switch.** Ten entries mapping
+  a tool name to its label and the one input worth the line, with the English
+  kept as data and translated at render — which is what makes it translatable
+  at all, since a plain function cannot call a hook. The MCP fallback is the
+  one branch left, and it is the honest one: an unknown tool has only its own
+  name to offer.
+
+### Fixed
+
+- **Forty-five hooks were called where React would refuse to run them.** The
+  translation sweep placed `const t = useT()` in the *innermost* enclosing
+  function, which for a toast inside `onSuccess: () => {…}` or a row inside
+  `rows.map(row => …)` is a plain callback, not a component. Nothing in this
+  repository could see it: TypeScript is happy, the component renders in every
+  test that does not reach that branch, and there is no ESLint here to carry
+  `react-hooks/rules-of-hooks`. They are back where they belong, and a ratchet
+  now counts any `useSomething()` whose enclosing function is not a component
+  or a hook — which is the check the missing linter would have done, for the
+  one rule whose violation is a runtime crash rather than a style opinion.
+- **Two operators pressing Apply at the same instant both won.** The update
+  request was claimed with an exclusive lock file and then `rename`d into
+  place — but `rename` overwrites, and the lock only excludes writers whose
+  attempts *overlap*. A contender that claimed the name after the winner had
+  already moved it away published a second request over the first: both were
+  told they had won, and the version that deployed was the later one. It
+  publishes through `link` now, which refuses an existing destination, so the
+  ordering stops mattering. A request file nobody can act on is still swept
+  rather than left to brick the button.
+- **A board column only explained itself while it was empty.** The hint sat in
+  a `title` on the header — text that exists only for a mouse, on the screen
+  most likely to be read on a phone — plus a copy in the body that disappeared
+  as soon as a card arrived. It is a *full* column that raises the question.
+  The hint is rendered under the column's name, always; the empty body now
+  says what it is instead, which is somewhere a card can land.
+- **A plugin's skills were names with no explanation.** Each skill's
+  description was a `title`, so on a phone a plugin's contribution was a list
+  of bare identifiers. Rendered beside the name now, truncated by the row
+  rather than hidden by it.
+- **Fourteen of the library's subagents never said when to use them.** An
+  agent's description is what the *main* agent reads when deciding whether to
+  delegate, and the file's own header says so — but only the four engineering
+  agents written first carried a trigger clause. The ten personal-life agents
+  added later described what they do and never when to reach for them, which
+  is a convention that survived exactly one batch of new entries. All fourteen
+  now carry one, and a test enforces it.
+- **An MCP server's tools were listed as chips whose descriptions lived in a
+  `title` attribute** — text that does not exist on a phone, where there is no
+  hover and a decorative `<span>` never takes focus. One shared component now
+  renders them, folded by default with the count on the summary, so the fold
+  never hides *whether* there is anything to see. It serves the catalogue panel
+  and the MCP tab, which asked the same question in two places.
+- **The deploy's image purge had never removed a single image.** It filtered on
+  `until=168h`, and at several releases a day nothing ever reaches seven days.
+  Found on a real host at 97% full: 23 images and 19 GB, beside 15 GB of build
+  cache on a box whose whole premise is that it never builds. Retention is by
+  count now — the newest `IMAGE_KEEP` (three by default), plus whatever
+  `releases/current` and `releases/previous` resolve to, spared whatever their
+  age. Resolved to image *ids* first, because `current` records a digest while
+  the same image usually also wears a version tag, and sparing the literal
+  string would have deleted it under its other name — leaving the rollback
+  button with no target, discovered during an incident. Removal is by
+  reference, since an image keeps its layers until its last tag goes.
+- **A backup could buy an outage and hand back a truncated archive.** The room
+  was never checked: the app stopped, `tar` filled the volume, the partial was
+  removed, and the outage bought nothing. The check now happens while the app
+  is still serving, and refuses with the three knobs that fix it. It will not
+  prune below the retention ceiling to make room — trading an archive that is
+  known good for one not yet written can leave an operator with strictly less
+  than they had.
+- **Lowering the retention ceiling took effect one archive too late.** Pruning
+  ran only after the new archive was written, so a host whose volume was
+  already full needed one more archive's worth of space before a lower ceiling
+  could help it. Retention is applied before the write as well.
+- **A filling backup volume was invisible.** The recommended layout puts the
+  archives on a separate volume, which the container does not mount and the
+  app therefore cannot measure. Each marker now records the space left where
+  the archives are kept, and the doctor escalates on it — before the volume is
+  full rather than after. A marker written before the field existed, or on a
+  host where `df` declined to answer, still reads as healthy: absent means not
+  measured, never zero.
+
 ## [0.33.0] — 2026-08-28
 
 ### Changed

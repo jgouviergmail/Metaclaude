@@ -33,8 +33,10 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { formatRelative } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export function PluginsPage() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [installing, setInstalling] = useState(false);
   const [source, setSource] = useState('');
@@ -81,16 +83,16 @@ export function PluginsPage() {
     onSuccess: (result) => {
       invalidateMarketplaces();
       setAddingMarketplace(false);
-      toast.success(`Marketplace ${result.marketplace.name} added.`);
+      toast.success(t('Marketplace {name} added.', { name: result.marketplace.name }));
     },
-    onError: (error) => fail(error, 'That marketplace could not be added.'),
+    onError: (error) => fail(error, t('That marketplace could not be added.')),
   });
 
   const toggleMarketplace = useMutation({
     mutationFn: (marketplace: Marketplace) =>
       api.marketplaces.setEnabled(marketplace.id, !marketplace.enabled),
     onSuccess: invalidateMarketplaces,
-    onError: (error) => fail(error, 'That marketplace could not be changed.'),
+    onError: (error) => fail(error, t('That marketplace could not be changed.')),
   });
 
   const removeMarketplace = useMutation({
@@ -98,9 +100,9 @@ export function PluginsPage() {
     onSuccess: () => {
       invalidateMarketplaces();
       setRemovingMarketplace(null);
-      toast.success('Marketplace removed.');
+      toast.success(t('Marketplace removed.'));
     },
-    onError: (error) => fail(error, 'That marketplace could not be removed.'),
+    onError: (error) => fail(error, t('That marketplace could not be removed.')),
   });
 
   const install = useMutation({
@@ -113,15 +115,18 @@ export function PluginsPage() {
         record.skills.length === 1 ? '1 skill' : `${record.skills.length} skills`,
         record.mcpServers.length === 1 ? '1 MCP server' : `${record.mcpServers.length} MCP servers`,
       ];
-      toast.success(`Installed ${record.name} — ${parts.join(', ')}.`);
+      toast.success(t(
+        'Installed {name} — {parts}.',
+        { name: record.name, parts: parts.join(', ') },
+      ));
     },
-    onError: (error) => fail(error, 'That plugin could not be installed.'),
+    onError: (error) => fail(error, t('That plugin could not be installed.')),
   });
 
   const toggle = useMutation({
     mutationFn: (plugin: PluginRecord) => api.plugins.setEnabled(plugin.id, !plugin.enabled),
     onSuccess: invalidate,
-    onError: (error) => fail(error, 'That plugin could not be changed.'),
+    onError: (error) => fail(error, t('That plugin could not be changed.')),
   });
 
   const remove = useMutation({
@@ -129,9 +134,9 @@ export function PluginsPage() {
     onSuccess: () => {
       invalidate();
       setRemoving(null);
-      toast.success('Plugin removed.');
+      toast.success(t('Plugin removed.'));
     },
-    onError: (error) => fail(error, 'That plugin could not be removed.'),
+    onError: (error) => fail(error, t('That plugin could not be removed.')),
   });
 
   const plugins = query.data ?? [];
@@ -139,12 +144,12 @@ export function PluginsPage() {
   return (
     <AppShell>
       <ContentHeader
-        title="Plugins"
-        subtitle="Marketplaces the CLI installs from, and Agent Plugins installed by path"
+        title={t('Plugins')}
+        subtitle={t('Marketplaces the CLI installs from, and Agent Plugins installed by path')}
         actions={
           <Button variant="primary" size="sm" onClick={() => setInstalling(true)}>
             <Plus className="size-4" />
-            Install
+            {t('Install')}
           </Button>
         }
       />
@@ -155,16 +160,17 @@ export function PluginsPage() {
             <div className="flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
                 <Store className="size-4 text-muted" aria-hidden />
-                Marketplaces
+                {t('Marketplaces')}
               </h2>
               <Button variant="secondary" size="sm" onClick={() => setAddingMarketplace(true)}>
                 <Plus className="size-4" aria-hidden />
-                Add marketplace
+                {t('Add marketplace')}
               </Button>
         </div>
         <p className="text-[12.5px] leading-relaxed text-muted">
-          The CLI fetches these sources itself and installs from them at the start of a run.
-          Which plugins actually run is chosen per workspace, under Workspace settings.
+          {t(
+            'The CLI fetches these sources itself and installs from them at the start of a run. Which plugins actually run is chosen per workspace, under Workspace settings.',
+          )}
         </p>
         {marketplacesQuery.isLoading ? (
           <div className="flex justify-center py-6">
@@ -182,7 +188,7 @@ export function PluginsPage() {
 
       <h2 className="flex items-center gap-2 pt-2 text-sm font-semibold text-ink">
         <Plug className="size-4 text-muted" aria-hidden />
-        Installed by path
+        {t('Installed by path')}
       </h2>
 
       {query.isLoading ? (
@@ -193,8 +199,10 @@ export function PluginsPage() {
         <Card>
           <EmptyState
             icon={<Plug />}
-            title="No plugins installed"
-            description="An Agent Plugin is one directory holding skills and MCP server definitions, in the format published by Amazon, Cursor, Microsoft, OpenAI and Vercel. Clone one onto this server and install it by path."
+            title={t('No plugins installed')}
+            description={t(
+              'An Agent Plugin is one directory holding skills and MCP server definitions, in the format published by Amazon, Cursor, Microsoft, OpenAI and Vercel. Clone one onto this server and install it by path.',
+            )}
           />
         </Card>
       ) : (
@@ -208,7 +216,7 @@ export function PluginsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <code className="font-mono text-[13px] font-medium text-ink">{plugin.name}</code>
                     {plugin.version ? <Badge tone="neutral">v{plugin.version}</Badge> : null}
-                    {!plugin.enabled ? <Badge tone="neutral">disabled</Badge> : null}
+                    {!plugin.enabled ? <Badge tone="neutral">{t('disabled')}</Badge> : null}
                     {plugin.warnings.length > 0 ? (
                       <Badge tone="warning">
                         {plugin.warnings.length === 1
@@ -226,13 +234,19 @@ export function PluginsPage() {
                       invisible is indistinguishable from one that does nothing. */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5">
                     {plugin.skills.map((skill) => (
+                      // The description was a `title`, so on a phone a skill
+                      // was a bare name with no way to learn what it does.
+                      // Rendered after the name, dimmed, and truncated by the
+                      // row rather than hidden by it.
                       <span
                         key={skill.name}
-                        className="inline-flex items-center gap-1.5 text-[12px] text-muted"
-                        title={skill.description}
+                        className="inline-flex min-w-0 items-center gap-1.5 text-[12px] text-muted"
                       >
                         <Sparkles className="size-3 shrink-0 text-accent" aria-hidden />
-                        <code className="font-mono">{skill.name}</code>
+                        <code className="shrink-0 font-mono">{skill.name}</code>
+                        {skill.description ? (
+                          <span className="truncate text-subtle">{skill.description}</span>
+                        ) : null}
                       </span>
                     ))}
                     {plugin.mcpServers.map((name) => (
@@ -247,7 +261,7 @@ export function PluginsPage() {
                   </div>
 
                   <p className="text-[11.5px] tabular-nums text-subtle">
-                    installed {formatRelative(plugin.installedAt)}
+                    {t('installed')} {formatRelative(plugin.installedAt)}
                     {plugin.license ? ` · ${plugin.license}` : ''}
                   </p>
 
@@ -275,7 +289,7 @@ export function PluginsPage() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Remove plugin ${plugin.name}`}
+                    aria-label={t('Remove plugin {name}', { name: plugin.name })}
                     onClick={() => setRemoving(plugin)}
                   >
                     <Trash2 className="size-4" />
@@ -293,12 +307,14 @@ export function PluginsPage() {
       <Modal
         open={installing}
         onOpenChange={setInstalling}
-        title="Install a plugin"
-        description="A directory on this server holding a plugin.json, in the Agent Plugins 1.0.0 format."
+        title={t('Install a plugin')}
+        description={t(
+          'A directory on this server holding a plugin.json, in the Agent Plugins 1.0.0 format.',
+        )}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="plugin-source">Path on the server</Label>
+            <Label htmlFor="plugin-source">{t('Path on the server')}</Label>
             <Input
               id="plugin-source"
               autoComplete="off"
@@ -311,14 +327,15 @@ export function PluginsPage() {
               }}
             />
             <p className="text-[12px] text-muted">
-              The directory is copied, not linked, so the source can be deleted afterwards. Skills
-              and MCP servers it declares become available to every workspace.
+              {t(
+                'The directory is copied, not linked, so the source can be deleted afterwards. Skills and MCP servers it declares become available to every workspace.',
+              )}
             </p>
           </div>
 
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setInstalling(false)}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               variant="primary"
@@ -327,7 +344,7 @@ export function PluginsPage() {
               loading={install.isPending}
               onClick={() => install.mutate(source.trim())}
             >
-              Install
+              {t('Install')}
             </Button>
           </div>
         </div>
@@ -336,9 +353,11 @@ export function PluginsPage() {
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}
-        title={`Remove ${removing?.name ?? 'this plugin'}?`}
-        description="Its skills and MCP servers stop being offered to runs, and its files are deleted. Anything it had stored is kept, so reinstalling it restores that state."
-        confirmLabel="Remove"
+        title={t('Remove {name}?', { name: removing?.name ?? t('this plugin') })}
+        description={t(
+          'Its skills and MCP servers stop being offered to runs, and its files are deleted. Anything it had stored is kept, so reinstalling it restores that state.',
+        )}
+        confirmLabel={t('Remove')}
         danger
         onConfirm={() => {
           if (removing) remove.mutate(removing);
@@ -355,9 +374,11 @@ export function PluginsPage() {
       <ConfirmDialog
         open={removingMarketplace !== null}
         onOpenChange={(open) => !open && setRemovingMarketplace(null)}
-        title={`Remove ${removingMarketplace?.name ?? 'this marketplace'}?`}
-        description="Runs stop seeing this source, and every plugin enabled from it stops loading. Nothing already installed by the CLI is deleted."
-        confirmLabel="Remove"
+        title={t('Remove {name}?', { name: removingMarketplace?.name ?? t('this marketplace') })}
+        description={t(
+          'Runs stop seeing this source, and every plugin enabled from it stops loading. Nothing already installed by the CLI is deleted.',
+        )}
+        confirmLabel={t('Remove')}
         danger
         onConfirm={() => {
           if (removingMarketplace) removeMarketplace.mutate(removingMarketplace);
@@ -383,6 +404,7 @@ function AddMarketplaceModal({
   onAdd: (input: { name: string; source: Marketplace['source'] }) => void;
   pending: boolean;
 }) {
+  const t = useT();
   const [name, setName] = useState('');
   const [source, setSource] = useState('');
 
@@ -401,12 +423,14 @@ function AddMarketplaceModal({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Add a marketplace"
-      description="Plugins from it bring skills, hooks and MCP servers into the agent — add sources you trust as you would a dependency."
+      title={t('Add a marketplace')}
+      description={t(
+        'Plugins from it bring skills, hooks and MCP servers into the agent — add sources you trust as you would a dependency.',
+      )}
     >
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="marketplace-name">Name</Label>
+          <Label htmlFor="marketplace-name">{t('Name')}</Label>
           <Input
             id="marketplace-name"
             autoComplete="off"
@@ -416,16 +440,18 @@ function AddMarketplaceModal({
             onChange={(event) => setName(event.target.value)}
           />
           <p className="text-[12px] text-muted">
-            Plugins are enabled as <code className="font-mono">plugin@{name.trim() || 'name'}</code>.
+            {t(
+              'Plugins are enabled as',
+            )} <code className="font-mono">plugin@{name.trim() || 'name'}</code>.
           </p>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="marketplace-source">Source</Label>
+          <Label htmlFor="marketplace-source">{t('Source')}</Label>
           <Input
             id="marketplace-source"
             autoComplete="off"
             spellCheck={false}
-            placeholder="owner/repo, or https://…/marketplace.json"
+            placeholder={t('owner/repo, or https://…/marketplace.json')}
             value={source}
             onChange={(event) => setSource(event.target.value)}
             onKeyDown={(event) => {
@@ -435,10 +461,10 @@ function AddMarketplaceModal({
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button variant="primary" size="sm" disabled={!ready} loading={pending} onClick={submit}>
-            Add
+            {t('Add')}
           </Button>
         </div>
       </div>

@@ -30,6 +30,8 @@ import type { ReactNode } from 'react';
 import type { ClaudeCatalogue, ClaudeMcpServerStatus } from '@metaclaude/shared';
 import { Badge, Button, Card, EmptyState, Spinner } from '@/components/ui/primitives';
 import { cn, formatRelative } from '@/lib/utils';
+import { McpToolList } from './McpToolList';
+import { useT } from '@/lib/i18n';
 
 /** How each MCP status reads, and what it means the operator should do. */
 const MCP_STATUS: Record<
@@ -62,9 +64,12 @@ export interface ClaudeCataloguePanelProps {
 }
 
 export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCataloguePanelProps) {
+  const t = useT();
   if (loading || !catalogue) {
     return (
-      <div className="flex justify-center py-12" role="status" aria-label="Reading what Claude offers">
+      <div className="flex justify-center py-12" role="status" aria-label={t(
+        'Reading what Claude offers',
+      )}>
         <Spinner className="size-5" />
       </div>
     );
@@ -80,9 +85,9 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold text-ink">What Claude offers here</h2>
+          <h2 className="text-[15px] font-semibold text-ink">{t('What Claude offers here')}</h2>
           <p className="text-[12.5px] text-muted">
-            Read from the CLI itself {formatRelative(catalogue.fetchedAt)}
+            {t('Read from the CLI itself')} {formatRelative(catalogue.fetchedAt)}
           </p>
           {/* Which account the CLI is actually signed in as. Metaclaude can
               hold credentials without ever saying whose, and "my subscription
@@ -106,7 +111,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         </div>
         <Button variant="secondary" size="sm" onClick={onRefresh}>
           <RefreshCw className="size-3.5" />
-          Refresh
+          {t('Refresh')}
         </Button>
       </div>
 
@@ -114,25 +119,30 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         <Card>
           <EmptyState
             icon={<AlertTriangle />}
-            title="The Claude CLI could not be reached"
-            description="Metaclaude could not start a CLI session to ask. That usually means the binary is not on PATH inside the container, or no credentials are paired yet — check Settings."
+            title={t('The Claude CLI could not be reached')}
+            description={t(
+              'Metaclaude could not start a CLI session to ask. That usually means the binary is not on PATH inside the container, or no credentials are paired yet — check Settings.',
+            )}
           />
         </Card>
       ) : null}
 
       {missing.length > 0 ? (
         <p className="rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-ink">
-          This CLI could not answer about{' '}
-          {missing.map((name) => QUESTION_NAMES[name] ?? name).join(', ')}. Those sections are empty
-          because the question failed, not because there is nothing there.
+          {t(
+            'This CLI could not answer about {questions}. Those sections are empty because the question failed, not because there is nothing there.',
+            { questions: missing.map((name) => QUESTION_NAMES[name] ?? name).join(', ') },
+          )}
         </p>
       ) : null}
 
       {/* MCP first: the only part of this screen that can be wrong right now. */}
       <Section
         icon={<Server className="size-4 text-info" />}
-        title="MCP servers"
-        subtitle="The servers this workspace's runs mount — and whether each actually connected"
+        title={t('MCP servers')}
+        subtitle={t(
+          "The servers this workspace's runs mount — and whether each actually connected",
+        )}
         count={catalogue.mcpServers.length}
       >
         {catalogue.mcpServers.map((server) => (
@@ -140,17 +150,15 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         ))}
       </Section>
       <p className="rounded-lg border border-dashed border-line px-3 py-2 text-[12px] leading-relaxed text-subtle">
-        Connectors from your claude.ai account never appear here: a server paired with a setup
-        token authenticates for inference only, so the CLI cannot fetch them. To connect an
-        external service, add its MCP server on the Agents screen — it is mounted into every run
-        and reported above. Metaclaude&rsquo;s own board and delegation tools ride along in-process
-        and are always available.
+        {t(
+          'Connectors from your claude.ai account never appear here: a server paired with a setup token authenticates for inference only, so the CLI cannot fetch them. To connect an external service, add its MCP server on the Agents screen — it is mounted into every run and reported above. Metaclaude’s own board and delegation tools ride along in-process and are always available.',
+        )}
       </p>
 
       <Section
         icon={<Wand2 className="size-4 text-accent" />}
-        title="Models"
-        subtitle="What this subscription grants, and which take an effort level"
+        title={t('Models')}
+        subtitle={t('What this subscription grants, and which take an effort level')}
         count={catalogue.models.length}
       >
         {catalogue.models.map((model) => (
@@ -177,8 +185,8 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
 
       <Section
         icon={<SlashSquare className="size-4 text-accent" />}
-        title="Slash commands"
-        subtitle="Built in, plus anything this workspace defines"
+        title={t('Slash commands')}
+        subtitle={t('Built in, plus anything this workspace defines')}
         count={catalogue.commands.length}
       >
         {catalogue.commands.map((command) => (
@@ -198,8 +206,8 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
 
       <Section
         icon={<Bot className="size-4 text-accent" />}
-        title="Subagents"
-        subtitle="Named agents the CLI can delegate to"
+        title={t('Subagents')}
+        subtitle={t('Named agents the CLI can delegate to')}
         count={catalogue.agents.length}
       >
         {catalogue.agents.map((agent) => (
@@ -231,6 +239,7 @@ function Section({
   count: number;
   children: ReactNode;
 }) {
+  const t = useT();
   return (
     <section className="space-y-2">
       <div className="flex items-baseline gap-2">
@@ -241,7 +250,7 @@ function Section({
       <p className="text-[12px] text-muted">{subtitle}</p>
       {count === 0 ? (
         <p className="rounded-lg border border-dashed border-line px-3 py-3 text-[12.5px] text-subtle">
-          Nothing reported.
+          {t('Nothing reported.')}
         </p>
       ) : (
         <div className="space-y-1.5">{children}</div>
@@ -282,6 +291,7 @@ function Row({
 }
 
 function McpRow({ server }: { server: ClaudeMcpServerStatus }) {
+  const t = useT();
   const status = MCP_STATUS[server.status];
   const broken = server.status === 'failed';
 
@@ -296,7 +306,7 @@ function McpRow({ server }: { server: ClaudeMcpServerStatus }) {
         <code className="font-mono text-[13px] font-medium text-ink">{server.name}</code>
         <Badge tone={status.tone}>
           {status.icon}
-          {status.label}
+          {t(status.label)}
         </Badge>
         {server.serverName ? (
           <span className="text-[11.5px] text-subtle">
@@ -313,30 +323,9 @@ function McpRow({ server }: { server: ClaudeMcpServerStatus }) {
         </p>
       ) : null}
 
-      {server.tools.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {server.tools.map((tool) => (
-            <span
-              key={tool.name}
-              title={tool.description}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5',
-                'font-mono text-[11px] text-muted',
-              )}
-            >
-              {/* The server's own advertised hints. Displayed to inform the
-                  operator, never used to decide anything — a server that
-                  mislabels a destructive tool must not be trusted by that. */}
-              {tool.destructive ? (
-                <AlertTriangle className="size-3 text-warning" aria-label="destructive" />
-              ) : tool.readOnly ? (
-                <Sparkles className="size-3 text-success" aria-label="read-only" />
-              ) : null}
-              {tool.name}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      {/* Was a row of chips whose descriptions lived in a `title` attribute —
+          text that does not exist on a phone. Same data, rendered. */}
+      <McpToolList tools={server.tools} />
     </Card>
   );
 }

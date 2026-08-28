@@ -26,6 +26,7 @@ import { memo, useState, type ReactNode } from 'react';
 import type { TranscriptEvent } from '@metaclaude/shared';
 import { Badge, Tooltip } from '@/components/ui/primitives';
 import { cn, copyToClipboard, formatDuration, truncate } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 type ToolCall = Extract<TranscriptEvent, { kind: 'tool_call' }>;
 
@@ -53,40 +54,43 @@ function iconFor(name: string): ReactNode {
 }
 
 /**
+ * What each tool is called, and which of its inputs is worth the one line.
+ *
+ * A table rather than a switch, and English kept as *data*: the label is a
+ * catalogue key that the component translates at render. A constant evaluated
+ * at import time must never bake a language in.
+ */
+const TOOLS: Record<string, { label: string; field: string | null; path?: true }> = {
+  Bash: { label: 'Terminal', field: 'command' },
+  Read: { label: 'Read', field: 'file_path', path: true },
+  Write: { label: 'Write', field: 'file_path', path: true },
+  Edit: { label: 'Edit', field: 'file_path', path: true },
+  Glob: { label: 'Find files', field: 'pattern' },
+  Grep: { label: 'Search', field: 'pattern' },
+  WebFetch: { label: 'Fetch', field: 'url' },
+  WebSearch: { label: 'Web search', field: 'query' },
+  Task: { label: 'Subagent', field: 'description' },
+  TodoWrite: { label: 'Plan', field: null },
+};
+
+/**
  * One-line summary of what a tool call is doing.
  * Mirrors the server's `summarise`, but tuned for a narrow column.
+ *
+ * The label comes back untranslated — see `TOOLS`.
  */
 function summarise(call: ToolCall): { label: string; detail: string | null } {
   const input = (call.input ?? {}) as Record<string, unknown>;
   const str = (key: string): string | null =>
     typeof input[key] === 'string' ? (input[key] as string) : null;
 
-  const base = call.name.replace(/^mcp__([^_]+)__/, '$1: ');
+  const tool = TOOLS[call.name.replace(/^mcp__[^_]+__/, '')];
+  // An MCP tool has no entry: its own name, with the server prefix made
+  // readable, is the only honest label available.
+  if (!tool) return { label: call.name.replace(/^mcp__([^_]+)__/, '$1: '), detail: null };
 
-  switch (call.name.replace(/^mcp__[^_]+__/, '')) {
-    case 'Bash':
-      return { label: 'Terminal', detail: str('command') };
-    case 'Read':
-      return { label: 'Read', detail: shortPath(str('file_path')) };
-    case 'Write':
-      return { label: 'Write', detail: shortPath(str('file_path')) };
-    case 'Edit':
-      return { label: 'Edit', detail: shortPath(str('file_path')) };
-    case 'Glob':
-      return { label: 'Find files', detail: str('pattern') };
-    case 'Grep':
-      return { label: 'Search', detail: str('pattern') };
-    case 'WebFetch':
-      return { label: 'Fetch', detail: str('url') };
-    case 'WebSearch':
-      return { label: 'Web search', detail: str('query') };
-    case 'Task':
-      return { label: 'Subagent', detail: str('description') };
-    case 'TodoWrite':
-      return { label: 'Plan', detail: null };
-    default:
-      return { label: base, detail: null };
-  }
+  const raw = tool.field === null ? null : str(tool.field);
+  return { label: tool.label, detail: tool.path ? shortPath(raw) : raw };
 }
 
 /** Keep the last two path segments, which is what identifies a file at a glance. */
@@ -118,6 +122,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   call: ToolCall;
   defaultExpanded?: boolean;
 }) {
+  const t = useT();
   /*
    * Errors open by default: a failure the user has to click to see is a failure
    * they will miss.
@@ -139,7 +144,11 @@ export const ToolCallCard = memo(function ToolCallCard({
   const expanded = userToggled ?? (defaultExpanded || call.resultIsError);
   const [copied, setCopied] = useState(false);
 
-  const { label, detail } = summarise(call);
+  // The labels are English *data* — a mapping table, not rendered copy — so
+  // the translation happens here rather than inside a plain function where no
+  // hook can run.
+  const { label: labelKey, detail } = summarise(call);
+  const label = t(labelKey);
   const isCommand = call.name.replace(/^mcp__[^_]+__/, '') === 'Bash';
 
   const copyPayload = async (): Promise<void> => {
@@ -174,7 +183,7 @@ export const ToolCallCard = memo(function ToolCallCard({
           {iconFor(call.name)}
         </span>
 
-        <span className="shrink-0 text-[13px] font-medium text-ink">{label}</span>
+        <span className="shrink-0 text-[13px] font-medium text-ink">{t(label)}</span>
 
         {detail ? (
           <code
@@ -203,9 +212,9 @@ export const ToolCallCard = memo(function ToolCallCard({
           <section>
             <div className="mb-1.5 flex items-center justify-between">
               <h4 className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
-                Input
+                {t('Input')}
               </h4>
-              <Tooltip content={copied ? 'Copied' : 'Copy input'}>
+              <Tooltip content={copied ? 'Copied' : t('Copy input')}>
                 <button
                   type="button"
                   onClick={(event) => {
@@ -213,7 +222,7 @@ export const ToolCallCard = memo(function ToolCallCard({
                     void copyPayload();
                   }}
                   className="rounded p-1 text-subtle hover:bg-raised hover:text-ink"
-                  aria-label="Copy tool input"
+                  aria-label={t('Copy tool input')}
                 >
                   {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
                 </button>
@@ -227,8 +236,8 @@ export const ToolCallCard = memo(function ToolCallCard({
           {call.result ? (
             <section>
               <h4 className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-subtle">
-                Result
-                {call.resultIsError ? <Badge tone="danger">error</Badge> : null}
+                {t('Result')}
+                {call.resultIsError ? <Badge tone="danger">{t('error')}</Badge> : null}
               </h4>
               <pre
                 className={cn(

@@ -131,7 +131,9 @@ export function TaskDrawer({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={task ? (task.archivedAt ? t('Archived task') : t(columnLabel(task.status))) : t('Task')}
+      title={task ? (task.archivedAt ? t(
+        'Archived task',
+      ) : t(columnLabel(task.status))) : t('Task')}
       size="lg"
       footer={
         task ? (
@@ -215,9 +217,13 @@ export function TaskDrawer({
               trigger={
                 <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
                   {task.assignee === 'agent' ? (
-                    <span className="inline-flex items-center gap-1"><Bot className="size-3.5" aria-hidden /> {t('Agent')}</span>
+                    <span className="inline-flex items-center gap-1"><Bot className="size-3.5" aria-hidden /> {t(
+                      'Agent',
+                    )}</span>
                   ) : task.assignee === 'user' ? (
-                    <span className="inline-flex items-center gap-1"><UserIcon className="size-3.5" aria-hidden /> {t('You')}</span>
+                    <span className="inline-flex items-center gap-1"><UserIcon className="size-3.5" aria-hidden /> {t(
+                      'You',
+                    )}</span>
                   ) : (
                     t('Unassigned')
                   )}
@@ -310,14 +316,18 @@ export function TaskDrawer({
           ) : null}
 
           <div className="space-y-1.5">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('Sub-tasks')}</h3>
+            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t(
+              'Sub-tasks',
+            )}</h3>
             {detail.data && detail.data.children.length > 0 ? (
               <ul className="space-y-1">
                 {detail.data.children.map((child) => (
                   <li key={child.id} className="flex items-center gap-2 text-[13px] text-ink">
                     <span className={cn('size-1.5 rounded-full', child.status === 'done' ? 'bg-success' : 'bg-line')} aria-hidden />
                     <span className={cn('truncate', child.status === 'done' && 'text-muted line-through')}>{child.title}</span>
-                    <span className="ml-auto shrink-0 text-[11.5px] text-subtle">{t(columnLabel(child.status))}</span>
+                    <span className="ml-auto shrink-0 text-[11.5px] text-subtle">{t(
+                      columnLabel(child.status),
+                    )}</span>
                   </li>
                 ))}
               </ul>
@@ -343,7 +353,9 @@ export function TaskDrawer({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('Comments')}</h3>
+            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t(
+              'Comments',
+            )}</h3>
             <ul className="space-y-2">
               {(detail.data?.comments ?? []).map((entry) => (
                 <li key={entry.id} className="rounded-lg border border-line bg-raised/50 px-3 py-2">
@@ -382,7 +394,9 @@ export function TaskDrawer({
               className="inline-flex items-center gap-1.5 text-[12px] text-muted hover:text-ink"
             >
               <History className="size-3.5" aria-hidden />
-              {showHistory ? t('Hide history') : t('History ({n})', { n: detail.data?.activity.length ?? 0 })}
+              {showHistory ? t(
+                'Hide history',
+              ) : t('History ({n})', { n: detail.data?.activity.length ?? 0 })}
             </button>
             {showHistory ? (
               <ul className="mt-2 space-y-1 border-l border-line pl-3">

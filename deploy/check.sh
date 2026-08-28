@@ -898,6 +898,104 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "Reclaiming disk never removes what rollback needs"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The purge that shipped was `docker image prune --filter until=168h`. At
+# several releases a day no image ever reaches seven days, so it removed
+# nothing, ever: found on a real host at 97% full — 23 images and 19 GB, plus
+# 15 GB of build cache on a box whose whole premise is that it never builds.
+#
+# Replacing an age with a count makes the opposite mistake possible, and it is
+# the dangerous one: a purge that takes the image `previous` names leaves the
+# rollback button with no target, which is discovered during an incident.
+# Lifted out of the script, like record() above, so this tests what ships.
+
+if ! sed -n '/^prune_images() {/,/^}/p' "$REPO_ROOT/deploy/bin/metaclaude-deploy" > "$WORK/prune.sh"; then
+  bad "extracting prune_images() from metaclaude-deploy" "could not read the script"
+elif [ "$(grep -c '^}' "$WORK/prune.sh")" -ne 1 ]; then
+  bad "extracting prune_images()" "the definition moved; this check needs updating"
+else
+  pi_stub="$WORK/pi-stub"; pi_calls="$WORK/pi-calls.log"; pi_rel="$WORK/pi-releases"
+  mkdir -p "$pi_stub" "$pi_rel"
+  # `current` is a digest reference, as a real deployment records it, and the
+  # image it resolves to also carries a version tag. A purge that spared only
+  # the literal string would delete it through its other name.
+  echo "ghcr.io/acme/metaclaude@sha256:aaa" > "$pi_rel/current"
+  echo "ghcr.io/acme/metaclaude@sha256:bbb" > "$pi_rel/previous"
+
+  cat > "$pi_stub/docker" <<'STUB'
+#!/usr/bin/env bash
+printf 'docker %s\n' "$*" >> "$MC_CALLS"
+case "$1 ${2:-}" in
+  "image inspect")
+    case "$*" in
+      *aaa*) printf 'sha256:idA\n' ;;
+      *bbb*) printf 'sha256:idB\n' ;;
+      *) exit 1 ;;
+    esac
+    exit 0 ;;
+  "images "*|"images")
+    # Newest first, as CreatedAt sorts. idA is current under a version tag,
+    # idB is previous, and one image wears two tags at once.
+    cat <<'ROWS'
+2026-08-28 05:31:17 +0000 UTC	sha256:idA	ghcr.io/acme/metaclaude:v0.33.0
+2026-08-28 05:08:19 +0000 UTC	sha256:idB	ghcr.io/acme/metaclaude:v0.32.15
+2026-08-27 04:20:12 +0000 UTC	sha256:idC	ghcr.io/acme/metaclaude:v0.32.0
+2026-08-26 04:20:12 +0000 UTC	sha256:idD	ghcr.io/acme/metaclaude:v0.31.0
+2026-08-26 04:20:12 +0000 UTC	sha256:idD	ghcr.io/acme/metaclaude:latest
+2026-08-25 04:20:12 +0000 UTC	sha256:idE	ghcr.io/acme/metaclaude:<none>
+ROWS
+    exit 0 ;;
+esac
+exit 0
+STUB
+  chmod +x "$pi_stub/docker"
+
+  (
+    PATH="$pi_stub:$PATH"; export MC_CALLS="$pi_calls"; : > "$pi_calls"
+    CURRENT="$pi_rel/current"; PREVIOUS="$pi_rel/previous"
+    ALLOWED_IMAGE_PREFIX="ghcr.io/acme/metaclaude"
+    # One, deliberately. At two, the newest two images happen to be current and
+    # previous, so the ceiling alone would spare them and this would prove
+    # nothing about the sparing. At one, idB survives only because `previous`
+    # names it — which is the property worth having.
+    IMAGE_KEEP=1
+    log() { :; }
+    # shellcheck source=/dev/null
+    . "$WORK/prune.sh"
+    prune_images
+  ) >/dev/null 2>&1
+
+  pi_removed="$(grep -c '^docker rmi ' "$pi_calls" 2>/dev/null || echo 0)"
+  if grep -qE '^docker rmi .*(v0\.33\.0|v0\.32\.15|idA|idB)' "$pi_calls"; then
+    bad "the purge removed an image rollback needs" \
+        "$(grep '^docker rmi' "$pi_calls" | tr '\n' ' ')"
+  elif [ "$pi_removed" -eq 0 ]; then
+    bad "the purge removed nothing" "the disk keeps filling, one image per release"
+  else
+    ok "the purge spares the images current and previous resolve to"
+  fi
+
+  # The untagged one can only be addressed by id; the double-tagged one needs
+  # both of its names removed or its layers stay on disk.
+  if grep -q '^docker rmi sha256:idE' "$pi_calls" \
+     && grep -q '^docker rmi ghcr.io/acme/metaclaude:v0.31.0' "$pi_calls" \
+     && grep -q '^docker rmi ghcr.io/acme/metaclaude:latest' "$pi_calls"; then
+    ok "every reference of a doomed image is removed, by id when it has no tag"
+  else
+    bad "the purge left references behind" \
+        "an image keeps its layers until its last tag goes: $(grep '^docker rmi' "$pi_calls" | tr '\n' ' ')"
+  fi
+
+  if grep -q '^docker builder prune' "$pi_calls"; then
+    ok "the build cache is reclaimed on a host that never builds"
+  else
+    bad "the build cache is never reclaimed" "15 GB of it accumulated on a real host"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "The agent's workspaces are not inside the data directory"
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1090,7 +1188,12 @@ if [ "${1:-}" = "volume" ] && [ "${2:-}" = "inspect" ]; then
   printf '%s' "$d"; exit 0
 fi
 case "$*" in
-  *" stop app"|*" stop") touch "$MC_VOLS/metaclaude-data/stopped-while-copying" ;;
+  # The archive count at stop time is what proves retention ran *before* the
+  # new archive was written — see the lowered-ceiling check further down.
+  *" stop app"|*" stop")
+    touch "$MC_VOLS/metaclaude-data/stopped-while-copying"
+    ls -1 "$MC_BKDIR"/metaclaude-backup-*.tar.gz 2>/dev/null | wc -l > "$MC_VOLS/count-at-stop"
+    ;;
   *" start app"|*" start") rm -f "$MC_VOLS/metaclaude-data/stopped-while-copying" ;;
 esac
 exit 0
@@ -1098,9 +1201,10 @@ STUB
 chmod +x "$bk_stub/docker"
 
 run_backup() {
-  PATH="$bk_stub:$PATH" MC_CALLS="$bk_calls" MC_VOLS="$bk_vols" \
+  PATH="$bk_stub:$PATH" MC_CALLS="$bk_calls" MC_VOLS="$bk_vols" MC_BKDIR="$bk_dir" \
   METACLAUDE_APP_DIR="$bk_app" METACLAUDE_BACKUP_DIR="$bk_dir" \
   METACLAUDE_BACKUP_KEEP="${1:-14}" \
+  METACLAUDE_BACKUP_MIN_FREE_BYTES="${MC_MIN_FREE:-}" \
     "$REPO_ROOT/deploy/bin/metaclaude-backup" "${@:2}"
 }
 
@@ -1134,12 +1238,60 @@ else
   bad "backup-marker.json is wrong or absent" "the doctor would warn forever — or never"
 fi
 
+# The archives moved off the system disk onto a volume the container does not
+# mount, so nothing inside the app can measure it. This figure is the doctor's
+# only view of it.
+if grep -qE '"freeBytes":[0-9]+' "$bk_vols/metaclaude-data/backup-marker.json" 2>/dev/null; then
+  ok "the marker carries the space left where the archives are kept"
+else
+  bad "backup-marker.json records no free space" "a filling backup volume would be invisible to the doctor"
+fi
+
 # Archive names carry second resolution, so consecutive runs need a beat.
 sleep 1; run_backup 2 backup >/dev/null 2>&1
 sleep 1; run_backup 2 backup >/dev/null 2>&1
 bk_count="$(ls -1 "$bk_dir"/metaclaude-backup-*.tar.gz 2>/dev/null | wc -l)"
 [ "$bk_count" -eq 2 ] && ok "retention keeps the newest 2 of 3" \
   || bad "retention did not prune" "expected 2 archives, found $bk_count"
+
+# Retention is applied before the new archive is written, not only after it.
+# Lowering the ceiling on a host whose volume is nearly full has to free the
+# room on the very next run, rather than needing one more archive's worth of
+# space first. Proven by what the daemon stub counted at stop time: with two
+# archives on disk and a ceiling of one, exactly one may remain by then.
+rm -f "$bk_vols/count-at-stop"
+sleep 1; run_backup 1 backup >/dev/null 2>&1
+bk_at_stop="$(cat "$bk_vols/count-at-stop" 2>/dev/null || echo -1)"
+[ "$bk_at_stop" -eq 1 ] && ok "a lowered retention ceiling frees room before the next archive is written" \
+  || bad "retention runs only after the archive" "expected 1 archive on disk at stop time, found $bk_at_stop"
+
+# A backup that cannot fit must say so while the app is still serving. The
+# knob is the injection point: no test can shrink a real filesystem, and a
+# guard that cannot be exercised is a guard nobody knows is broken.
+#
+# The refusal's *reason* is asserted, not merely its exit code. Without that
+# this check passed against a script with no guard at all: the run before it
+# had just written an archive, this one collided with that second-resolution
+# name, and "refused, and the app was never stopped" was true for entirely
+# the wrong reason. Hence the sleep, and hence the grep.
+sleep 1
+: > "$bk_calls"
+bk_before="$(ls -1 "$bk_dir"/metaclaude-backup-*.tar.gz 2>/dev/null | wc -l)"
+bk_refusal="$(MC_MIN_FREE=999999999999999 run_backup 14 backup 2>&1 >/dev/null)" && bk_ran=1 || bk_ran=0
+if [ "$bk_ran" = 1 ]; then
+  bad "a backup ran with no room for it" "the archive would be truncated and the marker would still advance"
+else
+  bk_after="$(ls -1 "$bk_dir"/metaclaude-backup-*.tar.gz 2>/dev/null | wc -l)"
+  if ! printf '%s' "$bk_refusal" | grep -qi "free"; then
+    bad "the backup refused for some other reason" "the space guard was not what stopped it: $bk_refusal"
+  elif grep -q " stop" "$bk_calls"; then
+    bad "a doomed backup still stopped the app" "an outage bought nothing"
+  elif [ "$bk_after" -ne "$bk_before" ]; then
+    bad "the refused backup left an archive behind" "found $bk_after where there were $bk_before"
+  else
+    ok "too little free space refuses before the app is stopped"
+  fi
+fi
 
 mv "$bk_vols/caddy-data" "$bk_vols/caddy-data.gone"
 : > "$bk_calls"

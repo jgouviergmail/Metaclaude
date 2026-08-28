@@ -129,8 +129,12 @@ export function RunGenesis({ run }: { run: Run }) {
               ) : (
                 <p className="text-muted">
                   {run.policy.source === 'explicit'
-                    ? t('You chose this configuration yourself; the learner watches and records the outcome.')
-                    : t('No learned arm matches this run yet — its outcome is what teaches the first one.')}
+                    ? t(
+                      'You chose this configuration yourself; the learner watches and records the outcome.',
+                    )
+                    : t(
+                      'No learned arm matches this run yet — its outcome is what teaches the first one.',
+                    )}
                 </p>
               )}
 

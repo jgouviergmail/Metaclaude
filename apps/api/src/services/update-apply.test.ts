@@ -9,11 +9,11 @@
  * never a crash.
  */
 
-import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { UpdateApplier, UpdateApplyError } from './update-apply.js';
+import { publishRequest, UpdateApplier, UpdateApplyError } from './update-apply.js';
 
 let dir: string;
 let applier: UpdateApplier;
@@ -143,5 +143,98 @@ describe('status', () => {
     const status = await applier.status();
     expect(status.state).toBe('idle');
     expect(status.message).toMatch(/unreadable/i);
+  });
+});
+
+/**
+ * Publishing, and the window the lock alone never closed.
+ *
+ * The lock excludes writers whose attempts overlap. It said nothing about a
+ * contender that claimed the name *after* the winner had already moved it
+ * away — and `rename` overwrites, so that contender published a second
+ * request over the first. Both callers were told they had won, and the
+ * version that deployed was the later one.
+ *
+ * `link` refuses an existing destination, which makes the ordering
+ * irrelevant. What is testable single-threaded is the other half of that
+ * change: refusing an existing file must not brick the button on one that
+ * nobody can act on.
+ */
+describe('publishing', () => {
+  it('publishes through a link, so a second arrival cannot overwrite the first', async () => {
+    await applier.request('v1.0.0', 'jules');
+
+    const published = JSON.parse(readFileSync(join(dir, 'request.json'), 'utf8'));
+    expect(published.version).toBe('v1.0.0');
+    // The claim is released once it is published — a lock left behind would
+    // refuse every later request until it aged out.
+    expect(existsSync(join(dir, '.request.json.tmp'))).toBe(false);
+  });
+
+  it('does not brick the button on a request file nobody can act on', async () => {
+    // Unreadable to `status`, which therefore reports idle and lets the call
+    // through — and then the publish finds the name taken. Sweeping it is the
+    // same judgement the stale lock already gets.
+    writeFileSync(join(dir, 'request.json'), '{ not json at all');
+
+    await applier.request('v3.0.0', 'jules');
+
+    expect(JSON.parse(readFileSync(join(dir, 'request.json'), 'utf8')).version).toBe('v3.0.0');
+  });
+
+  it('leaves a well-formed pending request alone rather than replacing it', async () => {
+    await applier.request('v1.0.0', 'jules');
+
+    // The status guard is what catches this one, before the publish is even
+    // attempted — but the outcome is what matters: the first intent stands.
+    await expect(applier.request('v2.0.0', 'someone-else')).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(JSON.parse(readFileSync(join(dir, 'request.json'), 'utf8')).version).toBe('v1.0.0');
+  });
+});
+
+/**
+ * `publishRequest` on its own — the invariant no test of `request()` can reach.
+ *
+ * The window it closes exists only between two concurrent callers: one that
+ * has already published, and one that claimed the lock afterwards because the
+ * name had been freed. A single-threaded test cannot stand inside that
+ * window, which is exactly why the guarantee is a property of the *publish*
+ * step and is asserted here instead.
+ */
+describe('publishRequest', () => {
+  const lock = (): string => join(dir, '.request.json.tmp');
+  const published = (): string => join(dir, 'request.json');
+
+  it('publishes when the destination is free, and releases the claim', async () => {
+    writeFileSync(lock(), JSON.stringify({ version: 'v1.0.0', requestedBy: 'a', at: 1 }));
+
+    await publishRequest(lock(), published());
+
+    expect(JSON.parse(readFileSync(published(), 'utf8')).version).toBe('v1.0.0');
+    expect(existsSync(lock())).toBe(false);
+  });
+
+  it('refuses rather than overwriting a request already published', async () => {
+    // This is the case `rename` silently won: both callers succeed, and the
+    // later version is the one that deploys.
+    writeFileSync(published(), JSON.stringify({ version: 'v1.0.0', requestedBy: 'a', at: 1 }));
+    writeFileSync(lock(), JSON.stringify({ version: 'v2.0.0', requestedBy: 'b', at: 2 }));
+
+    await expect(publishRequest(lock(), published())).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(JSON.parse(readFileSync(published(), 'utf8')).version).toBe('v1.0.0');
+    // And the loser leaves nothing behind that would refuse the next caller.
+    expect(existsSync(lock())).toBe(false);
+  });
+
+  it('sweeps a destination nobody can act on rather than bricking the button', async () => {
+    writeFileSync(published(), 'half a file');
+    writeFileSync(lock(), JSON.stringify({ version: 'v2.0.0', requestedBy: 'b', at: 2 }));
+
+    await publishRequest(lock(), published());
+
+    expect(JSON.parse(readFileSync(published(), 'utf8')).version).toBe('v2.0.0');
   });
 });

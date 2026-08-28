@@ -175,6 +175,18 @@ function withConflict<T>(entity: 'A skill' | 'An agent' | 'An MCP server', name:
 const headerSlot = (name: string): string => `header:${name}`;
 
 /**
+ * How one MCP server is mounted, with its secrets already resolved.
+ *
+ * The second variant excludes `'stdio'` rather than reusing `McpTransport`
+ * whole: a union whose members share a discriminant value narrows to neither,
+ * and `config.type === 'stdio'` would then reach for a `command` the checker
+ * cannot promise is there.
+ */
+export type McpMountConfig =
+  | { type: 'stdio'; command: string; args: string[]; env: Record<string, string> }
+  | { type: Exclude<McpTransport, 'stdio'>; url: string; headers: Record<string, string> };
+
+/**
  * Merge submitted secret values over the ones already stored.
  *
  * The API never returns a secret value, so an edit form cannot round-trip one:
@@ -491,6 +503,80 @@ export class Registry {
     return this.db.prepare('DELETE FROM agents WHERE id = ?').run(id).changes > 0;
   }
 
+  /* -------------------------- Acting on many --------------------------- */
+
+  /**
+   * The scope predicate the listings use, reused verbatim so a bulk action can
+   * never reach a row the operator was not shown.
+   *
+   * The `OR workspace_id IS NULL` is not an oversight: a workspace's listing
+   * deliberately includes the global entries, because a run in that workspace
+   * mounts both. What the screen shows is what "all of them" has to mean, or
+   * the button lies about its own scope.
+   *
+   * `undefined` is every scope, `null` is global only — the same three-way
+   * convention as `listSkills`, and the reason a missing query parameter must
+   * not collapse to `null` anywhere above this.
+   */
+  private scopeClause(workspaceId: string | null | undefined): {
+    sql: string;
+    params: string[];
+  } {
+    if (workspaceId === undefined) return { sql: '', params: [] };
+    if (workspaceId === null) return { sql: ' AND workspace_id IS NULL', params: [] };
+    return { sql: ' AND (workspace_id IS ? OR workspace_id IS NULL)', params: [workspaceId] };
+  }
+
+  /**
+   * One statement for many rows, in one transaction.
+   *
+   * The alternative was the per-row route, which meant re-sending each skill's
+   * whole body — up to 200 000 characters — to flip one boolean, once per row,
+   * with an audit entry each and no atomicity: a failure part way through left
+   * the operator looking at a half-applied intention.
+   *
+   * The table name comes from a closed union and never from a caller.
+   */
+  private bulkWrite(
+    table: 'skills' | 'agents',
+    ids: string[],
+    workspaceId: string | null | undefined,
+    action: 'delete' | { enabled: boolean },
+  ): number {
+    if (ids.length === 0) return 0;
+
+    const scope = this.scopeClause(workspaceId);
+    const holes = ids.map(() => '?').join(',');
+
+    if (action === 'delete') {
+      return this.db
+        .prepare(`DELETE FROM ${table} WHERE id IN (${holes})${scope.sql}`)
+        .run(...ids, ...scope.params).changes;
+    }
+
+    return this.db
+      .prepare(
+        `UPDATE ${table} SET enabled = ?, updated_at = ? WHERE id IN (${holes})${scope.sql}`,
+      )
+      .run(action.enabled ? 1 : 0, Date.now(), ...ids, ...scope.params).changes;
+  }
+
+  setSkillsEnabled(ids: string[], enabled: boolean, workspaceId?: string | null): number {
+    return this.bulkWrite('skills', ids, workspaceId, { enabled });
+  }
+
+  deleteSkills(ids: string[], workspaceId?: string | null): number {
+    return this.bulkWrite('skills', ids, workspaceId, 'delete');
+  }
+
+  setAgentsEnabled(ids: string[], enabled: boolean, workspaceId?: string | null): number {
+    return this.bulkWrite('agents', ids, workspaceId, { enabled });
+  }
+
+  deleteAgents(ids: string[], workspaceId?: string | null): number {
+    return this.bulkWrite('agents', ids, workspaceId, 'delete');
+  }
+
   /* ------------------------------ MCP ---------------------------------- */
 
   listMcpServers(workspaceId?: string | null): McpServerRecord[] {
@@ -657,6 +743,47 @@ export class Registry {
    * Called once per run, so it must stay cheap: it is a handful of indexed
    * reads plus vault decryption for the enabled servers only.
    */
+  /**
+   * One server's mounted configuration, secrets resolved.
+   *
+   * Extracted from `resolve` so that anything else asking a server a question
+   * — the description probe, for one — connects with exactly what a run would
+   * connect with, rather than a second reading of the same rows that could
+   * drift from it. Null when the row cannot be mounted at all: a stdio server
+   * with no command, an HTTP one with no URL.
+   */
+  mcpConfig(server: McpServerRecord): McpMountConfig | null {
+    if (server.transport === 'stdio') {
+      if (!server.command) return null;
+      return {
+        type: 'stdio',
+        command: server.command,
+        args: server.args,
+        env: this.vault.resolveEnv(`mcp:${server.id}`, server.envKeys),
+      };
+    }
+
+    if (!server.url) return null;
+    // Env secrets are still merged in for an HTTP server: it has no
+    // subprocess environment, so the env field is the natural place an
+    // operator puts a token, and dropping it here would silently break
+    // servers configured that way.
+    const sealedHeaders = this.vault.resolveEnv(
+      `mcp:${server.id}`,
+      server.headerKeys.map(headerSlot),
+    );
+    return {
+      type: server.transport,
+      url: server.url,
+      headers: {
+        ...Object.fromEntries(
+          server.headerKeys.map((name) => [name, sealedHeaders[headerSlot(name)] ?? '']),
+        ),
+        ...this.vault.resolveEnv(`mcp:${server.id}`, server.envKeys),
+      },
+    };
+  }
+
   resolve(workspace: Workspace): RuntimeContext {
     const mcpServers: Record<string, unknown> = {};
 
@@ -664,35 +791,8 @@ export class Registry {
       if (!server.enabled) continue;
 
       try {
-        if (server.transport === 'stdio') {
-          if (!server.command) continue;
-          mcpServers[server.name] = {
-            type: 'stdio',
-            command: server.command,
-            args: server.args,
-            env: this.vault.resolveEnv(`mcp:${server.id}`, server.envKeys),
-          };
-        } else {
-          if (!server.url) continue;
-          // Env secrets are still merged in for an HTTP server: it has no
-          // subprocess environment, so the env field is the natural place an
-          // operator puts a token, and dropping it here would silently break
-          // servers configured that way.
-          const sealedHeaders = this.vault.resolveEnv(
-            `mcp:${server.id}`,
-            server.headerKeys.map(headerSlot),
-          );
-          mcpServers[server.name] = {
-            type: server.transport,
-            url: server.url,
-            headers: {
-              ...Object.fromEntries(
-                server.headerKeys.map((name) => [name, sealedHeaders[headerSlot(name)] ?? '']),
-              ),
-              ...this.vault.resolveEnv(`mcp:${server.id}`, server.envKeys),
-            },
-          };
-        }
+        const config = this.mcpConfig(server);
+        if (config) mcpServers[server.name] = config;
       } catch (error) {
         // One misconfigured server must not prevent the run from starting.
         this.log('warn', `skipping MCP server "${server.name}"`, {

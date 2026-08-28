@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
+import { usePlural, useT } from '@/lib/i18n';
 
 /** Ready-made schedules, so nobody has to remember cron syntax to get started. */
 const PRESETS: Array<{ label: string; expression: string }> = [
@@ -57,6 +58,8 @@ const PRESETS: Array<{ label: string; expression: string }> = [
 ];
 
 export function AutomationsPage() {
+  const plural = usePlural();
+  const t = useT();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Automation | 'new' | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null);
@@ -82,30 +85,30 @@ export function AutomationsPage() {
     mutationFn: (id: string) => api.fireAutomation(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['automations'] });
-      toast.success('Automation started');
+      toast.success(t('Automation started'));
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not run the automation.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not run the automation.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteAutomation(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['automations'] });
-      toast.success('Automation deleted');
+      toast.success(t('Automation deleted'));
     },
   });
 
   const automations = data?.automations ?? [];
   const workspaces = workspaceData?.workspaces ?? [];
   const workspaceName = (id: string): string =>
-    workspaces.find((workspace) => workspace.id === id)?.name ?? 'Unknown workspace';
+    workspaces.find((workspace) => workspace.id === id)?.name ?? t('Unknown workspace');
 
   return (
     <AppShell>
       <ContentHeader
-        title="Automations"
-        subtitle="Scheduled and continuous agent loops."
+        title={t('Automations')}
+        subtitle={t('Scheduled and continuous agent loops.')}
         showSidebarToggle={false}
         actions={
           <Button
@@ -115,7 +118,7 @@ export function AutomationsPage() {
             disabled={workspaces.length === 0}
           >
             <Plus className="size-4" aria-hidden />
-            New automation
+            {t('New automation')}
           </Button>
         }
       />
@@ -131,24 +134,26 @@ export function AutomationsPage() {
           ) : automations.length === 0 ? (
             <EmptyState
               icon={<Timer />}
-              title="No automations yet"
+              title={t('No automations yet')}
               description={
                 workspaces.length === 0
-                  ? 'Create a workspace first — an automation always runs inside one.'
-                  : 'Give the agent a prompt and a schedule. It runs with the same permissions, memory and learning as a session you start by hand.'
+                  ? t('Create a workspace first — an automation always runs inside one.')
+                  : t(
+                    'Give the agent a prompt and a schedule. It runs with the same permissions, memory and learning as a session you start by hand.',
+                  )
               }
               action={
                 workspaces.length > 0 ? (
                   <Button variant="primary" size="sm" onClick={() => setEditing('new')}>
                     <Plus className="size-4" aria-hidden />
-                    Create one
+                    {t('Create one')}
                   </Button>
                 ) : (
                   <Link
                     to="/workspaces"
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised px-3 text-[13px] font-medium text-ink hover:bg-line"
                   >
-                    Go to workspaces
+                    {t('Go to workspaces')}
                   </Link>
                 )
               }
@@ -177,13 +182,15 @@ export function AutomationsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-[14px] font-semibold text-ink">{automation.name}</h3>
                       {automation.continuous ? (
-                        <Tooltip content="Each firing continues the same session, so context accumulates across runs.">
+                        <Tooltip content={t(
+                          'Each firing continues the same session, so context accumulates across runs.',
+                        )}>
                           <span>
-                            <Badge tone="thinking">continuous</Badge>
+                            <Badge tone="thinking">{t('continuous')}</Badge>
                           </span>
                         </Tooltip>
                       ) : null}
-                      {!automation.enabled ? <Badge tone="neutral">paused</Badge> : null}
+                      {!automation.enabled ? <Badge tone="neutral">{t('paused')}</Badge> : null}
                       {automation.lastStatus ? (
                         <Badge
                           tone={
@@ -208,22 +215,25 @@ export function AutomationsPage() {
                     </p>
 
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-subtle">
-                      <span>{automation.runCount} runs</span>
+                      <span>{automation.runCount} {t('runs')}</span>
                       {automation.lastRunAt ? (
-                        <span>last {formatRelative(automation.lastRunAt)}</span>
+                        <span>{t('last')} {formatRelative(automation.lastRunAt)}</span>
                       ) : null}
                       {automation.enabled && automation.nextRunAt ? (
                         <Tooltip content={formatDateTime(automation.nextRunAt)}>
                           <span className="cursor-help underline decoration-dotted underline-offset-2">
-                            next {formatRelative(automation.nextRunAt)}
+                            {t('next')} {formatRelative(automation.nextRunAt)}
                           </span>
                         </Tooltip>
                       ) : null}
                       {automation.consecutiveFailures > 0 ? (
                         <span className="flex items-center gap-1 text-warning">
                           <AlertTriangle className="size-3" aria-hidden />
-                          {automation.consecutiveFailures} consecutive failure
-                          {automation.consecutiveFailures === 1 ? '' : 's'}
+                          {plural(
+                            automation.consecutiveFailures,
+                            '{n} consecutive failure',
+                            '{n} consecutive failures',
+                          )}
                         </span>
                       ) : null}
                       {automation.sessionId ? (
@@ -231,18 +241,18 @@ export function AutomationsPage() {
                           to={`/w/${automation.workspaceId}/s/${automation.sessionId}`}
                           className="text-accent hover:underline"
                         >
-                          Open session
+                          {t('Open session')}
                         </Link>
                       ) : null}
                     </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1">
-                    <Tooltip content="Run now">
+                    <Tooltip content={t('Run now')}>
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Run ${automation.name} now`}
+                        aria-label={t('Run {name} now', { name: automation.name })}
                         onClick={() => fire.mutate(automation.id)}
                       >
                         <Zap className="size-4" />
@@ -273,20 +283,20 @@ export function AutomationsPage() {
                         <button
                           type="button"
                           className="flex size-7 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-ink"
-                          aria-label={`More actions for ${automation.name}`}
+                          aria-label={t('More actions for {name}', { name: automation.name })}
                         >
                           <MoreVertical className="size-4" />
                         </button>
                       }
                     >
-                      <MenuItem onSelect={() => setEditing(automation)}>Edit</MenuItem>
+                      <MenuItem onSelect={() => setEditing(automation)}>{t('Edit')}</MenuItem>
                       <MenuSeparator />
                       <MenuItem
                         icon={<Trash2 />}
                         tone="danger"
                         onSelect={() => setPendingDelete(automation)}
                       >
-                        Delete
+                        {t('Delete')}
                       </MenuItem>
                     </Menu>
                   </div>
@@ -309,8 +319,10 @@ export function AutomationsPage() {
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => !open && setPendingDelete(null)}
         title={`Delete "${pendingDelete?.name ?? ''}"?`}
-        description="The schedule is removed. Sessions and transcripts it already produced are kept."
-        confirmLabel="Delete"
+        description={t(
+          'The schedule is removed. Sessions and transcripts it already produced are kept.',
+        )}
+        confirmLabel={t('Delete')}
         danger
         onConfirm={() => {
           if (pendingDelete) remove.mutate(pendingDelete.id);
@@ -331,6 +343,7 @@ function AutomationEditor({
   workspaces: Array<{ id: string; name: string }>;
   onClose: () => void;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
 
   const [name, setName] = useState(automation?.name ?? '');
@@ -377,11 +390,11 @@ function AutomationEditor({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['automations'] });
-      toast.success(automation ? 'Automation updated' : 'Automation created');
+      toast.success(automation ? t('Automation updated') : t('Automation created'));
       onClose();
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not save the automation.'),
+      toast.error(error instanceof ApiError ? error.message : t('Could not save the automation.')),
   });
 
   const valid = name.trim() && prompt.trim() && workspaceId;
@@ -390,13 +403,15 @@ function AutomationEditor({
     <Modal
       open
       onOpenChange={(open) => !open && onClose()}
-      title={automation ? 'Edit automation' : 'New automation'}
-      description="A prompt plus a trigger. It runs exactly as a session you start yourself would."
+      title={automation ? t('Edit automation') : t('New automation')}
+      description={t(
+        'A prompt plus a trigger. It runs exactly as a session you start yourself would.',
+      )}
       size="lg"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             variant="primary"
@@ -412,12 +427,12 @@ function AutomationEditor({
     >
       <div className="space-y-4">
         <Label htmlFor="auto-name">
-          Name
+          {t('Name')}
           <Input
             id="auto-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Nightly dependency audit"
+            placeholder={t('Nightly dependency audit')}
             autoFocus
             className="mt-1.5"
           />
@@ -425,12 +440,12 @@ function AutomationEditor({
 
         {!automation ? (
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">Workspace</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('Workspace')}</span>
             <Menu
               side="bottom"
               trigger={
                 <Button variant="secondary" size="sm" className="w-full justify-between">
-                  {workspaces.find((w) => w.id === workspaceId)?.name ?? 'Choose a workspace'}
+                  {workspaces.find((w) => w.id === workspaceId)?.name ?? t('Choose a workspace')}
                 </Button>
               }
             >
@@ -447,20 +462,22 @@ function AutomationEditor({
           </div>
         ) : null}
 
-        <Label htmlFor="auto-prompt" hint="What the agent should do each time this fires.">
-          Prompt
+        <Label htmlFor="auto-prompt" hint={t('What the agent should do each time this fires.')}>
+          {t('Prompt')}
           <Textarea
             id="auto-prompt"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             rows={5}
-            placeholder="Check for outdated dependencies with known advisories and open a summary of what needs attention."
+            placeholder={t(
+              'Check for outdated dependencies with known advisories and open a summary of what needs attention.',
+            )}
             className="mt-1.5"
           />
         </Label>
 
         <div>
-          <span className="mb-1.5 block text-[13px] font-medium text-ink">Trigger</span>
+          <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('Trigger')}</span>
           <div className="flex gap-1.5">
             {(['cron', 'interval', 'manual'] as const).map((type) => (
               <button
@@ -486,7 +503,7 @@ function AutomationEditor({
                 value={expression}
                 onChange={(event) => setExpression(event.target.value)}
                 placeholder="0 9 * * *"
-                aria-label="Cron expression"
+                aria-label={t('Cron expression')}
                 className="font-mono text-[13px]"
               />
               <div className="flex flex-wrap gap-1.5">
@@ -502,12 +519,12 @@ function AutomationEditor({
                         : 'border-line text-muted hover:bg-raised',
                     )}
                   >
-                    {preset.label}
+                    {t(preset.label)}
                   </button>
                 ))}
               </div>
               <p className="text-[11.5px] text-subtle">
-                Standard 5-field cron, in the server's timezone.
+                {t("Standard 5-field cron, in the server's timezone.")}
               </p>
             </div>
           ) : triggerType === 'interval' ? (
@@ -517,13 +534,15 @@ function AutomationEditor({
                 min={1}
                 value={everyMinutes}
                 onChange={(event) => setEveryMinutes(Math.max(1, Number(event.target.value)))}
-                aria-label="Interval in minutes"
+                aria-label={t('Interval in minutes')}
               />
-              <p className="mt-1 text-[11.5px] text-subtle">Minutes between runs. Minimum 1.</p>
+              <p className="mt-1 text-[11.5px] text-subtle">{t(
+                'Minutes between runs. Minimum 1.',
+              )}</p>
             </div>
           ) : (
             <p className="mt-2.5 text-[11.5px] text-subtle">
-              Runs only when you press "Run now".
+              {t('Runs only when you press "Run now".')}
             </p>
           )}
         </div>
@@ -536,18 +555,20 @@ function AutomationEditor({
             className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)]"
           />
           <span className="min-w-0">
-            <span className="block text-[13px] font-medium text-ink">Continuous loop</span>
+            <span className="block text-[13px] font-medium text-ink">{t('Continuous loop')}</span>
             <span className="block text-[12px] leading-relaxed text-muted">
-              Continue the same session on every firing instead of starting fresh. The agent keeps
-              everything it has already learned in this loop, which is what makes long-running,
-              self-directed work possible — and what makes its context grow over time.
+              {t(
+                'Continue the same session on every firing instead of starting fresh. The agent keeps everything it has already learned in this loop, which is what makes long-running, self-directed work possible — and what makes its context grow over time.',
+              )}
             </span>
           </span>
         </label>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">Permission mode</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+              'Permission mode',
+            )}</span>
             <Menu
               side="bottom"
               trigger={
@@ -556,7 +577,7 @@ function AutomationEditor({
                 </Button>
               }
             >
-              <MenuLabel>Unattended runs cannot answer prompts</MenuLabel>
+              <MenuLabel>{t('Unattended runs cannot answer prompts')}</MenuLabel>
               {(['plan', 'default', 'acceptEdits', 'auto', 'dontAsk'] as PermissionMode[]).map(
                 (mode) => (
                   <MenuItem
@@ -572,8 +593,8 @@ function AutomationEditor({
             </Menu>
           </div>
 
-          <Label htmlFor="auto-failures" hint="0 disables the guard.">
-            Stop after N failures
+          <Label htmlFor="auto-failures" hint={t('0 disables the guard.')}>
+            {t('Stop after N failures')}
             <Input
               id="auto-failures"
               type="number"
@@ -589,8 +610,9 @@ function AutomationEditor({
         {permissionMode === 'default' ? (
           <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/30 p-3 text-[12px] leading-relaxed text-ink">
             <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" aria-hidden />
-            In "Ask" mode an unattended run will stall on the first prompt and be declined after ten
-            minutes. For a schedule, prefer "Plan", "Accept edits" or "Auto".
+            {t(
+              'In "Ask" mode an unattended run will stall on the first prompt and be declined after ten minutes. For a schedule, prefer "Plan", "Accept edits" or "Auto".',
+            )}
           </p>
         ) : null}
       </div>

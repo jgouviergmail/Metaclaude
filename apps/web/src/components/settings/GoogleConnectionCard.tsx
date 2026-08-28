@@ -79,7 +79,9 @@ export function GoogleConnectionCard() {
         ),
       });
     } else {
-      toast.error(t('Google did not connect.'), { description: params.get('reason') ?? undefined });
+      toast.error(t(
+        'Google did not connect.',
+      ), { description: params.get('reason') ?? undefined });
     }
     void queryClient.invalidateQueries({ queryKey: ['google-connection'] });
     void queryClient.invalidateQueries({ queryKey: ['mcp-servers', null] });
@@ -95,7 +97,9 @@ export function GoogleConnectionCard() {
       window.location.assign(result.authorizationUrl);
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('Could not start the connection.')),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not start the connection.',
+      )),
   });
 
   const disconnect = useMutation({
@@ -189,7 +193,9 @@ export function GoogleConnectionCard() {
               )}
             </li>
             <li>
-              {t('Create an OAuth client ID of type “Web application”, and register this exact redirect URI:')}
+              {t(
+                'Create an OAuth client ID of type “Web application”, and register this exact redirect URI:',
+              )}
             </li>
           </ol>
 
@@ -197,7 +203,9 @@ export function GoogleConnectionCard() {
             <CopyableCode value={state.data.redirectUri} />
           ) : (
             <p className="text-[12.5px] text-warning">
-              {t('This deployment’s address could not be determined, so the redirect URI cannot be shown.')}
+              {t(
+                'This deployment’s address could not be determined, so the redirect URI cannot be shown.',
+              )}
             </p>
           )}
 
@@ -209,7 +217,7 @@ export function GoogleConnectionCard() {
                 value={clientId}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="…apps.googleusercontent.com"
+                placeholder={t('…apps.googleusercontent.com')}
                 onChange={(event) => setClientId(event.target.value)}
               />
             </div>

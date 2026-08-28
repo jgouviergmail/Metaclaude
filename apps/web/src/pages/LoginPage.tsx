@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { APP_NAME } from '@metaclaude/shared';
 import { api, ApiError } from '@/lib/api';
-import { useT } from '@/lib/i18n';
+import { Trans, useT } from '@/lib/i18n';
 import { assertPasskey, isCeremonyCancelled, passkeyDomainOk, passkeySupported } from '@/lib/passkeys';
 import { useAuthStore } from '@/lib/store';
 import { Button, Input, Label } from '@/components/ui/primitives';
@@ -61,7 +61,9 @@ export function LoginPage() {
       // Closing the browser's passkey sheet is a choice, not an error.
       if (isCeremonyCancelled(caught)) return;
       setError(
-        caught instanceof ApiError ? caught.message : t('That passkey did not sign in. Try your password.'),
+        caught instanceof ApiError ? caught.message : t(
+          'That passkey did not sign in. Try your password.',
+        ),
       );
     } finally {
       setBusy(false);
@@ -116,9 +118,18 @@ export function LoginPage() {
           <div className="mb-4 rounded-xl border border-warning/30 bg-warning-soft/40 p-4 text-[13px] leading-relaxed text-ink">
             <p className="font-medium">{t('No account exists yet.')}</p>
             <p className="mt-1 text-muted">
-              Set <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_USER</code> and{' '}
-              <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_PASSWORD</code> in your{' '}
-              <code className="font-mono text-[12px]">.env</code>, then restart the container.
+              <Trans
+                template={t(
+                  'Set {user} and {password} in your {file}, then restart the container.',
+                )}
+                values={{
+                  user: <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_USER</code>,
+                  password: (
+                    <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_PASSWORD</code>
+                  ),
+                  file: <code className="font-mono text-[12px]">.env</code>,
+                }}
+              />
             </p>
           </div>
         ) : null}

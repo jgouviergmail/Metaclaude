@@ -562,8 +562,18 @@ export class Kernel {
     this.publishSession(session.id);
     this.publishMetrics();
 
-    /* -- Retrieve memory -------------------------------------------------- */
-    let systemPromptAppend = workspace.settings.systemPromptAppend;
+    /* -- Language --------------------------------------------------------- */
+    // First, so the operator's own append can override it if they insist.
+    //
+    // `auto` writes nothing at all, which is both the default and the previous
+    // behaviour: the model follows the language it is written to. What it does
+    // not follow is a *subagent's* prompt, and every one of the library's
+    // twenty-three is in English — so work delegated out of a French
+    // conversation came back in English, with nothing anywhere in the run
+    // stack having an opinion about it.
+    let systemPromptAppend = [languageDirective(workspace.settings.language), workspace.settings.systemPromptAppend]
+      .filter(Boolean)
+      .join('\n\n');
     if (workspace.settings.memoryEnabled) {
       try {
         const retrieved = await this.deps.memory.search(run.prompt, {
@@ -1062,6 +1072,25 @@ export class Kernel {
 /* -------------------------------------------------------------------------- */
 
 /** First meaningful line of a prompt, trimmed to a sidebar-friendly length. */
+/**
+ * The one line that fixes the language of a whole run, delegations included.
+ *
+ * Named rather than inlined so it is testable on its own, and so the empty
+ * answer for `auto` is a deliberate value rather than a falsy accident: `auto`
+ * must add *nothing*, because the previous behaviour — follow the language you
+ * are written in — is the right default and a sentence saying so would still
+ * spend tokens on every run.
+ *
+ * Addressed at subagents explicitly. The main agent already mirrors the
+ * operator; it is the delegated work, carrying an English prompt from the
+ * library, that comes back in the wrong language.
+ */
+export function languageDirective(language: 'auto' | 'fr' | 'en'): string {
+  if (language === 'auto') return '';
+  const name = language === 'fr' ? 'French' : 'English';
+  return `Write every answer in ${name}, whatever language the request or your own instructions are in. This applies to subagents you delegate to as well. Code, identifiers, file paths and command output stay exactly as they are.`;
+}
+
 export function deriveTitle(prompt: string, maxLength = 60): string {
   const firstLine = prompt
     .split('\n')

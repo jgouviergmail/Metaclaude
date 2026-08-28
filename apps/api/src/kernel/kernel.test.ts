@@ -26,7 +26,7 @@ import { migrate, openDatabase, type Db } from '../db/index.js';
 import { HashingEmbedder } from '../learning/embeddings.js';
 import { KnowledgeStore } from '../learning/knowledge.js';
 import { EventBus } from './bus.js';
-import { deriveTitle, Kernel } from './kernel.js';
+import { deriveTitle, Kernel, languageDirective } from './kernel.js';
 import { AttachmentService } from '../services/attachments.js';
 import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import type { RunOutcome, RunRequest, SupervisorCallbacks } from './supervisor.js';
@@ -834,5 +834,35 @@ describe('knowledge injection', () => {
     await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
 
     expect(fixture.runs.get(run.id)?.status).toBe('succeeded');
+  });
+});
+
+/**
+ * The language directive.
+ *
+ * `auto` has to add nothing — not "answer in whatever language", which would
+ * spend tokens on every run to restate the default — and the two explicit
+ * settings have to reach subagents, since that is the whole reason the
+ * setting exists: the library's twenty-three agents all carry English
+ * prompts, so delegated work came back in English out of a French
+ * conversation.
+ */
+describe('languageDirective', () => {
+  it('says nothing at all on auto', () => {
+    expect(languageDirective('auto')).toBe('');
+  });
+
+  it('names the language, and reaches the subagents', () => {
+    for (const [setting, name] of [['fr', 'French'], ['en', 'English']] as const) {
+      const directive = languageDirective(setting);
+      expect(directive).toContain(name);
+      expect(directive).toMatch(/subagent/i);
+    }
+  });
+
+  it('exempts what must not be translated', () => {
+    // A run that renamed identifiers or translated command output to satisfy
+    // a language setting would be worse than one that answered in English.
+    expect(languageDirective('fr')).toMatch(/code|identifier/i);
   });
 });

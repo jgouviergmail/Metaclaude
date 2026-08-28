@@ -11,6 +11,7 @@ import { X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Button } from './primitives';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export function Modal({
   open,
@@ -29,6 +30,7 @@ export function Modal({
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
+  const t = useT();
   const widths = {
     sm: 'sm:max-w-sm',
     md: 'sm:max-w-lg',
@@ -64,7 +66,7 @@ export function Modal({
               ) : null}
             </div>
             <Dialog.Close asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Close">
+              <Button variant="ghost" size="icon-sm" aria-label={t('Close')}>
                 <X className="size-4" />
               </Button>
             </Dialog.Close>
@@ -105,6 +107,7 @@ export function ConfirmDialog({
   danger?: boolean;
   onConfirm: () => void | Promise<void>;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
 
   const confirm = async (): Promise<void> => {
@@ -138,7 +141,7 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} autoFocus>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             variant={danger ? 'danger' : 'primary'}

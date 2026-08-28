@@ -22,8 +22,10 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
+import { Trans, useT } from '@/lib/i18n';
 
 export function WorkspacesPage() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -50,7 +52,7 @@ export function WorkspacesPage() {
       api.updateWorkspace(id, { archived }),
     onSuccess: (_, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-      toast.success(variables.archived ? 'Workspace archived' : 'Workspace restored');
+      toast.success(variables.archived ? t('Workspace archived') : t('Workspace restored'));
     },
   });
 
@@ -58,10 +60,12 @@ export function WorkspacesPage() {
     mutationFn: ({ id, purge }: { id: string; purge: boolean }) => api.deleteWorkspace(id, purge),
     onSuccess: (_, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-      toast.success(variables.purge ? 'Workspace and files deleted' : 'Workspace removed');
+      toast.success(variables.purge ? t('Workspace and files deleted') : t('Workspace removed'));
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not delete the workspace.'),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not delete the workspace.',
+      )),
   });
 
   const workspaces = data?.workspaces ?? [];
@@ -69,8 +73,8 @@ export function WorkspacesPage() {
   return (
     <AppShell>
       <ContentHeader
-        title="Workspaces"
-        subtitle="Each workspace is a project directory with its own agent policy and memory."
+        title={t('Workspaces')}
+        subtitle={t('Each workspace is a project directory with its own agent policy and memory.')}
         showSidebarToggle={false}
         actions={
           <>
@@ -81,11 +85,11 @@ export function WorkspacesPage() {
               aria-pressed={showArchived}
             >
               <Archive className="size-4" aria-hidden />
-              {showArchived ? 'Hide archived' : 'Show archived'}
+              {showArchived ? t('Hide archived') : t('Show archived')}
             </Button>
             <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
               <Plus className="size-4" aria-hidden />
-              New
+              {t('New')}
             </Button>
           </>
         }
@@ -102,12 +106,14 @@ export function WorkspacesPage() {
           ) : workspaces.length === 0 ? (
             <EmptyState
               icon={<FolderGit2 />}
-              title="No workspaces"
-              description="Create one to give the agent a project directory to work in. You can start empty or clone a git repository."
+              title={t('No workspaces')}
+              description={t(
+                'Create one to give the agent a project directory to work in. You can start empty or clone a git repository.',
+              )}
               action={
                 <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
                   <Plus className="size-4" aria-hidden />
-                  New workspace
+                  {t('New workspace')}
                 </Button>
               }
             />
@@ -140,12 +146,12 @@ export function WorkspacesPage() {
                     ) : null}
 
                     <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {workspace.archived ? <Badge tone="warning">archived</Badge> : null}
+                      {workspace.archived ? <Badge tone="warning">{t('archived')}</Badge> : null}
                       {workspace.settings.autoPolicyEnabled ? (
-                        <Badge tone="thinking">learning</Badge>
+                        <Badge tone="thinking">{t('learning')}</Badge>
                       ) : null}
                       {workspace.settings.defaultPermissionMode === 'bypassPermissions' ? (
-                        <Badge tone="danger">bypass</Badge>
+                        <Badge tone="danger">{t('bypass')}</Badge>
                       ) : null}
                       <span className="ml-auto text-[11px] text-subtle">
                         {formatRelative(workspace.updatedAt)}
@@ -163,7 +169,7 @@ export function WorkspacesPage() {
                         <button
                           type="button"
                           className="flex size-7 items-center justify-center rounded-md text-subtle opacity-0 transition-opacity hover:bg-raised hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
-                          aria-label={`Actions for ${workspace.name}`}
+                          aria-label={t('Actions for {name}', { name: workspace.name })}
                         >
                           <MoreVertical className="size-4" />
                         </button>
@@ -183,7 +189,7 @@ export function WorkspacesPage() {
                         tone="danger"
                         onSelect={() => setPendingDelete(workspace)}
                       >
-                        Delete
+                        {t('Delete')}
                       </MenuItem>
                     </Menu>
                   </div>
@@ -216,6 +222,7 @@ function CreateWorkspaceModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -239,7 +246,7 @@ function CreateWorkspaceModal({
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-      toast.success('Workspace created');
+      toast.success(t('Workspace created'));
       onOpenChange(false);
       setName('');
       setDescription('');
@@ -247,19 +254,23 @@ function CreateWorkspaceModal({
       setTouchedColor(false);
     },
     onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not create the workspace.'),
+      toast.error(error instanceof ApiError ? error.message : t(
+        'Could not create the workspace.',
+      )),
   });
 
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="New workspace"
-      description="A directory the agent can work in, with its own settings, memory and automations."
+      title={t('New workspace')}
+      description={t(
+        'A directory the agent can work in, with its own settings, memory and automations.',
+      )}
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             variant="primary"
@@ -268,31 +279,31 @@ function CreateWorkspaceModal({
             disabled={!name.trim()}
             onClick={() => create.mutate()}
           >
-            Create
+            {t('Create')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         <Label htmlFor="ws-name">
-          Name
+          {t('Name')}
           <Input
             id="ws-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Payments service"
+            placeholder={t('Payments service')}
             autoFocus
             className="mt-1.5"
           />
         </Label>
 
         <Label htmlFor="ws-description">
-          Description
+          {t('Description')}
           <Textarea
             id="ws-description"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder="What this project is, in one line."
+            placeholder={t('What this project is, in one line.')}
             rows={2}
             className="mt-1.5"
           />
@@ -300,9 +311,11 @@ function CreateWorkspaceModal({
 
         <Label
           htmlFor="ws-git"
-          hint="Optional. Leave blank to start from an empty directory with a starter CLAUDE.md."
+          hint={t(
+            'Optional. Leave blank to start from an empty directory with a starter CLAUDE.md.',
+          )}
         >
-          Clone a repository
+          {t('Clone a repository')}
           <Input
             id="ws-git"
             value={gitUrl}
@@ -313,7 +326,7 @@ function CreateWorkspaceModal({
         </Label>
 
         <fieldset>
-          <legend className="mb-1.5 text-[13px] font-medium text-ink">Colour</legend>
+          <legend className="mb-1.5 text-[13px] font-medium text-ink">{t('Colour')}</legend>
           <div className="flex flex-wrap gap-2">
             {WORKSPACE_COLORS.map((swatch) => (
               <button
@@ -323,7 +336,7 @@ function CreateWorkspaceModal({
                   setColor(swatch);
                   setTouchedColor(true);
                 }}
-                aria-label={`Use colour ${swatch}`}
+                aria-label={t('Use colour {swatch}', { swatch: swatch })}
                 aria-pressed={color === swatch}
                 className="size-7 rounded-lg ring-offset-2 ring-offset-[var(--mc-surface)] transition-all data-[active=true]:ring-2 data-[active=true]:ring-[var(--mc-accent)]"
                 data-active={color === swatch}
@@ -346,6 +359,7 @@ function DeleteWorkspaceDialog({
   onClose: () => void;
   onConfirm: (purge: boolean) => void;
 }) {
+  const t = useT();
   const [purge, setPurge] = useState(false);
 
   useEffect(() => {
@@ -357,13 +371,13 @@ function DeleteWorkspaceDialog({
       open={Boolean(workspace)}
       onOpenChange={(open) => !open && onClose()}
       title={`Delete "${workspace?.name ?? ''}"?`}
-      confirmLabel={purge ? 'Delete workspace and files' : 'Delete workspace'}
+      confirmLabel={purge ? t('Delete workspace and files') : t('Delete workspace')}
       danger
       onConfirm={() => onConfirm(purge)}
       description={
         <div className="space-y-3">
           <p>
-            Its sessions, transcripts, memories and automations are removed permanently.
+            {t('Its sessions, transcripts, memories and automations are removed permanently.')}
           </p>
           <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/30 p-3">
             <input
@@ -373,11 +387,16 @@ function DeleteWorkspaceDialog({
               className="mt-0.5 size-3.5 accent-[var(--mc-danger)]"
             />
             <span className="text-[12.5px] leading-relaxed">
-              <span className="font-medium text-ink">Also delete the files on disk</span>
+              <span className="font-medium text-ink">{t('Also delete the files on disk')}</span>
               <br />
-              Everything under{' '}
-              <code className="font-mono text-[11.5px]">{workspace?.path}</code> is erased. This
-              cannot be undone. Leave this unchecked to keep the files and only forget the workspace.
+              <Trans
+                template={t(
+                  'Everything under {path} is erased. This cannot be undone. Leave this unchecked to keep the files and only forget the workspace.',
+                )}
+                values={{
+                  path: <code className="font-mono text-[11.5px]">{workspace?.path}</code>,
+                }}
+              />
             </span>
           </label>
         </div>

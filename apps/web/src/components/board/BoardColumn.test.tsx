@@ -67,7 +67,7 @@ describe('BoardColumn', () => {
 
   it('drops onto an empty column at the top', () => {
     const { onMove } = renderColumn([]);
-    fireEvent.drop(screen.getByText(/committed, waiting/i).parentElement as Element, {
+    fireEvent.drop(screen.getByText(/drop a card here/i).parentElement as Element, {
       dataTransfer: dataTransfer('tsk_dragged'),
     });
     expect(onMove).toHaveBeenCalledWith('tsk_dragged', 'todo', null);
@@ -109,5 +109,32 @@ describe('BoardColumn', () => {
     const { onQuickAdd } = renderColumn([]);
     fireEvent.click(screen.getByRole('button', { name: /add a task to to do/i }));
     expect(onQuickAdd).toHaveBeenCalledWith('todo');
+  });
+});
+
+/**
+ * The hint that explains what a column *means*.
+ *
+ * It was a `title` on the header — text that exists only for a mouse — plus a
+ * copy in the body that showed only while the column was empty. So a board in
+ * use, on a phone, explained none of its columns; and it is a full column that
+ * raises the question in the first place.
+ */
+describe('the column hint', () => {
+  it('is rendered whether or not the column has cards', () => {
+    renderColumn([task({ id: 'tsk_a' })]);
+    expect(screen.getByText('Committed, waiting to start')).toBeDefined();
+  });
+
+  it('is not hidden in a title attribute', () => {
+    renderColumn([task({ id: 'tsk_a' })]);
+    const header = document.querySelector('header');
+    expect(header).not.toBeNull();
+    expect(header?.hasAttribute('title')).toBe(false);
+  });
+
+  it('says it once, not twice, when the column is empty', () => {
+    renderColumn([]);
+    expect(screen.getAllByText('Committed, waiting to start')).toHaveLength(1);
   });
 });

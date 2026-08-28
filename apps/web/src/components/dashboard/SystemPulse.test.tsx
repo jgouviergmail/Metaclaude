@@ -50,9 +50,9 @@ describe('SystemPulse', () => {
       <SystemPulse activeRuns={2} queuedRuns={1} approvals={3} lastFinishedAt={null} />,
     );
     const status = await screen.findByRole('status');
-    expect(status.textContent).toContain('2 run(s) working right now');
+    expect(status.textContent).toContain('2 runs working right now');
     expect(status.textContent).toContain('1 queued');
-    expect(status.textContent).toContain('3 decision(s) waiting on you');
+    expect(status.textContent).toContain('3 decisions waiting on you');
   });
 
   it('is honestly quiet when nothing runs, naming the last finish', async () => {

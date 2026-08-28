@@ -16,6 +16,8 @@ import {
   requireOwner,
 } from '../http/guards.js';
 import { redactUrlCredentials } from '../security/audit.js';
+import { describeServer } from '../services/mcp-probe.js';
+import { buildMcpTransport } from '../services/mcp-transport.js';
 
 export function registerRegistryRoutes(app: App, context: AppContext): void {
   /**
@@ -38,6 +40,42 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     if (parsed.data.scope === 'global') return null;
     return parsed.data.workspaceId ?? null;
   };
+
+  /**
+   * Acting on many registry rows at once.
+   *
+   * Explicit ids rather than "everything in this scope", and that is the
+   * safety property rather than a convenience: a workspace's listing includes
+   * the global entries, so a server-side wildcard would let a workspace screen
+   * delete the global library. The ids are what the operator was shown; the
+   * scope is checked again underneath, so a caller cannot widen its own reach
+   * by naming rows outside it.
+   *
+   * The cap is the payload's, not SQLite's: every id becomes a bound
+   * parameter, and a statement with tens of thousands of them is a way to make
+   * one request expensive. Five hundred is far above any real registry.
+   */
+  const BulkInput = z.object({
+    action: z.enum(['enable', 'disable', 'delete']),
+    ids: z.array(z.string().min(1).max(64)).min(1).max(500),
+    workspaceId: z.string().nullable().optional(),
+  });
+
+  /** One audit entry carrying the count, not one per row. */
+  const auditBulk = (
+    request: Parameters<typeof requestIp>[1],
+    actor: string,
+    kind: 'skill' | 'agent',
+    action: string,
+    changed: number,
+  ) =>
+    context.audit.record({
+      actor,
+      action: `${kind}.bulk.${action}`,
+      target: `${changed} ${kind}(s)`,
+      ipAddress: requestIp(context, request),
+      detail: String(changed),
+    });
 
   /* -------------------------------- Skills ------------------------------ */
 
@@ -69,6 +107,24 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       detail: skill.name,
     });
     return reply.status(parsed.data.id ? 200 : 201).send({ skill });
+  });
+
+  app.post('/api/skills/bulk', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = BulkInput.safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+
+    const { action, ids } = parsed.data;
+    // `undefined` when omitted is "every scope" — the same three-way
+    // convention as the listings, and the reason this is not `?? null`.
+    const scope = 'workspaceId' in parsed.data ? parsed.data.workspaceId : undefined;
+    const changed =
+      action === 'delete'
+        ? context.registry.deleteSkills(ids, scope)
+        : context.registry.setSkillsEnabled(ids, action === 'enable', scope);
+
+    auditBulk(request, actor.username, 'skill', action, changed);
+    return reply.send({ changed });
   });
 
   app.delete<{ Params: { id: string } }>('/api/skills/:id', async (request, reply) => {
@@ -123,6 +179,27 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     // an operator refreshes in after fixing a server. Drop it now.
     context.claudeCatalogue.invalidate();
     return reply.status(parsed.data.id ? 200 : 201).send({ agent });
+  });
+
+  app.post('/api/agents/bulk', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = BulkInput.safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+
+    const { action, ids } = parsed.data;
+    const scope = 'workspaceId' in parsed.data ? parsed.data.workspaceId : undefined;
+    const changed =
+      action === 'delete'
+        ? context.registry.deleteAgents(ids, scope)
+        : context.registry.setAgentsEnabled(ids, action === 'enable', scope);
+
+    auditBulk(request, actor.username, 'agent', action, changed);
+    // Agents are mounted into the catalogue probe, so a changed set makes its
+    // cached answer stale — the same reason the single-agent route does this.
+    // Skills need no equivalent: they are written to disk on every run
+    // submission, so the next run picks up whatever the registry now says.
+    context.claudeCatalogue.invalidate();
+    return reply.send({ changed });
   });
 
   app.delete<{ Params: { id: string } }>('/api/agents/:id', async (request, reply) => {
@@ -262,6 +339,49 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     // an operator refreshes in after fixing a server. Drop it now.
     context.claudeCatalogue.invalidate();
     return reply.status(parsed.data.id ? 200 : 201).send({ server });
+  });
+
+  /**
+   * What one server says it offers, in its own words.
+   *
+   * Deliberately *not* a health check. The catalogue probe is the authority on
+   * whether a server connects, because it mounts what a run mounts; this asks
+   * one already-connected server for the text that probe does not carry
+   * through — each tool's description, and the `instructions` string the
+   * protocol has for "what this server is for".
+   *
+   * Measured against a real server: the CLI's status reports every tool
+   * description as empty while the annotations arrive intact. The model does
+   * receive them — they reach it through the tool list, and a server's
+   * instructions reach it as an MCP instructions block — so this closes a gap
+   * in what the *operator* can see, not in what the agent knows.
+   *
+   * Not cached: it spawns a process or opens a connection, so it happens when
+   * an operator asks and never on a page load.
+   */
+  app.post<{ Params: { id: string } }>('/api/mcp/:id/describe', async (request, reply) => {
+    requireOperator(request);
+    const server = context.registry.getMcpServer(request.params.id);
+    if (!server) throw new HttpError(404, 'Server not found.');
+
+    const config = context.registry.mcpConfig(server);
+    if (!config) {
+      throw new HttpError(400, 'This server has no command or URL to connect to.');
+    }
+
+    try {
+      const described = await describeServer(() => buildMcpTransport(config));
+      return reply.send({ description: described });
+    } catch (error) {
+      // A description that cannot be fetched is not an outage: the server may
+      // be perfectly usable and merely slow, or behind a credential this
+      // process cannot see. Reported as a failed enrichment, never as a
+      // verdict on the server.
+      throw new HttpError(
+        502,
+        `Could not ask ${server.name}: ${(error as Error).message}`,
+      );
+    }
   });
 
   app.delete<{ Params: { id: string } }>('/api/mcp/:id', async (request, reply) => {
