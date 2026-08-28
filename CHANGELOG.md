@@ -11,6 +11,53 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-08-28
+
+### Added
+
+- **OAuth for remote MCP servers.** A server that answers `needs-auth` now has
+  a button. Press it and Metaclaude discovers the authorization server,
+  registers itself, sends you to sign in, keeps the tokens sealed in the vault
+  and puts `Authorization: Bearer …` on every mount from then on. Verified end
+  to end against a real provider: `mcp.plaud.ai` issued a client id through
+  dynamic registration with nothing configured by hand, and the browser landed
+  on its own sign-in page carrying our client name.
+- **Metaclaude runs the flow because the CLI cannot.** Checked against the
+  shipped `sdk.d.ts`: the agent SDK's HTTP and SSE server configs accept
+  `headers` and have no OAuth field at all. The one consequence worth stating
+  is that a token has to be *fresh at mount* — there is no 401 anyone would
+  see — so it is renewed before a run rather than in response to a failure.
+- **What the specification asks for, in full.** RFC 9728 for the protected
+  resource's own metadata, RFC 8414 for the authorization server's, RFC 7636
+  PKCE with S256 (a server offering only `plain` is refused, not downgraded),
+  RFC 7591 dynamic registration, RFC 8707 `resource` so a token minted for one
+  MCP server cannot be replayed against another, and RFC 9207: the `iss` on the
+  callback is checked against the issuer the flow started with **before** the
+  authorization code is redeemed anywhere.
+- **The discovery order is the reverse of the obvious one.** The
+  `resource_metadata` URL a 401 names is authoritative; the well-known path is
+  a guess. Measured: `mcp.plaud.ai` names the path-scoped
+  `/.well-known/oauth-protected-resource/mcp`, and the unsuffixed guess answers
+  the same document only because that origin hosts one resource. An origin with
+  several would have described the wrong one.
+- **An outbound guard, which did not exist.** The flow takes URLs from a third
+  party and then sends an authorization code to them, so every one is resolved
+  and its *addresses* judged — loopback, RFC 1918, carrier NAT, link-local
+  (169.254.169.254 above all), unique-local IPv6 — immediately before each use
+  rather than once at registration, because DNS moves. A name answering with
+  one public and one private address is refused on the second: "the first one
+  is public" is not the question. Its two limits are stated in the file rather
+  than papered over.
+- **Nothing a third party wrote reaches the logs.** An authorization server
+  controls its own response bodies: an `error_description` can carry a token,
+  personal data or a CRLF-injected line, and no generic redaction can be
+  trusted to catch that. Only an error *code* from the RFC 6749 §5.2 allowlist
+  is logged; anything else is recorded as `unrecognised`.
+- **`METACLAUDE_PUBLIC_URL`**, needed by this and nothing else. A redirect URI
+  is the one value in OAuth that must never come from the client, so it cannot
+  be read off a `Host` header. Unset, the Authorise button refuses and names
+  the setting; everything else runs untouched.
+
 ## [0.35.1] — 2026-08-28
 
 ### Fixed

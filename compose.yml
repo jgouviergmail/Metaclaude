@@ -42,6 +42,11 @@ services:
       METACLAUDE_RUN_TIMEOUT_MS: ${METACLAUDE_RUN_TIMEOUT_MS:-2700000}
       METACLAUDE_RUN_RETENTION_DAYS: ${METACLAUDE_RUN_RETENTION_DAYS:-180}
       METACLAUDE_RUN_KEEP_PER_WORKSPACE: ${METACLAUDE_RUN_KEEP_PER_WORKSPACE:-50}
+      # The public origin, needed only so an MCP server's authorization server
+      # has somewhere to send the browser back. Read by the app rather than by
+      # Caddy, so it belongs in this block: a variable named in .env and never
+      # forwarded here is unset as far as the process is concerned.
+      METACLAUDE_PUBLIC_URL: ${METACLAUDE_PUBLIC_URL:-}
       METACLAUDE_EMBEDDINGS: ${METACLAUDE_EMBEDDINGS:-hash}
       # Only read under `local`. Forwarded so the knob .env.example documents
       # is not silently discarded by the deployment that reads that file.

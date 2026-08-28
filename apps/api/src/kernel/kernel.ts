@@ -67,6 +67,22 @@ export interface RuntimeContext {
 /** Supplies per-workspace runtime configuration. Implemented by the services layer. */
 export interface ContextProvider {
   resolve(workspace: Workspace): RuntimeContext;
+  /**
+   * Renew whatever expires, before `resolve` reads it.
+   *
+   * Kept separate, and asynchronous, so `resolve` stays what its own comment
+   * promises: a handful of indexed reads and vault decryptions, cheap enough
+   * to run per run. An OAuth access token has to be *fresh at mount* — the
+   * agent SDK takes a static header and there is no 401 anyone would see — and
+   * refreshing it is a network call with its own failure mode. Folding that
+   * into `resolve` would make every run's setup able to hang on a third party.
+   *
+   * It never throws. A server whose token could not be renewed is still
+   * mounted with the token we have; the CLI then reports `needs-auth`, which
+   * the operator can see and act on. A run refusing to start because one of
+   * several servers needs re-authorising would be a worse trade.
+   */
+  prepare?(workspace: Workspace): Promise<void>;
 }
 
 export interface SubmitOptions {
@@ -617,6 +633,9 @@ export class Kernel {
     }
 
     /* -- Execute ---------------------------------------------------------- */
+    // Renew before reading: an OAuth token has to be fresh at mount. See
+    // `ContextProvider.prepare` for why this is not folded into `resolve`.
+    await this.deps.contextProvider.prepare?.(workspace);
     const runtime = this.deps.contextProvider.resolve(workspace);
     const topic = sessionTopic(session.id);
 

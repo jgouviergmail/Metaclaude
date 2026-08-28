@@ -46,6 +46,8 @@ import { ClaudePairing } from './services/claude-pairing.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
 import { AttachmentService } from './services/attachments.js';
 import { RunRetention } from './services/run-retention.js';
+import { McpOAuth } from './services/mcp-oauth.js';
+import { createOutboundGuard } from './security/outbound.js';
 import { BoardService } from './services/board.js';
 import { BoardGateway } from './services/board-gateway.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
@@ -106,6 +108,7 @@ export interface AppContext {
   reflexion: ReflexionEngine;
 
   registry: Registry;
+  mcpOAuth: McpOAuth;
   library: LibraryService;
   advisor: AdvisorService;
   workspaces: WorkspaceService;
@@ -307,6 +310,27 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     plugins,
   );
 
+  /**
+   * MCP OAuth, and the guard that decides where its requests may go.
+   *
+   * Loopback is allowed outside production for one reason: exercising this
+   * flow locally means an authorization server on this machine, and refusing
+   * it would make the feature untestable where it is written.
+   */
+  const outboundGuard = createOutboundGuard({
+    allowLoopback: config.env !== 'production',
+  });
+  const mcpOAuth = new McpOAuth({
+    db,
+    vault,
+    fetch: globalThis.fetch,
+    isSafeEndpoint: outboundGuard,
+    // Empty when the deployment never set its public origin. The routes refuse
+    // with that setting named rather than building a redirect nobody can reach.
+    callbackUrl: config.publicUrl ? `${config.publicUrl}/api/mcp/oauth/callback` : '',
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+
   const library = new LibraryService(registry);
 
   // The board's one mutation surface — routes, the agent's board tools and the
@@ -428,6 +452,20 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
         ...registry.resolve(workspace),
         marketplaces: marketplaces.settingsPayload(),
       }),
+      // Only the servers this workspace would mount, and only those whose
+      // token is near its end. On a deployment with no OAuth server this
+      // does nothing and costs one filtered list.
+      prepare: async (workspace) => {
+        const servers = registry
+          .listMcpServers(workspace.id)
+          .filter((server) => server.enabled && server.authType === 'oauth');
+        for (const server of servers) {
+          await mcpOAuth.refreshIfExpiring({
+            ...server,
+            oauthMetadata: registry.oauthMetadata(server.id),
+          });
+        }
+      },
     },
     supervisor,
     maxConcurrentRuns: config.maxConcurrentRuns,
@@ -670,6 +708,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     files: new FileService(),
     attachments,
     runRetention,
+    mcpOAuth,
     board,
     git: new GitService(),
     analytics,

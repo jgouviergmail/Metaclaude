@@ -70,6 +70,12 @@ export function startJanitor(context: AppContext): () => void {
         })
         .catch((error) => context.log.warn({ err: error }, 'janitor: run retention failed'));
 
+      // Authorization flows nobody came back from. Cheap, and the row is a
+      // credential: an abandoned one should not outlive its own deadline just
+      // because the operator closed the tab.
+      const states = context.mcpOAuth.sweepStates();
+      if (states > 0) context.log.info({ states }, 'janitor: dropped stale MCP OAuth states');
+
       // Reclaim pages freed by deletes so the database file does not only grow.
       context.db.pragma('incremental_vacuum');
       context.db.pragma('wal_checkpoint(PASSIVE)');

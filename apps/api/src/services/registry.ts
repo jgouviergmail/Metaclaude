@@ -84,6 +84,12 @@ interface McpRow {
   enabled: number;
   status: string;
   last_error: string | null;
+  auth_type: string;
+  oauth_issuer: string | null;
+  oauth_metadata: string | null;
+  oauth_client_id: string | null;
+  oauth_expires_at: number | null;
+  oauth_scope: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -125,7 +131,16 @@ const toAgent = (row: AgentRow): AgentDefinitionRecord => ({
   updatedAt: row.updated_at,
 });
 
-const toMcp = (row: McpRow): McpServerRecord => ({
+/**
+ * `authorised` is asked of the caller rather than read here.
+ *
+ * Whether a token is actually held is a vault question, and this is a pure row
+ * mapper with no vault. Passing it in keeps the mapper pure and makes the two
+ * states the card has to tell apart — "configured for OAuth" and "authorised"
+ * — visibly separate rather than one inferred from the other.
+ */
+const toMcp = (row: McpRow, authorised: boolean): McpServerRecord => ({
+  oauthAuthorised: authorised,
   id: row.id,
   workspaceId: row.workspace_id,
   name: row.name,
@@ -138,6 +153,14 @@ const toMcp = (row: McpRow): McpServerRecord => ({
   enabled: toBool(row.enabled),
   status: row.status as McpServerRecord['status'],
   lastError: row.last_error,
+  // `?? …` rather than a bare read: a row written before migration 18 has the
+  // column, but a row read through an old prepared statement in a test fixture
+  // may not, and `none` is the honest default either way.
+  authType: (row.auth_type ?? 'none') as McpServerRecord['authType'],
+  oauthIssuer: row.oauth_issuer ?? null,
+  oauthClientId: row.oauth_client_id ?? null,
+  oauthExpiresAt: row.oauth_expires_at ?? null,
+  oauthScope: row.oauth_scope ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -173,6 +196,16 @@ function withConflict<T>(entity: 'A skill' | 'An agent' | 'An MCP server', name:
  * `Authorization` env var.
  */
 const headerSlot = (name: string): string => `header:${name}`;
+
+/**
+ * Where `McpOAuth` keeps this server's access token.
+ *
+ * Duplicated from that module on purpose rather than imported: the registry
+ * must be able to answer "is it authorised?" and to mount the bearer without
+ * depending on the flow that obtained it, and a one-line constant is a smaller
+ * coupling than a circular import. `mcp-oauth.test.ts` asserts the two agree.
+ */
+const OAUTH_ACCESS_SLOT = 'oauth:access_token';
 
 /**
  * How one MCP server is mounted, with its secrets already resolved.
@@ -588,12 +621,12 @@ export class Registry {
               'SELECT * FROM mcp_servers WHERE workspace_id IS ? OR workspace_id IS NULL ORDER BY name',
             )
             .all(workspaceId);
-    return rows.map(toMcp);
+    return rows.map((row) => toMcp(row, this.hasOAuthToken(row.id)));
   }
 
   getMcpServer(id: string): McpServerRecord | null {
     const row = this.db.prepare<[string], McpRow>('SELECT * FROM mcp_servers WHERE id = ?').get(id);
-    return row ? toMcp(row) : null;
+    return row ? toMcp(row, this.hasOAuthToken(row.id)) : null;
   }
 
   /**
@@ -752,6 +785,37 @@ export class Registry {
    * drift from it. Null when the row cannot be mounted at all: a stdio server
    * with no command, an HTTP one with no URL.
    */
+  /** Whether an access token is held for this server. */
+  hasOAuthToken(serverId: string): boolean {
+    return this.vault.get(`mcp:${serverId}`, OAUTH_ACCESS_SLOT) !== null;
+  }
+
+  /** The cached discovery metadata, which is not part of the public record. */
+  oauthMetadata(serverId: string): string | null {
+    return (
+      this.db
+        .prepare<[string], { oauth_metadata: string | null }>(
+          'SELECT oauth_metadata FROM mcp_servers WHERE id = ?',
+        )
+        .get(serverId)?.oauth_metadata ?? null
+    );
+  }
+
+  /** Record what a completed authorization learned. Written by `McpOAuth`'s caller. */
+  saveOAuthRegistration(
+    serverId: string,
+    fields: { issuer: string | null; metadata: string; clientId: string },
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE mcp_servers
+            SET auth_type = 'oauth', oauth_issuer = ?, oauth_metadata = ?,
+                oauth_client_id = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(fields.issuer, fields.metadata, fields.clientId, Date.now(), serverId);
+  }
+
   mcpConfig(server: McpServerRecord): McpMountConfig | null {
     if (server.transport === 'stdio') {
       if (!server.command) return null;
@@ -772,6 +836,14 @@ export class Registry {
       `mcp:${server.id}`,
       server.headerKeys.map(headerSlot),
     );
+    // The bearer goes on last so it wins over a stale `Authorization` an
+    // operator pasted before switching the server to OAuth — two credentials
+    // in one header is a request that fails for a reason nobody can read.
+    const bearer =
+      server.authType === 'oauth'
+        ? this.vault.get(`mcp:${server.id}`, OAUTH_ACCESS_SLOT)
+        : null;
+
     return {
       type: server.transport,
       url: server.url,
@@ -780,6 +852,7 @@ export class Registry {
           server.headerKeys.map((name) => [name, sealedHeaders[headerSlot(name)] ?? '']),
         ),
         ...this.vault.resolveEnv(`mcp:${server.id}`, server.envKeys),
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
       },
     };
   }

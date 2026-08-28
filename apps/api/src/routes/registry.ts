@@ -18,6 +18,7 @@ import {
 import { redactUrlCredentials } from '../security/audit.js';
 import { describeServer } from '../services/mcp-probe.js';
 import { buildMcpTransport } from '../services/mcp-transport.js';
+import { McpOAuthError } from '../services/mcp-oauth.js';
 
 export function registerRegistryRoutes(app: App, context: AppContext): void {
   /**
@@ -382,6 +383,122 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
         `Could not ask ${server.name}: ${(error as Error).message}`,
       );
     }
+  });
+
+  /* ------------------------------ MCP OAuth ------------------------------ */
+
+  /**
+   * Begin an authorization, returning the URL the operator's browser opens.
+   *
+   * Owner-only: it registers this deployment as a client with a third party
+   * and results in a credential this server will hold and use on every run.
+   *
+   * The URL is returned rather than redirected to, so the caller is a normal
+   * authenticated JSON request with its CSRF token — a 302 out of a POST would
+   * put the whole flow behind whatever the browser decides about redirects.
+   */
+  app.post<{ Params: { id: string } }>('/api/mcp/:id/oauth/start', async (request, reply) => {
+    const actor = requireOwner(request);
+    const server = context.registry.getMcpServer(request.params.id);
+    if (!server) throw new HttpError(404, 'Server not found.');
+    if (server.transport === 'stdio') {
+      throw new HttpError(400, 'A stdio server runs as a local process and has nothing to authorise.');
+    }
+    if (!context.config.publicUrl) {
+      throw new HttpError(
+        503,
+        'This deployment has no public address configured, so an authorization server has nowhere to send the browser back. Set METACLAUDE_PUBLIC_URL and restart.',
+      );
+    }
+
+    try {
+      const begun = await context.mcpOAuth.begin(
+        { ...server, oauthMetadata: context.registry.oauthMetadata(server.id) },
+        actor.username,
+      );
+      // Recorded before the redirect: the callback has to find the client id
+      // and the metadata again, and it arrives with no session of its own.
+      context.registry.saveOAuthRegistration(server.id, {
+        issuer: begun.metadata.issuer,
+        metadata: JSON.stringify(begun.metadata),
+        clientId: begun.clientId,
+      });
+      context.audit.record({
+        actor: actor.username,
+        action: 'mcp.oauth.start',
+        target: server.name,
+        ipAddress: requestIp(context, request),
+      });
+      return reply.send({ authorizeUrl: begun.authorizeUrl });
+    } catch (error) {
+      if (error instanceof McpOAuthError) throw new HttpError(error.status, error.message);
+      throw error;
+    }
+  });
+
+  /**
+   * Where the authorization server sends the browser back.
+   *
+   * Deliberately outside the authenticated surface. Session cookies are
+   * `SameSite=strict`, so a cross-site redirect carries none of them — the
+   * `state` is the only credential this request has, and it is what authorises
+   * it: single use, high entropy, ten-minute life, and bound at initiation to
+   * the server, the actor and the issuer. Anything missing or stale is refused.
+   *
+   * It answers with a redirect rather than JSON because a person is looking at
+   * it: the browser lands back on the screen they left.
+   */
+  app.get<{ Querystring: { code?: string; state?: string; iss?: string; error?: string } }>(
+    '/api/mcp/oauth/callback',
+    async (request, reply) => {
+      const back = `${context.config.publicUrl ?? ''}/agents?tab=mcp`;
+      const { code, state, iss, error } = request.query;
+
+      // The provider refusing is a normal outcome, not an exception: the
+      // operator declined, or the consent expired.
+      if (error) {
+        return reply.redirect(`${back}&oauth=refused`);
+      }
+      if (!code || !state) {
+        return reply.redirect(`${back}&oauth=invalid`);
+      }
+
+      try {
+        const done = await context.mcpOAuth.complete({ code, state, iss: iss ?? null });
+        const server = context.registry.getMcpServer(done.serverId);
+        context.audit.record({
+          actor: done.actor,
+          action: 'mcp.oauth.authorised',
+          target: server?.name ?? done.serverId,
+          ipAddress: requestIp(context, request),
+        });
+        return reply.redirect(`${back}&oauth=done`);
+      } catch (caught) {
+        // The reason is for the log, not the query string: it comes from a
+        // third party and the browser would render it.
+        context.log.warn(
+          { message: (caught as Error).message },
+          'an MCP OAuth callback could not be completed',
+        );
+        return reply.redirect(`${back}&oauth=failed`);
+      }
+    },
+  );
+
+  /** Forget an authorization: the tokens, the client secret and the registration. */
+  app.post<{ Params: { id: string } }>('/api/mcp/:id/oauth/revoke', async (request, reply) => {
+    const actor = requireOwner(request);
+    const server = context.registry.getMcpServer(request.params.id);
+    if (!server) throw new HttpError(404, 'Server not found.');
+
+    context.mcpOAuth.revoke(server.id);
+    context.audit.record({
+      actor: actor.username,
+      action: 'mcp.oauth.revoked',
+      target: server.name,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send({ ok: true });
   });
 
   app.delete<{ Params: { id: string } }>('/api/mcp/:id', async (request, reply) => {

@@ -782,4 +782,66 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 18,
+    name: 'mcp_oauth',
+    sql: /* sql */ `
+      -- OAuth 2.1 for remote MCP servers.
+      --
+      -- The agent SDK's HTTP/SSE server config accepts static headers and
+      -- nothing else — there is no OAuth field to hand it — so Metaclaude runs
+      -- the flow itself and injects "Authorization: Bearer …" at mount. What
+      -- lives here is everything that is *not* a secret; the tokens, the
+      -- refresh token and the client secret go to the vault under the server's
+      -- own scope, beside its env and header secrets, and are deleted with it.
+      ALTER TABLE mcp_servers ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'none';
+
+      -- The issuer the stored credentials belong to. Credentials obtained from
+      -- authorization server A must never be sent to server B, so a discovered
+      -- issuer that differs from this one discards the client registration and
+      -- re-registers rather than reusing it.
+      ALTER TABLE mcp_servers ADD COLUMN oauth_issuer TEXT;
+
+      -- The authorization server's metadata as discovered (RFC 8414 / 9728),
+      -- cached so an authorize click does not re-walk the discovery cascade.
+      ALTER TABLE mcp_servers ADD COLUMN oauth_metadata TEXT;
+
+      -- From dynamic client registration (RFC 7591) or pasted by the operator
+      -- for a server that does not offer it. Not a secret: the client *secret*
+      -- is, and that one is in the vault.
+      ALTER TABLE mcp_servers ADD COLUMN oauth_client_id TEXT;
+
+      -- When the access token stops being usable, so a run can refresh ahead
+      -- of mounting rather than discovering it from a 401 mid-run.
+      ALTER TABLE mcp_servers ADD COLUMN oauth_expires_at INTEGER;
+      ALTER TABLE mcp_servers ADD COLUMN oauth_scope TEXT;
+
+      -- One in-flight authorization.
+      --
+      -- A row rather than memory: the flow spans a redirect to a third party
+      -- and back, and an API restart in that window would otherwise strand the
+      -- operator on a callback nobody can honour. It is also the *only*
+      -- credential the callback has — session cookies are SameSite=strict, so
+      -- a cross-site redirect carries none — which is why the token is long,
+      -- single-use and short-lived, and why the code_verifier beside it is
+      -- sealed in the vault rather than stored here in the clear.
+      CREATE TABLE mcp_oauth_states (
+        state        TEXT PRIMARY KEY,
+        server_id    TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        -- Who started it, so the callback credits the right actor in the audit
+        -- log without trusting anything the browser sends back.
+        actor        TEXT NOT NULL,
+        -- Recorded at initiation and compared with the callback's iss
+        -- (RFC 9207) before the authorization code is redeemed anywhere.
+        issuer       TEXT,
+        token_url    TEXT NOT NULL,
+        client_id    TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        resource     TEXT NOT NULL,
+        created_at   INTEGER NOT NULL,
+        expires_at   INTEGER NOT NULL
+      );
+      CREATE INDEX idx_mcp_oauth_states_expiry ON mcp_oauth_states(expires_at);
+    `,
+  },
 ];

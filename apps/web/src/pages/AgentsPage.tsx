@@ -1263,6 +1263,60 @@ function TestConnectionsButton({
   );
 }
 
+/**
+ * Authorise, or say that it already is.
+ *
+ * Three states, and the middle one is why this reads a vault-derived flag
+ * rather than the `authType` column: a server can be *configured* for OAuth
+ * and not *authorised* — the registration exists, the token does not — and
+ * offering "revoke" there would offer to undo nothing.
+ */
+function OAuthButton({
+  server,
+  busy,
+  onAuthorise,
+  onRevoke,
+}: {
+  server: McpServerRecord;
+  busy: boolean;
+  onAuthorise: () => void;
+  onRevoke: () => void;
+}) {
+  const t = useT();
+
+  if (server.oauthAuthorised) {
+    return (
+      <Menu
+        trigger={
+          <Button variant="ghost" size="sm" loading={busy}>
+            <ShieldCheck className="size-4 text-success" aria-hidden />
+            {t('Authorised')}
+            <ChevronDown className="size-3.5" aria-hidden />
+          </Button>
+        }
+      >
+        <MenuItem onSelect={onAuthorise}>{t('Authorise again')}</MenuItem>
+        <MenuItem tone="danger" onSelect={onRevoke}>
+          {t('Forget this authorization')}
+        </MenuItem>
+      </Menu>
+    );
+  }
+
+  return (
+    <Tooltip
+      content={t(
+        'Opens the server’s own sign-in. Metaclaude keeps the token and sends it with every run.',
+      )}
+    >
+      <Button variant="secondary" size="sm" loading={busy} onClick={onAuthorise}>
+        <ShieldCheck className="size-4" aria-hidden />
+        {t('Authorise')}
+      </Button>
+    </Tooltip>
+  );
+}
+
 function McpTab({
   workspaceId,
   onChanged,
@@ -1283,6 +1337,68 @@ function McpTab({
    * disagree — and a spinner on the wrong row is exactly that bug.
    */
   const [testing, setTesting] = useState<boolean | string>(false);
+  /** The server whose authorization is being started, so only its button spins. */
+  const [authorising, setAuthorising] = useState<string | null>(null);
+
+  /**
+   * What the callback redirect left in the URL.
+   *
+   * The provider sends the browser back to a route with no session — cookies
+   * are SameSite=strict — so the outcome travels as a query parameter and is
+   * said here, on the screen the operator left. Cleared immediately: a reload
+   * must not re-announce a result from ten minutes ago.
+   */
+  useEffect(() => {
+    const outcome = new URLSearchParams(window.location.search).get('oauth');
+    if (!outcome) return;
+    const said: Record<string, () => void> = {
+      done: () => toast.success(t('Authorised. The token is stored and runs will use it.')),
+      refused: () => toast.warning(t('The authorization was refused at the provider.')),
+      invalid: () => toast.error(t('That authorization link was incomplete.')),
+      failed: () =>
+        toast.error(t('The authorization could not be completed.'), {
+          description: t('It may have expired, or already been used. Try again.'),
+        }),
+    };
+    said[outcome]?.();
+    if (outcome === 'done') onChanged();
+    window.history.replaceState(null, '', window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once, on arrival
+  }, []);
+
+  /**
+   * Start the flow and hand the browser over.
+   *
+   * `location.assign` rather than a new tab: the provider sends the operator
+   * back to this app, and a popup would land the callback in a window the
+   * original tab knows nothing about — leaving a stale card behind the one
+   * that succeeded.
+   */
+  const authorise = async (server: McpServerRecord): Promise<void> => {
+    setAuthorising(server.id);
+    try {
+      const { authorizeUrl } = await api.startMcpOAuth(server.id);
+      window.location.assign(authorizeUrl);
+    } catch (error) {
+      setAuthorising(null);
+      toast.error(messageFor(error, t('Could not start the authorization.')));
+    }
+  };
+
+  const revoke = async (server: McpServerRecord): Promise<void> => {
+    setAuthorising(server.id);
+    try {
+      await api.revokeMcpOAuth(server.id);
+      onChanged();
+      toast.success(t('{name} is no longer authorised.', { name: server.name }), {
+        description: t('The stored tokens were deleted. Runs will find it unauthorised.'),
+      });
+    } catch (error) {
+      toast.error(messageFor(error, t('Could not forget that authorization.')));
+    } finally {
+      setAuthorising(null);
+    }
+  };
   /** By server name, filled in by a test. Not cached: it costs a connection. */
   const [descriptions, setDescriptions] = useState<Record<string, McpServerDescription>>({});
 
@@ -1685,6 +1801,18 @@ function McpTab({
                     label={`${server.enabled ? 'Disable' : 'Enable'} server ${server.name}`}
                     tooltip={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} — opens the editor, because saving replaces this server's stored secrets`}
                   />
+                  {/* A remote server can demand OAuth, and until 0.36 there
+                      was nothing to press when it did — the card said
+                      `needs-auth` and offered no way out of it. Offered for
+                      http and sse only: a stdio server is a local process. */}
+                  {server.transport !== 'stdio' ? (
+                    <OAuthButton
+                      server={server}
+                      busy={authorising === server.id}
+                      onAuthorise={() => void authorise(server)}
+                      onRevoke={() => void revoke(server)}
+                    />
+                  ) : null}
                   {/* Per server, and only where there is something to test: a
                       disabled server is not mounted, so a button offering to
                       connect it would be answering about a run that will never

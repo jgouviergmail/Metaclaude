@@ -351,6 +351,33 @@ export const McpServerRecord = z.object({
   enabled: z.boolean(),
   status: z.enum(['unknown', 'connected', 'failed', 'disabled']),
   lastError: z.string().nullable(),
+  /**
+   * How this server is authenticated.
+   *
+   * `none` covers both an open server and one carrying a static header the
+   * operator pasted — from here they are the same thing, a configuration that
+   * needs no flow. `oauth` means Metaclaude holds tokens for it and injects
+   * the bearer at mount, because the agent SDK's server config takes headers
+   * and has no OAuth field of its own.
+   */
+  authType: z.enum(['none', 'oauth']).default('none'),
+  /**
+   * The authorization server the stored credentials belong to. Credentials
+   * obtained from one issuer are never sent to another, so a discovery that
+   * disagrees with this discards the client registration rather than reusing it.
+   */
+  oauthIssuer: z.string().nullable().default(null),
+  /** From dynamic registration or pasted; the client *secret* is in the vault. */
+  oauthClientId: z.string().nullable().default(null),
+  /** Null when the server stated no lifetime — not a promise that it never expires. */
+  oauthExpiresAt: Millis.nullable().default(null),
+  oauthScope: z.string().nullable().default(null),
+  /**
+   * Whether an access token is actually held. Derived from the vault rather
+   * than from a column: "configured for OAuth" and "authorised" are different
+   * states, and the card has to tell them apart to know which button to show.
+   */
+  oauthAuthorised: z.boolean().default(false),
   createdAt: Millis,
   updatedAt: Millis,
 });

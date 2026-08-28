@@ -92,6 +92,27 @@ const EnvSchema = z.object({
     })
     .default('https://github.com/metaclaude'),
 
+  /**
+   * This deployment's public origin, e.g. `https://metaclaude.example.com`.
+   *
+   * Needed by exactly one thing, and only that thing should be blocked without
+   * it: an MCP server's OAuth flow, whose `redirect_uri` an authorization
+   * server has to be able to send a browser back to. It cannot be derived from
+   * the request — a `Host` header is attacker-controlled, and a redirect URI is
+   * the one value in OAuth that must never be — and `METACLAUDE_SITE` belongs
+   * to compose and Caddy rather than to the app.
+   *
+   * Absent, authorizing an MCP server refuses and says which setting is
+   * missing. Everything else runs untouched, which is why this is optional
+   * rather than required at boot.
+   */
+  METACLAUDE_PUBLIC_URL: z
+    .string()
+    .refine((value) => value === '' || /^https?:\/\/[^\s/]+/.test(value), {
+      message: 'must be an http(s) origin, e.g. https://metaclaude.example.com',
+    })
+    .default(''),
+
   /** `hash` needs no model download; `local` loads a sentence-transformer. */
   METACLAUDE_EMBEDDINGS: z.enum(['hash', 'local']).default('hash'),
   METACLAUDE_EMBEDDING_MODEL: z.string().default('Xenova/all-MiniLM-L6-v2'),
@@ -133,6 +154,8 @@ export interface Config {
   embeddings: { provider: 'hash' | 'local'; model: string };
   /** VAPID `sub` claim for push; relays validate its shape. */
   pushSubject: string;
+  /** The deployment's public origin, or null. Only MCP OAuth needs it. */
+  publicUrl: string | null;
   claude: {
     oauthToken: string | null;
     apiKey: string | null;
@@ -292,6 +315,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     },
     embeddings: { provider: env.METACLAUDE_EMBEDDINGS, model: env.METACLAUDE_EMBEDDING_MODEL },
     pushSubject: env.METACLAUDE_PUSH_SUBJECT,
+    publicUrl: env.METACLAUDE_PUBLIC_URL ? env.METACLAUDE_PUBLIC_URL.replace(/\/+$/, '') : null,
     claude: {
       oauthToken,
       apiKey,

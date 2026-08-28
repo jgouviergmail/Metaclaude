@@ -695,6 +695,19 @@ export const api = {
   describeMcpServer: (id: string) =>
     request<{ description: McpServerDescription }>(`/api/mcp/${id}/describe`, { method: 'POST' }),
 
+  /**
+   * Begin an authorization and hand back the URL to send the browser to.
+   *
+   * The server returns the URL rather than redirecting: this is a normal
+   * authenticated request carrying its CSRF token, and a 302 out of it would
+   * put the whole flow at the mercy of how fetch treats redirects.
+   */
+  startMcpOAuth: (id: string) =>
+    request<{ authorizeUrl: string }>(`/api/mcp/${id}/oauth/start`, { method: 'POST', body: {} }),
+
+  revokeMcpOAuth: (id: string) =>
+    request<{ ok: boolean }>(`/api/mcp/${id}/oauth/revoke`, { method: 'POST', body: {} }),
+
   bulkAgents: (body: BulkRegistryInput) =>
     request<{ changed: number }>('/api/agents/bulk', { method: 'POST', body }),
 

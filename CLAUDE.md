@@ -303,6 +303,11 @@ restates the code is noise; one that records a decision or a trap is not.
   no root: unpack the release tarball into `~/sc` and put it on `PATH`. Run it
   the way `check.sh` does, `-x --severity=warning`; the default severity adds
   `info` notes that CI does not fail on.
+- **A backtick in a SQL comment ends the migration.** `MIGRATIONS[].sql` is a
+  template literal, so `` -- compared with the callback's `iss` `` closes the
+  string and the parser then reports "',' expected" somewhere below, in a file
+  that looks structurally broken. Same family as the heredoc trap: write the
+  identifier without backticks, or the whole schema stops compiling.
 - **`attr=t('x')` is not JSX.** A codemod replacing a string literal has to know
   whether it sat in `attr="x"` (needs braces) or inside `attr={…}` (already has
   them). The parser reports the resulting error lines away from the edit, in a

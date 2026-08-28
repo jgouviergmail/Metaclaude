@@ -280,6 +280,16 @@ value either way if it begins with `'` or `"`, or compose rejects the whole file
 and every other setting goes with it. `bootstrap.sh` does this for you; hand
 edits are on you.
 
+**`METACLAUDE_PUBLIC_URL` is needed only to authorise an MCP server over
+OAuth**, and only then. It is the address a browser reaches you on, scheme
+included — `https://metaclaude.example.com` — because an authorization server
+has to be able to send that browser back to `/api/mcp/oauth/callback` here. It
+cannot be derived from the request: a `Host` header is set by whoever is
+calling, and a redirect URI is the one value in OAuth that must never come from
+the client. Leave it unset and everything else runs exactly as before; the
+Authorise button then refuses and names this setting rather than building a
+return address nobody can reach.
+
 **Set `METACLAUDE_MASTER_KEY` explicitly and keep a copy in your password
 manager.** Left empty, it is generated into `/var/lib/metaclaude/master.key` —
 inside the same volume as the database it encrypts. One snapshot then carries
