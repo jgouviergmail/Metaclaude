@@ -24,6 +24,12 @@ files) are not addressable through it at all. The agent works with git through
 its own tools, which go through the permission prompt; the file panel is your
 direct door.
 
+A listing shows at most a thousand entries — directories first, then
+alphabetically — and says so plainly when a folder holds more. Reading a
+`node_modules` out loud costs a second of the server's single thread and
+megabytes on the wire for a list nobody scrolls; the **Find a file by name**
+box above the listing searches the whole tree and is what reaches the rest.
+
 ## Notes
 
 Markdown files in a workspace are notes, and the Files panel treats them the

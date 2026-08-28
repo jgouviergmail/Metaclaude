@@ -254,6 +254,22 @@ restates the code is noise; one that records a decision or a trap is not.
   `pointerdown`, tabs switch on `mousedown`. `fireEvent.click` alone does
   nothing in jsdom; fire the pointer event first. Costs a red test that looks
   like a broken component every single time.
+- **Capping a list before sorting it keeps an arbitrary subset, not the first
+  one.** `FileService.list` caps a directory at `MAX_DIRECTORY_ENTRIES`, and the
+  cap has to come before the `stat` per entry or the payload shrinks while the
+  latency stays — but the first version also came before the *sort*, and
+  `readdir` returns a hashed directory in no order at all. A capped folder
+  therefore showed a thousand arbitrary names, dropped its subdirectories
+  outright, and showed a *different* thousand after any file was created. Order
+  by whatever the cheap source already carries — a dirent has both the name and
+  the kind, so only size and mtime need the syscall — then cap, then pay.
+- **A comparator that branches on "the types differ" contradicts itself as soon
+  as there are three types.** `if (a.type !== b.type) return a.type ===
+  'directory' ? -1 : 1` answers +1 both ways round for a symlink against a
+  file. `sort` does not throw on that; it lands wherever its merges take it, so
+  the alphabet silently breaks around a link. Rank, then compare within the
+  rank — `compareForExplorer` in `services/files.ts`, with an antisymmetry test
+  over every pair of kinds.
 - **Two SVGs on one page share an id namespace.** A `<linearGradient
   id="fill">` in a component rendered twice makes the second instance
   reference the first's gradient — invisible until a page shows two arms or

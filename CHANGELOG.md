@@ -11,6 +11,37 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-08-28
+
+### Changed
+
+- **A directory listing is a window now, and says when it is one.** Measured
+  on 20 000 files: 1 450 ms and 2.3 MB of JSON, spent on a `stat` per entry
+  awaited in sequence — with every other request in a single-process API
+  waiting behind it, and the browser then rendering twenty thousand rows.
+  Listings cap at a thousand entries and carry a `truncated` flag the panel
+  states plainly, pointing at the name filter that reaches the rest. Same
+  directory afterwards: 121 ms and 118 kB. The rows use the transcript's
+  `content-visibility` lazy rendering, so the ones below the fold cost no
+  layout or paint.
+
+### Fixed
+
+- **A capped listing kept an arbitrary thousand entries, not the first
+  thousand.** The cap has to come before the `stat` per entry or only the
+  payload improves — but it also came before the *sort*, and `readdir` returns
+  a hashed directory in no order at all. A large folder showed a thousand
+  arbitrary names, dropped its subdirectories outright, and showed a
+  *different* thousand once any file was created. Ordering is decided from the
+  dirents, which already carry the name and the kind, so it costs nothing and
+  now happens first.
+- **The listing comparator contradicted itself around symlinks.** `if (a.type
+  !== b.type) return a.type === 'directory' ? -1 : 1` answers +1 both ways
+  round for a symlink against a file; `sort` does not reject an inconsistent
+  comparator, it simply lands wherever its merges take it, so the alphabet
+  broke silently wherever a link sat. It ranks first and compares names within
+  the rank, with an antisymmetry test over every pair of kinds.
+
 ## [0.32.15] — 2026-08-28
 
 ### Fixed

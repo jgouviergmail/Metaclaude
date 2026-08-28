@@ -55,6 +55,7 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   apiMock.files.mockResolvedValue({
     entries: [entry('bail.md'), entry('notes.txt'), entry('src', 'directory')],
+    truncated: false,
   });
   apiMock.searchFiles.mockResolvedValue({ entries: [] });
   apiMock.readFile.mockResolvedValue({
@@ -75,7 +76,7 @@ describe('browsing', () => {
   });
 
   it('says when a folder is empty rather than showing nothing', async () => {
-    apiMock.files.mockResolvedValue({ entries: [] });
+    apiMock.files.mockResolvedValue({ entries: [], truncated: false });
     renderWithProviders(<FilesPanel workspaceId="ws_a" onClose={vi.fn()} />);
     expect(await screen.findByText('This folder is empty')).toBeDefined();
   });
@@ -91,6 +92,63 @@ describe('browsing', () => {
     renderWithProviders(<FilesPanel workspaceId="ws_a" onClose={onClose} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Close files' }));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('a folder too large to list', () => {
+  /**
+   * The server caps a listing, because a directory of twenty thousand files
+   * cost 1.4 s and 2.3 MB before it did. What the cap costs *here* is that a
+   * capped folder and a small one look identical: same rows, same absence of
+   * the file you were after. The panel has to say so, or the browser quietly
+   * lies about what is on disk.
+   */
+  it('says the listing was cut, and points at the thing that finds the rest', async () => {
+    apiMock.files.mockResolvedValue({
+      entries: [entry('a.txt'), entry('b.txt')],
+      truncated: true,
+    });
+    renderWithProviders(<FilesPanel workspaceId="ws_a" onClose={vi.fn()} />);
+
+    const notice = await screen.findByRole('status');
+    expect(notice.textContent).toMatch(/first 2 entries/);
+    expect(notice.textContent).toMatch(/by name/);
+    // The rows are still there — this is a warning, not an error state.
+    expect(screen.getByText('a.txt')).toBeDefined();
+  });
+
+  it('says nothing when the whole folder fits', async () => {
+    renderWithProviders(<FilesPanel workspaceId="ws_a" onClose={vi.fn()} />);
+    await screen.findByText('bail.md');
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('does not carry the warning into a search, which is capped differently', async () => {
+    // The flag belongs to the *listing*. Showing it over search results would
+    // claim a cut that did not happen at that limit.
+    apiMock.files.mockResolvedValue({ entries: [entry('a.txt')], truncated: true });
+    apiMock.searchFiles.mockResolvedValue({ entries: [entry('bail.md')] });
+    renderWithProviders(<FilesPanel workspaceId="ws_a" onClose={vi.fn()} />);
+    await screen.findByRole('status');
+
+    fireEvent.change(await screen.findByLabelText('Find a file by name'), {
+      target: { value: 'bail' },
+    });
+    await vi.advanceTimersByTimeAsync(300);
+
+    await waitFor(() => expect(apiMock.searchFiles).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  });
+
+  it('lets the browser skip the rows nobody has scrolled to', async () => {
+    // A thousand rows is the point of the cap, not a comfortable number to
+    // lay out. `content-visibility` is the same native lazy rendering the
+    // transcript uses; the intrinsic size keeps the scrollbar honest while
+    // the rows are skipped.
+    renderWithProviders(<FilesPanel workspaceId="ws_a" onClose={vi.fn()} />);
+    const row = (await screen.findByText('bail.md')).closest('li') as HTMLLIElement;
+    expect(row.style.contentVisibility).toBe('auto');
+    expect(row.style.containIntrinsicSize).not.toBe('');
   });
 });
 

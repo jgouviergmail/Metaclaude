@@ -62,12 +62,15 @@ export function registerFileRoutes(app: App, context: AppContext): void {
     '/api/workspaces/:id/files',
     async (request, reply) => {
       const workspace = mustGetWorkspace(request.params.id);
-      const entries = await context.files.list(
+      // `truncated` travels with the entries: a capped listing and a small
+      // folder are indistinguishable from the rows alone, and the browser has
+      // no way to count what it was not sent.
+      const { entries, truncated } = await context.files.list(
         workspace.path,
         request.query.path ?? '',
         request.query.hidden === 'true',
       );
-      return reply.send({ path: request.query.path ?? '', entries });
+      return reply.send({ path: request.query.path ?? '', entries, truncated });
     },
   );
 

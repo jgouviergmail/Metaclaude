@@ -480,7 +480,9 @@ export const api = {
 
   /* ------------------------------- Files ------------------------------ */
   files: (workspaceId: string, path = '', hidden = false) =>
-    request<{ path: string; entries: FileEntry[] }>(
+    // `truncated` says the directory holds more than the server's per-listing
+    // cap; the entries alone cannot distinguish that from a small folder.
+    request<{ path: string; entries: FileEntry[]; truncated: boolean }>(
       `/api/workspaces/${workspaceId}/files${qs({ path, hidden })}`,
     ),
 

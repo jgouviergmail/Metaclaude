@@ -1,10 +1,37 @@
-import { mkdtempSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { MAX_EDITABLE_FILE_BYTES } from '@metaclaude/shared';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { FileService, FileServiceError } from './files.js';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  compareForExplorer,
+  FileService,
+  MAX_DIRECTORY_ENTRIES,
+  FileServiceError,
+} from './files.js';
+
+/**
+ * Every path `FileService` stats, in order.
+ *
+ * "The cap is applied before the stats" is a claim about syscalls, and the
+ * only honest way to check it is to count them — a wall-clock threshold on a
+ * shared CI box measures the box. The mock delegates to the real module, so
+ * every other test in this file is unaffected.
+ */
+const { stats } = vi.hoisted(() => ({ stats: [] as string[] }));
+
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  return {
+    ...actual,
+    default: actual,
+    stat: (path: Parameters<typeof actual.stat>[0], ...rest: unknown[]) => {
+      stats.push(String(path));
+      return (actual.stat as (...args: unknown[]) => unknown)(path, ...rest);
+    },
+  };
+});
 
 let root: string;
 let files: FileService;
@@ -68,12 +95,138 @@ afterAll(async () => {
 /* list                                                                        */
 /* -------------------------------------------------------------------------- */
 
+describe('a directory with a great many entries', () => {
+  /**
+   * Measured before this cap existed: 20 000 files took 1 450 ms and produced
+   * 2.3 MB of JSON. The API is one Node process, so those milliseconds are
+   * spent with every other request waiting — a `stat` per entry, awaited in
+   * sequence — and the browser then rendered twenty thousand rows.
+   *
+   * A file browser is for finding a file, not for reading a directory out
+   * loud, so the listing is a window and says when it is one.
+   */
+  it('caps what it returns and says that it did', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'metaclaude-files-many-'));
+    for (let i = 0; i < MAX_DIRECTORY_ENTRIES + 250; i += 1) {
+      writeFileSync(join(root, `file_${String(i).padStart(5, '0')}.txt`), 'x');
+    }
+
+    const service = new FileService();
+    const listing = await service.list(root, '');
+
+    expect(listing.entries).toHaveLength(MAX_DIRECTORY_ENTRIES);
+    expect(listing.truncated).toBe(true);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('says nothing about truncation when there was none', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'metaclaude-files-few-'));
+    writeFileSync(join(root, 'bail.md'), 'x');
+
+    const listing = await new FileService().list(root, '');
+    expect(listing.entries).toHaveLength(1);
+    expect(listing.truncated).toBe(false);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('spends no syscall on the entries it will not return', async () => {
+    // The cost is one `stat` per entry, so capping after collecting them all
+    // would fix the payload and leave the latency exactly where it was. The
+    // count is the claim; wall-clock on a shared CI box is not.
+    const root = mkdtempSync(join(tmpdir(), 'metaclaude-files-cost-'));
+    for (let i = 0; i < MAX_DIRECTORY_ENTRIES + 500; i += 1) {
+      writeFileSync(join(root, `f${String(i).padStart(5, '0')}`), 'x');
+    }
+
+    stats.length = 0;
+    await new FileService().list(root, '');
+
+    expect(stats).toHaveLength(MAX_DIRECTORY_ENTRIES);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('keeps the start of the listing rather than an arbitrary thousand', async () => {
+    // `readdir` hands back a hashed directory in no useful order, so a cap
+    // applied before the sort keeps a *random* subset: the folder's
+    // subdirectories can vanish entirely, and creating one more file
+    // reshuffles which thousand you see. Ordering costs nothing here — a
+    // dirent already carries both the name and the kind — so it is decided
+    // before the cap, and "the first thousand" means what it says.
+    const root = mkdtempSync(join(tmpdir(), 'metaclaude-files-order-'));
+    mkdirSync(join(root, 'zzz-a-directory'));
+    for (let i = 0; i < MAX_DIRECTORY_ENTRIES + 4; i += 1) {
+      writeFileSync(join(root, `file_${String(i).padStart(5, '0')}.txt`), 'x');
+    }
+
+    const { entries, truncated } = await new FileService().list(root, '');
+
+    expect(truncated).toBe(true);
+    expect(entries).toHaveLength(MAX_DIRECTORY_ENTRIES);
+    // Directories first, however the filesystem enumerated them — the one
+    // thing a file browser must never drop.
+    expect(entries[0]?.name).toBe('zzz-a-directory');
+    expect(entries[1]?.name).toBe('file_00000.txt');
+    // One directory plus 999 files: the window ends where the alphabet does.
+    expect(entries.at(-1)?.name).toBe(
+      `file_${String(MAX_DIRECTORY_ENTRIES - 2).padStart(5, '0')}.txt`,
+    );
+    rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe('the order a listing is in', () => {
+  /**
+   * Its own block because the cap made it load-bearing: the comparator now
+   * decides *which* thousand entries a large folder returns, not merely how
+   * they are arranged once returned.
+   */
+  it('never contradicts itself', () => {
+    // The shape this replaced branched on "the types differ, so the one that
+    // is not a directory sorts second", which answers +1 both ways round for
+    // a symlink against a file. An inconsistent comparator does not throw —
+    // `sort` just lands wherever its merges take it — so the failure is an
+    // alphabet that silently breaks around a link, not an error.
+    const kinds = ['directory', 'file', 'symlink'] as const;
+    for (const left of kinds) {
+      for (const right of kinds) {
+        const pairs: Array<[string, string]> = [
+          ['alpha', 'beta'],
+          ['beta', 'alpha'],
+          ['same', 'same'],
+        ];
+        for (const [a, b] of pairs) {
+          const forward = compareForExplorer({ name: a, type: left }, { name: b, type: right });
+          const back = compareForExplorer({ name: b, type: right }, { name: a, type: left });
+          // Summed rather than negated: `Object.is(0, -0)` is false, and two
+          // equal entries legitimately compare 0 both ways.
+          expect(Math.sign(forward) + Math.sign(back)).toBe(0);
+        }
+      }
+    }
+  });
+
+  it('sorts a symlink in among the files, not off one end', async () => {
+    await seedDirs('adir');
+    await seedFiles({ 'a.txt': 'a', 'm.txt': 'm', 'z.txt': 'z' });
+    symlinkSync(join(root, 'z.txt'), join(root, 'b.link'));
+
+    const { entries } = await files.list(root, '');
+    expect(entries.map((entry) => entry.name)).toEqual([
+      'adir',
+      'a.txt',
+      'b.link',
+      'm.txt',
+      'z.txt',
+    ]);
+  });
+});
+
 describe('list', () => {
   it('puts directories before files and sorts each group case-insensitively', async () => {
     await seedDirs('Beta', 'alpha', 'zulu');
     await seedFiles({ 'Zeta.txt': 'z', 'apple.md': 'a', 'Mango.ts': 'm' });
 
-    const entries = await files.list(root, '');
+    const { entries } = await files.list(root, '');
     expect(entries.map((entry) => entry.name)).toEqual([
       'alpha',
       'Beta',
@@ -90,7 +243,7 @@ describe('list', () => {
     await seedFiles({ 'src/main.ts': 'export {};\n', 'src/notes.md': '# hi' });
     await seedDirs('src/nested');
 
-    const entries = await files.list(root, 'src');
+    const { entries } = await files.list(root, 'src');
     expect(entries.map((entry) => entry.path)).toEqual([
       'src/nested',
       'src/main.ts',
@@ -111,7 +264,7 @@ describe('list', () => {
 
   it('reports null language for a file with no known extension', async () => {
     await seedFiles({ LICENSE: 'MIT', 'notes.unknownext': 'x' });
-    const byName = new Map((await files.list(root, '')).map((entry) => [entry.name, entry]));
+    const byName = new Map((await files.list(root, '')).entries.map((entry) => [entry.name, entry]));
     expect(byName.get('LICENSE')!.language).toBeNull();
     expect(byName.get('notes.unknownext')!.language).toBeNull();
   });
@@ -124,10 +277,10 @@ describe('list', () => {
       '.env.example': 'TEMPLATE=1',
     });
 
-    const visible = (await files.list(root, '')).map((entry) => entry.name).sort();
+    const visible = (await files.list(root, '')).entries.map((entry) => entry.name).sort();
     expect(visible).toEqual(['.env.example', 'visible.txt']);
 
-    const all = (await files.list(root, '', true)).map((entry) => entry.name).sort();
+    const all = (await files.list(root, '', true)).entries.map((entry) => entry.name).sort();
     expect(all).toEqual(['.env', '.env.example', '.hidden', 'visible.txt']);
   });
 
@@ -139,16 +292,16 @@ describe('list', () => {
       'src/index.ts': 'x',
     });
 
-    expect((await files.list(root, '')).map((entry) => entry.name)).toEqual(['src']);
+    expect((await files.list(root, '')).entries.map((entry) => entry.name)).toEqual(['src']);
 
-    const all = (await files.list(root, '', true)).map((entry) => entry.name).sort();
+    const all = (await files.list(root, '', true)).entries.map((entry) => entry.name).sort();
     expect(all).toEqual(['.git', 'dist', 'node_modules', 'src']);
   });
 
   it('lists an empty directory as an empty array', async () => {
     await seedDirs('empty');
-    expect(await files.list(root, 'empty')).toEqual([]);
-    expect(await files.list(root, '')).toHaveLength(1);
+    expect((await files.list(root, 'empty')).entries).toEqual([]);
+    expect((await files.list(root, '')).entries).toHaveLength(1);
   });
 
   it('rejects a directory that does not exist with 404', async () => {

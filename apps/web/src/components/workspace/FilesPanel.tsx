@@ -29,7 +29,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { FileEntry } from '@metaclaude/shared';
 import { NotePreview } from '@/components/workspace/NotePreview';
@@ -83,6 +83,9 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
 
   const entries = searching ? (search.data?.entries ?? []) : (listing.data?.entries ?? []);
   const loading = searching ? search.isPending : listing.isPending;
+  // Belongs to the listing alone: search results are capped at their own,
+  // much smaller limit, and claiming this cut over them would be false.
+  const listingCut = !searching && (listing.data?.truncated ?? false);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -131,6 +134,13 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
             </div>
           </div>
 
+          {listingCut ? (
+            <TruncationNotice>
+              Only the first {entries.length.toLocaleString()} entries are listed — this folder
+              holds more. Use the box above to find a file by name.
+            </TruncationNotice>
+          ) : null}
+
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {loading ? (
               <div className="flex justify-center py-10">
@@ -162,7 +172,18 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
             ) : (
               <ul>
                 {entries.map((entry) => (
-                  <li key={entry.path}>
+                  <li
+                    key={entry.path}
+                    // A full listing is 1 000 rows and ~7 000 nodes (measured),
+                    // which no desktop struggles with — this is for the phone,
+                    // and for the fact that this is the one list in the app
+                    // that routinely arrives at its cap. Same native lazy
+                    // rendering the transcript uses: rows below the fold skip
+                    // layout and paint, the intrinsic height keeps the
+                    // scrollbar honest while they do, and a browser without
+                    // the property renders everything exactly as before.
+                    style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 34px' }}
+                  >
                     <button
                       type="button"
                       onClick={() => openEntry(entry)}
@@ -196,6 +217,32 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
         </>
       )}
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Truncation notice                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * "You are not seeing all of it."
+ *
+ * Both halves of this panel can serve a cut-down view — a listing capped at a
+ * thousand entries, a file whose first megabyte is all that was read — and the
+ * two say the same thing for the same reason, so they say it the same way.
+ * `role="status"` because it appears once the data lands: a sighted reader sees
+ * the strip arrive, and a screen-reader user is told rather than left to infer
+ * it from a list that simply stops.
+ */
+function TruncationNotice({ children }: { children: ReactNode }) {
+  return (
+    <p
+      role="status"
+      className="flex shrink-0 items-start gap-2 border-b border-line bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning"
+    >
+      <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -417,13 +464,10 @@ function FileEditor({
       ) : (
         <>
           {truncated ? (
-            <p className="flex shrink-0 items-start gap-2 border-b border-line bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning">
-              <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-              <span>
-                This file is {formatBytes(file.data.size)} — only the beginning is shown. Editing
-                is disabled, because saving what is on screen would truncate the file on disk.
-              </span>
-            </p>
+            <TruncationNotice>
+              This file is {formatBytes(file.data.size)} — only the beginning is shown. Editing is
+              disabled, because saving what is on screen would truncate the file on disk.
+            </TruncationNotice>
           ) : null}
 
           {isNote && mode === 'preview' ? (
