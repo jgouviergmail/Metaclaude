@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.9] — 2026-08-28
+
+### Added
+
+- **The socket frame router is tested** — the most load-bearing switch in the
+  web app, and until now entirely unguarded. Several of its branches exist
+  only to stop a screen sitting on stale figures: a run reaching a terminal
+  state refreshes Analytics, Memory, Insights and Approvals, none of which
+  receives a frame of its own, while a run merely *running* refreshes nothing
+  (a refetch per streamed frame would be a request storm for numbers that
+  cannot have moved). An approval notifies once, from the system topic only,
+  because the request arrives on two. Ten components remain untested.
+
+
 ## [0.32.8] — 2026-08-28
 
 ### Added
