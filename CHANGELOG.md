@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.8] — 2026-08-28
+
+### Added
+
+- **The transcript row is tested, with the assertion that matters most in the
+  whole web app**: assistant output reaches the DOM through
+  `dangerouslySetInnerHTML`, and `lib/markdown.test.ts` proves the sanitiser
+  works — but not that it is *in the path*. A refactor passing the raw text
+  straight through would leave every one of those tests green while handing
+  agent output to the browser as markup. Sabotaged to confirm it bites.
+- **Two files are now excluded from the untested-component ratchet on
+  purpose**, rather than given hollow tests: `test/render.tsx` is the harness
+  every other test renders through, and `main.tsx` is `createRoot` plus a
+  production-only service-worker registration. The count is 11 real
+  components, down from 25 when the ratchet was introduced.
+
+
 ## [0.32.7] — 2026-08-28
 
 ### Added

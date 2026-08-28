@@ -193,9 +193,20 @@ function countUnusedTranslationHooks() {
  * different problem that a line count would hide.
  */
 function countUntestedComponents() {
+  // Two files are excluded on purpose rather than given hollow tests:
+  //   • `test/render.tsx` is the harness every other test renders through, so
+  //     it is exercised by all of them; a test *of* it would assert that the
+  //     providers it mounts are mounted, which is what its callers already
+  //     prove far better.
+  //   • `main.tsx` is the bootstrap — `createRoot` and a service-worker
+  //     registration guarded by `import.meta.env.PROD`. There is no behaviour
+  //     to hold still that the browser check in `apps/api/scripts` does not
+  //     already exercise against a real page.
+  const EXCLUDED = ['apps/web/src/test/render.tsx', 'apps/web/src/main.tsx'];
   let n = 0;
   for (const file of tracked('apps/web/src/*')) {
     if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    if (EXCLUDED.includes(file)) continue;
     if (!existsSync(join(ROOT, file.replace(/\.tsx$/, '.test.tsx')))) n += 1;
   }
   return n;
