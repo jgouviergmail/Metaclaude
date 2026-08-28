@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.13] — 2026-08-28
+
+### Added
+
+- **Automations and the workspace landing screen are tested**, leaving two.
+  A *disabled* automation no longer being able to advertise a next run it will
+  never take is now pinned, as is the consecutive-failure count — an
+  automation quietly failing every night is the worst thing that screen can
+  allow. On the workspace side, the effect that opens a first session for an
+  empty workspace is held to creating exactly one, however many times the page
+  re-renders before the refetch lands.
+
+
 ## [0.32.12] — 2026-08-28
 
 ### Added
