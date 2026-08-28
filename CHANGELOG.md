@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.12] — 2026-08-28
+
+### Added
+
+- **The session screen and the plugins screen are tested**, leaving four
+  components untested. The invariant worth the most here is that a failed run
+  submission **keeps its attachments** — the user picked those files and
+  nothing in the interface can put them back, so only a message that actually
+  left may consume them. The plugin toggle is pinned to send the *opposite* of
+  the state it is in, and an install reports what arrived (how many skills,
+  how many MCP servers) rather than merely that something did.
+
+
 ## [0.32.11] — 2026-08-28
 
 ### Added
