@@ -62,6 +62,20 @@ const EnvSchema = z.object({
   /** Hard ceiling on a single run's wall-clock time. */
   METACLAUDE_RUN_TIMEOUT_MS: z.coerce.number().int().min(30_000).default(45 * 60 * 1000),
 
+  /**
+   * The VAPID `sub` claim — who a push relay contacts about a misbehaving
+   * sender. Relays require the shape and none deliver anything to it, but
+   * they do validate it: Apple answers 400 BadJwtToken for a token it does
+   * not like, and the previous default used the RFC 2606 `.invalid` TLD,
+   * which is reserved precisely so that it never resolves.
+   */
+  METACLAUDE_PUSH_SUBJECT: z
+    .string()
+    .refine((value) => value.startsWith('mailto:') || value.startsWith('https://'), {
+      message: 'must be a mailto: or https: URL',
+    })
+    .default('https://github.com/metaclaude'),
+
   /** `hash` needs no model download; `local` loads a sentence-transformer. */
   METACLAUDE_EMBEDDINGS: z.enum(['hash', 'local']).default('hash'),
   METACLAUDE_EMBEDDING_MODEL: z.string().default('Xenova/all-MiniLM-L6-v2'),
@@ -99,6 +113,8 @@ export interface Config {
   quotaGuardPct: number;
   runTimeoutMs: number;
   embeddings: { provider: 'hash' | 'local'; model: string };
+  /** VAPID `sub` claim for push; relays validate its shape. */
+  pushSubject: string;
   claude: {
     oauthToken: string | null;
     apiKey: string | null;
@@ -253,6 +269,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     quotaGuardPct: env.METACLAUDE_QUOTA_GUARD_PCT,
     runTimeoutMs: env.METACLAUDE_RUN_TIMEOUT_MS,
     embeddings: { provider: env.METACLAUDE_EMBEDDINGS, model: env.METACLAUDE_EMBEDDING_MODEL },
+    pushSubject: env.METACLAUDE_PUSH_SUBJECT,
     claude: {
       oauthToken,
       apiKey,

@@ -39,11 +39,14 @@ const VAPID_PUBLIC_KEY = 'push.vapid_public';
 const VAPID_PRIVATE_KEY = 'push.vapid_private';
 
 /**
- * The VAPID subject — who to contact about misbehaving senders. Push relays
- * require the shape (mailto: or https:), none deliver anything to it, and a
- * self-hosted single-owner box has no meaningful address to put there.
+ * Fallback VAPID subject when the deployment names none.
+ *
+ * Relays require the shape (mailto: or https:) and none deliver anything to
+ * it — but they do *validate* it, and the previous default put the RFC 2606
+ * `.invalid` TLD in a `mailto:`, a domain reserved precisely so that it can
+ * never resolve. Configure `METACLAUDE_PUSH_SUBJECT` to override it.
  */
-const SUBJECT = 'mailto:owner@metaclaude.invalid';
+const DEFAULT_SUBJECT = 'https://github.com/metaclaude';
 
 export interface PushPayload {
   title: string;
@@ -68,6 +71,8 @@ export type PushSend = (
 export interface PushDeps {
   db: Db;
   vault: Vault;
+  /** VAPID `sub`; relays validate its shape. Defaults when absent. */
+  subject?: string;
   /** Injectable transport; the default wraps `web-push`. */
   send?: PushSend;
   now?: () => number;
@@ -80,6 +85,50 @@ interface SubscriptionRow {
   endpoint: string;
   p256dh: string;
   auth: string;
+}
+
+/**
+ * Turn a relay's refusal into something the operator can act on.
+ *
+ * `web-push` throws a `WebPushError` whose `message` is the bare string
+ * "Received unexpected response code" — the status and the relay's own reason
+ * live in `statusCode` and `body`, and recording only the message is how the
+ * test button came to report a sentence containing no diagnosis whatsoever.
+ *
+ * The two statuses worth naming are the ones a person can actually fix.
+ * Apple's `web.push.apple.com` answers 403 when the subscription was made
+ * with a different VAPID public key than the one now signing — which happens
+ * whenever this deployment's key pair is regenerated, so every device that
+ * subscribed before must subscribe again. It answers 400 for a malformed
+ * token, most often the `sub` claim.
+ */
+export function describePushFailure(error: unknown, endpoint: string): string {
+  const status = (error as { statusCode?: number }).statusCode;
+  const body = String((error as { body?: unknown }).body ?? '').trim();
+  const host = (() => {
+    try {
+      return new URL(endpoint).host;
+    } catch {
+      return 'the push service';
+    }
+  })();
+
+  if (status === undefined) return String((error as Error).message ?? error).slice(0, 300);
+
+  const detail = body ? ` — ${body}` : '';
+  if (status === 403) {
+    return `${host} refused the VAPID signature (403${detail}). This device subscribed with a different key; turn notifications off and on again on it.`;
+  }
+  if (status === 400) {
+    return `${host} rejected the request as malformed (400${detail}). Check METACLAUDE_PUSH_SUBJECT — it must be a mailto: or https: URL the relay accepts.`;
+  }
+  if (status === 413) {
+    return `${host} refused the payload as too large (413${detail}).`;
+  }
+  if (status === 429) {
+    return `${host} is rate-limiting this deployment (429${detail}). It will accept again shortly.`;
+  }
+  return `${host} answered ${status}${detail}`.slice(0, 300);
 }
 
 export class PushService {
@@ -180,13 +229,13 @@ export class PushService {
             pruned += 1;
             return;
           }
-          lastError = (error as Error).message.slice(0, 300);
+          lastError = describePushFailure(error, row.endpoint).slice(0, 300);
           this.deps.db
             .prepare('UPDATE push_subscriptions SET last_error = ? WHERE id = ?')
             .run(lastError, row.id);
           this.deps.log('warn', 'a push delivery failed', {
             endpoint: new URL(row.endpoint).host,
-            message: (error as Error).message,
+            message: lastError,
           });
         }
       }),
@@ -205,7 +254,11 @@ export class PushService {
       { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
       payload,
       {
-        vapidDetails: { subject: SUBJECT, publicKey: keys.publicKey, privateKey: keys.privateKey },
+        vapidDetails: {
+          subject: this.deps.subject ?? DEFAULT_SUBJECT,
+          publicKey: keys.publicKey,
+          privateKey: keys.privateKey,
+        },
         TTL: options.ttlSeconds,
         urgency: options.urgency,
       },

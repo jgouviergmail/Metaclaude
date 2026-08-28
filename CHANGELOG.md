@@ -11,6 +11,34 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.15] — 2026-08-28
+
+### Fixed
+
+- **The push test reported "unexpected response code" and nothing else.**
+  That sentence is the *entire* message `web-push` throws: the status and the
+  relay's own reason live in `statusCode` and `body`, and only the message was
+  being recorded — so the one control whose job is to diagnose push produced
+  an unactionable string. Failures now name the relay, the status and the
+  relay's words, and translate the two an operator can act on: Apple's 403
+  (the device subscribed under a different VAPID key — turn notifications off
+  and on again on it) and 400 (a malformed token, usually the subject).
+- **The VAPID subject used a domain reserved never to resolve.** It was
+  `mailto:owner@metaclaude.invalid`; `.invalid` is RFC 2606's guaranteed-dead
+  TLD, and relays validate this claim even though none deliver to it. It is
+  now `METACLAUDE_PUSH_SUBJECT`, defaulting to an `https:` URL, and the config
+  refuses a shape no relay accepts rather than letting it fail hours later at
+  send time.
+
+### Changed
+
+- **The push test's fake now behaves like the library it stands for.** It
+  fabricated an error whose message contained the status, so every assertion
+  on the recorded error passed while the deployed code recorded a sentence
+  with no diagnosis in it. A fake more helpful than the real thing cannot
+  reveal that the real thing is unhelpful.
+
+
 ## [0.32.14] — 2026-08-28
 
 ### Added

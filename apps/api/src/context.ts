@@ -261,6 +261,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const push = new PushService({
     db,
     vault,
+    subject: config.pushSubject,
     log: (level, message, data) => log[level](data ?? {}, message),
   });
   const pushEvents = buildPushEventHandlers({

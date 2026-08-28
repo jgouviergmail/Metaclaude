@@ -15,7 +15,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApprovalRequest, Run, ServerFrame } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { Vault } from '../security/vault.js';
-import { buildPushEventHandlers, PushService, type PushSend } from './push.js';
+import {
+  buildPushEventHandlers,
+  describePushFailure,
+  PushService,
+  type PushSend,
+} from './push.js';
 
 let db: Db;
 let vault: Vault;
@@ -40,17 +45,34 @@ interface Sent {
   urgency: string;
 }
 
-function build(behave?: (endpoint: string) => number | void) {
+/**
+ * A faithful `WebPushError`.
+ *
+ * The real one carries the bare string 'Received unexpected response code' —
+ * the status and the relay's own reason live in `statusCode` and `body`. The
+ * fake here used to build a message containing the status, which made every
+ * assertion on `lastError` pass while the deployed code recorded a sentence
+ * with no diagnosis in it at all. A fake more helpful than the thing it
+ * stands for cannot show that the thing is unhelpful.
+ */
+function webPushError(statusCode: number, body = ''): Error {
+  const error = new Error('Received unexpected response code') as Error & {
+    statusCode: number;
+    body: string;
+    endpoint: string;
+  };
+  error.name = 'WebPushError';
+  error.statusCode = statusCode;
+  error.body = body;
+  error.endpoint = 'https://web.push.apple.com/abc';
+  return error;
+}
+
+function build(behave?: (endpoint: string) => number | void, body = '') {
   const sent: Sent[] = [];
   const send: PushSend = async (subscription, payload, options) => {
     const status = behave?.(subscription.endpoint);
-    if (typeof status === 'number') {
-      const error = new Error(`push service answered ${status}`) as Error & {
-        statusCode: number;
-      };
-      error.statusCode = status;
-      throw error;
-    }
+    if (typeof status === 'number') throw webPushError(status, body);
     sent.push({
       endpoint: subscription.endpoint,
       p256dh: subscription.p256dh,
@@ -66,6 +88,60 @@ function build(behave?: (endpoint: string) => number | void) {
 const SUB = (n: number) => ({
   endpoint: `https://push.example/device-${n}`,
   keys: { p256dh: `p256dh-${n}`, auth: `auth-${n}` },
+});
+
+describe('what a refusal actually says', () => {
+  /**
+   * Reported from a real deployment: the test button answered "unexpected
+   * response code" on iOS and nothing else. That sentence is `web-push`'s
+   * whole message; everything a person could act on was being discarded.
+   */
+  it('names the status and the relay instead of the library’s bare sentence', async () => {
+    const { push } = build(() => 503);
+    push.subscribe('usr_1', SUB(1));
+    const outcome = await push.notify({ title: 't', body: 'b', url: '/', tag: 'x' });
+
+    expect(outcome.lastError).toContain('503');
+    expect(outcome.lastError).not.toBe('Received unexpected response code');
+  });
+
+  it('tells the operator what to do about Apple’s 403', async () => {
+    // `web.push.apple.com` answers 403 when the subscription was made with a
+    // different VAPID public key than the one now signing — which is what a
+    // regenerated key pair does to every device that subscribed before it.
+    const { push } = build(() => 403, 'VapidPkHashMismatch');
+    push.subscribe('usr_1', SUB(1));
+    const outcome = await push.notify({ title: 't', body: 'b', url: '/', tag: 'x' });
+
+    expect(outcome.lastError).toContain('403');
+    expect(outcome.lastError).toContain('VapidPkHashMismatch');
+    expect(outcome.lastError).toMatch(/off and on again/);
+  });
+
+  it('points at the subject for a 400, which is what usually causes one', async () => {
+    const { push } = build(() => 400, 'BadJwtToken');
+    push.subscribe('usr_1', SUB(1));
+    const outcome = await push.notify({ title: 't', body: 'b', url: '/', tag: 'x' });
+
+    expect(outcome.lastError).toContain('400');
+    expect(outcome.lastError).toContain('BadJwtToken');
+    expect(outcome.lastError).toContain('METACLAUDE_PUSH_SUBJECT');
+  });
+
+  it('keeps the relay’s own words, which are the part that identifies the fault', () => {
+    expect(describePushFailure({ statusCode: 410, body: 'ExpiredToken' }, 'https://x.example/p')).toContain(
+      'ExpiredToken',
+    );
+  });
+
+  it('falls back to the message when there is no status at all', () => {
+    // A DNS failure or a socket reset is not an HTTP answer.
+    expect(describePushFailure(new Error('ECONNRESET'), 'https://x.example/p')).toBe('ECONNRESET');
+  });
+
+  it('survives an endpoint that is not a URL', () => {
+    expect(describePushFailure({ statusCode: 500 }, 'not a url')).toContain('500');
+  });
 });
 
 describe('the VAPID identity', () => {

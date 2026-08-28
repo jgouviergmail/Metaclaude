@@ -229,3 +229,30 @@ describe('the data and workspaces directories must not overlap', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('the push subject', () => {
+  /**
+   * Reported from a real deployment: iOS refused every test notification.
+   * The relay validates this claim, and the default put the RFC 2606
+   * `.invalid` TLD — reserved so that it never resolves — inside a `mailto:`.
+   */
+  it('defaults to something a relay will accept', () => {
+    const config = load();
+    expect(config.pushSubject).toMatch(/^(mailto:|https:\/\/)/);
+    expect(config.pushSubject).not.toContain('.invalid');
+  });
+
+  it('takes the deployment’s own address when it names one', () => {
+    expect(load({ METACLAUDE_PUSH_SUBJECT: 'mailto:me@example.com' }).pushSubject).toBe(
+      'mailto:me@example.com',
+    );
+  });
+
+  it('refuses a shape no relay accepts, rather than failing at send time', () => {
+    // A bare address or a hostname is the natural thing to type, and the
+    // failure it causes is a 400 from a push service hours later.
+    expect(() => load({ METACLAUDE_PUSH_SUBJECT: 'me@example.com' })).toThrow();
+    expect(() => load({ METACLAUDE_PUSH_SUBJECT: 'example.com' })).toThrow();
+  });
+});
+
