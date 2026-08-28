@@ -28,6 +28,16 @@ explains it, which is worth keeping whether or not a linter ever reads it.
 `--update` records improvements but **refuses to loosen a ceiling** — loosening
 one is a hand edit, and the commit must say why.
 
+**Write the changelog entry *into* the empty `[Unreleased]` section, never
+above it.** `bump.mjs` leaves a fresh empty `## [Unreleased]` at the top of the
+file after each release; inserting a second one above the previous version's
+heading produces two, and the script reads the first — finds it empty — and
+refuses with "carries no entry". The refusal is correct and the fix is to
+merge them, but it costs a cycle every time, and it bit three releases in a
+row. Related: `node deploy/bump.mjs … | tail -n` swallows the refusal's exit
+code, so a `&&` chain after a *pipeline* continues as if the bump had
+succeeded and commits an unbumped version that CI then rejects.
+
 **Every push to main bumps the version.** `node deploy/bump.mjs patch|minor`
 moves APP_VERSION, the four package.json files and CHANGELOG.md together, and
 refuses while `[Unreleased]` is empty — write the changelog entry first. CI's

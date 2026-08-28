@@ -67,7 +67,13 @@ export const TaskCard = memo(function TaskCard({
       role="button"
       tabIndex={0}
       onKeyDown={(event) => {
-        if (event.key === 'Enter') onOpen(task);
+        // A native button answers Enter *and* Space; claiming role="button"
+        // takes on the whole contract. Space also scrolls the page when
+        // nothing handles it, so half-keeping it is worse than silence.
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen(task);
+        }
       }}
       aria-label={task.title}
     >

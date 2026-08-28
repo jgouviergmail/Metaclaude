@@ -11,6 +11,35 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.3] — 2026-08-28
+
+### Added
+
+- **A ratchet for React components with no test at all, and the first three
+  paid down.** The API is tested at 0.86 lines of test per line of source; the
+  web app was at 0.27, and both suites were green, so the gap was invisible.
+  Measured: 25 of 65 components had no test whatsoever — including every major
+  page, `MemoryPage.tsx` among them, a thousand lines of the screen two
+  consecutive lots had just modified. `Modal`, `TaskCard` and `CommandPalette`
+  now have one; the ratchet holds the rest from growing back.
+
+### Fixed
+
+- **A failed confirmation escaped as an unhandled promise rejection.** Every
+  destructive action in the product goes through `ConfirmDialog`, whose click
+  handler discards the promise it starts — so when the confirmed action threw,
+  the rejection reached the window: a console error in the browser, and here a
+  test run that failed while all 404 assertions passed. It stays open on
+  failure as it always did, and now absorbs the rejection; reporting remains
+  the caller's job.
+- **A board card claimed `role="button"` but answered only Enter.** Space is
+  the other half of that contract, and the key that scrolls the page when
+  nothing handles it — so a keyboard user pressing it did not open the card
+  and watched the board jump instead.
+- **A run with an empty prompt showed as a blank row in the command palette.**
+  `split('\n')[0]` yields `''`, which is not nullish, so the `?? 'Untitled
+  run'` fallback never fired.
+
 ## [0.32.2] — 2026-08-28
 
 ### Added

@@ -1,12 +1,13 @@
 {
   "metrics": {
-    "tests": 1968,
-    "testFiles": 138,
+    "tests": 1991,
+    "testFiles": 141,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
     "initialJsGzipKb": 185,
     "deployChecks": 146,
-    "untranslatedStrings": 0
+    "untranslatedStrings": 0,
+    "untestedComponents": 22
   },
   "updated": "2026-08-28"
 }

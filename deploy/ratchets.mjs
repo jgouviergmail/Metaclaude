@@ -124,6 +124,28 @@ function countUntranslatedStrings() {
   return missing;
 }
 
+/**
+ * React components with no sibling test file.
+ *
+ * The API is tested at 0.86 lines of test per line of source; the web app was
+ * at 0.27, and the gap was invisible because both suites are green. Measured
+ * once: 25 of 65 components had no test at all, including every major page —
+ * `MemoryPage.tsx` among them, a thousand lines of the screen two consecutive
+ * lots had just modified.
+ *
+ * Counted per file rather than per line: a component is either exercised by
+ * something or it is not, and a large component with one shallow test is a
+ * different problem that a line count would hide.
+ */
+function countUntestedComponents() {
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    if (!existsSync(join(ROOT, file.replace(/\.tsx$/, '.test.tsx')))) n += 1;
+  }
+  return n;
+}
+
 /** Files carrying at least one test — a suite spread thin is a different risk. */
 function countTestFiles() {
   return tracked('*.test.ts').concat(tracked('*.test.tsx')).length;
@@ -204,6 +226,12 @@ const METRICS = [
     direction: 'down',
     label: 'UI strings missing from the French catalogue',
     measure: countUntranslatedStrings,
+  },
+  {
+    key: 'untestedComponents',
+    direction: 'down',
+    label: 'React components with no test file',
+    measure: countUntestedComponents,
   },
   {
     key: 'untestedCriticalModules',

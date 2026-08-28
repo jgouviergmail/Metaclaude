@@ -112,6 +112,18 @@ export function ConfirmDialog({
     try {
       await onConfirm();
       onOpenChange(false);
+    } catch {
+      // Two separate duties on failure, and only the first was being kept.
+      //
+      // Stay open, so whatever the caller raised is still readable and the
+      // action can be retried — closing would leave the user believing a
+      // destructive thing succeeded.
+      //
+      // And absorb the rejection here: the click handler discards this
+      // promise, so without a catch a failing confirmation escapes as an
+      // unhandled rejection — a console error in the browser, and a red run
+      // in a suite where every test passed. Reporting stays the caller's
+      // job; every one of them already raises its own toast.
     } finally {
       setBusy(false);
     }

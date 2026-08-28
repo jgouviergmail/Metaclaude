@@ -114,7 +114,9 @@ export function CommandPalette() {
   for (const run of runData?.runs ?? []) {
     actions.push({
       id: `run-${run.id}`,
-      label: run.prompt.split('\n')[0]?.slice(0, 80) ?? t('Untitled run'),
+      // `||`, not `??`: an empty prompt yields '' from split(), which is not
+      // null, so a nullish fallback never fires and the row renders blank.
+      label: run.prompt.split('\n')[0]?.slice(0, 80) || t('Untitled run'),
       hint: `${run.status} · ${formatRelative(run.startedAt)}`,
       icon: <MessageSquare />,
       group: 'Recent sessions',
