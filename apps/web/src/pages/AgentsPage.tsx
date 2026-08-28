@@ -1200,21 +1200,26 @@ function TestConnectionsButton({
   workspaceId,
   workspaces,
   testing,
+  label,
+  hint,
   onTest,
 }: {
   workspaceId: string | undefined;
   workspaces: Workspace[];
   testing: boolean;
+  /** "Test connections" in the header; just "Test" on a server's own row. */
+  label: string;
+  hint: string;
   onTest: (workspaceId: string) => void;
 }) {
   const t = useT();
 
   if (workspaceId !== undefined) {
     return (
-      <Tooltip content={t('Connects every enabled server exactly as a run would.')}>
+      <Tooltip content={hint}>
         <Button variant="ghost" size="sm" loading={testing} onClick={() => onTest(workspaceId)}>
           <Plug className="size-4" aria-hidden />
-          {t('Test connections')}
+          {label}
         </Button>
       </Tooltip>
     );
@@ -1231,7 +1236,7 @@ function TestConnectionsButton({
         <span>
           <Button variant="ghost" size="sm" disabled>
             <Plug className="size-4" aria-hidden />
-            {t('Test connections')}
+            {label}
           </Button>
         </span>
       </Tooltip>
@@ -1243,7 +1248,7 @@ function TestConnectionsButton({
       trigger={
         <Button variant="ghost" size="sm" loading={testing}>
           <Plug className="size-4" aria-hidden />
-          {t('Test connections')}
+          {label}
           <ChevronDown className="size-3.5" aria-hidden />
         </Button>
       }
@@ -1271,7 +1276,13 @@ function McpTab({
 
   const t = useT();
   const queryClient = useQueryClient();
-  const [testing, setTesting] = useState(false);
+  /**
+   * What is being tested: `true` for the header button, a server's name for
+   * its own row, `false` for idle. One value rather than a boolean plus a
+   * name, because two pieces of state that must agree are two that can
+   * disagree — and a spinner on the wrong row is exactly that bug.
+   */
+  const [testing, setTesting] = useState<boolean | string>(false);
   /** By server name, filled in by a test. Not cached: it costs a connection. */
   const [descriptions, setDescriptions] = useState<Record<string, McpServerDescription>>({});
 
@@ -1339,8 +1350,17 @@ function McpTab({
     ]),
   );
 
-  const test = async (inWorkspace: string): Promise<void> => {
-    setTesting(true);
+  /**
+   * Test, optionally on behalf of one server's own button.
+   *
+   * `focus` changes what is *reported*, never what is done. The probe mounts
+   * everything a run would mount — that is the whole reason its answer can be
+   * trusted — so a per-server button cannot connect to one server in
+   * isolation without answering a different question. It runs the same probe
+   * and tells the operator about the row they pressed.
+   */
+  const test = async (inWorkspace: string, focus?: string): Promise<void> => {
+    setTesting(focus ?? true);
     try {
       const fresh = await api.claudeCatalogue({ workspaceId: inWorkspace, refresh: true });
       setProbed({ workspaceId: inWorkspace, servers: fresh.mcpServers });
@@ -1373,6 +1393,31 @@ function McpTab({
 
       const failed = fresh.mcpServers.filter((server) => server.status === 'failed');
       const where = workspaces.find((workspace) => workspace.id === inWorkspace)?.name ?? '';
+
+      // A row's own button reports on that row. The others were mounted too —
+      // their badges above are updated — but the sentence answers the question
+      // that was actually asked.
+      if (focus !== undefined) {
+        const one = fresh.mcpServers.find((server) => server.name === focus);
+        if (!one) {
+          toast.warning(t('{name} was not mounted in {workspace}.', { name: focus, workspace: where }));
+        } else if (one.status === 'failed') {
+          toast.error(t('{name} did not connect.', { name: focus }), {
+            description: one.error ?? undefined,
+          });
+        } else {
+          toast.success(
+            plural(
+              one.tools.length,
+              '{name} answered with {n} tool.',
+              '{name} answered with {n} tools.',
+              { name: focus },
+            ),
+          );
+        }
+        return;
+      }
+
       if (failed.length > 0) {
         toast.error(
           plural(failed.length, '{n} server did not connect', '{n} servers did not connect'),
@@ -1456,7 +1501,9 @@ function McpTab({
             <TestConnectionsButton
               workspaceId={workspaceId}
               workspaces={workspaces}
-              testing={testing}
+              testing={testing === true}
+              label={t('Test connections')}
+              hint={t('Connects every enabled server exactly as a run would.')}
               onTest={(id) => void test(id)}
             />
             <Button
@@ -1575,6 +1622,20 @@ function McpTab({
                     label={`${server.enabled ? 'Disable' : 'Enable'} server ${server.name}`}
                     tooltip={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} — opens the editor, because saving replaces this server's stored secrets`}
                   />
+                  {/* Per server, and only where there is something to test: a
+                      disabled server is not mounted, so a button offering to
+                      connect it would be answering about a run that will never
+                      include it. */}
+                  {server.enabled ? (
+                    <TestConnectionsButton
+                      workspaceId={workspaceId}
+                      workspaces={workspaces}
+                      testing={testing === server.name}
+                      label={t('Test')}
+                      hint={t('Connects this server exactly as a run would, and says what it exposes.')}
+                      onTest={(id) => void test(id, server.name)}
+                    />
+                  ) : null}
                   <Button variant="ghost" size="sm" onClick={() => setEditing(draftFromServer(server))}>
                     {t('Edit')}
                   </Button>

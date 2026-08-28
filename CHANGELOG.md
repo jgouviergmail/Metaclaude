@@ -11,6 +11,22 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-08-28
+
+### Added
+
+- **A test button on each enabled MCP server**, which is where the question is
+  actually asked: an operator wonders whether *this* server works, not whether
+  the set does. It runs the same CLI probe — that probe mounts everything a run
+  would mount, which is the whole reason its answer can be trusted, so a
+  per-server button cannot connect to one server in isolation without answering
+  a different question. What changes is the report: the row you pressed, with
+  the reason the probe gave, or the number of tools it exposed. The header
+  button still tests the set.
+- **Only enabled servers get one.** A disabled server is never mounted, so a
+  button offering to connect it would be answering about a run that will never
+  include it.
+
 ## [0.34.3] — 2026-08-28
 
 ### Fixed

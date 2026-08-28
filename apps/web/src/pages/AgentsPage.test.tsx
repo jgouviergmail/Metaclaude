@@ -10,7 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { AgentsPage, withDescriptions } from './AgentsPage';
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, toastMock } = vi.hoisted(() => ({
+  toastMock: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
   apiMock: {
     workspaces: vi.fn(async () => ({ workspaces: [] })),
     skills: vi.fn(async () => ({ skills: [] })),
@@ -105,6 +106,8 @@ const { apiMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/api', () => ({ api: apiMock, ApiError: class ApiError extends Error {} }));
+// The toast is where a test result is *reported*, so it has to be observable.
+vi.mock('sonner', () => ({ toast: toastMock }));
 
 async function openLibraryTab(): Promise<void> {
   // Radix tabs activate on mousedown, not click — same jsdom trap as its menus.
@@ -178,7 +181,24 @@ describe('the skill editor', () => {
 beforeEach(() => {
   vi.clearAllMocks();
   apiMock.workspaces.mockResolvedValue({ workspaces: [] } as never);
+  apiMock.mcpServers.mockResolvedValue({ servers: [] } as never);
 });
+
+/** The fields an MCP row needs to render; each case overrides what it is about. */
+const mcpServer = {
+  id: 'mcp_0',
+  workspaceId: null,
+  name: 'server',
+  transport: 'http' as const,
+  command: null,
+  args: [],
+  url: 'https://example.test/mcp',
+  envKeys: [],
+  headerKeys: [],
+  enabled: true,
+  status: 'unknown' as const,
+  lastError: null,
+};
 
 async function openMcpTab(): Promise<void> {
   const trigger = await screen.findByRole('tab', { name: /mcp servers/i });
@@ -302,6 +322,57 @@ describe('the MCP tab: testing connections', () => {
         refresh: true,
       }),
     );
+  });
+
+  /**
+   * A button per enabled server, because that is where the question is asked.
+   *
+   * It runs the *same* probe — the CLI mounts everything a run would mount,
+   * which is the whole reason its answer can be trusted, so a per-server
+   * button cannot connect to one server in isolation without answering a
+   * different question. What changes is the report: the row you pressed.
+   */
+  it('offers a test on each enabled server, and reports about that one', async () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [{ id: 'ws_1', name: 'Alpha' }],
+    } as never);
+    apiMock.mcpServers.mockResolvedValue({
+      servers: [
+        { ...mcpServer, id: 'mcp_1', name: 'inventory', enabled: true },
+        { ...mcpServer, id: 'mcp_2', name: 'switched-off', enabled: false },
+      ],
+    } as never);
+    apiMock.claudeCatalogue.mockResolvedValue({
+      models: [],
+      commands: [],
+      agents: [],
+      mcpServers: [
+        { name: 'inventory', status: 'failed', error: 'Connection closed', tools: [] },
+      ],
+      account: null,
+      unavailable: [],
+      fetchedAt: 0,
+    } as never);
+
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+
+    // One button, not two: a disabled server is never mounted, so offering to
+    // connect it would answer about a run that will never include it.
+    const testers = await screen.findAllByRole('button', { name: /^Test$/ });
+    expect(testers).toHaveLength(1);
+
+    fireEvent.pointerDown(testers[0]!, { button: 0 });
+    fireEvent.click(testers[0]!);
+    const alpha = await screen.findByRole('menuitem', { name: 'Alpha' });
+    fireEvent.pointerDown(alpha, { button: 0 });
+    fireEvent.click(alpha);
+
+    // The sentence names the server whose button was pressed, and carries the
+    // reason the probe gave rather than a generic failure.
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    expect(String(toastMock.error.mock.calls[0]?.[0])).toContain('inventory did not connect');
+    expect(toastMock.error.mock.calls[0]?.[1]).toMatchObject({ description: 'Connection closed' });
   });
 
   it('refuses only when there is nowhere to mount anything', async () => {

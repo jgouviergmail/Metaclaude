@@ -1736,4 +1736,10 @@ export const fr: Record<string, string> = {
   'Accept edits': 'Accepter les modifications',
   'Auto': 'Auto',
   'Bypass': 'Contournement',
+  '{name} was not mounted in {workspace}.': '{name} n’a pas été monté dans {workspace}.',
+  '{name} did not connect.': '{name} ne s’est pas connecté.',
+  'Connects this server exactly as a run would, and says what it exposes.': 'Connecte ce serveur exactement comme le ferait un run, et dit ce qu’il expose.',
+  '{name} answered with {n} tool.': '{name} a répondu avec {n} outil.',
+  '{name} answered with {n} tools.': '{name} a répondu avec {n} outils.',
+  'Test': 'Tester',
 };
