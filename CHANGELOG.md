@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.14] — 2026-08-28
+
+### Added
+
+- **Every React component now has a test, and the ratchet is locked at zero.**
+  The count was 25 when the ratchet was introduced eight releases ago —
+  8,062 lines including every major page. Analytics and Memory close it:
+  Analytics pins `granularityFor`, which switches a ninety-day period to a
+  weekly series because ninety daily points is noise on a phone; Memory pins
+  the distinction between *filtering* the loaded list and *recalling* by
+  meaning through the search endpoint, two boxes that sit side by side and
+  answer different questions.
+
+
 ## [0.32.13] — 2026-08-28
 
 ### Added
