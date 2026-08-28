@@ -48,3 +48,7 @@ METACLAUDEEXPLOITATION.local.md
 metaclaude_deploy
 metaclaude_admin
 PROMP_PROJET.txt
+
+# Instantanés d’accessibilité écrits par le MCP Playwright pendant une
+# session de mise au point. Jetables, et jamais du code.
+.playwright-mcp/

@@ -11,6 +11,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.34.3] — 2026-08-28
+
+### Fixed
+
+- **Sixteen browser-session snapshots were committed with 0.34.2.** The
+  Playwright MCP writes an accessibility snapshot per navigation into
+  `.playwright-mcp/`, and `git add -A` swept them in — 140 kB of throwaway YAML
+  describing a local dev page. Removed, and the directory is in `.gitignore`
+  now, which is the part that stops it happening again: a tool that writes into
+  the working tree during a debugging session will keep doing so.
+
 ## [0.34.2] — 2026-08-28
 
 ### Fixed
