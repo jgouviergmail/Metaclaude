@@ -11,6 +11,18 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.7] — 2026-08-28
+
+### Added
+
+- **The transcript container and the session list are tested**, taking the
+  ratchet from 16 untested components to 14. Both had load-bearing behaviour
+  that only a test can hold still: the transcript follows new output *only*
+  while the reader is at the bottom, and the session list renders in the order
+  the server gave it — the header comment promised the latter so a pin would
+  not make rows jump before the refetch, and nothing checked it.
+
+
 ## [0.32.6] — 2026-08-28
 
 ### Added
