@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.4] — 2026-08-28
+
+### Fixed
+
+- **Memory tags existed twice, and repeats evicted the real ones.** Three
+  writers reach memory — the web form, the reflexion pass, the edit route —
+  and none agreed on what a tag looks like: the form lowercased what it
+  parsed, reflexion handed over whatever case the model produced, the edit
+  route normalised nothing. `new Set` over strings is case-sensitive, so
+  merging a repeated observation kept `Bail` *and* `bail`, and every repeat
+  added another variant until the 24-tag cap began evicting genuine ones —
+  measured at 20 distinct tags filling all 24 slots with case pairs. There is
+  now one rule, in `packages/shared`, applied by every writer; the web's
+  `parseTags` splits the comma-separated field and defers to it, so the user
+  sees exactly what will be stored.
+
+
 ## [0.32.3] — 2026-08-28
 
 ### Added

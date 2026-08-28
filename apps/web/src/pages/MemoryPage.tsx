@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import type { Insight, Memory, MemoryKind } from '@metaclaude/shared';
+import { normaliseTags, type Insight, type Memory, type MemoryKind } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
 import { KnowledgeSection } from '@/components/memory/KnowledgeSection';
@@ -919,15 +919,13 @@ function draftFrom(memory: Memory): MemoryDraft {
   };
 }
 
+/**
+ * Split the comma-separated field, then hand the result to the shared rule —
+ * the same one the store applies on write. Two copies of "what a tag looks
+ * like" is how `Bail` and `bail` came to coexist.
+ */
 function parseTags(raw: string): string[] {
-  return [
-    ...new Set(
-      raw
-        .split(',')
-        .map((tag) => tag.trim().toLowerCase())
-        .filter(Boolean),
-    ),
-  ].slice(0, 24);
+  return normaliseTags(raw.split(','));
 }
 
 function MemoryModal({

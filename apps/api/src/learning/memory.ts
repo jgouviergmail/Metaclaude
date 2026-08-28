@@ -13,7 +13,7 @@
  */
 
 import type { Memory, MemoryKind, MemorySearchResult } from '@metaclaude/shared';
-import { newId } from '@metaclaude/shared';
+import { newId, normaliseTags } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { packEmbedding, parseJson, toBool, toInt, tx, unpackEmbedding } from '../db/index.js';
 import { cosineSimilarity, type EmbeddingProvider } from './embeddings.js';
@@ -134,7 +134,7 @@ export class MemoryStore {
       // A repeated observation is evidence, so raise confidence — but keep it
       // strictly below 1 so nothing ever becomes unfalsifiable.
       const confidence = Math.min(0.99, duplicate.confidence + 0.08);
-      const mergedTags = [...new Set([...duplicate.tags, ...(input.tags ?? [])])].slice(0, 24);
+      const mergedTags = normaliseTags([...duplicate.tags, ...(input.tags ?? [])]);
 
       // Keep the longer body: it is usually the more specific of the two.
       const content =
@@ -184,7 +184,7 @@ export class MemoryStore {
         input.kind,
         input.title.slice(0, 300),
         input.content,
-        JSON.stringify((input.tags ?? []).slice(0, 24)),
+        JSON.stringify(normaliseTags(input.tags ?? [])),
         input.confidence ?? 0.7,
         toInt(input.pinned ?? false),
         input.sourceRunId ?? null,
@@ -228,7 +228,7 @@ export class MemoryStore {
         patch.kind ?? current.kind,
         title.slice(0, 300),
         content,
-        JSON.stringify(patch.tags ?? current.tags),
+        JSON.stringify(normaliseTags(patch.tags ?? current.tags)),
         patch.confidence ?? current.confidence,
         toInt(patch.pinned ?? current.pinned),
         embedding ? packEmbedding(embedding) : null,

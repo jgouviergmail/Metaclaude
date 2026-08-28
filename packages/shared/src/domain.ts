@@ -525,6 +525,26 @@ export type ApprovalDecision = z.infer<typeof ApprovalDecision>;
  * - `semantic`   — durable facts about the user, the projects, the conventions.
  * - `procedural` — how to do something; the seed material for skills.
  */
+/**
+ * The one place a memory tag's shape is decided, shared because two sides
+ * decide it.
+ *
+ * Three writers reach memory — the web form, the reflexion pass, and the edit
+ * route — and none agreed with the others: the form lowercased what it
+ * parsed, reflexion handed over whatever case the model produced. `new Set`
+ * over strings is case-sensitive, so merging a repeated observation kept
+ * `Bail` *and* `bail`, and every repeat added another variant until the
+ * 24-tag cap began evicting real ones (measured: 20 distinct tags filling all
+ * 24 slots with case pairs).
+ *
+ * It lives here rather than in the API because the web needs the same rule to
+ * show the user what will actually be stored. Folding happens before the cap,
+ * so the budget is never spent on variants of one word.
+ */
+export function normaliseTags(tags: readonly string[]): string[] {
+  return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 24);
+}
+
 export const MemoryKind = z.enum(['episodic', 'semantic', 'procedural']);
 export type MemoryKind = z.infer<typeof MemoryKind>;
 

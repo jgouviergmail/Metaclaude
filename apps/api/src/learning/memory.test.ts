@@ -48,6 +48,81 @@ afterEach(() => {
   db.close();
 });
 
+describe('tags', () => {
+  /**
+   * Two writers put tags into memory and neither agreed with the other: the
+   * web form lowercases everything it parses, while reflexion hands over
+   * whatever case the model produced. Nothing in between normalised, so the
+   * same tag lived twice.
+   */
+  it('folds case when merging a repeated observation, instead of keeping both', async () => {
+    // `new Set` over strings is case-sensitive, so a near-duplicate arriving
+    // with 'bail' beside a stored 'Bail' kept the pair — and every repeat
+    // added another variant until the 24-tag cap started evicting real ones.
+    const first = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Préavis de résiliation',
+      content: 'Le préavis est de trois mois hors zone tendue.',
+      tags: ['Bail', 'Logement'],
+    });
+    const again = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Préavis de résiliation',
+      content: 'Le préavis est de trois mois hors zone tendue, un mois en zone tendue.',
+      tags: ['bail', 'LOGEMENT', 'préavis'],
+    });
+
+    expect(again.merged).toBe(true);
+    expect([...again.memory.tags].sort()).toEqual(['bail', 'logement', 'préavis']);
+    expect(first.memory.id).toBe(again.memory.id);
+  });
+
+  it('normalises on the way in, whoever the writer is', async () => {
+    // Reflexion passes the model's tags through untouched; the store is the
+    // one place every writer goes through, so it is where the shape is fixed.
+    const { memory } = await store.remember({
+      workspaceId: null,
+      kind: 'episodic',
+      title: 'Sinistre déclaré',
+      content: 'Déclaration envoyée le 3.',
+      tags: ['  Assurance  ', 'ASSURANCE', 'assurance', '', '   '],
+    });
+    expect(memory.tags).toEqual(['assurance']);
+  });
+
+  it('normalises on edit as well as on write', async () => {
+    // The third writer, and the one the web edit form uses. Fixing only
+    // remember() would have left the path this whole finding started from
+    // able to re-introduce the variants.
+    const { memory } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Tags à corriger',
+      content: 'Contenu.',
+      tags: ['bail'],
+    });
+    const updated = await store.update(memory.id, { tags: ['Bail', 'BAIL', ' logement '] });
+    expect(updated?.tags).toEqual(['bail', 'logement']);
+  });
+
+  it('keeps the cap after folding, not before', async () => {
+    // Trimming to 24 first and deduping second would spend the budget on
+    // case variants of the same word.
+    const noisy = Array.from({ length: 20 }, (_, i) => [`Tag${i}`, `tag${i}`]).flat();
+    const { memory } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Beaucoup de tags',
+      content: 'Contenu.',
+      tags: noisy,
+    });
+    expect(memory.tags).toHaveLength(20);
+    expect(new Set(memory.tags).size).toBe(20);
+  });
+});
+
 describe('remember / get', () => {
   it('stores a memory and reads it back', async () => {
     const { memory, merged } = await store.remember({
