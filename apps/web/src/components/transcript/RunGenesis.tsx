@@ -167,6 +167,24 @@ export function RunGenesis({ run }: { run: Run }) {
                     : t('Nothing recalled — this run started from the prompt alone.')}
                 </p>
               )}
+
+              {(genesis.data.documents?.length ?? 0) > 0 ? (
+                <div className="space-y-1.5">
+                  <p className="text-[10.5px] font-semibold uppercase tracking-wider text-subtle">
+                    {t('Passages consulted')}
+                  </p>
+                  <ul className="space-y-1">
+                    {genesis.data.documents.slice(0, 5).map((doc) => (
+                      <li key={doc.chunkId} className="flex items-center gap-2">
+                        <Badge tone="info">{t('doc')}</Badge>
+                        <span className="min-w-0 flex-1 truncate text-ink">
+                          {[doc.title, doc.heading].filter(Boolean).join(' › ')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </>
           ) : (
             <p className="text-subtle">{t('The story of this run could not be read.')}</p>

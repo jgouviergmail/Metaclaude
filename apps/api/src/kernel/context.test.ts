@@ -1,11 +1,11 @@
 import type { Memory, MemoryKind, MemorySearchResult } from '@metaclaude/shared';
+import type { KnowledgeSearchResult } from '../learning/knowledge.js';
 import { describe, expect, it } from 'vitest';
 import {
   MEMORY_CONTEXT_BUDGET,
   buildMemoryContext,
   composeSystemAppend,
-  selectMemoryContext,
-} from './context.js';
+  selectMemoryContext, selectKnowledgeContext, KNOWLEDGE_CONTEXT_BUDGET } from './context.js';
 
 function memory(overrides: Partial<Memory> = {}): Memory {
   return {
@@ -204,5 +204,48 @@ describe('composeSystemAppend', () => {
     });
     expect(composed.startsWith('Prefer TypeScript.\n\n---\n\n## Recalled context')).toBe(true);
     expect(composed).toContain('**Runner**');
+  });
+});
+
+describe('selectKnowledgeContext', () => {
+  const passage = (n: number, size = 400): KnowledgeSearchResult => ({
+    chunkId: `chk_${n}`,
+    documentId: `doc_${n}`,
+    documentTitle: `Document ${n}`,
+    workspaceId: null,
+    heading: `Section ${n}`,
+    text: 'contenu '.repeat(Math.ceil(size / 8)).slice(0, size),
+    score: 1 - n / 100,
+  });
+
+  it('renders passages with their source, so the model can cite them', () => {
+    const { text } = selectKnowledgeContext([passage(1, 60)]);
+    expect(text).toContain('## Reference passages');
+    expect(text).toContain('**Document 1 › Section 1**');
+  });
+
+  it('reports exactly what fit the budget, nothing more', () => {
+    // The genesis reads the credited set: crediting a passage the budget
+    // dropped would claim an influence that never happened — the same rule
+    // selectMemoryContext defends for decay.
+    const many = Array.from({ length: 40 }, (_, i) => passage(i, 800));
+    const { text, injected } = selectKnowledgeContext(many);
+
+    expect(injected.length).toBeGreaterThan(0);
+    expect(injected.length).toBeLessThan(many.length);
+    expect(text.length).toBeLessThanOrEqual(KNOWLEDGE_CONTEXT_BUDGET);
+    for (const entry of injected) expect(text).toContain(entry.documentTitle);
+  });
+
+  it('returns emptiness, not a bare header, when nothing fits', () => {
+    expect(selectKnowledgeContext([])).toEqual({ text: '', injected: [] });
+    const huge = [passage(1, 50_000)];
+    expect(selectKnowledgeContext(huge)).toEqual({ text: '', injected: [] });
+  });
+
+  it('degrades the source line when a chunk has no heading', () => {
+    const { text } = selectKnowledgeContext([{ ...passage(1, 60), heading: '' }]);
+    expect(text).toContain('**Document 1**');
+    expect(text).not.toContain('›');
   });
 });

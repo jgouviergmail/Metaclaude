@@ -22,6 +22,39 @@ changing the embedding provider.
 
 Memory can be disabled per workspace, for projects that should stay cold.
 
+## The knowledge library
+
+Memory is what the system *learned*; the knowledge library is what you *gave
+it to read* — and the difference is a promise. A memory gains and loses
+confidence, decays, and can be forgotten. A document never fades: the lease
+says tomorrow exactly what it says today.
+
+Add documents at the bottom of the **Memory** page: paste the text, give it a
+title, and choose its shelf — **Global** reaches every workspace, a workspace
+keeps its documents to itself (plus the global shelf). Runs in a sibling
+workspace can never see them. On save the document is split into passages —
+markdown headings become the sections passages are cited under — and each
+passage is indexed twice, by meaning and by exact words, so *« quel est le
+préavis ? »* finds the clause whether or not it uses the word.
+
+During a run, the most relevant passages are retrieved automatically and
+handed to the agent as quotations with their source — document title and
+section — which it is told to cite rather than to paraphrase from guesswork.
+The run's genesis strip shows exactly which passages were consulted, under
+**Passages consulted**.
+
+Two controls worth knowing. The switch on each document **pauses** it —
+kept and editable, never retrieved — which beats deleting a document you
+might need next month. And **Rehearse a retrieval** asks the library what a
+run would be shown for a query of yours: same search, same relevance gates,
+scores included. If the rehearsal returns nothing, a run would get nothing —
+the library refuses to pad the context with irrelevant passages, because
+eight wrong quotations are worse than none.
+
+The library can be switched off per workspace (Workspace settings →
+Learning), separately from memory: what the system learned and what it was
+handed to read are different trusts.
+
 ## The policy learner
 
 Under **Auto**, the model and effort for each run are chosen by a learner that

@@ -7,7 +7,7 @@
  */
 
 import type { App } from '../http/types.js';
-import { CreateMemoryRequest, MemoryKind } from '@metaclaude/shared';
+import { CreateMemoryRequest, SaveKnowledgeRequest, MemoryKind } from '@metaclaude/shared';
 import type { RunGenesis } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -295,6 +295,74 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
    * before execution, so a run still queued answers with an empty list that
    * fills in moments later.
    */
+  /* ------------------------------ Knowledge ------------------------------ */
+
+  // The knowledge library: reference documents, chunked and embedded on write,
+  // retrieved into runs. Same authorisation bar as memories — an operator can
+  // shape what the agent reads — and the same audit habit.
+  app.get('/api/knowledge', async (request, reply) => {
+    const query = request.query as { workspaceId?: string; scope?: string };
+    const options =
+      query.scope === 'global'
+        ? { workspaceId: null }
+        : query.workspaceId
+          ? { workspaceId: query.workspaceId }
+          : {};
+    return reply.send({ documents: context.knowledge.list(options) });
+  });
+
+  app.get<{ Params: { id: string } }>('/api/knowledge/:id', async (request, reply) => {
+    const document = context.knowledge.get(request.params.id);
+    if (!document) throw new HttpError(404, 'Document not found.');
+    return reply.send({ document });
+  });
+
+  app.post('/api/knowledge', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = SaveKnowledgeRequest.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+    }
+
+    const document = await context.knowledge.upsert(parsed.data);
+    context.audit.record({
+      actor: actor.username,
+      action: parsed.data.id ? 'knowledge.update' : 'knowledge.create',
+      target: document.id,
+      ipAddress: requestIp(context, request),
+      detail: document.title,
+    });
+    return reply.status(parsed.data.id ? 200 : 201).send({ document });
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/knowledge/:id', async (request, reply) => {
+    const actor = requireOperator(request);
+    if (!context.knowledge.delete(request.params.id)) {
+      throw new HttpError(404, 'Document not found.');
+    }
+    context.audit.record({
+      actor: actor.username,
+      action: 'knowledge.delete',
+      target: request.params.id,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send({ ok: true });
+  });
+
+  // The preview search the UI offers: "what would a run see for this query?"
+  // Reuses the exact retrieval path a run takes, options included, so what
+  // the preview shows is what a run would get — not a lookalike.
+  app.get<{ Querystring: { q: string; workspaceId?: string } }>(
+    '/api/knowledge/search',
+    async (request, reply) => {
+      if (!request.query.q?.trim()) throw new HttpError(400, 'q is required.');
+      const results = await context.knowledge.search(request.query.q, {
+        workspaceId: request.query.workspaceId ?? null,
+      });
+      return reply.send({ results });
+    },
+  );
+
   app.get<{ Params: { id: string } }>('/api/runs/:id/genesis', async (request, reply) => {
     const run = context.runRepo.get(request.params.id);
     if (!run) throw new HttpError(404, 'Run not found.');
@@ -311,6 +379,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       category: run.category,
       source: run.policy.source,
       memories: context.memory.recalledFor(run.id),
+      documents: context.knowledge.consultedFor(run.id),
       arm,
       explanation: run.category ? context.policy.explain(run.workspaceId, run.category) : '',
     };

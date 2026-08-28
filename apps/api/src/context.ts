@@ -31,6 +31,7 @@ import { PolicyLearner } from './learning/bandit.js';
 import { TaskClassifier } from './learning/classifier.js';
 import { createEmbeddingProvider, type EmbeddingProvider } from './learning/embeddings.js';
 import { MemoryStore } from './learning/memory.js';
+import { KnowledgeStore } from './learning/knowledge.js';
 import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
 import { AuthService } from './security/auth.js';
@@ -98,6 +99,7 @@ export interface AppContext {
 
   embedder: EmbeddingProvider;
   memory: MemoryStore;
+  knowledge: KnowledgeStore;
   classifier: TaskClassifier;
   policy: PolicyLearner;
   reflexion: ReflexionEngine;
@@ -227,6 +229,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   log.info(`embeddings provider: ${embedder.id} (${embedder.dimension}d)`);
 
   const memory = new MemoryStore(db, embedder);
+  const knowledge = new KnowledgeStore(db, embedder);
   const classifier = new TaskClassifier(db, embedder);
   const policy = new PolicyLearner(db);
 
@@ -402,6 +405,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     transcript: transcriptRepo,
     attachments,
     memory,
+    knowledge,
     classifier,
     policy,
     reflexion,
@@ -638,6 +642,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     transcriptRepo,
     embedder,
     memory,
+    knowledge,
     classifier,
     policy,
     reflexion,

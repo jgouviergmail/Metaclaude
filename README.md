@@ -23,6 +23,11 @@ system around it:
   one-handed on a phone — in English or in French.
 - **Memory that persists** across sessions and projects — and that is retrieved
   automatically into the runs where it helps.
+- **A knowledge library the agent quotes.** Drop reference documents — a
+  contract, a spec, a runbook — globally or per workspace; runs retrieve the
+  relevant passages (hybrid semantic + exact-word search) and cite them by
+  document and section, with the transcript showing exactly what was
+  consulted.
 - **A policy that learns.** Which model and effort level actually works for which
   kind of task, measured rather than guessed.
 - **Loops.** Automations that run on a schedule, including continuous ones that
@@ -121,6 +126,8 @@ something else. Metaclaude closes that loop explicitly:
     ├─▶ choose policy ─────▶ which model has worked best on this kind of task?
     │
     ├─▶ recall memory ─────▶ what do we already know about this project?
+    │
+    ├─▶ consult knowledge ─▶ which reference passages bear on this request?
     │
     ├─▶ RUN (Claude CLI) ──▶ the agent works, asking before anything irreversible
     │

@@ -116,6 +116,41 @@ above uses.
 
 ---
 
+## The knowledge library — what the operator handed over
+
+Beside the memory store sits its deliberate opposite. `KnowledgeStore`
+(`learning/knowledge.ts`) holds reference documents — no confidence, no
+decay, no reaping, because reference material that quietly faded would be
+the worst failure the store could have. What the two stores share, they
+share by construction rather than by copy: the embedding provider, the
+measured relevance floors, the fts5 configuration and the RRF fusion all
+come from the same modules, so a lesson measured once holds in both.
+
+Ingestion chunks each document (`learning/chunker.ts`): paragraphs packed
+toward ~1100 characters, oversized ones split at sentence then word
+boundaries, ~150 characters of overlap at each seam, and the nearest
+markdown heading carried with every chunk. Each chunk is embedded with its
+document title and heading prefixed — the cheap version of contextual
+retrieval, and the part of it that pays: "the notice period is 45 days"
+cannot match a query about terminating the lease unless the context travels
+with the passage. A content hash makes re-saving identical text a metadata
+write, never a re-embed.
+
+Search is the memory shape — dense ∪ BM25, RRF fusion, the same measured
+gates — with three additions of its own, each traceable to a measurement:
+a dense-solo floor (0.18) because French stopword n-grams soak a French
+corpus into a flat band the relative gate admits; stopword abstention in the
+lexical arm, because on a small corpus a function word carries real IDF
+straight through the clamp gate; and a two-passages-per-document cap, so one
+strong document cannot silence the second-best. Scoping is the memory rule:
+a run reads its workspace's shelf plus the global one, and never a
+sibling's.
+
+Injection mirrors memory exactly: retrieved passages are rendered as
+quotations with their source, budgeted (9000 characters), and only what was
+*injected* is credited to `document_usages` — the genesis shows what the run
+actually saw, not what retrieval considered.
+
 ## Loop 2 — Policy: which model for which kind of task?
 
 **Timescale: tens of runs.**

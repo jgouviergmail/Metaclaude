@@ -147,6 +147,13 @@ export const WorkspaceSettings = z.object({
   systemPromptAppend: z.string().max(20_000).default(''),
   /** Inject retrieved long-term memory into the system prompt. */
   memoryEnabled: z.boolean().default(true),
+  /**
+   * Whether runs in this workspace retrieve from the knowledge library —
+   * the operator's reference documents, workspace shelf plus the global one.
+   * Distinct from memoryEnabled on purpose: what the system learned and what
+   * it was handed to read are different trusts, switched separately.
+   */
+  knowledgeEnabled: z.boolean().default(true),
   /** Let the learning subsystem pick model/effort from past performance. */
   autoPolicyEnabled: z.boolean().default(true),
   /** Run the post-hoc reflexion pass that distils lessons from each run. */

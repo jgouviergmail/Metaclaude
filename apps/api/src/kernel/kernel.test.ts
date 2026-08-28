@@ -23,6 +23,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Run, Workspace, WorkspaceSettings } from '@metaclaude/shared';
 import { WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
+import { HashingEmbedder } from '../learning/embeddings.js';
+import { KnowledgeStore } from '../learning/knowledge.js';
 import { EventBus } from './bus.js';
 import { deriveTitle, Kernel } from './kernel.js';
 import { AttachmentService } from '../services/attachments.js';
@@ -123,6 +125,10 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     recordUsage: vi.fn(),
     reinforce: vi.fn(),
   };
+  // Real, against the same in-memory database: what is worth testing about
+  // knowledge injection lives between the kernel, the store and the rows —
+  // same reasoning as the repositories being genuine.
+  const knowledge = new KnowledgeStore(db, new HashingEmbedder());
   const contextProvider = { resolve: vi.fn().mockReturnValue({ mcpServers: {}, agents: {} }) };
   const finished: Run[] = [];
 
@@ -145,6 +151,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     runs,
     transcript,
     memory: memory as never,
+    knowledge,
     classifier: classifier as never,
     policy: policy as never,
     reflexion: reflexion as never,
@@ -183,6 +190,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     policy,
     reflexion,
     memory,
+    knowledge,
     finished,
     newSession,
   };
@@ -762,5 +770,69 @@ describe('delegation', () => {
         prompt: 'and now you ask someone else',
       }),
     ).rejects.toThrow(/cannot delegate/i);
+  });
+});
+
+describe('knowledge injection', () => {
+  it('injects retrieved passages into the system prompt and credits exactly them', async () => {
+    await fixture.knowledge.upsert({
+      workspaceId: fixture.workspace.id,
+      title: 'Bail — 12 rue des Lilas',
+      content: '## Résiliation\nLe préavis de résiliation du bail est de 45 jours en zone tendue.',
+    });
+    await fixture.knowledge.upsert({
+      workspaceId: null,
+      title: 'Conventions',
+      content: '## Style\nLes messages de commit se rédigent au présent.',
+    });
+
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'Quel est le préavis de résiliation du bail ?',
+    });
+    await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
+
+    const request = fixture.supervisor.started[0]!;
+    // The passage travelled, with its source named so the model can cite it.
+    expect(request.systemPromptAppend).toContain('45 jours');
+    expect(request.systemPromptAppend).toContain('Bail — 12 rue des Lilas');
+    // And the genesis can say so: usage was credited for this run.
+    const consulted = fixture.knowledge.consultedFor(run.id);
+    expect(consulted.length).toBeGreaterThan(0);
+    expect(consulted[0]!.title).toBe('Bail — 12 rue des Lilas');
+  });
+
+  it('injects nothing and credits nothing when the workspace switched it off', async () => {
+    const fx = setup({ settings: { knowledgeEnabled: false } });
+    try {
+      await fx.knowledge.upsert({
+        workspaceId: fx.workspace.id,
+        title: 'Bail',
+        content: '## Résiliation\nLe préavis de résiliation du bail est de 45 jours.',
+      });
+
+      const session = fx.newSession();
+      const run = await fx.kernel.submit({
+        sessionId: session.id,
+        prompt: 'Quel est le préavis de résiliation du bail ?',
+      });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+
+      expect(fx.supervisor.started[0]!.systemPromptAppend ?? '').not.toContain('45 jours');
+      expect(fx.knowledge.consultedFor(run.id)).toEqual([]);
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('a failing knowledge store never fails the run', async () => {
+    vi.spyOn(fixture.knowledge, 'search').mockRejectedValueOnce(new Error('index corrompu'));
+
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'peu importe' });
+    await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
+
+    expect(fixture.runs.get(run.id)?.status).toBe('succeeded');
   });
 });

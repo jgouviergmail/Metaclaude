@@ -301,6 +301,23 @@ from *global* scope only, and installing copies an entry into the registry
 **disabled**, where it becomes the operator's own record. The library keeps
 the original, so a deleted copy is installable again.
 
+## The knowledge library
+
+`learning/knowledge.ts` is the memory store's deliberate opposite: reference
+documents with no confidence, no decay and no reaping — what the operator
+handed over must say tomorrow what it says today. Documents live in
+`documents` (workspace-scoped or global) and are chunked on write by
+`learning/chunker.ts` — paragraph-packed toward ~1100 characters,
+heading-aware, overlapped at the seams — into `document_chunks`, each chunk
+embedded with its document title and section prefixed and indexed in
+`document_chunks_fts`. Retrieval is the memory shape (dense ∪ BM25, RRF, the
+shared measured gates in `learning/retrieval.ts`) plus three of its own
+measured guards: a dense-solo floor against stopword soak, lexical
+abstention on function-word queries, and a per-document diversity cap. The
+kernel injects the winning passages as cited quotations behind
+`knowledgeEnabled`, budgeted, and credits only what was injected to
+`document_usages` — which is what the run's genesis reads back.
+
 ## The advisor
 
 `services/advisor.ts` is the part of the system that studies the system. It

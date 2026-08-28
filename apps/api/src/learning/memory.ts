@@ -17,6 +17,13 @@ import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { packEmbedding, parseJson, toBool, toInt, tx, unpackEmbedding } from '../db/index.js';
 import { cosineSimilarity, type EmbeddingProvider } from './embeddings.js';
+import {
+  MIN_ABSOLUTE_BM25,
+  MIN_ABSOLUTE_SIMILARITY,
+  RELATIVE_SIMILARITY_FLOOR,
+  rrfFuse,
+  toFtsQuery,
+} from './retrieval.js';
 
 interface MemoryRow {
   id: string;
@@ -76,60 +83,16 @@ export interface RetrievalOptions {
 /** Near-duplicate threshold. Above this cosine, two memories say the same thing. */
 export const DUPLICATE_THRESHOLD = 0.92;
 
-/**
- * Relevance gate for the dense arm.
- *
- * Without a gate the dense arm contributes *every* embedded memory, sorted, and
- * fusion gives them all a positive score — so on a small corpus the caller's
- * `limit` is filled with whatever exists rather than with what is relevant.
- * Eight unrelated memories in every system prompt is worse than none: it wastes
- * context, and because `recordUsage` credits everything it injected, it feeds
- * noise straight back into reinforcement.
- *
- * The gate is **relative to the best match**, not an absolute cosine, because
- * the embedding provider is pluggable and the two providers do not share a
- * scale. Measured on this corpus: the hashing embedder puts genuine matches at
- * 0.09–0.39 and noise at up to 0.24 — overlapping ranges, so no fixed threshold
- * separates them — while a sentence-transformer runs far higher and would have
- * a fixed threshold admitting everything. "At least half as similar as the best
- * hit" holds under both.
- *
- * `MIN_ABSOLUTE_SIMILARITY` then discards the degenerate case where even the
- * best match is essentially orthogonal.
- */
-export const RELATIVE_SIMILARITY_FLOOR = 0.5;
-export const MIN_ABSOLUTE_SIMILARITY = 0.05;
-
-/**
- * Relevance gate for the lexical arm.
- *
- * `toFtsQuery` OR-joins every token, so one incidental word in common — "the",
- * "how", "run" — matches a row. BM25 ranks those last, but the arm returned
- * ids, not scores, and fusion credits every id it returns: a corpus smaller
- * than the caller's `limit` therefore came back whole, however little of it had
- * anything to do with the query.
- *
- * **Absolute, not relative to the best hit**, and both halves of that are
- * measured rather than chosen. fts5 clamps a term's IDF at 1e-6, so a token
- * present in every document contributes essentially nothing: across the probes
- * here, stopword-only matches score between -0.000001 and -0.000003 while
- * genuine ones run from -0.45 to -4.3. Four orders of magnitude, and the gap
- * does not move with corpus size, because it is the clamp that produces it.
- *
- * A ratio to the best hit fails at both ends of that. When *every* match is
- * noise the best is ~0, `best * fraction` is ~0 too, and the test admits the
- * whole corpus — a query of nothing but "the" kept 21 rows of 21. And when the
- * best hit is strong it discards weaker genuine ones for being long rather than
- * irrelevant: two memories each containing the same identifier once scored
- * -2.74 and -0.45 purely from length normalisation, so the arm whose stated job
- * is exact identifiers dropped the longer runbook. Worse, that cut moved when
- * *unrelated* memories were added, because they shift the average document
- * length.
- *
- * SQLite's `bm25()` is negated — more negative is a better match — so this is a
- * ceiling on the value rather than a floor on its magnitude.
- */
-export const MIN_ABSOLUTE_BM25 = 0.01;
+// The relevance gates and the fts query builder moved to retrieval.ts when the
+// knowledge store arrived — the constants are measurements of this exact
+// configuration, and two stores must share one set of measurements. Re-exported
+// here so existing callers and tests are undisturbed.
+export {
+  MIN_ABSOLUTE_BM25,
+  MIN_ABSOLUTE_SIMILARITY,
+  RELATIVE_SIMILARITY_FLOOR,
+  toFtsQuery,
+} from './retrieval.js';
 
 /**
  * Confidence floor below which a memory stops being retrieved and becomes
@@ -320,16 +283,7 @@ export class MemoryStore {
     const lexical = this.lexicalSearch(queryText, options, pool);
 
     /* --- Fusion ---------------------------------------------------------- */
-    // Reciprocal-rank fusion. k=60 is the value from the original RRF paper and
-    // needs no per-corpus tuning, which matters for a system that starts empty.
-    const K = 60;
-    const fused = new Map<string, number>();
-    denseTop.forEach((entry, index) => {
-      fused.set(entry.id, (fused.get(entry.id) ?? 0) + 1 / (K + index + 1));
-    });
-    lexical.forEach((id, index) => {
-      fused.set(id, (fused.get(id) ?? 0) + 1 / (K + index + 1));
-    });
+    const fused = rrfFuse([denseTop.map((entry) => entry.id), lexical]);
 
     const byId = new Map(rows.map((row) => [row.id, row]));
     const now = Date.now();
@@ -783,19 +737,3 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-/**
- * Turn free text into a safe FTS5 MATCH expression.
- *
- * Every token is quoted, which neutralises the FTS query operators (`*`, `:`,
- * `NEAR`, `-`) that would otherwise let user text change the query's meaning or
- * raise a syntax error.
- */
-export function toFtsQuery(text: string): string | null {
-  const tokens = text
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}_]+/u)
-    .filter((token) => token.length >= 2 && token.length < 40)
-    .slice(0, 24);
-  if (tokens.length === 0) return null;
-  return tokens.map((token) => `"${token.replace(/"/g, '')}"`).join(' OR ');
-}

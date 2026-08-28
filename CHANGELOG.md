@@ -11,6 +11,52 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-08-28
+
+### Added
+
+- **The knowledge library: a document RAG, global and per workspace.** The
+  system always retrieved what it *learned* (memories); it can now retrieve
+  what you *hand it to read*. At the bottom of the Memory page, paste
+  reference documents — a lease, a spec, a runbook — onto the global shelf
+  (every workspace) or a workspace's own; a sibling workspace can never see
+  them. Each document is split into passages (markdown headings become the
+  sections passages are cited under, seams overlap so a straddling sentence
+  is findable from both sides) and indexed twice, by meaning and by exact
+  words. Runs retrieve the relevant passages automatically and receive them
+  as quotations with their source, which the agent is told to cite; the run's
+  genesis shows **Passages consulted**. Documents never decay — unlike
+  memories, reference material that quietly faded would be the worst possible
+  failure — and a switch pauses one without deleting it.
+- **Retrieval you can rehearse.** The library card answers "what would the
+  agent see?" by running the exact pipeline a run uses — same hybrid search
+  (dense ∪ BM25, reciprocal-rank fusion), same measured relevance gates, same
+  diversity cap — and showing the passages, sources and scores. When it says
+  a run would receive nothing, that is the same nothing the run would get:
+  the library refuses to pad the context, because eight wrong quotations are
+  worse than none.
+- **Three retrieval guards, each from a measurement, two shared with memory.**
+  A dense-only match now needs to clear a floor (0.18) measured against
+  French stopword queries, whose character n-grams soak a French corpus into
+  a flat band the relative gate admits (stopwords ≤ 0.102, genuine queries
+  ≥ 0.446 on chunk-scale text). The lexical arm abstains outright on queries
+  of nothing but function words — on a small corpus "un" present in one chunk
+  of two carries real IDF straight through the BM25 clamp gate, measured at
+  −0.0325 — and this fix lands in the shared `toFtsQuery`, so memory search
+  inherits it. And at most two passages of any one document reach a result
+  list, so the strongest document cannot silence the second-best.
+- **`knowledgeEnabled`, per workspace.** Beside the memory toggle in the
+  workspace drawer, separately: what the system learned and what it was
+  handed to read are different trusts. No migration — text settings column,
+  Zod default, the `advisorAuto` pattern.
+
+### Changed
+
+- The retrieval internals memory and knowledge share — the measured relevance
+  floors, the FTS query builder, reciprocal-rank fusion — moved to
+  `learning/retrieval.ts` with their derivations, re-exported so nothing
+  breaks: two stores, one set of measurements.
+
 ## [0.30.1] — 2026-08-28
 
 ### Fixed

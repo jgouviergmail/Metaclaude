@@ -33,6 +33,7 @@ import { toast } from 'sonner';
 import type { Insight, Memory, MemoryKind } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
+import { KnowledgeSection } from '@/components/memory/KnowledgeSection';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
@@ -692,6 +693,8 @@ export function MemoryPage() {
               </div>
             )}
           </section>
+
+          <KnowledgeSection scope={scope} workspaces={workspacesQuery.data?.workspaces ?? []} />
         </div>
       </div>
 

@@ -712,4 +712,74 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 17,
+    name: 'knowledge_documents',
+    sql: /* sql */ `
+      -- The knowledge library: reference documents the operator gives the
+      -- system to read, as distinct from memories the system distils itself.
+      -- workspace_id NULL is the global shelf, visible from every workspace;
+      -- a concrete id scopes the document to that workspace alone. Retrieval
+      -- for a run reads its workspace's shelf plus the global one, the same
+      -- rule memories follow.
+      CREATE TABLE documents (
+        id              TEXT PRIMARY KEY,
+        workspace_id    TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        title           TEXT NOT NULL,
+        content         TEXT NOT NULL,
+        -- sha256 of the content: lets a re-save of identical text skip the
+        -- re-chunk and re-embed entirely.
+        content_hash    TEXT NOT NULL,
+        enabled         INTEGER NOT NULL DEFAULT 1,
+        chunk_count     INTEGER NOT NULL DEFAULT 0,
+        embedding_model TEXT NOT NULL,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL
+      );
+      CREATE INDEX idx_documents_ws ON documents(workspace_id);
+
+      -- One row per retrieval chunk. seq orders them; heading is the nearest
+      -- markdown heading above the chunk, carried so a passage still knows
+      -- what it is about. Embeddings are packed Float32, same as memories.
+      CREATE TABLE document_chunks (
+        id          TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        seq         INTEGER NOT NULL,
+        heading     TEXT NOT NULL DEFAULT '',
+        text        TEXT NOT NULL,
+        embedding   BLOB,
+        UNIQUE(document_id, seq)
+      );
+      CREATE INDEX idx_document_chunks_doc ON document_chunks(document_id);
+
+      CREATE VIRTUAL TABLE document_chunks_fts USING fts5(
+        heading, text,
+        content='document_chunks', content_rowid='rowid', tokenize='porter unicode61'
+      );
+      CREATE TRIGGER document_chunks_fts_ai AFTER INSERT ON document_chunks BEGIN
+        INSERT INTO document_chunks_fts(rowid, heading, text)
+        VALUES (new.rowid, new.heading, new.text);
+      END;
+      CREATE TRIGGER document_chunks_fts_ad AFTER DELETE ON document_chunks BEGIN
+        INSERT INTO document_chunks_fts(document_chunks_fts, rowid, heading, text)
+        VALUES ('delete', old.rowid, old.heading, old.text);
+      END;
+      CREATE TRIGGER document_chunks_fts_au AFTER UPDATE ON document_chunks BEGIN
+        INSERT INTO document_chunks_fts(document_chunks_fts, rowid, heading, text)
+        VALUES ('delete', old.rowid, old.heading, old.text);
+        INSERT INTO document_chunks_fts(rowid, heading, text)
+        VALUES (new.rowid, new.heading, new.text);
+      END;
+
+      -- Which passages a run actually saw, so the genesis can show them —
+      -- the same discipline as memory_usages: credit what was injected, not
+      -- what was retrieved.
+      CREATE TABLE document_usages (
+        run_id   TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        chunk_id TEXT NOT NULL REFERENCES document_chunks(id) ON DELETE CASCADE,
+        score    REAL NOT NULL,
+        PRIMARY KEY (run_id, chunk_id)
+      );
+    `,
+  },
 ];

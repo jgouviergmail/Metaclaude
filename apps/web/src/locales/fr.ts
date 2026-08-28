@@ -509,6 +509,56 @@ export const fr: Record<string, string> = {
     'Le serveur a été ajouté sous Agents et skills → Serveurs MCP, désactivé. Activez-le là-bas quand vous êtes prêt.',
   'Google did not connect.': "Google ne s'est pas connecté.",
   'Google disconnected.': 'Google déconnecté.',
+  /* La bibliothèque de connaissance */
+  'Knowledge library': 'Bibliothèque de connaissance',
+  'Reference documents the agent can quote — a lease, a spec, a runbook. Global documents reach every workspace; scoped ones stay in theirs. Runs retrieve the relevant passages automatically, and the transcript shows which ones were used.':
+    "Des documents de référence que l'agent peut citer — un bail, une spec, un runbook. Les documents globaux atteignent tous les espaces de travail ; les autres restent dans le leur. Les runs récupèrent automatiquement les passages pertinents, et le transcript montre ceux qui ont servi.",
+  'Add document': 'Ajouter un document',
+  'Nothing on the shelf yet': "Rien sur l'étagère pour l'instant",
+  'Paste the documents your runs keep needing — the contract, the conventions, the runbook — and the agent will cite them instead of guessing.':
+    "Collez les documents dont vos runs ont sans cesse besoin — le contrat, les conventions, le runbook — et l'agent les citera au lieu de deviner.",
+  '{n} passages': '{n} passages',
+  '{n} passages indexed and ready to be retrieved.': '{n} passages indexés et prêts à être retrouvés.',
+  Paused: 'En pause',
+  'Retrieve from “{name}”': 'Récupérer depuis « {name} »',
+  'On: runs can retrieve these passages. Switch off to pause without deleting.':
+    'Actif : les runs peuvent récupérer ces passages. Désactivez pour mettre en pause sans supprimer.',
+  'Paused: kept and editable, but never retrieved.':
+    'En pause : conservé et modifiable, mais jamais récupéré.',
+  'Delete “{name}”': 'Supprimer « {name} »',
+  'Rehearse a retrieval': 'Répéter une récupération',
+  'Ask what a run would ask, and see exactly the passages it would be shown — same search, same gates, scores included.':
+    "Posez la question qu'un run poserait, et voyez exactement les passages qui lui seraient montrés — même recherche, mêmes portes, scores compris.",
+  'e.g. what is the notice period?': 'p. ex. quel est le délai de préavis ?',
+  Preview: 'Aperçu',
+  'Nothing relevant enough — a run would receive no passages for this.':
+    'Rien d’assez pertinent — un run ne recevrait aucun passage pour cela.',
+  'Edit document': 'Modifier le document',
+  'Add a document': 'Ajouter un document',
+  'e.g. Lease — 12 rue des Lilas': 'p. ex. Bail — 12 rue des Lilas',
+  Scope: 'Portée',
+  'Global — every workspace': 'Global — tous les espaces de travail',
+  Content: 'Contenu',
+  'Paste the text. Markdown headings become the sections passages are cited under.':
+    'Collez le texte. Les titres Markdown deviennent les sections sous lesquelles les passages sont cités.',
+  'Save document': 'Enregistrer le document',
+  'Add to the library': 'Ajouter à la bibliothèque',
+  'Delete this document?': 'Supprimer ce document ?',
+  'and every passage indexed from it are removed. Runs stop seeing it immediately.':
+    'et chaque passage qui en est indexé sont supprimés. Les runs cessent de le voir immédiatement.',
+  'Delete document': 'Supprimer le document',
+  'Document deleted': 'Document supprimé',
+  'Its passages left the index with it.': "Ses passages ont quitté l'index avec lui.",
+  'Could not save that document.': "Ce document n'a pas pu être enregistré.",
+  'Could not update that document.': "Ce document n'a pas pu être mis à jour.",
+  'Could not delete that document.': "Ce document n'a pas pu être supprimé.",
+  'Could not open that document.': "Ce document n'a pas pu être ouvert.",
+  'Passages consulted': 'Passages consultés',
+  doc: 'doc',
+  'Consult the knowledge library': 'Consulter la bibliothèque de connaissance',
+  "Retrieve relevant passages from your reference documents — this workspace's shelf plus the global one.":
+    "Récupérer les passages pertinents de vos documents de référence — l'étagère de cet espace plus la globale.",
+
   'The stored token is gone from this deployment. Google still lists Metaclaude until you revoke it at myaccount.google.com/permissions.':
     'Le jeton stocké a disparu de ce déploiement. Google liste encore Metaclaude tant que vous ne le révoquez pas sur myaccount.google.com/permissions.',
   'The library could not be read': "La bibliothèque n'a pas pu être lue",

@@ -532,6 +532,12 @@ function WorkspaceSettingsModal({
             hint="Inject what Metaclaude learned in earlier sessions into each run's context."
           />
           <CheckboxField
+            checked={draft.knowledgeEnabled}
+            onChange={(value) => update('knowledgeEnabled', value)}
+            label="Consult the knowledge library"
+            hint="Retrieve relevant passages from your reference documents — this workspace's shelf plus the global one."
+          />
+          <CheckboxField
             checked={draft.autoPolicyEnabled}
             onChange={(value) => update('autoPolicyEnabled', value)}
             label="Choose the model automatically"

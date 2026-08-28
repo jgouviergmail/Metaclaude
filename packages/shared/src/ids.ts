@@ -38,6 +38,8 @@ export const ID_PREFIXES = {
   pushSub: 'psh',
   passkey: 'pky',
   proposal: 'prp',
+  document: 'doc',
+  chunk: 'chk',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

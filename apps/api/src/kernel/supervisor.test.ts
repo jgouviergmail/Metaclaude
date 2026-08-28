@@ -47,6 +47,7 @@ const workspace: Workspace = {
     additionalDirectories: [],
     systemPromptAppend: '',
     memoryEnabled: true,
+    knowledgeEnabled: true,
     autoPolicyEnabled: false,
     reflexionEnabled: false,
     checkpointing: true,

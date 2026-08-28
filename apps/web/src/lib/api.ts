@@ -42,6 +42,9 @@ import {
   type ConnectorListingEntry,
   type GoogleConnectionState,
   type GoogleGrant,
+  type KnowledgeDocumentMeta,
+  type KnowledgeSearchHit,
+  type SaveKnowledgeRequest,
   type LibraryListingEntry,
   type McpServerRecord,
   type Memory,
@@ -696,6 +699,21 @@ export const api = {
   saveMcpServer: (body: Record<string, unknown>) =>
     request<{ server: McpServerRecord }>('/api/mcp', { method: 'POST', body }),
   deleteMcpServer: (id: string) => request<{ ok: boolean }>(`/api/mcp/${id}`, { method: 'DELETE' }),
+
+  /* ---------------------------- Knowledge ------------------------------ */
+  knowledge: {
+    list: (options?: { workspaceId?: string; scope?: 'global' }) =>
+      request<{ documents: KnowledgeDocumentMeta[] }>(
+        `/api/knowledge${qs({ workspaceId: options?.workspaceId, scope: options?.scope })}`,
+      ),
+    get: (id: string) =>
+      request<{ document: KnowledgeDocumentMeta & { content: string } }>(`/api/knowledge/${id}`),
+    save: (body: SaveKnowledgeRequest) =>
+      request<{ document: KnowledgeDocumentMeta }>('/api/knowledge', { method: 'POST', body }),
+    delete: (id: string) => request<{ ok: boolean }>(`/api/knowledge/${id}`, { method: 'DELETE' }),
+    search: (q: string, workspaceId?: string) =>
+      request<{ results: KnowledgeSearchHit[] }>(`/api/knowledge/search${qs({ q, workspaceId })}`),
+  },
 
   /* --------------------------- Automations ---------------------------- */
   automations: (workspaceId?: string) =>

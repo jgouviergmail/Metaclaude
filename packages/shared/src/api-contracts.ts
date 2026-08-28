@@ -494,10 +494,58 @@ export type RunGenesis = {
   source: RunPolicy['source'];
   /** Best-first, with the rank-normalised retrieval score in [0, 1]. */
   memories: Array<{ id: string; title: string; kind: MemoryKind; confidence: number; score: number }>;
+  /**
+   * The knowledge-library passages this run was actually shown — what was
+   * injected after the budget, not merely retrieved. Empty for runs that
+   * predate the library, and for workspaces that switched it off.
+   */
+  documents: Array<{ chunkId: string; documentId: string; title: string; heading: string; score: number }>;
   /** The (category, model, effort) arm this run stood on; null when none matches. */
   arm: PolicyArm | null;
   /** The learner's own sentence about this category, empty when unlearned. */
   explanation: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/* The knowledge library                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** What may be submitted as a document. The API validates with this at the edge. */
+export const SaveKnowledgeRequest = z
+  .object({
+    id: z.string().optional(),
+    workspaceId: z.string().nullable().default(null),
+    title: z.string().min(1).max(300),
+    content: z.string().min(1).max(512 * 1024),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+export type SaveKnowledgeRequest = z.infer<typeof SaveKnowledgeRequest>;
+
+/**
+ * One document as GET /api/knowledge lists it — metadata only, the content
+ * comes from GET /api/knowledge/:id. Plain types, like the listings above:
+ * server-derived, pinned by the store's own tests.
+ */
+export type KnowledgeDocumentMeta = {
+  id: string;
+  workspaceId: string | null;
+  title: string;
+  contentLength: number;
+  enabled: boolean;
+  chunkCount: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type KnowledgeSearchHit = {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  workspaceId: string | null;
+  heading: string;
+  text: string;
+  score: number;
 };
 
 /**

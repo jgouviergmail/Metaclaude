@@ -971,11 +971,22 @@ describe('list / count / stats', () => {
 
 describe('toFtsQuery', () => {
   it('quotes every token, which neutralises the FTS operators', () => {
+    // "and"/"not"/"on" are function words now and drop out — the small-corpus
+    // stopword lesson (see retrieval.ts); the operators they might have been
+    // are neutralised either way.
     expect(toFtsQuery('foo* NEAR bar')).toBe('"foo" OR "near" OR "bar"');
-    expect(toFtsQuery('vitest AND NOT jest')).toBe('"vitest" OR "and" OR "not" OR "jest"');
-    expect(toFtsQuery('col:on')).toBe('"col" OR "on"');
+    expect(toFtsQuery('vitest AND NOT jest')).toBe('"vitest" OR "jest"');
+    expect(toFtsQuery('col:on')).toBe('"col"');
     expect(toFtsQuery('-minus ^caret')).toBe('"minus" OR "caret"');
     expect(toFtsQuery('a "quoted" phrase')).toBe('"quoted" OR "phrase"');
+  });
+
+  it('abstains entirely on a query of nothing but function words', () => {
+    // On a small corpus a stopword can carry real IDF (measured: "un" in one
+    // chunk of two ranked −0.0325, through the clamp gate), so the arm must
+    // refuse to match on grammar rather than trust the gate to catch it.
+    expect(toFtsQuery('le la de et un')).toBeNull();
+    expect(toFtsQuery('the and of a it')).toBeNull();
   });
 
   it('never leaves an unbalanced quote in the output', () => {
@@ -995,7 +1006,7 @@ describe('toFtsQuery', () => {
   });
 
   it('lowercases, keeps accented words, and bounds the token count', () => {
-    expect(toFtsQuery('Déployer EN Production')).toBe('"déployer" OR "en" OR "production"');
+    expect(toFtsQuery('Déployer EN Production')).toBe('"déployer" OR "production"');
     const many = toFtsQuery(Array.from({ length: 100 }, (_, i) => `token${i}`).join(' '))!;
     expect(many.split(' OR ')).toHaveLength(24);
   });

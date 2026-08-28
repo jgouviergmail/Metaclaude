@@ -29,10 +29,11 @@ import type { PolicyLearner } from '../learning/bandit.js';
 import { computeReward } from '../learning/bandit.js';
 import type { TaskCategory, TaskClassifier } from '../learning/classifier.js';
 import type { MemoryStore } from '../learning/memory.js';
+import type { KnowledgeStore } from '../learning/knowledge.js';
 import type { ReflexionEngine } from '../learning/reflexion.js';
 import type { AttachmentService } from '../services/attachments.js';
 import type { EventBus } from './bus.js';
-import { selectMemoryContext } from './context.js';
+import { selectMemoryContext, selectKnowledgeContext } from './context.js';
 import { PermissionBroker } from './permissions.js';
 import { planRewind } from './rewind.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
@@ -88,6 +89,7 @@ export interface KernelDeps {
   runs: RunRepo;
   transcript: TranscriptRepo;
   memory: MemoryStore;
+  knowledge: KnowledgeStore;
   classifier: TaskClassifier;
   policy: PolicyLearner;
   reflexion: ReflexionEngine;
@@ -580,6 +582,27 @@ export class Kernel {
       } catch (error) {
         // Retrieval is an enhancement. If it fails, run without it.
         this.deps.log('warn', 'memory retrieval failed', { message: (error as Error).message });
+      }
+    }
+
+    /* -- Retrieve knowledge ------------------------------------------------ */
+    if (workspace.settings.knowledgeEnabled) {
+      try {
+        const passages = await this.deps.knowledge.search(run.prompt, {
+          workspaceId: workspace.id,
+          limit: 6,
+        });
+        if (passages.length > 0) {
+          // Credit what was injected, not what was retrieved — the memory
+          // rule, for the same reason: the genesis must show what the run
+          // actually saw.
+          const { text, injected } = selectKnowledgeContext(passages);
+          if (injected.length > 0) this.deps.knowledge.recordUsage(run.id, injected);
+          systemPromptAppend = [systemPromptAppend, text].filter(Boolean).join('\n\n');
+        }
+      } catch (error) {
+        // Like memory: retrieval is an enhancement, never a reason to fail.
+        this.deps.log('warn', 'knowledge retrieval failed', { message: (error as Error).message });
       }
     }
 
