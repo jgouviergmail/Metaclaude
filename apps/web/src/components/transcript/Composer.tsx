@@ -436,7 +436,7 @@ export function Composer({
                   )}
                 >
                   <Shield className="size-3.5" aria-hidden />
-                  {activeMode.label}
+                  {t(activeMode.label)}
                   <ChevronDown className="size-3" aria-hidden />
                 </button>
               }
@@ -446,10 +446,10 @@ export function Composer({
                   key={mode}
                   selected={mode === value.permissionMode}
                   onSelect={() => onChange({ ...value, permissionMode: mode })}
-                  description={PERMISSION_MODE_INFO[mode].description}
+                  description={t(PERMISSION_MODE_INFO[mode].description)}
                   tone={PERMISSION_MODE_INFO[mode].risk === 'high' ? 'danger' : undefined}
                 >
-                  {PERMISSION_MODE_INFO[mode].label}
+                  {t(PERMISSION_MODE_INFO[mode].label)}
                 </MenuItem>
               ))}
             </Menu>

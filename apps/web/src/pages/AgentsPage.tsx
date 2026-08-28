@@ -30,6 +30,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type {
   AgentDefinitionRecord,
+  ClaudeCatalogue,
   ClaudeMcpServerStatus,
   McpServerDescription,
   ConnectorListingEntry,
@@ -37,6 +38,7 @@ import type {
   LibraryListingEntry,
   McpServerRecord,
   SkillDefinition,
+  Workspace,
 } from '@metaclaude/shared';
 import { LIBRARY_CATEGORIES } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
@@ -1184,6 +1186,78 @@ interface Pair {
   value: string;
 }
 
+/**
+ * "Test connections", which has to know where.
+ *
+ * Three states, and the middle one is the reason this is a component rather
+ * than a `disabled` prop. With a workspace in scope it is a plain button.
+ * From the Global scope — where the page opens — it is a menu: a global server
+ * is mounted in every workspace, so any of them answers the question, and
+ * asking which is better than refusing. With no workspace at all there is
+ * nowhere to mount anything, and only then is it disabled.
+ */
+function TestConnectionsButton({
+  workspaceId,
+  workspaces,
+  testing,
+  onTest,
+}: {
+  workspaceId: string | undefined;
+  workspaces: Workspace[];
+  testing: boolean;
+  onTest: (workspaceId: string) => void;
+}) {
+  const t = useT();
+
+  if (workspaceId !== undefined) {
+    return (
+      <Tooltip content={t('Connects every enabled server exactly as a run would.')}>
+        <Button variant="ghost" size="sm" loading={testing} onClick={() => onTest(workspaceId)}>
+          <Plug className="size-4" aria-hidden />
+          {t('Test connections')}
+        </Button>
+      </Tooltip>
+    );
+  }
+
+  if (workspaces.length === 0) {
+    return (
+      // The span keeps the tooltip reachable while the button is disabled: a
+      // disabled button fires no pointer events, so the explanation would be
+      // unreadable precisely when it is needed.
+      <Tooltip
+        content={t('Create a workspace first — a server is connected for a run, and a run happens in one.')}
+      >
+        <span>
+          <Button variant="ghost" size="sm" disabled>
+            <Plug className="size-4" aria-hidden />
+            {t('Test connections')}
+          </Button>
+        </span>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Menu
+      trigger={
+        <Button variant="ghost" size="sm" loading={testing}>
+          <Plug className="size-4" aria-hidden />
+          {t('Test connections')}
+          <ChevronDown className="size-3.5" aria-hidden />
+        </Button>
+      }
+    >
+      <MenuLabel>{t('Test in which workspace?')}</MenuLabel>
+      {workspaces.map((workspace) => (
+        <MenuItem key={workspace.id} onSelect={() => onTest(workspace.id)}>
+          {workspace.name}
+        </MenuItem>
+      ))}
+    </Menu>
+  );
+}
+
 function McpTab({
   workspaceId,
   onChanged,
@@ -1220,34 +1294,62 @@ function McpTab({
    * nothing and one refresh serves both.
    */
   /**
-   * Connecting is a per-workspace act, so testing has to be one too.
+   * Connecting is a per-workspace act, so testing has to name a workspace.
    *
-   * With no workspace named, the probe runs from the data directory and the
-   * server resolves no runtime for it: nothing is mounted, and the answer is
-   * an empty list. Asking anyway would report "every server answered" while
-   * testing none of them — which is worse than not offering the button, and
-   * is exactly what the first version of this did.
+   * With none named the probe runs from the data directory, the server
+   * resolves no runtime for it, and the answer is an empty list — reporting
+   * "every server answered" while testing none of them, which is what the
+   * first version did.
+   *
+   * The second version disabled the button in the Global scope and explained
+   * itself in a tooltip. That was honest and still wrong: Global is the scope
+   * the page opens in, so the common path was a dead button and a tooltip no
+   * touch device can read. A global server is mounted in *every* workspace, so
+   * "which one" is a question with a real answer rather than an obstacle —
+   * the button asks it.
    */
-  const canProbe = workspaceId !== undefined;
+  const workspacesQuery = useQuery({ queryKey: ['workspaces'], queryFn: () => api.workspaces() });
+  const workspaces = workspacesQuery.data?.workspaces ?? [];
 
   const catalogueQuery = useQuery({
     queryKey: ['claude-catalogue', workspaceId ?? null],
     queryFn: () => api.claudeCatalogue({ workspaceId: workspaceId! }),
-    enabled: canProbe,
+    enabled: workspaceId !== undefined,
     retry: false,
     staleTime: 5 * 60_000,
   });
 
+  /**
+   * The last test's answer, and the workspace it came from.
+   *
+   * Held here rather than read from the catalogue query because a test run
+   * from the Global scope belongs to a workspace this view is not keyed on:
+   * writing it into `['claude-catalogue', null]` would file a workspace's
+   * answer under "no workspace", and reading it back would then be a lie.
+   */
+  const [probed, setProbed] = useState<{
+    workspaceId: string;
+    servers: ClaudeCatalogue['mcpServers'];
+  } | null>(null);
+
   const live = new Map(
-    (catalogueQuery.data?.mcpServers ?? []).map((server) => [server.name, server]),
+    (probed?.servers ?? catalogueQuery.data?.mcpServers ?? []).map((server) => [
+      server.name,
+      server,
+    ]),
   );
 
-  const test = async (): Promise<void> => {
-    if (!canProbe) return;
+  const test = async (inWorkspace: string): Promise<void> => {
     setTesting(true);
     try {
-      const fresh = await api.claudeCatalogue({ workspaceId: workspaceId!, refresh: true });
-      queryClient.setQueryData(['claude-catalogue', workspaceId ?? null], fresh);
+      const fresh = await api.claudeCatalogue({ workspaceId: inWorkspace, refresh: true });
+      setProbed({ workspaceId: inWorkspace, servers: fresh.mcpServers });
+      // Only where the view is keyed on the same workspace. From the Global
+      // scope this answer is about one workspace among several and must not
+      // become the cached answer for "no workspace".
+      if (workspaceId === inWorkspace) {
+        queryClient.setQueryData(['claude-catalogue', inWorkspace], fresh);
+      }
 
       // The CLI reports each tool's *name* and the server's annotations, and
       // drops the descriptions — measured, not assumed. So the servers it just
@@ -1270,14 +1372,18 @@ function McpTab({
       setDescriptions(Object.fromEntries(asked.filter((entry) => entry !== null)));
 
       const failed = fresh.mcpServers.filter((server) => server.status === 'failed');
+      const where = workspaces.find((workspace) => workspace.id === inWorkspace)?.name ?? '';
       if (failed.length > 0) {
         toast.error(
           plural(failed.length, '{n} server did not connect', '{n} servers did not connect'),
-          {
-          description: failed.map((server) => server.name).join(', '),
-        });
+          { description: failed.map((server) => server.name).join(', ') },
+        );
+      } else if (fresh.mcpServers.length === 0) {
+        // "Every server answered" over an empty list is technically true and
+        // reads as a pass. Nothing was mounted, and that is the finding.
+        toast.info(t('No server was mounted in {workspace}.', { workspace: where }));
       } else {
-        toast.success(t('Every server answered'));
+        toast.success(t('Every server answered in {workspace}.', { workspace: where }));
       }
     } catch (error) {
       toast.error(messageFor(error, t('Could not ask the CLI.')));
@@ -1347,31 +1453,12 @@ function McpTab({
           <div className="flex flex-wrap items-center gap-2">
             {/* Asks the CLI to connect them all, exactly as a run would, and
                 fills in the status and the tool list below. */}
-            <Tooltip
-              content={
-                canProbe
-                  ? t('Connects every enabled server exactly as a run would.')
-                  : t(
-                    'Pick a workspace first — a server is connected for a run, and a run happens in one.',
-                  )
-              }
-            >
-              {/* The span keeps the tooltip reachable while the button is
-                  disabled: a disabled button fires no pointer events, so the
-                  explanation would be unreadable precisely when it is needed. */}
-              <span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  loading={testing}
-                  disabled={!canProbe}
-                  onClick={() => void test()}
-                >
-                  <Plug className="size-4" aria-hidden />
-                  {t('Test connections')}
-                </Button>
-              </span>
-            </Tooltip>
+            <TestConnectionsButton
+              workspaceId={workspaceId}
+              workspaces={workspaces}
+              testing={testing}
+              onTest={(id) => void test(id)}
+            />
             <Button
               variant="primary"
               size="sm"

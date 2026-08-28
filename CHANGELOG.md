@@ -11,6 +11,43 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.34.2] — 2026-08-28
+
+### Fixed
+
+- **"Test connections" was a dead button on the scope the page opens in.** It
+  is disabled without a workspace, because connecting is a per-workspace act
+  and a probe with none named mounts nothing — the first version asked anyway
+  and reported "every server answered" over zero servers. Disabling it was
+  honest and still wrong: Global is the *default* scope, so the ordinary path
+  was a greyed-out button explained by a tooltip no touch device can read, and
+  it was reported as not working, which is what it was. A global server is
+  mounted in every workspace, so "which one" has a real answer: the button asks
+  it and tests there. It refuses only when there is no workspace at all.
+- **The permission modes were in English on a French screen.** Six labels and
+  six descriptions — `Ask`, `Accept edits`, `Bypass` and the sentence under
+  each — declared in `packages/shared` and rendered straight into the composer,
+  the control an operator touches on every run. Every i18n measure scans
+  `apps/web/src`, so no check had ever looked at them. The English stays in the
+  contracts package as data (it cannot depend on the web's catalogue, and the
+  API imports it too); the render sites translate it, and a new ratchet asks
+  the only remaining question — does the catalogue carry it?
+- **Three i18n ratchets read zero because they asked with `includes`.**
+  `catalogue.includes(key)` is a substring test over the whole file. For a
+  sentence it is accurate by accident; for a short label it answers the wrong
+  question entirely — `'Ask'` is a substring of `'Ask the advisor'`, so every
+  one-word label on the permission control read as translated while not one of
+  them was a key. The catalogue's keys are parsed into a set and matched
+  exactly now, which immediately surfaced **thirty** more: `Delete`, `Sessions`,
+  `Runs`, `Cost`, `Effort`, `Filter`, `Clear`, `New`, `Open`, `Commit` and the
+  rest. Where the French genuinely is the English — `Board`, `Global`,
+  `Plugins` — the entry exists anyway: without it the check cannot tell
+  "translated, same word" from "never looked at".
+- **A test whose truth depended on its neighbours.** `AgentsPage.test.tsx` had
+  no `beforeEach`, so call history and `mockResolvedValue` overrides leaked
+  between cases: "the probe was never asked" passed or failed on the order the
+  tests happened to run in.
+
 ## [0.34.1] — 2026-08-28
 
 ### Fixed

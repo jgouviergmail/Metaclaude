@@ -1,0 +1,78 @@
+- generic [ref=f83e2]:
+  - generic [ref=f83e117]:
+    - navigation "Sections" [ref=f83e118]:
+      - link "Metaclaude" [ref=f83e119] [cursor=pointer]:
+        - /url: /
+      - link "Accueil" [ref=f83e123] [cursor=pointer]:
+        - /url: /
+      - link "Espaces" [ref=f83e129] [cursor=pointer]:
+        - /url: /workspaces
+      - link "Board" [ref=f83e135] [cursor=pointer]:
+        - /url: /board
+      - link "Mémoire" [ref=f83e138] [cursor=pointer]:
+        - /url: /memory
+      - link "Automatisations" [ref=f83e147] [cursor=pointer]:
+        - /url: /automations
+      - link "Agents et skills" [ref=f83e151] [cursor=pointer]:
+        - /url: /agents
+      - link "Plugins" [ref=f83e155] [cursor=pointer]:
+        - /url: /plugins
+      - link "Analytique" [ref=f83e158] [cursor=pointer]:
+        - /url: /analytics
+      - link "Aide" [ref=f83e161] [cursor=pointer]:
+        - /url: /help
+      - link "Réglages" [ref=f83e169] [cursor=pointer]:
+        - /url: /settings
+      - generic [ref=f83e173]:
+        - status "En direct" [ref=f83e174]
+        - button "Notifications" [ref=f83e179]
+        - button "Compte" [ref=f83e183]: DE
+    - main [ref=f83e6]:
+      - generic [ref=f83e7]:
+        - generic [ref=f83e12]:
+          - heading "Agents et skills" [level=1] [ref=f83e13]
+          - paragraph [ref=f83e14]: Essai MCP
+        - 'button "Portée : Essai MCP" [active] [ref=f83e205]':
+          - generic [ref=f83e19]: Essai MCP
+      - generic [ref=f83e23]:
+        - tablist "Type d’extension" [ref=f83e24]:
+          - tab "Skills" [selected] [ref=f83e25]
+          - tab "Sous-agents" [ref=f83e29]
+          - tab "Serveurs MCP" [ref=f83e33]
+          - tab "Bibliothèque" [ref=f83e36]
+          - tab "Depuis Claude" [ref=f83e39]
+        - tabpanel "Skills" [ref=f83e44]:
+          - generic [ref=f83e45]:
+            - generic [ref=f83e46]:
+              - paragraph [ref=f83e47]: "Les skills activées sont écrites dans le répertoire .claude/skills/ du workspace avant chaque run : c’est ainsi que le CLI Claude les découvre — rien n’est injecté dans le prompt."
+              - button "Nouvelle skill" [ref=f83e49]
+            - generic [ref=f83e206]:
+              - button "Tout activer" [disabled]
+              - button "Tout désactiver" [ref=f83e207]
+              - button "Tout supprimer" [ref=f83e211]
+            - generic [ref=f83e215]:
+              - generic [ref=f83e217]:
+                - generic [ref=f83e218]:
+                  - generic [ref=f83e219]:
+                    - code [ref=f83e220]: adr
+                    - generic [ref=f83e221]: Rédaction
+                    - generic [ref=f83e222]: global
+                  - paragraph [ref=f83e223]: "Record an architecture decision as a short ADR: context, decision, consequences."
+                  - paragraph [ref=f83e224]: utilisée 0× · modifiée il y a 5 h
+                - generic [ref=f83e225]:
+                  - switch "Disable skill adr" [checked] [ref=f83e226]
+                  - button "Modifier" [ref=f83e228]
+                  - button "Supprimer la compétence adr" [ref=f83e229]
+              - generic [ref=f83e234]:
+                - generic [ref=f83e235]:
+                  - generic [ref=f83e236]:
+                    - code [ref=f83e237]: conventional-commits
+                    - generic [ref=f83e238]: Ingénierie
+                    - generic [ref=f83e239]: global
+                  - paragraph [ref=f83e240]: Write commit messages in the Conventional Commits form, scoped and truthful.
+                  - paragraph [ref=f83e241]: utilisée 0× · modifiée il y a 5 h
+                - generic [ref=f83e242]:
+                  - switch "Disable skill conventional-commits" [checked] [ref=f83e243]
+                  - button "Modifier" [ref=f83e245]
+                  - button "Supprimer la compétence conventional-commits" [ref=f83e246]
+  - region "Notifications alt+T"

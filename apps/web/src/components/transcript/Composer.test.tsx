@@ -63,6 +63,37 @@ function renderComposer(value: Partial<ComposerValue>, cat?: ClaudeCatalogue) {
   return { onChange };
 }
 
+/**
+ * The permission modes are declared in `packages/shared` and rendered here.
+ *
+ * That one fact put them outside every i18n check: all three scan
+ * `apps/web/src`, so twelve strings — six labels and six descriptions, on the
+ * control an operator touches every single run — were never looked at, and the
+ * picker stayed entirely in English on a French screen. The measures said
+ * zero. This asserts the render site translates rather than reads.
+ */
+describe('the permission-mode control', () => {
+  it('translates the label it shows, rather than rendering the contract verbatim', () => {
+    renderComposer({ permissionMode: 'default' }, catalogue([capable]));
+
+    // `PERMISSION_MODE_INFO.default.label` is 'Ask'. Under the English
+    // catalogue `t()` is the identity, so what this pins is that the value
+    // goes *through* `t()` at all: swap it back to a bare read and the French
+    // assertion below is what breaks.
+    expect(screen.getAllByText('Ask').length).toBeGreaterThan(0);
+  });
+
+  it('shows the French label and description once the catalogue is French', async () => {
+    window.localStorage.setItem('mc-lang', 'fr');
+    try {
+      renderComposer({ permissionMode: 'default' }, catalogue([capable]));
+      expect(await screen.findByText('Demander')).toBeDefined();
+    } finally {
+      window.localStorage.removeItem('mc-lang');
+    }
+  });
+});
+
 describe('the ultracode toggle', () => {
   it('is offered for an xhigh-capable model and flips the value', () => {
     const { onChange } = renderComposer(

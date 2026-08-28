@@ -131,6 +131,11 @@ function countUntranslatedStrings() {
   const keys = new Set();
   for (const file of tracked('apps/web/src/*')) {
     if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    // The translator's own doc comments show `t('The last update')` as an
+    // illustration; counting the example as a missing key is the check
+    // reporting on its own documentation. The other two measures already skip
+    // this file, for the same reason.
+    if (file.endsWith('lib/i18n.tsx')) continue;
     const body = read(file);
     for (const match of body.matchAll(CALL)) {
       const key = match[1] ?? match[2];
@@ -143,7 +148,9 @@ function countUntranslatedStrings() {
   }
   let missing = 0;
   for (const key of keys) {
-    if (!catalogue.includes(key) && !catalogue.includes(key.replace(/\\'/g, "'"))) missing += 1;
+    if (translated(key)) continue;
+    missing += 1;
+    note('key ', 'apps/web', key);
   }
   return missing;
 }
@@ -244,6 +251,41 @@ function* webComponents(ts) {
 
 /** A path, a package name, a URL, a slug: the same in every language. */
 const CODEISH = /^[a-z0-9_.:/@#-]+$/i;
+
+/**
+ * The French catalogue's keys, as a set.
+ *
+ * Every i18n measure here used to ask `catalogue.includes(key)` — a substring
+ * test over the whole file. For a sentence that is accurate enough by
+ * accident; for a short label it asks the wrong question entirely. `'Ask'` is
+ * a substring of `'Ask the advisor'`, so the six words on the permission
+ * control — `Ask`, `Plan`, `Auto`, `Bypass`, `Accept edits` — all read as
+ * translated while not one of them was a key. Three measures reported zero,
+ * and the control they were meant to cover was in English.
+ *
+ * Parsed once: the file is a single object literal, so its keys are exactly
+ * its entries, and escapes are undone on both sides so `\'` and `'` compare
+ * equal.
+ */
+let cachedCatalogueKeys;
+function catalogueKeys() {
+  if (cachedCatalogueKeys) return cachedCatalogueKeys;
+  const KEY = /^\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|([A-Za-z_$][\w$]*))\s*:/gm;
+  cachedCatalogueKeys = new Set();
+  for (const match of read('apps/web/src/locales/fr.ts').matchAll(KEY)) {
+    cachedCatalogueKeys.add(unescapeKey(match[1] ?? match[2] ?? match[3]));
+  }
+  return cachedCatalogueKeys;
+}
+
+function unescapeKey(text) {
+  return text.replace(/\\(['"\\])/g, '$1');
+}
+
+/** True when the catalogue carries this exact key. */
+function translated(text) {
+  return catalogueKeys().has(unescapeKey(text));
+}
 
 /**
  * Diagnostics are not copy: `console.error(…)` and `throw new Error(…)` are
@@ -368,6 +410,63 @@ function countHardcodedUiText() {
 const SENTENCE = /^[A-Z][a-z’'-]+(?:[ ,:’'-][A-Za-z0-9“”’'(){}.…-]+){1,}/;
 
 /**
+ * Copy that lives in `packages/shared` and is rendered by the web app.
+ *
+ * The three i18n measures above scan `apps/web/src`, which is where the copy
+ * is — except when it is not. `PERMISSION_MODE_INFO` declares the six
+ * permission modes with a label and a description each, in the *contracts*
+ * package, and the composer renders them straight into the control an operator
+ * touches on every single run. Twelve strings, on the most-used screen in the
+ * product, that no i18n check has ever looked at: the ratchets said zero while
+ * the permission picker was entirely in English.
+ *
+ * It cannot be fixed by translating in `packages/shared` — that package must
+ * not depend on the web app's catalogue, and it is imported by the API too. So
+ * the English stays there as data, the render site calls `t(…)` on it, and
+ * this asks the only question left: does the catalogue carry it?
+ *
+ * Two signals, because one of them is not enough. Prose is caught by its shape,
+ * the way it is everywhere else. But a *label* is often a single word — `Ask`,
+ * `Auto`, `Bypass` — which no shape test can tell from an enum value, and
+ * those are precisely the six words on the permission control. So the value of
+ * a `label`/`description`/`hint`/`summary` property is taken whatever it looks
+ * like: the property name is the evidence that a person reads it.
+ *
+ * Comments are stripped first — this package is more comment than code by
+ * design, and its prose would otherwise dwarf its copy.
+ */
+const COPY_PROPERTY = /\b(?:label|description|hint|summary|title)\s*:\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")/g;
+
+function countUntranslatedSharedCopy() {
+  const catalogue = read('apps/web/src/locales/fr.ts');
+  const missing = new Set();
+
+  const consider = (text) => {
+    if (!text || PRODUCT_NAMES.has(text) || VERBATIM.has(text)) return;
+    if (!/[A-Za-z]{2}/.test(text)) return;
+    if (!translated(text)) missing.add(text);
+  };
+
+  for (const file of tracked('packages/shared/src/*')) {
+    if (!file.endsWith('.ts') || file.includes('.test.')) continue;
+    const code = read(file)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+
+    for (const match of code.matchAll(/'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"/g)) {
+      const text = match[1] ?? match[2];
+      if (text && SENTENCE.test(text)) consider(text);
+    }
+    for (const match of code.matchAll(COPY_PROPERTY)) {
+      consider(match[1] ?? match[2]);
+    }
+  }
+
+  for (const text of missing) note('shr ', 'packages/shared', text);
+  return missing.size;
+}
+
+/**
  * Copy held as a module constant that the catalogue does not carry.
  *
  * `i18n.tsx` documents the pattern: a nav entry, a preset list, a risk table
@@ -398,7 +497,7 @@ function countUntranslatedConstants() {
           !PRODUCT_NAMES.has(text) &&
           !insideFunction(ts, node) &&
           !isDiagnostic(ts, sf, node) &&
-          !catalogue.includes(text)
+          !translated(text)
         ) {
           missing.add(text);
           note('cst ', file, text);
@@ -625,6 +724,12 @@ const METRICS = [
     measure: countHardcodedUiText,
     // Needs a parser; skipped where `node_modules` is absent.
     optional: true,
+  },
+  {
+    key: 'untranslatedSharedCopy',
+    direction: 'down',
+    label: 'copy in packages/shared the French catalogue does not carry',
+    measure: countUntranslatedSharedCopy,
   },
   {
     key: 'untranslatedConstants',

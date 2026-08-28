@@ -56,7 +56,7 @@ export function RunMetaChips({
 
       <span>{policy.effort ?? 'effort auto'}</span>
 
-      <span>{PERMISSION_MODE_INFO[policy.permissionMode].label}</span>
+      <span>{t(PERMISSION_MODE_INFO[policy.permissionMode].label)}</span>
 
       {policy.ultracode ? (
         <span className="flex items-center gap-1 text-accent">

@@ -1,0 +1,289 @@
+- generic:
+  - generic:
+    - generic:
+      - navigation:
+        - link:
+          - /url: /
+        - link:
+          - /url: /
+        - link:
+          - /url: /workspaces
+        - link:
+          - /url: /board
+        - link:
+          - /url: /memory
+        - link:
+          - /url: /automations
+        - link:
+          - /url: /agents
+        - link:
+          - /url: /plugins
+        - link:
+          - /url: /analytics
+        - link:
+          - /url: /help
+        - link:
+          - /url: /settings
+        - generic:
+          - status
+          - button
+          - button: DE
+      - main:
+        - generic:
+          - generic:
+            - heading [level=1]: Agents et skills
+            - paragraph: Global
+          - generic:
+            - button:
+              - generic: Global
+        - generic:
+          - generic:
+            - tablist:
+              - tab: Skills
+              - tab: Sous-agents
+              - tab [selected]: Serveurs MCP
+              - tab: Bibliothèque
+              - tab: Depuis Claude
+            - generic:
+              - tabpanel:
+                - generic:
+                  - generic:
+                    - paragraph: Chaque serveur activé est démarré ou connecté au début d’un run, et ses outils rejoignent la liste d’outils de l’agent. Un serveur qui échoue à se connecter est ignoré plutôt que de faire échouer le run.
+                    - generic:
+                      - generic:
+                        - button [expanded]: Tester les connexions
+                        - button: Nouveau serveur
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - code: broken-server
+                            - generic: stdio
+                            - generic: failed
+                            - generic: global
+                          - paragraph: definitely-not-a-real-binary
+                          - paragraph: Connection closed
+                        - generic:
+                          - switch [checked]
+                          - button: Modifier
+                          - button
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - code: demo-inventaire
+                            - generic: stdio
+                            - generic: failed
+                            - generic: global
+                          - paragraph: node D:/Developpement/Metaclaude/apps/api/.demo-mcp.mjs
+                          - paragraph: Connection closed
+                        - generic:
+                          - switch [checked]
+                          - button: Modifier
+                          - button
+                  - generic:
+                    - generic:
+                      - heading [level=3]: Répertoire de connecteurs
+                      - paragraph: Des serveurs dont ce dépôt a lu la documentation — l'adresse exacte et le nom exact du secret qu'ils réclament. Chacun s'authentifie avec quelque chose que vous pouvez coller, car un run n'a pas de navigateur pour donner un consentement OAuth ; c'est aussi pourquoi vos connecteurs claude.ai ne peuvent pas être importés. En ajouter un écrit le serveur en portée globale — le sélecteur de portée ci-dessus ne s'y applique pas —, scelle votre secret dans le coffre et le laisse désactivé.
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: GitHub
+                                - generic: GitHub
+                                - generic: Ingénierie
+                              - paragraph: Issues, pull requests, code search and Actions across the repositories your token can reach.
+                              - paragraph: https://api.githubcopilot.com/mcp/
+                            - generic:
+                              - link:
+                                - /url: https://github.com/github/github-mcp-server
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: Authorization
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Sentry
+                                - generic: Sentry
+                                - generic: Ops
+                              - paragraph: Read issues, events and stack traces from your Sentry organisation so a run can debug from the real error.
+                              - paragraph: https://mcp.sentry.dev/mcp
+                            - generic:
+                              - link:
+                                - /url: https://github.com/getsentry/sentry-mcp
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: Authorization
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Context7
+                                - generic: Upstash
+                                - generic: Ingénierie
+                              - paragraph: Version-accurate documentation for thousands of libraries, so the agent writes against the API that exists.
+                              - paragraph: https://mcp.context7.com/mcp
+                            - generic:
+                              - link:
+                                - /url: https://github.com/upstash/context7
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: accepte éventuellement
+                            - code: Authorization
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Exa
+                                - generic: Exa
+                                - generic: Recherche
+                              - paragraph: Neural web search that returns the page contents, not just links — for research a run has to read.
+                              - paragraph: https://mcp.exa.ai/mcp
+                            - generic:
+                              - link:
+                                - /url: https://github.com/exa-labs/exa-mcp-server
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: accepte éventuellement
+                            - code: Authorization
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Apify
+                                - generic: Apify
+                                - generic: Données
+                              - paragraph: Run scrapers and data extractors from the Apify store — structured data out of sites with no API.
+                              - paragraph: https://mcp.apify.com
+                            - generic:
+                              - link:
+                                - /url: https://github.com/apify/actors-mcp-server
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: Authorization
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Hugging Face
+                                - generic: Hugging Face
+                                - generic: Recherche
+                              - paragraph: Search models, datasets, Spaces and papers on the Hub, and read repository files directly.
+                              - paragraph: https://huggingface.co/mcp
+                            - generic:
+                              - link:
+                                - /url: https://github.com/huggingface/hf-mcp-server
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: Authorization
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Notion
+                                - generic: Notion
+                                - generic: Rédaction
+                              - paragraph: Read and write the Notion pages and databases you share with your integration — notes, trackers, wikis.
+                              - paragraph: npx -y @notionhq/notion-mcp-server
+                            - generic:
+                              - link:
+                                - /url: https://github.com/makenotion/notion-mcp-server
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: NOTION_TOKEN
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Stripe
+                                - generic: Stripe
+                                - generic: Argent
+                              - paragraph: Query customers, payments, subscriptions and invoices — what the restricted key you supply permits, and no more.
+                              - paragraph: npx -y @stripe/mcp
+                            - generic:
+                              - link:
+                                - /url: https://github.com/stripe/agent-toolkit
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: STRIPE_SECRET_KEY
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Google Maps
+                                - generic: Google
+                                - generic: Voyage
+                              - paragraph: Routes with real travel time, place search and local weather — what a trip or a moving plan needs to be honest.
+                              - paragraph: https://mapstools.googleapis.com/mcp
+                            - generic:
+                              - link:
+                                - /url: https://developers.google.com/maps/ai/grounding-lite/reference/mcp
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: X-Goog-Api-Key
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Wolfram
+                                - generic: Wolfram Research
+                                - generic: Apprentissage
+                              - paragraph: "Computation and curated facts: units, dates, nutrition, geography, statistics — answers with the arithmetic actually done."
+                              - paragraph: https://services.wolfram.com/api/mcp
+                            - generic:
+                              - link:
+                                - /url: https://github.com/WolframResearch/AgentTools
+                                - text: Doc
+                              - button: Ajouter
+                          - paragraph:
+                            - text: réclame
+                            - code: Authorization
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: Sequential thinking
+                                - generic: Anthropic
+                                - generic: Général
+                              - paragraph: A scratchpad for multi-step reasoning the agent can revise as it goes — no account, no key, nothing leaves the container.
+                              - paragraph: npx -y @modelcontextprotocol/server-sequential-thinking
+                            - generic:
+                              - link:
+                                - /url: https://github.com/modelcontextprotocol/servers
+                                - text: Doc
+                              - button: Ajouter
+    - region "Notifications alt+T"
+  - menu "Tester les connexions" [active] [ref=f86e455]:
+    - generic [ref=f86e456]: Tester dans quel espace de travail ?
+    - menuitem "Essai MCP" [ref=f86e457] [cursor=pointer]
+    - menuitem "Bac a sable" [ref=f86e460] [cursor=pointer]

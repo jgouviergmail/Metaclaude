@@ -1,0 +1,255 @@
+- generic [ref=f83e2]:
+  - generic [ref=f83e117]:
+    - navigation "Sections" [ref=f83e118]:
+      - link "Metaclaude" [ref=f83e119] [cursor=pointer]:
+        - /url: /
+      - link "Accueil" [ref=f83e123] [cursor=pointer]:
+        - /url: /
+      - link "Espaces" [ref=f83e129] [cursor=pointer]:
+        - /url: /workspaces
+      - link "Board" [ref=f83e135] [cursor=pointer]:
+        - /url: /board
+      - link "Mémoire" [ref=f83e138] [cursor=pointer]:
+        - /url: /memory
+      - link "Automatisations" [ref=f83e147] [cursor=pointer]:
+        - /url: /automations
+      - link "Agents et skills" [ref=f83e151] [cursor=pointer]:
+        - /url: /agents
+      - link "Plugins" [ref=f83e155] [cursor=pointer]:
+        - /url: /plugins
+      - link "Analytique" [ref=f83e158] [cursor=pointer]:
+        - /url: /analytics
+      - link "Aide" [ref=f83e161] [cursor=pointer]:
+        - /url: /help
+      - link "Réglages" [ref=f83e169] [cursor=pointer]:
+        - /url: /settings
+      - generic [ref=f83e173]:
+        - status "En direct" [ref=f83e174]
+        - button "Notifications" [ref=f83e179]
+        - button "Compte" [ref=f83e183]: DE
+    - main [ref=f83e6]:
+      - generic [ref=f83e7]:
+        - generic [ref=f83e12]:
+          - heading "Agents et skills" [level=1] [ref=f83e13]
+          - paragraph [ref=f83e14]: Essai MCP
+        - 'button "Portée : Essai MCP" [ref=f83e205]':
+          - generic [ref=f83e19]: Essai MCP
+      - generic [ref=f83e23]:
+        - tablist "Type d’extension" [ref=f83e24]:
+          - tab "Skills" [ref=f83e25]
+          - tab "Sous-agents" [ref=f83e29]
+          - tab "Serveurs MCP" [active] [selected] [ref=f83e33]
+          - tab "Bibliothèque" [ref=f83e36]
+          - tab "Depuis Claude" [ref=f83e39]
+        - tabpanel "Serveurs MCP" [ref=f83e250]:
+          - generic [ref=f83e251]:
+            - generic [ref=f83e252]:
+              - paragraph [ref=f83e253]: Chaque serveur activé est démarré ou connecté au début d’un run, et ses outils rejoignent la liste d’outils de l’agent. Un serveur qui échoue à se connecter est ignoré plutôt que de faire échouer le run.
+              - generic [ref=f83e255]:
+                - button "Tester les connexions" [ref=f83e257]
+                - button "Nouveau serveur" [ref=f83e260]
+            - generic [ref=f83e262]:
+              - generic [ref=f83e264]:
+                - generic [ref=f83e265]:
+                  - generic [ref=f83e266]:
+                    - code [ref=f83e267]: broken-server
+                    - generic [ref=f83e268]: stdio
+                    - generic [ref=f83e269]: failed
+                    - generic [ref=f83e270]: global
+                  - paragraph [ref=f83e271]: definitely-not-a-real-binary
+                  - paragraph [ref=f83e272]: Connection closed
+                - generic [ref=f83e273]:
+                  - switch "Disable server broken-server" [checked] [ref=f83e274]
+                  - button "Modifier" [ref=f83e276]
+                  - button "Supprimer le serveur broken-server" [ref=f83e277]
+              - generic [ref=f83e282]:
+                - generic [ref=f83e283]:
+                  - generic [ref=f83e284]:
+                    - code [ref=f83e285]: demo-inventaire
+                    - generic [ref=f83e286]: stdio
+                    - generic [ref=f83e287]: failed
+                    - generic [ref=f83e288]: global
+                  - paragraph [ref=f83e289]: node D:/Developpement/Metaclaude/apps/api/.demo-mcp.mjs
+                  - paragraph [ref=f83e290]: Connection closed
+                - generic [ref=f83e291]:
+                  - switch "Disable server demo-inventaire" [checked] [ref=f83e292]
+                  - button "Modifier" [ref=f83e294]
+                  - button "Supprimer le serveur demo-inventaire" [ref=f83e295]
+            - generic [ref=f83e299]:
+              - generic [ref=f83e300]:
+                - heading "Répertoire de connecteurs" [level=3] [ref=f83e301]
+                - paragraph [ref=f83e302]: Des serveurs dont ce dépôt a lu la documentation — l'adresse exacte et le nom exact du secret qu'ils réclament. Chacun s'authentifie avec quelque chose que vous pouvez coller, car un run n'a pas de navigateur pour donner un consentement OAuth ; c'est aussi pourquoi vos connecteurs claude.ai ne peuvent pas être importés. En ajouter un écrit le serveur en portée globale — le sélecteur de portée ci-dessus ne s'y applique pas —, scelle votre secret dans le coffre et le laisse désactivé.
+              - generic [ref=f83e303]:
+                - generic [ref=f83e305]:
+                  - generic [ref=f83e306]:
+                    - generic [ref=f83e307]:
+                      - generic [ref=f83e308]:
+                        - generic [ref=f83e309]: GitHub
+                        - generic [ref=f83e310]: GitHub
+                        - generic [ref=f83e311]: Ingénierie
+                      - paragraph [ref=f83e312]: Issues, pull requests, code search and Actions across the repositories your token can reach.
+                      - paragraph [ref=f83e313]: https://api.githubcopilot.com/mcp/
+                    - generic [ref=f83e314]:
+                      - link "Doc" [ref=f83e315] [cursor=pointer]:
+                        - /url: https://github.com/github/github-mcp-server
+                      - button "Ajouter « github »" [ref=f83e320]: Ajouter
+                  - paragraph [ref=f83e324]:
+                    - text: réclame
+                    - code [ref=f83e328]: Authorization
+                - generic [ref=f83e330]:
+                  - generic [ref=f83e331]:
+                    - generic [ref=f83e332]:
+                      - generic [ref=f83e333]:
+                        - generic [ref=f83e334]: Sentry
+                        - generic [ref=f83e335]: Sentry
+                        - generic [ref=f83e336]: Ops
+                      - paragraph [ref=f83e337]: Read issues, events and stack traces from your Sentry organisation so a run can debug from the real error.
+                      - paragraph [ref=f83e338]: https://mcp.sentry.dev/mcp
+                    - generic [ref=f83e339]:
+                      - link "Doc" [ref=f83e340] [cursor=pointer]:
+                        - /url: https://github.com/getsentry/sentry-mcp
+                      - button "Ajouter « sentry »" [ref=f83e345]: Ajouter
+                  - paragraph [ref=f83e349]:
+                    - text: réclame
+                    - code [ref=f83e353]: Authorization
+                - generic [ref=f83e355]:
+                  - generic [ref=f83e356]:
+                    - generic [ref=f83e357]:
+                      - generic [ref=f83e358]:
+                        - generic [ref=f83e359]: Context7
+                        - generic [ref=f83e360]: Upstash
+                        - generic [ref=f83e361]: Ingénierie
+                      - paragraph [ref=f83e362]: Version-accurate documentation for thousands of libraries, so the agent writes against the API that exists.
+                      - paragraph [ref=f83e363]: https://mcp.context7.com/mcp
+                    - generic [ref=f83e364]:
+                      - link "Doc" [ref=f83e365] [cursor=pointer]:
+                        - /url: https://github.com/upstash/context7
+                      - button "Ajouter « context7 »" [ref=f83e370]: Ajouter
+                  - paragraph [ref=f83e374]:
+                    - text: accepte éventuellement
+                    - code [ref=f83e378]: Authorization
+                - generic [ref=f83e380]:
+                  - generic [ref=f83e381]:
+                    - generic [ref=f83e382]:
+                      - generic [ref=f83e383]:
+                        - generic [ref=f83e384]: Exa
+                        - generic [ref=f83e385]: Exa
+                        - generic [ref=f83e386]: Recherche
+                      - paragraph [ref=f83e387]: Neural web search that returns the page contents, not just links — for research a run has to read.
+                      - paragraph [ref=f83e388]: https://mcp.exa.ai/mcp
+                    - generic [ref=f83e389]:
+                      - link "Doc" [ref=f83e390] [cursor=pointer]:
+                        - /url: https://github.com/exa-labs/exa-mcp-server
+                      - button "Ajouter « exa »" [ref=f83e395]: Ajouter
+                  - paragraph [ref=f83e399]:
+                    - text: accepte éventuellement
+                    - code [ref=f83e403]: Authorization
+                - generic [ref=f83e405]:
+                  - generic [ref=f83e406]:
+                    - generic [ref=f83e407]:
+                      - generic [ref=f83e408]:
+                        - generic [ref=f83e409]: Apify
+                        - generic [ref=f83e410]: Apify
+                        - generic [ref=f83e411]: Données
+                      - paragraph [ref=f83e412]: Run scrapers and data extractors from the Apify store — structured data out of sites with no API.
+                      - paragraph [ref=f83e413]: https://mcp.apify.com
+                    - generic [ref=f83e414]:
+                      - link "Doc" [ref=f83e415] [cursor=pointer]:
+                        - /url: https://github.com/apify/actors-mcp-server
+                      - button "Ajouter « apify »" [ref=f83e420]: Ajouter
+                  - paragraph [ref=f83e424]:
+                    - text: réclame
+                    - code [ref=f83e428]: Authorization
+                - generic [ref=f83e430]:
+                  - generic [ref=f83e431]:
+                    - generic [ref=f83e432]:
+                      - generic [ref=f83e433]:
+                        - generic [ref=f83e434]: Hugging Face
+                        - generic [ref=f83e435]: Hugging Face
+                        - generic [ref=f83e436]: Recherche
+                      - paragraph [ref=f83e437]: Search models, datasets, Spaces and papers on the Hub, and read repository files directly.
+                      - paragraph [ref=f83e438]: https://huggingface.co/mcp
+                    - generic [ref=f83e439]:
+                      - link "Doc" [ref=f83e440] [cursor=pointer]:
+                        - /url: https://github.com/huggingface/hf-mcp-server
+                      - button "Ajouter « huggingface »" [ref=f83e445]: Ajouter
+                  - paragraph [ref=f83e449]:
+                    - text: réclame
+                    - code [ref=f83e453]: Authorization
+                - generic [ref=f83e455]:
+                  - generic [ref=f83e456]:
+                    - generic [ref=f83e457]:
+                      - generic [ref=f83e458]:
+                        - generic [ref=f83e459]: Notion
+                        - generic [ref=f83e460]: Notion
+                        - generic [ref=f83e461]: Rédaction
+                      - paragraph [ref=f83e462]: Read and write the Notion pages and databases you share with your integration — notes, trackers, wikis.
+                      - paragraph [ref=f83e463]: npx -y @notionhq/notion-mcp-server
+                    - generic [ref=f83e464]:
+                      - link "Doc" [ref=f83e465] [cursor=pointer]:
+                        - /url: https://github.com/makenotion/notion-mcp-server
+                      - button "Ajouter « notion »" [ref=f83e470]: Ajouter
+                  - paragraph [ref=f83e474]:
+                    - text: réclame
+                    - code [ref=f83e478]: NOTION_TOKEN
+                - generic [ref=f83e480]:
+                  - generic [ref=f83e481]:
+                    - generic [ref=f83e482]:
+                      - generic [ref=f83e483]:
+                        - generic [ref=f83e484]: Stripe
+                        - generic [ref=f83e485]: Stripe
+                        - generic [ref=f83e486]: Argent
+                      - paragraph [ref=f83e487]: Query customers, payments, subscriptions and invoices — what the restricted key you supply permits, and no more.
+                      - paragraph [ref=f83e488]: npx -y @stripe/mcp
+                    - generic [ref=f83e489]:
+                      - link "Doc" [ref=f83e490] [cursor=pointer]:
+                        - /url: https://github.com/stripe/agent-toolkit
+                      - button "Ajouter « stripe »" [ref=f83e495]: Ajouter
+                  - paragraph [ref=f83e499]:
+                    - text: réclame
+                    - code [ref=f83e503]: STRIPE_SECRET_KEY
+                - generic [ref=f83e505]:
+                  - generic [ref=f83e506]:
+                    - generic [ref=f83e507]:
+                      - generic [ref=f83e508]:
+                        - generic [ref=f83e509]: Google Maps
+                        - generic [ref=f83e510]: Google
+                        - generic [ref=f83e511]: Voyage
+                      - paragraph [ref=f83e512]: Routes with real travel time, place search and local weather — what a trip or a moving plan needs to be honest.
+                      - paragraph [ref=f83e513]: https://mapstools.googleapis.com/mcp
+                    - generic [ref=f83e514]:
+                      - link "Doc" [ref=f83e515] [cursor=pointer]:
+                        - /url: https://developers.google.com/maps/ai/grounding-lite/reference/mcp
+                      - button "Ajouter « google-maps »" [ref=f83e520]: Ajouter
+                  - paragraph [ref=f83e524]:
+                    - text: réclame
+                    - code [ref=f83e528]: X-Goog-Api-Key
+                - generic [ref=f83e530]:
+                  - generic [ref=f83e531]:
+                    - generic [ref=f83e532]:
+                      - generic [ref=f83e533]:
+                        - generic [ref=f83e534]: Wolfram
+                        - generic [ref=f83e535]: Wolfram Research
+                        - generic [ref=f83e536]: Apprentissage
+                      - paragraph [ref=f83e537]: "Computation and curated facts: units, dates, nutrition, geography, statistics — answers with the arithmetic actually done."
+                      - paragraph [ref=f83e538]: https://services.wolfram.com/api/mcp
+                    - generic [ref=f83e539]:
+                      - link "Doc" [ref=f83e540] [cursor=pointer]:
+                        - /url: https://github.com/WolframResearch/AgentTools
+                      - button "Ajouter « wolfram »" [ref=f83e545]: Ajouter
+                  - paragraph [ref=f83e549]:
+                    - text: réclame
+                    - code [ref=f83e553]: Authorization
+                - generic [ref=f83e556]:
+                  - generic [ref=f83e557]:
+                    - generic [ref=f83e558]:
+                      - generic [ref=f83e559]: Sequential thinking
+                      - generic [ref=f83e560]: Anthropic
+                      - generic [ref=f83e561]: Général
+                    - paragraph [ref=f83e562]: A scratchpad for multi-step reasoning the agent can revise as it goes — no account, no key, nothing leaves the container.
+                    - paragraph [ref=f83e563]: npx -y @modelcontextprotocol/server-sequential-thinking
+                  - generic [ref=f83e564]:
+                    - link "Doc" [ref=f83e565] [cursor=pointer]:
+                      - /url: https://github.com/modelcontextprotocol/servers
+                    - button "Ajouter « sequential-thinking »" [ref=f83e570]: Ajouter
+  - region "Notifications alt+T"

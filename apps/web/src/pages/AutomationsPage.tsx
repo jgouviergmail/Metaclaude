@@ -573,7 +573,7 @@ function AutomationEditor({
               side="bottom"
               trigger={
                 <Button variant="secondary" size="sm" className="w-full justify-between">
-                  {PERMISSION_MODE_INFO[permissionMode].label}
+                  {t(PERMISSION_MODE_INFO[permissionMode].label)}
                 </Button>
               }
             >
@@ -584,9 +584,9 @@ function AutomationEditor({
                     key={mode}
                     selected={permissionMode === mode}
                     onSelect={() => setPermissionMode(mode)}
-                    description={PERMISSION_MODE_INFO[mode].description}
+                    description={t(PERMISSION_MODE_INFO[mode].description)}
                   >
-                    {PERMISSION_MODE_INFO[mode].label}
+                    {t(PERMISSION_MODE_INFO[mode].label)}
                   </MenuItem>
                 ),
               )}

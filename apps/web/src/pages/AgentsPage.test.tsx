@@ -6,7 +6,7 @@
  */
 
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { AgentsPage, withDescriptions } from './AgentsPage';
 
@@ -167,6 +167,19 @@ describe('the skill editor', () => {
   });
 });
 
+/**
+ * Call history does not survive a test, and neither does an override.
+ *
+ * Without this, "the probe was never asked" passed or failed on the order the
+ * tests happened to run in: a call made by an earlier test was still on the
+ * mock, and `mockResolvedValue` set by one test was still the answer for the
+ * next. An assertion whose truth depends on its neighbours is not an assertion.
+ */
+beforeEach(() => {
+  vi.clearAllMocks();
+  apiMock.workspaces.mockResolvedValue({ workspaces: [] } as never);
+});
+
 async function openMcpTab(): Promise<void> {
   const trigger = await screen.findByRole('tab', { name: /mcp servers/i });
   fireEvent.mouseDown(trigger, { button: 0 });
@@ -240,15 +253,65 @@ describe('the connector directory', () => {
  * asked anyway and reported "every server answered" while testing none of
  * them, which is a worse outcome than having no button at all.
  */
-describe('the MCP tab', () => {
-  it('does not offer to test connections while the scope is global', async () => {
+/**
+ * "Test connections" has to name a workspace, and the first two attempts got
+ * the consequence wrong.
+ *
+ * Connecting is a per-workspace act: with none named the probe mounts nothing
+ * and answers an empty list. Version one asked anyway and reported "every
+ * server answered" over zero servers. Version two disabled the button in the
+ * Global scope — honest, and still wrong, because Global is the scope the page
+ * *opens in*, so the ordinary path was a dead button explained by a tooltip no
+ * touch device can read. It was reported as "the button does not work", which
+ * is exactly what it was.
+ *
+ * A global server is mounted in every workspace, so "which one" has a real
+ * answer. The button asks it.
+ */
+describe('the MCP tab: testing connections', () => {
+  it('asks which workspace, rather than refusing, when the scope is global', async () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [
+        { id: 'ws_1', name: 'Alpha' },
+        { id: 'ws_2', name: 'Beta' },
+      ],
+    } as never);
+
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+
+    const button = await screen.findByRole('button', { name: /Test connections/i });
+    expect(button.hasAttribute('disabled')).toBe(false);
+
+    // Nothing is probed until a workspace is chosen: an empty answer cached as
+    // though it meant something is the bug this whole design avoids.
+    expect(apiMock.claudeCatalogue).not.toHaveBeenCalled();
+
+    // Radix opens on pointerdown, not click.
+    fireEvent.pointerDown(button, { button: 0 });
+    fireEvent.click(button);
+
+    const beta = await screen.findByRole('menuitem', { name: 'Beta' });
+    fireEvent.pointerDown(beta, { button: 0 });
+    fireEvent.click(beta);
+
+    // The workspace picked, not the one the view is scoped to.
+    await waitFor(() =>
+      expect(apiMock.claudeCatalogue).toHaveBeenCalledWith({
+        workspaceId: 'ws_2',
+        refresh: true,
+      }),
+    );
+  });
+
+  it('refuses only when there is nowhere to mount anything', async () => {
+    apiMock.workspaces.mockResolvedValue({ workspaces: [] } as never);
+
     renderWithProviders(<AgentsPage />);
     await openMcpTab();
 
     const button = await screen.findByRole('button', { name: /Test connections/i });
     expect(button.hasAttribute('disabled')).toBe(true);
-    // And the probe is not even asked: an empty answer would have been cached
-    // as though it meant something.
     expect(apiMock.claudeCatalogue).not.toHaveBeenCalled();
   });
 });
