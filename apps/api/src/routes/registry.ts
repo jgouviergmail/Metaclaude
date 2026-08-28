@@ -175,6 +175,43 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     return reply.status(201).send({ id, entry: { ...entry, installed: true } });
   });
 
+  /**
+   * The connector directory — the same shelf, for MCP servers.
+   *
+   * Install is a registry mutation like the library's, so it takes an operator
+   * and leaves an audit line. The line records the connector's name and never
+   * the credential: the whole point of the vault is that a secret has exactly
+   * one home, and an audit log read by anyone who can read the audit log is
+   * not it.
+   *
+   * No catalogue invalidation, for the library's reason: `resolve` filters on
+   * `enabled` and an install always writes disabled, so nothing mounted has
+   * changed. Enabling goes through POST /api/mcp, which invalidates.
+   */
+  app.get('/api/connectors', async (_request, reply) => {
+    return reply.send({ connectors: context.library.listConnectors() });
+  });
+
+  app.post('/api/connectors/install', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = z
+      .object({ name: z.string().min(1).max(64), secret: z.string().max(8192).optional() })
+      .safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'name is required.');
+
+    const { connector, id } = context.library.installConnector(parsed.data.name, parsed.data.secret);
+    context.audit.record({
+      actor: actor.username,
+      action: 'connector.install',
+      target: id,
+      ipAddress: requestIp(context, request),
+      detail: `${connector.publisher} ${connector.name}`,
+    });
+    return reply
+      .status(201)
+      .send({ id, connector: { ...connector, args: [...connector.args], installed: true } });
+  });
+
   /* --------------------------------- MCP -------------------------------- */
 
   app.get('/api/mcp', async (request, reply) => {

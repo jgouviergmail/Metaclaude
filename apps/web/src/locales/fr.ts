@@ -437,6 +437,23 @@ export const fr: Record<string, string> = {
   'A starter shelf of skills and subagents, curated in this repository and versioned with it. Installing copies one into the global registry, disabled — switch it on when you want runs to see it, edit it like anything you wrote yourself.':
     "Une étagère de départ de skills et de sous-agents, sélectionnée dans ce dépôt et versionnée avec lui. Installer en copie une dans le registre global, désactivée — activez-la quand vous voulez que les runs la voient, modifiez-la comme tout ce que vous auriez écrit vous-même.",
   'Filter by category': 'Filtrer par catégorie',
+
+  /* Le répertoire de connecteurs */
+  'Connector directory': 'Répertoire de connecteurs',
+  'Servers this repository has read the documentation for — the exact endpoint and the exact name of the credential it wants. Every one authenticates with something you can paste, because a run has no browser to complete an OAuth consent in; that is also why your claude.ai connectors cannot be imported. Adding one writes the server globally — the scope selector above does not apply — seals your credential in the vault, and leaves it disabled.':
+    "Des serveurs dont ce dépôt a lu la documentation — l'adresse exacte et le nom exact du secret qu'ils réclament. Chacun s'authentifie avec quelque chose que vous pouvez coller, car un run n'a pas de navigateur pour donner un consentement OAuth ; c'est aussi pourquoi vos connecteurs claude.ai ne peuvent pas être importés. En ajouter un écrit le serveur en portée globale — le sélecteur de portée ci-dessus ne s'y applique pas —, scelle votre secret dans le coffre et le laisse désactivé.",
+  Docs: 'Doc',
+  Added: 'Ajouté',
+  needs: 'réclame',
+  'optionally takes': 'accepte éventuellement',
+  optional: 'facultatif',
+  'the token alone — no scheme word': 'le jeton seul — sans le mot du schéma',
+  'paste the key': 'collez la clé',
+  'Added “{name}”': '« {name} » ajouté',
+  'Global and disabled. Switch it on above, then check From Claude to see whether it actually connected.':
+    "Global et désactivé. Activez-le ci-dessus, puis regardez Depuis Claude pour savoir s'il s'est vraiment connecté.",
+  'Add “{name}”': 'Ajouter « {name} »',
+  'Could not add that connector.': "Ce connecteur n'a pas pu être ajouté.",
   'The library could not be read': "La bibliothèque n'a pas pu être lue",
   'Reload the page, or check the server logs if it keeps failing.':
     'Rechargez la page, ou consultez les journaux du serveur si cela persiste.',

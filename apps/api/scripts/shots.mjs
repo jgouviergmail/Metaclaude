@@ -170,15 +170,24 @@ async function shoot(theme, viewport, suffix) {
   await page.click('button[type="submit"]');
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
 
+  // A third element opens a tab once the page has loaded — Radix switches on
+  // mousedown, so a plain click does nothing here either.
   const screens = [
     ['/', 'dashboard'],
     ['/memory', 'memory'],
     ['/analytics', 'analytics'],
     ['/board', 'board'],
     ['/help', 'help'],
+    ['/agents', 'connectors', 'MCP servers'],
   ];
-  for (const [path, name] of screens) {
+  for (const [path, name, tab] of screens) {
     await page.goto(`${server.baseUrl}${path}`, { waitUntil: 'networkidle' });
+    if (tab) {
+      const trigger = page.getByRole('tab', { name: tab });
+      await trigger.dispatchEvent('mousedown');
+      await trigger.click();
+      await page.waitForTimeout(600);
+    }
     await page.waitForTimeout(900);
     await page.screenshot({ path: join(OUT, `${name}-${theme}${suffix}.png`) });
     // The app scrolls inside <main>'s scroller, so a second capture at the

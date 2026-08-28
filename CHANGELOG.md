@@ -11,6 +11,45 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-08-28
+
+### Added
+
+- **A connector directory, under Agents & skills → MCP servers.** Eleven MCP
+  servers whose documentation this repository has read — GitHub, Sentry,
+  Context7, Exa, Apify, Hugging Face, Notion, Stripe, Google Maps, Wolfram and
+  Anthropic's sequential-thinking scratchpad — each with its exact endpoint and
+  the exact name of the credential it wants. Paste the credential, press Add,
+  and the server is written globally and **disabled**, the secret sealed in the
+  vault; switch it on and *From Claude* tells you whether it really connected.
+  The shelf is narrower than a list of famous servers would be, and that is the
+  point: every entry authenticates with something you can paste, because a run
+  has no browser to complete an OAuth consent in. Two entries pay for the whole
+  directory — Sentry wants `Sentry-Bearer` rather than `Bearer` (it reserves
+  `Bearer` for MCP's own OAuth) and Google Maps wants `X-Goog-Api-Key` with no
+  scheme word at all. Guess either and the failure reads exactly like a bad
+  token. Each card states what it needs (`needs Authorization`) without showing
+  a field: the first press asks for the credential, the second installs — the
+  first draft mounted eleven password inputs at once and read as a form rather
+  than a shelf, which the screenshot bench made obvious.
+- **One allowlist, two features.** The directory is held to the advisor's own
+  publisher allowlist: a test runs every entry through the same `checkMcpTrust`
+  that refuses an untrusted MCP proposal, so a connector cannot exist for a
+  publisher this repository has not vouched for, and the directory cannot
+  become a second, laxer trust surface — the one an operator clicks rather than
+  reviews.
+
+### Changed
+
+- **"Where are my claude.ai connectors?" now ends with what to do instead.**
+  The guide already explained why Gmail, Calendar and Drive cannot be imported
+  (the setup token is scoped to inference; each connector's consent needs a
+  browser). It now gives the two routes that do work unattended — an automation
+  hub issuing a static server token, or your own Google Cloud OAuth app with a
+  local server holding the refresh token — and names the shape they share: a
+  browser step that happened once, outside the agent, reduced to a credential a
+  run can carry.
+
 ## [0.28.0] — 2026-08-27
 
 ### Added

@@ -66,10 +66,24 @@ export const TRUSTED_MCP_PUBLISHERS: ReadonlyArray<{
   { publisher: 'Stripe', npmScopes: ['@stripe'], urlHosts: ['mcp.stripe.com'] },
   { publisher: 'Cloudflare', npmScopes: ['@cloudflare'], urlHosts: ['mcp.cloudflare.com'] },
   { publisher: 'Hugging Face', npmScopes: ['@huggingface'], urlHosts: ['huggingface.co'] },
+  // Added with the connector directory. Hosts are named exactly rather than by
+  // their parent domain: `googleapis.com` would vouch for every API Google
+  // serves, which is not what reading one endpoint's documentation earns.
+  { publisher: 'Upstash', npmScopes: ['@upstash'], urlHosts: ['mcp.context7.com'] },
+  { publisher: 'Exa', npmScopes: ['@exa-labs'], urlHosts: ['mcp.exa.ai'] },
+  { publisher: 'Apify', npmScopes: ['@apify'], urlHosts: ['mcp.apify.com'] },
+  { publisher: 'Google', npmScopes: [], urlHosts: ['mapstools.googleapis.com'] },
+  { publisher: 'Wolfram Research', npmScopes: [], urlHosts: ['services.wolfram.com'] },
 ];
 
-/** The refusal names what would pass, so the run can correct course. */
-function checkMcpTrust(payload: McpPayload): void {
+/**
+ * The refusal names what would pass, so the run can correct course.
+ *
+ * Exported because the connector directory is held to the same bar: its test
+ * runs every shipped entry through this function, so a connector cannot exist
+ * for a publisher the advisor would refuse. One allowlist, both features.
+ */
+export function checkMcpTrust(payload: McpPayload): void {
   if (payload.transport === 'stdio') {
     const tokens = [payload.command ?? '', ...(payload.args ?? [])];
     const trusted = TRUSTED_MCP_PUBLISHERS.some((entry) =>
@@ -134,7 +148,7 @@ const McpPayloadSchema = z.object({
   url: z.string().max(2048).nullish(),
   publisher: z.string().min(1).max(200),
 });
-type McpPayload = z.infer<typeof McpPayloadSchema>;
+export type McpPayload = z.infer<typeof McpPayloadSchema>;
 const PluginPayload = z.object({
   name: z.string().min(1).max(120),
   /** Where it lives: a marketplace name, or a repository/URL the operator can read. */

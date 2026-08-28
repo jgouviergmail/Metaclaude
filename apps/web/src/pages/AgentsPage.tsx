@@ -15,7 +15,9 @@ import {
   Bot,
   ChevronDown,
   Download,
+  ExternalLink,
   Filter,
+  KeyRound,
   Plug,
   Plus,
   Wand2,
@@ -28,6 +30,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type {
   AgentDefinitionRecord,
+  ConnectorListingEntry,
   LibraryCategory,
   LibraryListingEntry,
   McpServerRecord,
@@ -1287,6 +1290,8 @@ function McpTab({
         </div>
       )}
 
+      <ConnectorDirectory onInstalled={onChanged} />
+
       <McpEditor
         draft={editing}
         busy={save.isPending}
@@ -1333,6 +1338,201 @@ function draftFromServer(server: McpServerRecord): McpDraft {
     headers: server.headerKeys.map((key) => ({ key, value: '' })),
     enabled: server.enabled,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* The connector directory                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Endpoints that work *here*, which is a narrower shelf than a list of famous
+ * MCP servers would be — and the difference is the point. A run has no browser,
+ * so an OAuth-only endpoint would install and never connect; the directory
+ * carries only what a pasted credential can authenticate, and the lead
+ * paragraph says why the claude.ai connectors are not among them.
+ *
+ * Always global, like the library: the scope selector above does not apply.
+ */
+function ConnectorDirectory({ onInstalled }: { onInstalled: () => void }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [secrets, setSecrets] = useState<Record<string, string>>({});
+  // One card at a time asks for its credential. Eleven password fields mounted
+  // at once turned the shelf into a form, and the list has to stay scannable —
+  // you choose a connector before you go and find a token for it.
+  const [arming, setArming] = useState<string | null>(null);
+
+  const query = useQuery({ queryKey: ['connectors'], queryFn: () => api.connectors() });
+
+  const install = useMutation({
+    mutationFn: (connector: ConnectorListingEntry) =>
+      api.installConnector(connector.name, secrets[connector.name]?.trim() || undefined),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['connectors'] });
+      onInstalled();
+      // Drop the pasted value the moment it is sealed: it has a home now, and
+      // this component is not it.
+      setSecrets((current) => {
+        const next = { ...current };
+        delete next[result.connector.name];
+        return next;
+      });
+      setArming(null);
+      toast.success(interpolate(t('Added “{name}”'), { name: result.connector.name }), {
+        description: t('Global and disabled. Switch it on above, then check From Claude to see whether it actually connected.'),
+      });
+    },
+    onError: (error) => toast.error(messageFor(error, t('Could not add that connector.'))),
+  });
+
+  const connectors = query.data?.connectors ?? [];
+  if (query.isLoading || connectors.length === 0) return null;
+
+  return (
+    <section className="space-y-3 border-t border-line pt-5">
+      <div className="space-y-1.5">
+        <h3 className="text-[13px] font-semibold text-ink">{t('Connector directory')}</h3>
+        <p className="max-w-3xl text-[13px] leading-relaxed text-muted">
+          {t(
+            'Servers this repository has read the documentation for — the exact endpoint and the exact name of the credential it wants. Every one authenticates with something you can paste, because a run has no browser to complete an OAuth consent in; that is also why your claude.ai connectors cannot be imported. Adding one writes the server globally — the scope selector above does not apply — seals your credential in the vault, and leaves it disabled.',
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {connectors.map((connector) => (
+          <ConnectorCard
+            key={connector.name}
+            connector={connector}
+            armed={arming === connector.name}
+            onArm={() => setArming(connector.name)}
+            secret={secrets[connector.name] ?? ''}
+            onSecretChange={(value) =>
+              setSecrets((current) => ({ ...current, [connector.name]: value }))
+            }
+            installing={install.isPending && install.variables?.name === connector.name}
+            busy={install.isPending}
+            onInstall={() => install.mutate(connector)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ConnectorCard({
+  connector,
+  armed,
+  onArm,
+  secret,
+  onSecretChange,
+  installing,
+  busy,
+  onInstall,
+}: {
+  connector: ConnectorListingEntry;
+  armed: boolean;
+  onArm: () => void;
+  secret: string;
+  onSecretChange: (value: string) => void;
+  installing: boolean;
+  busy: boolean;
+  onInstall: () => void;
+}) {
+  const t = useT();
+  const credential = connector.credential;
+  const asking = Boolean(credential) && armed && !connector.installed;
+  const missing = Boolean(credential?.required) && secret.trim().length === 0;
+  const fieldId = `connector-secret-${connector.name}`;
+
+  return (
+    <Card className="p-4">
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[13px] font-medium text-ink">{connector.title}</span>
+              <Badge tone="neutral">{connector.publisher}</Badge>
+              <Badge tone="info">{t(CATEGORY_LABELS[connector.category])}</Badge>
+              {connector.installed ? <Badge tone="success">{t('Added')}</Badge> : null}
+            </div>
+            <p className="text-[13px] leading-relaxed text-muted">{connector.description}</p>
+            <p className="break-all font-mono text-[12px] leading-relaxed text-subtle">
+              {connector.transport === 'stdio'
+                ? [connector.command, ...connector.args].filter(Boolean).join(' ')
+                : connector.url}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 sm:shrink-0">
+            <a
+              href={connector.docsUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-1 text-[12px] font-medium text-muted transition-colors hover:text-accent"
+            >
+              <ExternalLink className="size-3.5" aria-hidden />
+              {t('Docs')}
+            </a>
+            {connector.installed ? null : (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={installing}
+                // Only an armed card can be blocked by a missing credential: an
+                // unarmed one is a "show me what this needs" button, and a
+                // button disabled before it has asked for anything reads as
+                // broken.
+                disabled={busy || (asking && missing)}
+                onClick={credential && !armed ? onArm : onInstall}
+                aria-label={interpolate(t('Add “{name}”'), { name: connector.name })}
+              >
+                <Download className="size-4" />
+                {t('Add')}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {credential && !connector.installed && !armed ? (
+          <p className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-subtle">
+            <KeyRound className="size-3.5" aria-hidden />
+            {credential.required ? t('needs') : t('optionally takes')}
+            <code className="font-mono text-[11.5px] text-muted">{credential.key}</code>
+          </p>
+        ) : null}
+
+        {credential && asking ? (
+          <div className="space-y-1.5 rounded-lg border border-line bg-canvas/40 p-3">
+            <Label htmlFor={fieldId}>
+              <span className="inline-flex items-center gap-1.5">
+                <KeyRound className="size-3.5" aria-hidden />
+                <code className="font-mono text-[12px]">{credential.key}</code>
+                {credential.required ? null : (
+                  <span className="text-[11.5px] font-normal text-subtle">{t('optional')}</span>
+                )}
+              </span>
+            </Label>
+            {/* The hint sits outside the label on purpose: aria-describedby
+                describes, it does not remove text from the accessible name. */}
+            <p id={`${fieldId}-hint`} className="text-[12px] leading-relaxed text-muted">
+              {credential.hint}
+            </p>
+            <Input
+              id={fieldId}
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={secret}
+              aria-describedby={`${fieldId}-hint`}
+              onChange={(event) => onSecretChange(event.target.value)}
+              placeholder={credential.prefix ? t('the token alone — no scheme word') : t('paste the key')}
+            />
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  );
 }
 
 function McpEditor({

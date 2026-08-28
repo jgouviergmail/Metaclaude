@@ -251,6 +251,15 @@ enforces it. Entries that lean on a national system open with a
 `Jurisdiction: France` line naming the portal to confirm against, and a second
 test refuses any that cite one without declaring it.
 
+Beside the registry sits a **connector directory** — MCP endpoints whose
+documentation this repository has read, with the exact URL and the exact name
+of the credential each wants. It is narrower than a list of famous servers on
+purpose: every entry authenticates with something you can paste, because a run
+has no browser to complete an OAuth consent in. Adding one seals your
+credential in the vault and writes the server disabled. A test runs every entry
+through the same publisher allowlist the advisor uses, so the directory cannot
+become a second, laxer trust surface.
+
 ### Where the usage went
 Analytics ranks every workspace against each other over the period — tokens,
 runs, cost where one was reported, and each one's share of the whole. The

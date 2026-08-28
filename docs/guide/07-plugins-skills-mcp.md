@@ -125,6 +125,33 @@ are merged into the server's environment only at run time. The interface never
 displays a stored secret back, and editing a server keeps the credentials you
 do not retype.
 
+### The connector directory
+
+Under the same tab, below your own servers, sits a shelf of MCP servers this
+repository has read the documentation for: the exact endpoint, and the exact
+name of the credential each one wants. Paste the credential, press **Add**, and
+Metaclaude writes the server globally and **disabled**, with your secret sealed
+in the vault. Switch it on when you are ready, then open **From Claude** to see
+whether it really connected.
+
+The shelf is narrower than a list of famous MCP servers would be, and the
+difference is the whole point: **every entry authenticates with something you
+can paste.** An endpoint whose only path is an interactive OAuth consent is
+deliberately absent, however well-known its publisher, because a run has no
+browser — installing it would produce a server that can never connect.
+
+Two entries explain why a curated directory beats a search engine. Sentry wants
+its token as `Sentry-Bearer`, not `Bearer` — it reserves `Bearer` for MCP's own
+OAuth — and Google Maps wants `X-Goog-Api-Key` with no scheme word at all.
+Guess either and you get an authentication error that reads exactly like a bad
+token. Each card links to the publisher's own page, which is where its facts
+were read from.
+
+Adding a connector is the same trust decision as adding a marketplace, held to
+the same bar: a test runs every entry through the same publisher allowlist the
+advisor uses for its own proposals, so a connector cannot exist for a publisher
+this repository has not vouched for.
+
 **From Claude** — the tab worth knowing about — shows what the CLI itself
 reports for a workspace rather than what Metaclaude assumes: the models your
 subscription grants and which take an effort level, the slash commands and
@@ -148,4 +175,19 @@ not inherit whatever a signed-in account happens to have switched on.
 The equivalent here is the MCP registry above: any remote MCP endpoint a
 service exposes can be added with its URL and an API key or header, scoped
 globally or to one workspace, sealed in the vault — and it then shows up in
-**From Claude** with its live connection status.
+**From Claude** with its live connection status. The connector directory is
+that path made one click: the endpoints already read and checked.
+
+**And Gmail, Calendar and Drive specifically?** Google's own MCP endpoints
+cover the developer platform, not your mailbox — the directory carries Maps,
+which is the one that helps a trip or a move. For your personal Google data
+there are two honest routes, and neither is an import. Run an automation hub
+that issues a **static** server token — Zapier's MCP is the common one, and it
+reaches Gmail, Calendar and Drive among thousands of others; you get a personal
+server URL and a token from its settings, and you add it here as an ordinary
+HTTP server with an `Authorization` header. Or register your own Google Cloud
+OAuth application, complete the consent once in your own browser, and run a
+local MCP server holding the refresh token. Both work unattended, because in
+both cases the browser step happened once, outside the agent. That is the
+general shape of every connector question here: something a human authorised
+once, reduced to a credential a run can carry.

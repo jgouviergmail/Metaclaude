@@ -5,6 +5,7 @@ import { defaultWorkspaceSettings, WorkspaceRepo } from '../kernel/repositories.
 import { Vault } from '../security/vault.js';
 import { Registry, RegistryError } from '../services/registry.js';
 import { LIBRARY } from './catalog.js';
+import { CONNECTORS } from './connectors.js';
 import { LibraryService } from './service.js';
 
 let db: Db;
@@ -13,6 +14,14 @@ let library: LibraryService;
 
 const someAgent = LIBRARY.find((entry) => entry.kind === 'agent')!;
 const someSkill = LIBRARY.find((entry) => entry.kind === 'skill')!;
+const remoteConnector = CONNECTORS.find(
+  (connector) => connector.credential?.kind === 'header' && connector.credential.required,
+)!;
+const stdioConnector = CONNECTORS.find(
+  (connector) => connector.credential?.kind === 'env' && connector.credential.required,
+)!;
+const openConnector = CONNECTORS.find((connector) => connector.credential === null)!;
+const optionalConnector = CONNECTORS.find((connector) => connector.credential?.required === false)!;
 
 beforeEach(() => {
   db = openDatabase({ path: ':memory:' });
@@ -118,5 +127,120 @@ describe('installing', () => {
     for (const entry of LIBRARY) library.install(entry.name);
     const listing = library.list();
     expect(listing.every((entry) => entry.installed)).toBe(true);
+  });
+});
+
+describe('the connector directory', () => {
+  it('serves the whole directory, nothing installed on a fresh database', () => {
+    const listing = library.listConnectors();
+    expect(listing.length).toBe(CONNECTORS.length);
+    expect(listing.every((connector) => connector.installed === false)).toBe(true);
+  });
+
+  it('marks a connector installed once its global namesake exists', () => {
+    library.installConnector(openConnector.name);
+    const listing = library.listConnectors();
+    expect(listing.find((c) => c.name === openConnector.name)?.installed).toBe(true);
+    expect(listing.filter((c) => c.installed).length).toBe(1);
+  });
+
+  it('installs disabled, so one click cannot widen what a run reaches', () => {
+    // The property the whole design rests on: an enabled MCP server is mounted
+    // into every run of every workspace.
+    library.installConnector(openConnector.name);
+    const server = registry.listMcpServers(null).find((s) => s.name === openConnector.name);
+    expect(server?.enabled).toBe(false);
+  });
+
+  it('copies the transport, URL and arguments the directory recorded', () => {
+    library.installConnector(stdioConnector.name, 'ntn_pasted-by-the-operator');
+    const server = registry.listMcpServers(null).find((s) => s.name === stdioConnector.name)!;
+    expect(server.transport).toBe(stdioConnector.transport);
+    expect(server.command).toBe(stdioConnector.command);
+    expect(server.args).toEqual([...stdioConnector.args]);
+    expect(server.url).toBe(stdioConnector.url);
+  });
+
+  it('seals a header credential under its own name, and never on the row', () => {
+    const credential = remoteConnector.credential!;
+    library.installConnector(remoteConnector.name, 'pasted-token');
+    const server = registry.listMcpServers(null).find((s) => s.name === remoteConnector.name)!;
+    // The row names the header and nothing more — the value is in the vault.
+    expect(server.headerKeys).toEqual([credential.key]);
+    expect(server.envKeys).toEqual([]);
+    expect(JSON.stringify(server)).not.toContain('pasted-token');
+    const row = db
+      .prepare<[string], Record<string, unknown>>('SELECT * FROM mcp_servers WHERE id = ?')
+      .get(server.id)!;
+    expect(JSON.stringify(row)).not.toContain('pasted-token');
+  });
+
+  it('delivers the pasted token to a run with the publisher’s scheme word attached', () => {
+    // End to end rather than through the vault's internals, because the thing
+    // worth pinning is what a run actually mounts: the operator pastes a token
+    // and the directory supplies the scheme word, which is exactly the half
+    // that gets guessed wrong (Sentry-Bearer, X-Goog-Api-Key with no scheme).
+    const credential = remoteConnector.credential!;
+    const { id } = library.installConnector(remoteConnector.name, 'pasted-token');
+    registry.upsertMcpServer({
+      id,
+      workspaceId: null,
+      name: remoteConnector.name,
+      transport: remoteConnector.transport,
+      url: remoteConnector.url,
+      enabled: true,
+    });
+    const workspace = new WorkspaceRepo(db).create({
+      name: 'Alpha',
+      slug: 'alpha',
+      description: '',
+      path: '/tmp/alpha',
+      color: '#6366f1',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+    const mounted = registry.resolve(workspace).mcpServers[remoteConnector.name] as {
+      headers: Record<string, string>;
+    };
+    expect(mounted.headers[credential.key]).toBe(`${credential.prefix}pasted-token`);
+  });
+
+  it('seals an env credential under its variable name', () => {
+    const credential = stdioConnector.credential!;
+    library.installConnector(stdioConnector.name, 'ntn_secret');
+    const server = registry.listMcpServers(null).find((s) => s.name === stdioConnector.name)!;
+    expect(server.envKeys).toEqual([credential.key]);
+    expect(server.headerKeys).toEqual([]);
+  });
+
+  it('refuses to install a connector whose required credential is missing', () => {
+    // Left to the registry, this would store happily and fail at run time with
+    // an authentication error the operator reads as a bad token.
+    expect(() => library.installConnector(remoteConnector.name)).toThrow(RegistryError);
+    expect(() => library.installConnector(remoteConnector.name, '   ')).toThrow(RegistryError);
+    expect(registry.listMcpServers(null)).toHaveLength(0);
+  });
+
+  it('installs an optional-credential connector with nothing pasted', () => {
+    library.installConnector(optionalConnector.name);
+    const server = registry.listMcpServers(null).find((s) => s.name === optionalConnector.name)!;
+    expect(server.headerKeys).toEqual([]);
+  });
+
+  it('stores nothing for a connector that takes no credential', () => {
+    library.installConnector(openConnector.name, 'a token nobody asked for');
+    const server = registry.listMcpServers(null).find((s) => s.name === openConnector.name)!;
+    expect(server.envKeys).toEqual([]);
+    expect(server.headerKeys).toEqual([]);
+  });
+
+  it('404s an unknown connector and 409s one already installed', () => {
+    expect(() => library.installConnector('no-such-connector')).toThrow(
+      expect.objectContaining({ statusCode: 404 }),
+    );
+    library.installConnector(openConnector.name);
+    expect(() => library.installConnector(openConnector.name)).toThrow(
+      expect.objectContaining({ statusCode: 409 }),
+    );
   });
 });

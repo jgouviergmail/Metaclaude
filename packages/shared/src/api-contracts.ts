@@ -548,6 +548,40 @@ export type LibraryListingEntry = {
   installed: boolean;
 } & ({ kind: 'agent'; prompt: string } | { kind: 'skill'; body: string });
 
+/**
+ * One entry of the built-in connector directory as GET /api/connectors serves
+ * it — a remote or packaged MCP server this repository has read the
+ * documentation for. A plain type for the same reason as LibraryListingEntry:
+ * server-authored constants, pinned by their own tests.
+ *
+ * `credential` carries the *name* of what the operator must supply and where
+ * to get it. Never a value: those go straight into the vault and the API has
+ * no path that reads one back.
+ */
+export type ConnectorListingEntry = {
+  name: string;
+  title: string;
+  publisher: string;
+  category: LibraryCategory;
+  description: string;
+  transport: McpTransport;
+  url: string | null;
+  command: string | null;
+  args: string[];
+  credential: {
+    kind: 'header' | 'env';
+    key: string;
+    /** Prepended to the pasted value, e.g. `Bearer `. Often empty. */
+    prefix: string;
+    hint: string;
+    required: boolean;
+  } | null;
+  /** The publisher's own page the entry's facts were read from. */
+  docsUrl: string;
+  /** True when a *global* MCP server already carries this name. */
+  installed: boolean;
+};
+
 export const SystemHealth = z.object({
   version: z.string(),
   uptimeMs: z.number().int().nonnegative(),

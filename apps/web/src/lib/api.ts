@@ -39,6 +39,7 @@ import {
   type FileEntry,
   type GitStatus,
   type Insight,
+  type ConnectorListingEntry,
   type LibraryListingEntry,
   type McpServerRecord,
   type Memory,
@@ -662,6 +663,16 @@ export const api = {
     request<{ id: string; entry: LibraryListingEntry }>('/api/library/install', {
       method: 'POST',
       body: { name },
+    }),
+
+  connectors: () => request<{ connectors: ConnectorListingEntry[] }>('/api/connectors'),
+  // `secret` is whatever the operator pasted, without the scheme word — the
+  // directory owns that. It goes straight into the vault and no read path
+  // returns it, here or anywhere.
+  installConnector: (name: string, secret?: string) =>
+    request<{ id: string; connector: ConnectorListingEntry }>('/api/connectors/install', {
+      method: 'POST',
+      body: secret ? { name, secret } : { name },
     }),
 
   mcpServers: (workspaceId?: string) =>
