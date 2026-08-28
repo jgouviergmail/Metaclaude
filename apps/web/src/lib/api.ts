@@ -40,6 +40,8 @@ import {
   type GitStatus,
   type Insight,
   type ConnectorListingEntry,
+  type GoogleConnectionState,
+  type GoogleGrant,
   type LibraryListingEntry,
   type McpServerRecord,
   type Memory,
@@ -664,6 +666,20 @@ export const api = {
       method: 'POST',
       body: { name },
     }),
+
+  google: {
+    get: () => request<GoogleConnectionState>('/api/integrations/google'),
+    // The secret goes up once and never comes back: no read path returns it,
+    // so reconnecting asks for it again. That is the cost of not keeping a
+    // copy anywhere a page could reach.
+    connect: (body: { clientId: string; clientSecret: string; grants: GoogleGrant[] }) =>
+      request<{ authorizationUrl: string; redirectUri: string }>(
+        '/api/integrations/google/connect',
+        { method: 'POST', body },
+      ),
+    disconnect: () =>
+      request<{ ok: boolean; removed: boolean }>('/api/integrations/google', { method: 'DELETE' }),
+  },
 
   connectors: () => request<{ connectors: ConnectorListingEntry[] }>('/api/connectors'),
   // `secret` is whatever the operator pasted, without the scheme word — the

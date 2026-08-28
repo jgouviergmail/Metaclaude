@@ -53,6 +53,11 @@ system around it:
   tenancy, a job search, a move and caring for a parent on the other —
   installed with one click, disabled until you switch each one on. Nothing
   here is specific to code, and the shelf finally says so.
+- **Your Google account, without an intermediary.** Register your own OAuth
+  app, consent once in your browser, and Metaclaude keeps the refresh token
+  in its vault and runs its own Gmail/Calendar/Drive MCP server from inside
+  the image — per-capability grants, created disabled, no third party in the
+  path.
 - **Passkeys.** Sign in with Face ID, a fingerprint or a security key —
   phishing-resistant WebAuthn, self-hosted, with password + TOTP intact
   underneath. (Needs a domain name: the standard cannot scope a passkey to
@@ -259,6 +264,16 @@ has no browser to complete an OAuth consent in. Adding one seals your
 credential in the vault and writes the server disabled. A test runs every entry
 through the same publisher allowlist the advisor uses, so the directory cannot
 become a second, laxer trust surface.
+
+For Google specifically the consent itself moves in-house: **Settings →
+Connections** walks through registering your own Google Cloud OAuth app
+(showing the exact redirect URI), takes the consent once in your browser, and
+seals the refresh token in the vault. The Gmail/Calendar/Drive MCP server
+ships inside the image and registers only the tools you granted — read and
+send are separate checkboxes, Drive writing uses `drive.file` (only what the
+app itself creates), and the callback authenticates by single-use state
+because the session cookie deliberately does not survive a cross-site
+redirect.
 
 ### Where the usage went
 Analytics ranks every workspace against each other over the period — tokens,

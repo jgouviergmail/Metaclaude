@@ -108,6 +108,24 @@ the failure shown on the card. Without the host updater (re-run
 `deploy/install-app.sh` to add it) the card stays informational, exactly
 as before.
 
+## Connections
+
+Owner only: connections Metaclaude authorises for itself, starting with
+**Google**. The full walkthrough lives in the extensions chapter beside the
+MCP registry it feeds — the short version is that you register your own OAuth
+application (the screen shows the exact redirect URI to paste into the Google
+Cloud console), tick what the agent may do grant by grant, and consent once
+in your own browser. The refresh token lands in the vault, the
+Gmail/Calendar/Drive server ships inside the image, and it appears under
+Agents & skills disabled until you switch it on.
+
+Two honest notes the screen also tells you. Reading mail or Drive uses
+scopes Google classes *restricted*: on a consent screen still in "Testing"
+the refresh token expires after seven days, so publish the app as Internal
+(a Workspace account) or leave those grants unticked. And **Disconnect is
+local** — it erases what Metaclaude stored, but Google keeps listing the
+grant until you revoke it yourself at myaccount.google.com/permissions.
+
 ## What protects you (the short version)
 
 - **TLS is mandatory** — the app refuses to be less than a secure context.

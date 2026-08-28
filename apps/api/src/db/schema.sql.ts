@@ -670,4 +670,46 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 16,
+    name: 'google_connection',
+    sql: /* sql */ `
+      -- An authorisation in flight.
+      --
+      -- This table exists because the session cookie is SameSite=Strict, so
+      -- Google's redirect back to the callback — a cross-site top-level
+      -- navigation — arrives with NO cookie at all. The callback therefore
+      -- cannot ask "who is signed in?"; the state parameter has to *be* the
+      -- answer. It is 256 bits of randomness minted for one user, single use,
+      -- and short lived, which is what makes it safe to accept a request that
+      -- carries no other proof of identity.
+      --
+      -- redirect_uri is stored rather than recomputed: Google requires the
+      -- token exchange to repeat it byte for byte, and the callback request
+      -- knows only whatever host it happened to arrive on.
+      CREATE TABLE google_oauth_flows (
+        state        TEXT PRIMARY KEY,
+        user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_id    TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        grants       TEXT NOT NULL,
+        created_at   INTEGER NOT NULL,
+        expires_at   INTEGER NOT NULL
+      );
+
+      -- The connection itself. At most one, hence the fixed primary key: this
+      -- is "Metaclaude's Google account", not a per-user address book.
+      -- No token is here — the client secret and the refresh token live in the
+      -- vault under the scope 'google', and this row only remembers what the
+      -- interface has to show.
+      CREATE TABLE google_connection (
+        id            TEXT PRIMARY KEY CHECK (id = 'default'),
+        client_id     TEXT NOT NULL,
+        account_email TEXT,
+        grants        TEXT NOT NULL,
+        connected_at  INTEGER NOT NULL,
+        connected_by  TEXT NOT NULL
+      );
+    `,
+  },
 ];

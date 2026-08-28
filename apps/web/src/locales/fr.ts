@@ -454,6 +454,63 @@ export const fr: Record<string, string> = {
     "Global et désactivé. Activez-le ci-dessus, puis regardez Depuis Claude pour savoir s'il s'est vraiment connecté.",
   'Add “{name}”': 'Ajouter « {name} »',
   'Could not add that connector.': "Ce connecteur n'a pas pu être ajouté.",
+
+  /* La connexion Google */
+  Connections: 'Connexions',
+  'Gmail, Calendar and Drive, through an OAuth application you own. Your connectors on claude.ai cannot be imported — a run has no browser to give consent in — so the consent happens here once, and the refresh token it returns is what lets runs work unattended.':
+    "Gmail, Agenda et Drive, via une application OAuth qui vous appartient. Vos connecteurs claude.ai ne peuvent pas être importés — un run n'a pas de navigateur pour donner un consentement — donc le consentement se fait ici, une fois, et le refresh token obtenu est ce qui permet aux runs de travailler sans surveillance.",
+  'Read your mail': 'Lire vos e-mails',
+  'Send mail as you': 'Envoyer des e-mails en votre nom',
+  'Read your calendar': 'Lire votre agenda',
+  'Create and change events': 'Créer et modifier des événements',
+  'Read your Drive': 'Lire votre Drive',
+  'Create files in Drive': 'Créer des fichiers dans Drive',
+  'Search and read messages. Nothing is sent or deleted.':
+    "Rechercher et lire des messages. Rien n'est envoyé ni supprimé.",
+  'Compose and send. It cannot read what it did not just write.':
+    "Rédiger et envoyer. Il ne peut pas lire ce qu'il ne vient pas d'écrire.",
+  'List events, with recurring ones expanded.':
+    'Lister les événements, récurrences déroulées.',
+  'Add and update events. Not your calendar settings or sharing.':
+    "Ajouter et mettre à jour des événements. Pas vos réglages d'agenda ni vos partages.",
+  'Search and read every file you can see.':
+    'Rechercher et lire tous les fichiers que vous voyez.',
+  'Only files Metaclaude itself creates — not the rest of your Drive.':
+    'Uniquement les fichiers créés par Metaclaude — pas le reste de votre Drive.',
+  'In the Google Cloud console, create a project and enable the Gmail, Calendar and Drive APIs you want.':
+    'Dans la console Google Cloud, créez un projet et activez les API Gmail, Agenda et Drive voulues.',
+  'On the OAuth consent screen, choose Internal if this is a Workspace account — that is what avoids Google’s verification and the seven-day token expiry.':
+    "Sur l'écran de consentement OAuth, choisissez Interne si c'est un compte Workspace — c'est ce qui évite la vérification Google et l'expiration du jeton à sept jours.",
+  'Create an OAuth client ID of type “Web application”, and register this exact redirect URI:':
+    'Créez un ID client OAuth de type « Application Web » et déclarez exactement cette URI de redirection :',
+  'This deployment’s address could not be determined, so the redirect URI cannot be shown.':
+    "L'adresse de ce déploiement n'a pas pu être déterminée, donc l'URI de redirection ne peut pas être affichée.",
+  'Client ID': 'ID client',
+  'Client secret': 'Secret client',
+  'What the agent may do with your account': "Ce que l'agent peut faire avec votre compte",
+  'Each box is one Google scope. A capability you do not grant is not merely refused at run time — its tool is never registered, so the agent cannot try it.':
+    "Chaque case est un scope Google. Une capacité non accordée n'est pas simplement refusée à l'exécution — son outil n'est jamais enregistré, donc l'agent ne peut pas l'essayer.",
+  'Reading mail or Drive uses a scope Google calls restricted. On a consent screen still in “Testing”, the refresh token expires after seven days — the connection would stop working next week for no visible reason. Publish the app as Internal (Workspace) or leave those two boxes unticked.':
+    "Lire les e-mails ou Drive utilise un scope que Google classe restricted. Sur un écran de consentement encore « En test », le refresh token expire au bout de sept jours — la connexion cesserait de fonctionner la semaine prochaine sans raison visible. Publiez l'application en Interne (Workspace) ou laissez ces deux cases décochées.",
+  'Continue to Google': 'Continuer vers Google',
+  'Could not start the connection.': "La connexion n'a pas pu démarrer.",
+  Connected: 'Connecté',
+  'account unknown': 'compte inconnu',
+  'The tools live on the MCP server named “google”, under Agents & skills. It is created disabled; a server that is on is mounted into every run of every workspace.':
+    "Les outils vivent sur le serveur MCP nommé « google », sous Agents et skills. Il est créé désactivé ; un serveur actif est monté dans chaque run de chaque espace de travail.",
+  Disconnect: 'Déconnecter',
+  'Revoke at Google': 'Révoquer chez Google',
+  'Disconnect Google?': 'Déconnecter Google ?',
+  'The stored refresh token and client secret are erased and the “google” MCP server is removed. This does not revoke anything at Google — do that at myaccount.google.com/permissions.':
+    "Le refresh token et le secret client stockés sont effacés et le serveur MCP « google » est retiré. Cela ne révoque rien chez Google — faites-le sur myaccount.google.com/permissions.",
+  'Could not disconnect.': 'La déconnexion a échoué.',
+  'Google connected.': 'Google connecté.',
+  'The server was added under Agents & skills → MCP servers, disabled. Switch it on there when you are ready.':
+    'Le serveur a été ajouté sous Agents et skills → Serveurs MCP, désactivé. Activez-le là-bas quand vous êtes prêt.',
+  'Google did not connect.': "Google ne s'est pas connecté.",
+  'Google disconnected.': 'Google déconnecté.',
+  'The stored token is gone from this deployment. Google still lists Metaclaude until you revoke it at myaccount.google.com/permissions.':
+    'Le jeton stocké a disparu de ce déploiement. Google liste encore Metaclaude tant que vous ne le révoquez pas sur myaccount.google.com/permissions.',
   'The library could not be read': "La bibliothèque n'a pas pu être lue",
   'Reload the page, or check the server logs if it keeps failing.':
     'Rechargez la page, ou consultez les journaux du serveur si cela persiste.',

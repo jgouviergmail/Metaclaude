@@ -10,7 +10,16 @@ import type { Db } from '../db/index.js';
 import { newId } from '@metaclaude/shared';
 import { open, seal } from './crypto.js';
 
-export type SecretScope = `workspace:${string}` | `mcp:${string}` | 'global';
+// A closed union rather than `string`: the scope is half of the AAD every
+// value is sealed under, so a typo does not fail to find a secret — it fails
+// to *decrypt* one, months later, with an authentication-tag error that reads
+// like corruption. `integration:` covers connections Metaclaude authorises for
+// itself, where the vault holds an OAuth client secret and a refresh token.
+export type SecretScope =
+  | `workspace:${string}`
+  | `mcp:${string}`
+  | `integration:${string}`
+  | 'global';
 
 interface SecretRow {
   id: string;

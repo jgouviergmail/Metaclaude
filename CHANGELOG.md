@@ -11,6 +11,56 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-08-28
+
+### Added
+
+- **Gmail, Calendar and Drive, natively — Settings → Connections.** The
+  claude.ai connectors cannot be imported (a run has no browser to give OAuth
+  consent in), so the consent now happens *here*, once: register your own
+  OAuth application in the Google Cloud console — the screen shows the exact
+  redirect URI to paste, because `redirect_uri_mismatch` is how this setup
+  usually fails — tick what the agent may do, and approve in your own browser.
+  Metaclaude seals the refresh token and client secret in the vault and ships
+  its own Google MCP server **inside the image**: no third party between the
+  agent and your mailbox, versioned and reviewed like everything else.
+- **Grants, not access.** Reading mail, sending mail, the calendar and Drive
+  are separate checkboxes, each one Google scope, always the narrow one —
+  `drive.file` reaches only what Metaclaude itself creates, `calendar.events`
+  cannot touch calendar settings. The granted set decides which tools the
+  server registers, so an ungranted capability is not refused at run time —
+  its tool never exists and the agent cannot try it. The server itself lands
+  under Agents & skills **disabled**, and the card names the account it
+  actually bound (via the `openid email` identity scopes), so authorising the
+  wrong Google account is visible instead of silent.
+- **The seven-day trap, warned about before it is sprung.** Gmail and
+  Drive *read* scopes are ones Google classes restricted: while a Cloud
+  project's consent screen is still in "Testing", its refresh tokens expire
+  after seven days and the connection dies next week for no visible reason.
+  The screen warns when a restricted grant is ticked and says what to do —
+  publish the app as Internal on a Workspace account, or keep to the
+  unrestricted grants. Disconnect says plainly that it is local, and links
+  the Google page where the grant is actually revoked.
+- **An OAuth callback that respects the app's own cookie policy.** The
+  session cookie is `SameSite=Strict`, so Google's redirect back arrives with
+  no cookie at all — and rather than loosening that, the callback is
+  authenticated by its `state` alone: 256 bits minted for one signed-in
+  owner, ten-minute life, spent by the same SQL statement that validates it.
+  The token exchange happens server to server (`prompt=consent` +
+  `access_type=offline`, so a reconnection always yields a fresh refresh
+  token), the client secret never appears in any URL, and an exchange that
+  comes back without a refresh token is refused outright — storing it would
+  look like success and die within the hour.
+- **A Gmail that survives real mail.** The MCP server walks the MIME tree
+  (plain text preferred, HTML stripped as fallback, attachments never
+  mistaken for the body — a `.txt` attachment included), sends with RFC 2047
+  encoded headers so «Réunion budget» arrives intact, expands recurring
+  calendar events, keeps all-day events as dates rather than shifting them a
+  timezone, and exports Google Docs and Sheets as text and CSV. Access tokens
+  renew sixty seconds early through a cache that collapses concurrent
+  refreshes, and a mid-life 401 is retried once with a fresh token. 134 new
+  tests, every load-bearing behaviour proved able to fail by sabotage.
+
 ## [0.29.0] — 2026-08-28
 
 ### Added

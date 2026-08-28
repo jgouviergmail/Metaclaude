@@ -44,6 +44,9 @@ importers:
       '@metaclaude/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.4.3)
       '@simplewebauthn/server':
         specifier: ^13.3.3
         version: 13.3.3

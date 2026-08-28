@@ -178,16 +178,27 @@ globally or to one workspace, sealed in the vault — and it then shows up in
 **From Claude** with its live connection status. The connector directory is
 that path made one click: the endpoints already read and checked.
 
-**And Gmail, Calendar and Drive specifically?** Google's own MCP endpoints
-cover the developer platform, not your mailbox — the directory carries Maps,
-which is the one that helps a trip or a move. For your personal Google data
-there are two honest routes, and neither is an import. Run an automation hub
-that issues a **static** server token — Zapier's MCP is the common one, and it
-reaches Gmail, Calendar and Drive among thousands of others; you get a personal
-server URL and a token from its settings, and you add it here as an ordinary
-HTTP server with an `Authorization` header. Or register your own Google Cloud
-OAuth application, complete the consent once in your own browser, and run a
-local MCP server holding the refresh token. Both work unattended, because in
-both cases the browser step happened once, outside the agent. That is the
-general shape of every connector question here: something a human authorised
-once, reduced to a credential a run can carry.
+**And Gmail, Calendar and Drive specifically?** Built in, since 0.30.0 —
+**Settings → Connections**. You register your own OAuth application in the
+Google Cloud console (the screen shows the exact redirect URI to paste, and
+walks the three steps), tick what the agent may do — reading mail, sending
+mail, the calendar and Drive are each their own checkbox — and give consent
+once, in your own browser. Metaclaude keeps the refresh token in the vault
+and ships its own Gmail/Calendar/Drive MCP server *inside the image*, so
+there is no third party between the agent and your account: the server
+appears under this tab as `google`, disabled until you switch it on, and a
+capability you did not grant is not merely refused — its tool is never
+registered, so the agent cannot try it.
+
+One Google-side fact decides how well this works. Reading mail or Drive uses
+scopes Google classes *restricted*: while a Cloud project's consent screen is
+still in "Testing", its refresh tokens expire after **seven days** — the
+connection stops working next week for no visible reason. A **Workspace**
+account escapes this by publishing the app as *Internal*; a personal account
+should either stick to the calendar and Drive-write grants (not restricted)
+or use an automation hub instead. The hub route still exists and still works:
+a service like Zapier issues a static server token that reaches Gmail among
+thousands of apps, added here as an ordinary HTTP server — the trade is that
+your Google data transits a third party. Both routes share one shape: a
+browser step that happened once, outside the agent, reduced to a credential a
+run can carry.

@@ -731,6 +731,32 @@ export const LibraryCategory = z.enum([
 export type LibraryCategory = z.infer<typeof LibraryCategory>;
 export const LIBRARY_CATEGORIES = LibraryCategory.options;
 
+/* -------------------------------------------------------------------------- */
+/* Google — the one connector Metaclaude authorises for itself                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What the operator is granting, one checkbox each.
+ *
+ * Deliberately finer than "Gmail, Calendar, Drive": reading mail and sending
+ * mail are different powers, and an agent that can read your inbox to prepare
+ * a summary has no business also being able to send from it unless you said
+ * so. Each entry maps to exactly one Google scope in
+ * `apps/api/src/integrations/google/scopes.ts`, and the granted set decides
+ * both the consent screen and which tools the MCP server registers — so a
+ * capability you did not grant does not merely fail, it does not exist.
+ */
+export const GoogleGrant = z.enum([
+  'gmail.read',
+  'gmail.send',
+  'calendar.read',
+  'calendar.write',
+  'drive.read',
+  'drive.write',
+]);
+export type GoogleGrant = z.infer<typeof GoogleGrant>;
+export const GOOGLE_GRANTS = GoogleGrant.options;
+
 /* The board — tasks the operator and the agents share                         */
 /* -------------------------------------------------------------------------- */
 

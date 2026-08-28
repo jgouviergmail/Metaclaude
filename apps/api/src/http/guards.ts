@@ -31,6 +31,12 @@ const PUBLIC_PATHS = new Set([
   // exists. Both are rate-limited with the same bucket as password login.
   '/api/auth/passkey/begin',
   '/api/auth/passkey/finish',
+  // Google's redirect back from its consent screen. A cross-site top-level
+  // navigation carries no `SameSite=Strict` cookie, so this route cannot be
+  // authenticated the usual way; the `state` in its query is the credential
+  // instead — 256 random bits, minted for one owner, single use, ten minutes.
+  // See routes/integrations.ts.
+  '/api/integrations/google/callback',
 ]);
 
 /** Methods that cannot change state and therefore need no CSRF token. */

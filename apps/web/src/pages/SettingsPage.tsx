@@ -25,6 +25,7 @@ import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { TotpQr } from '@/components/auth/TotpQr';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
+import { GoogleConnectionCard } from '@/components/settings/GoogleConnectionCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { PasskeysCard } from '@/components/settings/PasskeysCard';
 import { UpdateCard } from '@/components/settings/UpdateCard';
@@ -84,6 +85,11 @@ export function SettingsPage() {
                 {t('System')}
               </Tabs.Trigger>
               {user?.role === 'owner' ? (
+                <Tabs.Trigger value="connections" className={TAB_CLASS}>
+                  {t('Connections')}
+                </Tabs.Trigger>
+              ) : null}
+              {user?.role === 'owner' ? (
                 <Tabs.Trigger value="audit" className={TAB_CLASS}>
                   {t('Audit log')}
                 </Tabs.Trigger>
@@ -106,6 +112,15 @@ export function SettingsPage() {
               {user?.role === 'owner' ? <DoctorCard /> : null}
               {user?.role === 'owner' ? <UpdateCard /> : null}
             </Tabs.Content>
+
+            {/* Owner only: connecting Google stores a credential that reaches a
+                live mailbox, which is a wider blast radius than any other
+                registry write. */}
+            {user?.role === 'owner' ? (
+              <Tabs.Content value="connections" className="space-y-4">
+                <GoogleConnectionCard />
+              </Tabs.Content>
+            ) : null}
 
             {user?.role === 'owner' ? (
               <Tabs.Content value="audit">

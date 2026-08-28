@@ -21,6 +21,7 @@ import {
   ClaudeModelInfo,
   EffortLevel,
   MarketplacePlugin,
+  GoogleGrant,
   LibraryCategory,
   McpTransport,
   Memory,
@@ -580,6 +581,40 @@ export type ConnectorListingEntry = {
   docsUrl: string;
   /** True when a *global* MCP server already carries this name. */
   installed: boolean;
+};
+
+/**
+ * Metaclaude's own Google connection, as GET /api/integrations/google serves
+ * it. A plain type, like the two listings above: server-derived, and pinned by
+ * the service's own tests.
+ *
+ * There is no token here and there is no path that returns one. `clientId` is
+ * not a secret — it appears in every authorisation URL the browser has ever
+ * navigated to — and the operator needs it to recognise which Cloud project
+ * this connection belongs to.
+ */
+export type GoogleConnectionState = {
+  connection: {
+    connected: boolean;
+    /** Which Google account the stored refresh token belongs to. */
+    accountEmail: string | null;
+    grants: GoogleGrant[];
+    clientId: string | null;
+    connectedAt: number | null;
+    connectedBy: string | null;
+  };
+  /**
+   * The exact string to register as an authorised redirect URI in the Google
+   * Cloud console. Null when the request carried no usable origin.
+   */
+  redirectUri: string | null;
+  /**
+   * Grants that oblige a Cloud project to pass Google's verification — and,
+   * while its consent screen is still in "Testing", make the refresh token
+   * expire after seven days. Shown as a warning rather than left to be
+   * discovered a week later.
+   */
+  restrictedGrants: GoogleGrant[];
 };
 
 export const SystemHealth = z.object({
