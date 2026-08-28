@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.11] — 2026-08-28
+
+### Added
+
+- **Source control and the file browser are tested**, leaving six components
+  untested. Two guards here protect what the interface cannot undo. A
+  *truncated* file is not savable — writing the visible half back would
+  silently discard the rest, with nothing on screen to reveal it — and the
+  name filter waits for a pause before spending a recursive server-side walk,
+  which is the difference between a filter and a denial of service against
+  your own machine. Committing needs a message *and* something staged; either
+  half alone is a git error the operator has to go and read.
+
+
 ## [0.32.10] — 2026-08-28
 
 ### Added
