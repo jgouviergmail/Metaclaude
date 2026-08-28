@@ -21,8 +21,6 @@
 
 import { fileURLToPath } from 'node:url';
 
-import type { GoogleGrant } from '@metaclaude/shared';
-
 import type { Registry } from '../../services/registry.js';
 import type { GoogleConnectService } from './service.js';
 
@@ -59,6 +57,11 @@ export interface SyncInput {
  */
 export function syncGoogleMcpServer(input: SyncInput): string | null {
   const { registry, google } = input;
+  // Matched by name alone, deliberately: if an operator hand-built a server
+  // called `google` before connecting, this adopts and overwrites it rather
+  // than erroring the OAuth callback into a dead end. The name is short and
+  // obvious enough that the collision is almost certainly the same intent —
+  // and the audit line the routes write records what happened.
   const existing = registry
     .listMcpServers(null)
     .find((server) => server.name === GOOGLE_SERVER_NAME);
@@ -86,13 +89,4 @@ export function syncGoogleMcpServer(input: SyncInput): string | null {
     enabled: existing?.enabled ?? false,
   });
   return server.id;
-}
-
-/** Which grants the installed server is currently running with. */
-export function installedGrants(registry: Registry): GoogleGrant[] {
-  const server = registry.listMcpServers(null).find((s) => s.name === GOOGLE_SERVER_NAME);
-  if (!server) return [];
-  const index = server.args.indexOf('--grants');
-  if (index === -1) return [];
-  return (server.args[index + 1] ?? '').split(',').filter(Boolean) as GoogleGrant[];
 }

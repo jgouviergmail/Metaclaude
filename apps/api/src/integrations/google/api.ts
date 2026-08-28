@@ -252,12 +252,10 @@ export function buildRawMessage(input: {
   subject: string;
   body: string;
   cc?: string;
-  replyTo?: string;
 }): string {
   const lines = [
     `To: ${encodeAddressList(input.to)}`,
     ...(input.cc ? [`Cc: ${encodeAddressList(input.cc)}`] : []),
-    ...(input.replyTo ? [`In-Reply-To: ${input.replyTo}`, `References: ${input.replyTo}`] : []),
     `Subject: ${encodeHeader(input.subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',

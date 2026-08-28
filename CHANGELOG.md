@@ -11,6 +11,37 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.30.1] — 2026-08-28
+
+### Fixed
+
+- **The setup screen could never show the redirect URI it exists to show.**
+  The status route read the browser's `Origin` header — which browsers only
+  send on POSTs and CORS requests, never on a same-origin GET. Measured
+  against a live Fastify instance during the cold review, then fixed: the
+  deployment's origin now falls back to protocol + the `Host` header — the
+  *header*, not Fastify 5's `request.hostname`, which splits the port into
+  its own field and would have stranded a `:8443` deployment at the wrong
+  address after the consent (the callback's redirect had exactly that bug,
+  fixed by the same helper). The screenshot bench now captures the screen
+  against the real server, where the URI visibly renders.
+- **Coming back from Google landed on a tab that could not hear the news.**
+  The callback redirects to `/settings?google=…`, but the page opened on
+  Security and Radix unmounts inactive tab content — so the connection
+  card's effect never ran: no toast, no refresh, the parameter left in the
+  URL. The parameter that carries the outcome now also picks the tab that
+  can read it.
+- **`calendar.write` alone plans blind, and now says so.** The grant maps to
+  Google's `calendar.events`, but without `calendar.read` the listing tool is
+  deliberately not registered — an agent asked to add an event cannot check
+  for conflicts first. The checkbox hint warns to grant reading alongside
+  writing. Caught by driving the *built* server over real stdio JSON-RPC —
+  which also proved the dist entry, the handshake and the granted-set gating
+  end to end.
+- Removed two pieces of dead surface the review turned up: an unused
+  `replyTo` header path in the mail builder and an unconsumed grants-reading
+  helper.
+
 ## [0.30.0] — 2026-08-28
 
 ### Added

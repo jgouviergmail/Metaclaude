@@ -5,7 +5,7 @@ import { migrate, openDatabase } from '../../db/index.js';
 import { Vault } from '../../security/vault.js';
 import { Registry } from '../../services/registry.js';
 import type { FetchLike } from './oauth.js';
-import { GOOGLE_SERVER_NAME, installedGrants, syncGoogleMcpServer } from './registration.js';
+import { GOOGLE_SERVER_NAME, syncGoogleMcpServer } from './registration.js';
 import { GoogleConnectService } from './service.js';
 
 let db: Db;
@@ -175,12 +175,5 @@ describe('putting the connection on the MCP shelf', () => {
     google.disconnect();
     expect(sync()).toBeNull();
     expect(stored()).toBeUndefined();
-  });
-
-  it('reports the grants the installed server is actually running with', async () => {
-    expect(installedGrants(registry)).toEqual([]);
-    await connect();
-    sync();
-    expect(installedGrants(registry)).toEqual(['gmail.read', 'calendar.write']);
   });
 });

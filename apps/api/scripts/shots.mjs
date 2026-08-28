@@ -179,6 +179,7 @@ async function shoot(theme, viewport, suffix) {
     ['/board', 'board'],
     ['/help', 'help'],
     ['/agents', 'connectors', 'MCP servers'],
+    ['/settings', 'google-connection', 'Connections'],
   ];
   for (const [path, name, tab] of screens) {
     await page.goto(`${server.baseUrl}${path}`, { waitUntil: 'networkidle' });

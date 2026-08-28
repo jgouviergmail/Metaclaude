@@ -471,8 +471,8 @@ export const fr: Record<string, string> = {
     "Rédiger et envoyer. Il ne peut pas lire ce qu'il ne vient pas d'écrire.",
   'List events, with recurring ones expanded.':
     'Lister les événements, récurrences déroulées.',
-  'Add and update events. Not your calendar settings or sharing.':
-    "Ajouter et mettre à jour des événements. Pas vos réglages d'agenda ni vos partages.",
+  'Add and update events — grant reading too, or the agent plans blind. Never your calendar settings or sharing.':
+    "Ajouter et mettre à jour des événements — accordez aussi la lecture, sinon l'agent planifie à l'aveugle. Jamais vos réglages d'agenda ni vos partages.",
   'Search and read every file you can see.':
     'Rechercher et lire tous les fichiers que vous voyez.',
   'Only files Metaclaude itself creates — not the rest of your Drive.':

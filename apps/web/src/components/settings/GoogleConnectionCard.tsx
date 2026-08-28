@@ -50,7 +50,7 @@ const GRANT_NOTES: Record<GoogleGrant, string> = {
   'gmail.read': 'Search and read messages. Nothing is sent or deleted.',
   'gmail.send': 'Compose and send. It cannot read what it did not just write.',
   'calendar.read': 'List events, with recurring ones expanded.',
-  'calendar.write': 'Add and update events. Not your calendar settings or sharing.',
+  'calendar.write': 'Add and update events — grant reading too, or the agent plans blind. Never your calendar settings or sharing.',
   'drive.read': 'Search and read every file you can see.',
   'drive.write': 'Only files Metaclaude itself creates — not the rest of your Drive.',
 };

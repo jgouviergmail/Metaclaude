@@ -56,6 +56,20 @@ import {
 const TAB_CLASS =
   'px-3 py-2 text-[13px] font-medium text-muted border-b-2 border-transparent transition-colors data-[state=active]:border-accent data-[state=active]:text-ink hover:text-ink';
 
+/**
+ * Which tab the page opens on, from the URL's query string.
+ *
+ * Google's OAuth callback redirects to `/settings?google=connected|failed`,
+ * and the toast that reports the outcome lives in the connection card — which
+ * Radix *unmounts* while its tab is inactive. Landing on the default Security
+ * tab would therefore swallow the outcome entirely: no card, no effect, no
+ * toast, and the query parameter left in place. The parameter that carries
+ * the outcome has to also pick the tab that can read it.
+ */
+export function initialSettingsTab(search: string): string {
+  return new URLSearchParams(search).has('google') ? 'connections' : 'security';
+}
+
 export function SettingsPage() {
   const t = useT();
   const user = useAuthStore((state) => state.user);
@@ -70,7 +84,7 @@ export function SettingsPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl p-4 sm:p-6">
-          <Tabs.Root defaultValue="security">
+          <Tabs.Root defaultValue={initialSettingsTab(window.location.search)}>
             <Tabs.List
               className="mb-5 flex gap-1 overflow-x-auto border-b border-line"
               aria-label={t('Settings sections')}

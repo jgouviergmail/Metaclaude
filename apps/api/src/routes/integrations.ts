@@ -35,12 +35,43 @@ const ConnectRequest = z
   })
   .strict();
 
+/**
+ * This deployment's own origin, as seen from one request.
+ *
+ * The Origin header would be the natural answer, and it is wrong half the
+ * time: browsers only send it on POSTs and CORS requests, so the GET that
+ * shows the redirect URI never carries one — as first shipped, the setup
+ * screen could not display the very string it exists to display. The
+ * fallback is protocol + the Host header, and it is the *header*, not
+ * Fastify's `request.hostname`: Fastify 5 splits the port into its own
+ * field, and an origin rebuilt without `:8443` sends the browser somewhere
+ * the deployment does not answer. Both facts were measured, not assumed.
+ */
+export function deployedOrigin(input: {
+  origin?: string | undefined;
+  host?: string | undefined;
+  protocol: string;
+}): string | null {
+  // "null" is a literal browsers really send (sandboxed iframes, some
+  // redirects); it is the absence of an origin wearing a string's clothes.
+  if (input.origin && input.origin !== 'null') return input.origin;
+  if (!input.host) return null;
+  return `${input.protocol}://${input.host}`;
+}
+
 /** Where the browser lands after the callback, with a word about what happened. */
 function settleAt(origin: string, outcome: 'connected' | 'failed', detail?: string): string {
-  const url = new URL('/settings', origin);
-  url.searchParams.set('google', outcome);
-  if (detail) url.searchParams.set('reason', detail.slice(0, 300));
-  return url.toString();
+  const query = new URLSearchParams({ google: outcome });
+  if (detail) query.set('reason', detail.slice(0, 300));
+  try {
+    const url = new URL('/settings', origin);
+    url.search = query.toString();
+    return url.toString();
+  } catch {
+    // No usable Host header at all: a relative redirect still lands right,
+    // since the browser is already standing on the deployment.
+    return `/settings?${query.toString()}`;
+  }
 }
 
 export function registerIntegrationRoutes(app: App, context: AppContext): void {
@@ -52,7 +83,11 @@ export function registerIntegrationRoutes(app: App, context: AppContext): void {
    * will drag their Cloud project into Google's verification.
    */
   app.get('/api/integrations/google', async (request, reply) => {
-    const origin = request.headers.origin ?? '';
+    const origin = deployedOrigin({
+      origin: request.headers.origin,
+      host: request.headers.host,
+      protocol: request.protocol,
+    });
     let redirectUri: string | null = null;
     try {
       if (origin) redirectUri = GoogleConnectService.redirectUriFor(origin);
@@ -76,7 +111,11 @@ export function registerIntegrationRoutes(app: App, context: AppContext): void {
     const parsed = ConnectRequest.safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, 'Client id, secret and at least one grant.');
 
-    const origin = request.headers.origin;
+    const origin = deployedOrigin({
+      origin: request.headers.origin,
+      host: request.headers.host,
+      protocol: request.protocol,
+    });
     if (!origin) {
       throw new HttpError(400, 'Could not determine this deployment’s address from the request.');
     }
@@ -107,9 +146,10 @@ export function registerIntegrationRoutes(app: App, context: AppContext): void {
   });
 
   app.get('/api/integrations/google/callback', async (request, reply) => {
-    // Reconstructed from the request rather than taken from a header: this is
-    // a cross-site navigation, so there is no Origin to trust.
-    const origin = `${request.protocol}://${request.hostname}`;
+    // A cross-site navigation carries no Origin header, so this is always
+    // the protocol + Host fallback — which keeps a non-standard port, where
+    // `request.hostname` would drop it and strand the browser.
+    const origin = deployedOrigin({ host: request.headers.host, protocol: request.protocol }) ?? '/';
     const query = request.query as { code?: string; state?: string; error?: string };
 
     // The consent screen's own Cancel button lands here.
