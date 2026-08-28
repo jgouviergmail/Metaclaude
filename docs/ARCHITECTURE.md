@@ -318,6 +318,11 @@ kernel injects the winning passages as cited quotations behind
 `knowledgeEnabled`, budgeted, and credits only what was injected to
 `document_usages` — which is what the run's genesis reads back.
 
+Retrieval quality is measured rather than assumed: `learning/eval.ts` plus a
+labelled corpus, guarded by `retrieval-quality.test.ts` and re-runnable with
+`scripts/eval-retrieval.mjs`. Those measurements are why there is no
+reranking stage — see docs/LEARNING.md.
+
 ## The advisor
 
 `services/advisor.ts` is the part of the system that studies the system. It

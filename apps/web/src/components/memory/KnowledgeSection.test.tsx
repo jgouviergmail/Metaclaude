@@ -21,6 +21,7 @@ const { apiMock } = vi.hoisted(() => ({
       save: vi.fn(),
       delete: vi.fn(),
       search: vi.fn(),
+      reindex: vi.fn(),
     },
   },
 }));
@@ -63,6 +64,7 @@ beforeEach(() => {
   });
   apiMock.knowledge.delete.mockResolvedValue({ ok: true });
   apiMock.knowledge.search.mockResolvedValue({ results: [] });
+  apiMock.knowledge.reindex.mockResolvedValue({ affected: 7 });
 });
 
 describe('the shelf', () => {
@@ -157,5 +159,25 @@ describe('the retrieval rehearsal', () => {
     fireEvent.click(screen.getByRole('button', { name: /preview/i }));
 
     expect(await screen.findByText(/no passages for this/i)).toBeDefined();
+  });
+});
+
+describe('re-indexing', () => {
+  it('offers the button only once there is something to re-index', async () => {
+    apiMock.knowledge.list.mockResolvedValue({ documents: [] });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText(/nothing on the shelf yet/i);
+    expect(screen.queryByRole('button', { name: /re-index/i })).toBeNull();
+  });
+
+  it('re-embeds every passage on demand — the twin of memory maintenance', async () => {
+    // After an embedding-provider change the dense arm silently stops
+    // contributing while the lexical arm keeps answering; without a button
+    // there is no way to notice or to fix it from the interface.
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.click(screen.getByRole('button', { name: /re-index/i }));
+    await waitFor(() => expect(apiMock.knowledge.reindex).toHaveBeenCalled());
   });
 });

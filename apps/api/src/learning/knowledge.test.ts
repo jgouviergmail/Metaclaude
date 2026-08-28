@@ -295,6 +295,63 @@ describe('changing the embedding provider', () => {
     expect(results.length).toBeGreaterThan(0);
   });
 
+  it('asks the embedder for bounded batches, not for the whole library at once', async () => {
+    // Invisible under the hashing embedder, which is instant; the day someone
+    // installs the sentence-transformer the doctor recommends, one call for
+    // every passage in the library is the shape that hurts.
+    for (let i = 0; i < 6; i += 1) {
+      await store.upsert({ workspaceId: null, title: `Doc ${i}`, content: LEASE });
+    }
+    db.prepare(`UPDATE documents SET embedding_model = 'hash-v0:64'`).run();
+
+    const sizes: number[] = [];
+    const counting = new HashingEmbedder(64);
+    const spy = {
+      id: counting.id,
+      dimension: counting.dimension,
+      embed: (text: string) => counting.embed(text),
+      embedBatch: (texts: string[]) => {
+        sizes.push(texts.length);
+        return counting.embedBatch(texts);
+      },
+    };
+    const observed = new KnowledgeStore(db, spy, () => clock);
+
+    const total = db.prepare('SELECT COUNT(*) AS n FROM document_chunks').get() as { n: number };
+    expect(await observed.reindex(4)).toBe(total.n);
+    expect(sizes.length).toBeGreaterThan(1);
+    // A document travels whole — a batch may overshoot the bound to keep one
+    // together, but it may never be built from an unbounded accumulation.
+    for (const size of sizes) expect(size).toBeLessThanOrEqual(4 + 3);
+  });
+
+  it('never marks a document re-indexed unless every one of its chunks was written', async () => {
+    // The stale query finds chunks *through* their document, so a document
+    // marked halfway hides its remaining chunks from every later run — they
+    // would keep vectors from the old provider forever, silently.
+    await store.upsert({ workspaceId: null, title: 'Bail', content: LEASE });
+    await store.upsert({ workspaceId: null, title: 'Runbook', content: RUNBOOK });
+    db.prepare(`UPDATE documents SET embedding_model = 'hash-v0:64'`).run();
+
+    const short = new HashingEmbedder(64);
+    const truncating = {
+      id: short.id,
+      dimension: short.dimension,
+      embed: (text: string) => short.embed(text),
+      // A provider that answers with fewer vectors than it was asked for.
+      embedBatch: async (texts: string[]) => (await short.embedBatch(texts)).slice(0, -1),
+    };
+    const broken = new KnowledgeStore(db, truncating, () => clock);
+
+    await expect(broken.reindex()).rejects.toThrow(/returned \d+ vectors for \d+ passages/);
+    // Refused, not half-applied: everything is still stale and recoverable.
+    const stale = db
+      .prepare(`SELECT COUNT(*) AS n FROM documents WHERE embedding_model = 'hash-v0:64'`)
+      .get() as { n: number };
+    expect(stale.n).toBe(2);
+    expect(await store.reindex()).toBeGreaterThan(0);
+  });
+
   it('the lexical arm still answers while vectors are stale', async () => {
     await store.upsert({
       workspaceId: null,

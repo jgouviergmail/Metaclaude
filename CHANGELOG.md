@@ -11,6 +11,72 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-08-28
+
+### Added
+
+- **A retrieval evaluation harness — and the two measurements that changed
+  the plan.** `learning/eval.ts` computes recall@k, MRR and nDCG@k over a
+  labelled corpus; `scripts/eval-retrieval.mjs` re-runs it after any change
+  to the embedder, the chunker, the relevance gates or the fusion. It exists
+  because retrieval improvements are the kind that feel obviously right and
+  are not — and it immediately proved that twice.
+- **The doctor now names the embedder that actually answered.** Requesting
+  `local` embeddings falls back to the built-in hashing one whenever the
+  optional model package or its download is unavailable, and until now the
+  only trace was one boot log line. Since that provider is the difference
+  between a library that understands a rephrased question and one that only
+  matches words, Settings → System → Doctor reports it, warns when the
+  configured provider is not the one running, and says which regime the
+  deployment is in.
+- **Re-index the knowledge library from the interface**, the twin of memory
+  maintenance and needed for the same reason: after an embedding-provider
+  change, vectors from two spaces are incomparable, the dense arm silently
+  stops contributing, and the exact-word arm keeps answering — a degradation
+  quiet enough to need a button.
+
+### Changed
+
+- **No reranking stage, and that is now a measured decision rather than an
+  omission.** Asked whether reranking would help, the harness answered from
+  both ends. On questions phrased in the corpus' own words, retrieval is
+  already perfect — recall@5, MRR and nDCG all 100%, holding at three hundred
+  chunks and across three leases that differ only by the address in their
+  title. On questions sharing no content word with their answer it scores
+  zero — and zero *at the candidate pool*, not merely below the cut. A
+  reranker reorders candidates; there are none to reorder, so reranking is
+  not a weak improvement here but an arithmetically impossible one. The lever
+  is the embedding provider, and the tests now record that conclusion so a
+  future contributor meets the evidence rather than the intuition.
+- **The guide says what the library finds and what it does not.** The shape
+  is sharp rather than gradual — exact in the document's own words, blind
+  outside them — so the memory chapter states it, with the habit that follows
+  (phrase the question with a word the document contains, and rehearse the
+  retrieval) and the upgrade path that removes the limit. `.env.example`
+  stops implying `METACLAUDE_EMBEDDINGS=local` works out of the box: it needs
+  a ~350 MB dependency in the image and a model download.
+
+### Fixed
+
+- **The instrument no longer contradicts itself.** `evaluate` scored
+  recall and nDCG over the top `k` but MRR over the *whole* returned list, so
+  a pipeline handing back fifty candidates with a hit at rank twenty would
+  report "recall@5 0%, MRR 5%" — a passage no run would ever receive,
+  credited as if it had been read, and precisely the shape a reranker's
+  arrival would produce. Every figure in a report now answers for the same
+  window.
+- **Re-indexing the knowledge library asks the embedder for bounded
+  batches**, as memory's maintenance already did, instead of for every
+  passage in the library in a single call. Invisible under the hashing
+  embedder that ships and live the day someone installs the model the doctor
+  recommends. Batched by *document*, because staleness is recorded on the
+  document while vectors live on its chunks: marking one halfway would strand
+  its remaining passages under a document later runs no longer look at. A
+  provider returning fewer vectors than it was asked for is now refused
+  outright rather than half-applied.
+- **The re-index control speaks French**, like the rest of the library
+  screen it sits on.
+
 ## [0.31.0] — 2026-08-28
 
 ### Added

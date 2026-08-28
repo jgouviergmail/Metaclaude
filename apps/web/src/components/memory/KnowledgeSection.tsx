@@ -17,7 +17,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpenCheck, FileText, Plus, Search, Trash2 } from 'lucide-react';
+import { BookOpenCheck, FileText, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -115,6 +115,23 @@ export function KnowledgeSection({
       toast.error(error instanceof ApiError ? error.message : t('Could not update that document.')),
   });
 
+  // The twin of memory's re-index: after switching embedding provider the
+  // dense arm silently stops contributing until every passage is re-embedded,
+  // and the lexical arm keeps answering — quiet enough to need a button.
+  const reindex = useMutation({
+    mutationFn: () => api.knowledge.reindex(),
+    onSuccess: (result) => {
+      refresh();
+      toast.success(
+        result.affected === 0
+          ? t('Everything was already indexed with the current embedder.')
+          : t('{n} passages re-embedded.', { n: String(result.affected) }),
+      );
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : t('Could not re-index.')),
+  });
+
   const remove = useMutation({
     mutationFn: (id: string) => api.knowledge.delete(id),
     onSuccess: () => {
@@ -160,10 +177,24 @@ export function KnowledgeSection({
             )}
           </p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setEditing({ ...EMPTY_DRAFT, workspaceId: scope !== 'all' && scope !== 'global' ? scope : null })}>
-          <Plus className="size-4" />
-          {t('Add document')}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {documents.length > 0 ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={reindex.isPending}
+              onClick={() => reindex.mutate()}
+              title={t('Recompute every passage’s embedding — needed after changing embedding provider.')}
+            >
+              <RefreshCw className="size-4" />
+              {t('Re-index')}
+            </Button>
+          ) : null}
+          <Button variant="primary" size="sm" onClick={() => setEditing({ ...EMPTY_DRAFT, workspaceId: scope !== 'all' && scope !== 'global' ? scope : null })}>
+            <Plus className="size-4" />
+            {t('Add document')}
+          </Button>
+        </div>
       </div>
 
       {query.isLoading ? (

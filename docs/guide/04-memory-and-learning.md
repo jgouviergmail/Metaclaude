@@ -55,6 +55,43 @@ The library can be switched off per workspace (Workspace settings →
 Learning), separately from memory: what the system learned and what it was
 handed to read are different trusts.
 
+### What it finds, and what it does not
+
+This is worth knowing before you rely on it, because the shape is sharp
+rather than gradual. Retrieval was measured against a corpus of a hundred
+passages with a labelled answer for each question:
+
+- **Ask in the document's own words and it is exact.** Every labelled
+  question — including paraphrases like *« combien de temps pour récupérer le
+  dépôt de garantie ? »* against a passage that says *restitué dans un délai
+  de deux mois* — comes back at rank 1. It stays at rank 1 as the shelf grows
+  past three hundred passages, and when several documents differ only by
+  their title (three leases, three different notice periods) the right one
+  still wins, because each passage is indexed with its document title.
+- **Ask in words the document never uses and it finds nothing.** *« puis-je
+  partir avant la fin ? »* does not reach a passage about *préavis*; *« on
+  m'a cambriolé »* does not reach one about *vol*; an English question does
+  not reach a French answer. Measured at zero.
+
+The cause is the embedding provider. By default Metaclaude uses a built-in
+hashing embedder — no model download, no network, works everywhere — whose
+"similarity" is really character-overlap. It is a very good fuzzy word
+matcher and not a semantic one. **Settings → System → Doctor** now names
+which embedder is actually running and says which of the two regimes you are
+in.
+
+To cross that wall, enable a real sentence-transformer: install
+`@huggingface/transformers` in the image, set `METACLAUDE_EMBEDDINGS=local`,
+restart, then press **Re-index** on the knowledge library (and Re-index under
+Memory maintenance) so existing passages are re-embedded in the new space.
+Until that re-index runs, the exact-word arm keeps answering and the
+semantic one stays silent — which is why the doctor warns rather than
+failing.
+
+Until then, the practical habit is simple: **phrase the question with a word
+the document actually contains.** The **Rehearse a retrieval** box is there
+to check in two seconds.
+
 ## The policy learner
 
 Under **Auto**, the model and effort for each run are chosen by a learner that

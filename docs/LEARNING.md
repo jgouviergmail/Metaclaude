@@ -315,6 +315,38 @@ tasks in this workspace"* — surfaced in the policy preview.
 
 ---
 
+## Measuring retrieval, and what it measured
+
+`learning/eval.ts` is the instrument: recall@k, MRR and nDCG@k over labelled
+queries, macro-averaged. `learning/eval-corpus.ts` is the corpus — five real
+documents, eight distractor seeds replicated to reach a few hundred chunks,
+and ten questions each naming what it probes. `retrieval-quality.test.ts`
+guards the result; `scripts/eval-retrieval.mjs` re-measures it after a change.
+
+It exists because retrieval improvements are exactly the kind that feel
+obviously right and are not. Two measurements decided this subsystem's
+direction:
+
+**On questions phrased in the corpus' own words, retrieval is already
+perfect.** recall@5, MRR and nDCG all 1.0 — including paraphrases, including
+at three hundred chunks, including three leases that differ only by the
+address in their title (which works because each chunk is embedded and
+indexed with its document title prefixed; remove that and the test notices).
+
+**On questions sharing no content word with their answer, it finds nothing.**
+Zero on all three metrics — and zero *at the candidate pool*, not merely
+below k. That second number is the one that mattered: **a reranker reorders
+candidates, and there are none to reorder.** Reranking is not a marginal
+improvement here, it is arithmetically incapable of being one, so this
+subsystem has no reranking stage and the decision is recorded in
+`the semantic wall` tests rather than in anyone's memory.
+
+The lever is the embedding provider. The hashing embedder's "similarity" is
+character-n-gram overlap; a sentence-transformer would bridge those
+questions. That is a 350 MB dependency and a model download, so it stays
+opt-in — and the doctor's `retrieval` check now reports which embedder
+actually answered, warning when the configured one silently fell back.
+
 ## Embeddings
 
 Two providers, both **local**. No text ever leaves the machine for embedding.

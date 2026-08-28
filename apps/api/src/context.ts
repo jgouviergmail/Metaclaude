@@ -554,6 +554,11 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       }
     },
     credentialMode: () => claudeCredentials.status().mode,
+    embeddings: () => ({
+      requested: config.embeddings.provider,
+      active: embedder.id,
+      dimension: embedder.dimension,
+    }),
     activeRuns: () => kernel.activeCount,
     queuedRuns: () => kernel.queuedCount,
     // Written by deploy/bin/metaclaude-backup on the host, into the volume

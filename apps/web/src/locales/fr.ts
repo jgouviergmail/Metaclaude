@@ -514,6 +514,13 @@ export const fr: Record<string, string> = {
   'Reference documents the agent can quote — a lease, a spec, a runbook. Global documents reach every workspace; scoped ones stay in theirs. Runs retrieve the relevant passages automatically, and the transcript shows which ones were used.':
     "Des documents de référence que l'agent peut citer — un bail, une spec, un runbook. Les documents globaux atteignent tous les espaces de travail ; les autres restent dans le leur. Les runs récupèrent automatiquement les passages pertinents, et le transcript montre ceux qui ont servi.",
   'Add document': 'Ajouter un document',
+  'Re-index': 'Réindexer',
+  'Recompute every passage’s embedding — needed after changing embedding provider.':
+    "Recalculer le vecteur de chaque passage — nécessaire après un changement de fournisseur d'embeddings.",
+  'Everything was already indexed with the current embedder.':
+    "Tout était déjà indexé avec l'embedder actuel.",
+  '{n} passages re-embedded.': '{n} passages ré-indexés.',
+  'Could not re-index.': 'Impossible de réindexer.',
   'Nothing on the shelf yet': "Rien sur l'étagère pour l'instant",
   'Paste the documents your runs keep needing — the contract, the conventions, the runbook — and the agent will cite them instead of guessing.':
     "Collez les documents dont vos runs ont sans cesse besoin — le contrat, les conventions, le runbook — et l'agent les citera au lieu de deviner.",

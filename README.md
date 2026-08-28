@@ -27,7 +27,8 @@ system around it:
   contract, a spec, a runbook — globally or per workspace; runs retrieve the
   relevant passages (hybrid semantic + exact-word search) and cite them by
   document and section, with the transcript showing exactly what was
-  consulted.
+  consulted. Retrieval quality is *measured*, not asserted: a labelled corpus
+  and a recall/MRR/nDCG harness ship with it.
 - **A policy that learns.** Which model and effort level actually works for which
   kind of task, measured rather than guessed.
 - **Loops.** Automations that run on a schedule, including continuous ones that

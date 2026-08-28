@@ -335,6 +335,28 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
     return reply.status(parsed.data.id ? 200 : 201).send({ document });
   });
 
+  /**
+   * Re-embed every chunk written by a different provider.
+   *
+   * The twin of memory maintenance's `reindex`, and needed for the same
+   * reason: vectors from two providers are not comparable, so after a switch
+   * the dense arm silently stops contributing until this has run. Until then
+   * the lexical arm still answers, which is why the degradation is quiet
+   * enough to need a button rather than a crash.
+   */
+  app.post('/api/knowledge/reindex', async (request, reply) => {
+    const actor = requireOperator(request);
+    const affected = await context.knowledge.reindex();
+    context.audit.record({
+      actor: actor.username,
+      action: 'knowledge.reindex',
+      target: null,
+      ipAddress: requestIp(context, request),
+      detail: `${affected} passages`,
+    });
+    return reply.send({ affected });
+  });
+
   app.delete<{ Params: { id: string } }>('/api/knowledge/:id', async (request, reply) => {
     const actor = requireOperator(request);
     if (!context.knowledge.delete(request.params.id)) {

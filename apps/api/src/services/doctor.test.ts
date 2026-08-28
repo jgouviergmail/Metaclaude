@@ -31,6 +31,7 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     diskFree: async () => 50 * GB,
     cliVersion: async () => '2.1.246 (Claude Code)',
     credentialMode: () => 'oauth',
+    embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512 }),
     activeRuns: () => 1,
     queuedRuns: () => 0,
     readBackupMarker: async () =>
@@ -65,6 +66,7 @@ describe('a healthy system', () => {
       'disk:workspaces',
       'backup',
       'claude-cli',
+      'retrieval',
       'runs',
       'automations',
     ]);
@@ -190,5 +192,45 @@ describe('a broken probe', () => {
     expect(report.checks.find((entry) => entry.name === 'disk:data')?.status).toBe('fail');
     expect(report.checks.find((entry) => entry.name === 'disk:data')?.detail).toContain('EACCES');
     expect(report.checks.find((entry) => entry.name === 'database')?.status).toBe('ok');
+  });
+});
+
+describe('the retrieval check', () => {
+  it('names the embedder actually running, and calls the hashing one word-matching', async () => {
+    const report = await makeDoctor({
+      embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512 }),
+    }).run();
+    const check = report.checks.find((c) => c.name === 'retrieval')!;
+
+    expect(check.status).toBe('ok');
+    expect(check.summary).toContain('hash-v1:512');
+    expect(check.detail).toMatch(/matches words, not meaning/i);
+  });
+
+  it('warns when the requested provider is not the one that answered', async () => {
+    // Today this divergence is one boot log line nobody reads, while the
+    // difference is a library that understands a rephrased question versus
+    // one that does not.
+    const report = await makeDoctor({
+      embeddings: () => ({ requested: 'local', active: 'hash-v1:512', dimension: 512 }),
+    }).run();
+    const check = report.checks.find((c) => c.name === 'retrieval')!;
+
+    expect(check.status).toBe('warn');
+    expect(check.summary).toContain('"local"');
+    expect(check.detail).toMatch(/re-index/i);
+    // A warning must lift the whole report out of 'ok', or it is decoration.
+    expect(report.status).not.toBe('ok');
+  });
+
+  it('is plainly ok when a real sentence-transformer is running', async () => {
+    const report = await makeDoctor({
+      embeddings: () => ({ requested: 'local', active: 'st:Xenova/all-MiniLM-L6-v2', dimension: 384 }),
+    }).run();
+    const check = report.checks.find((c) => c.name === 'retrieval')!;
+
+    expect(check.status).toBe('ok');
+    expect(check.summary).toContain('384d');
+    expect(check.detail).toMatch(/shares no words/i);
   });
 });

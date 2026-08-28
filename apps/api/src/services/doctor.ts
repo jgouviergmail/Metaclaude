@@ -49,6 +49,17 @@ export interface DoctorDeps {
    */
   readBackupMarker: () => Promise<string | null>;
   credentialMode: () => string;
+  /**
+   * What retrieval is *actually* running with, versus what was configured.
+   *
+   * These differ silently today: `METACLAUDE_EMBEDDINGS=local` falls back to
+   * the hashing embedder whenever the optional model package or its download
+   * is unavailable, and the only trace is one log line at boot. Since the
+   * provider is the difference between a library that understands a rephrased
+   * question and one that only matches words, the divergence has to be
+   * visible where an operator looks for problems.
+   */
+  embeddings: () => { requested: string; active: string; dimension: number };
   activeRuns: () => number;
   queuedRuns: () => number;
   now?: () => number;
@@ -83,6 +94,7 @@ export class Doctor {
     await examine('disk:workspaces', () => this.disk('disk:workspaces', this.deps.workspacesDir));
     await examine('backup', () => this.backup());
     await examine('claude-cli', () => this.claudeCli());
+    await examine('retrieval', () => this.retrieval());
     await examine('runs', () => this.runs());
     await examine('automations', () => this.automations());
 
@@ -203,6 +215,43 @@ export class Doctor {
       status: 'ok',
       summary: `Last backup ${hours <= 1 ? '1 hour' : `${hours} hours`} ago.`,
       detail: archive,
+    };
+  }
+
+  /**
+   * Which embedder retrieval is running on, and whether that is what was
+   * asked for.
+   *
+   * A warning rather than a failure when they diverge: the hashing embedder
+   * works, and a deployment running on it is degraded, not broken. What it
+   * cannot do is bridge a question to an answer that shares no words with it
+   * — measured at 0% recall on such queries — so the summary says which
+   * regime this deployment is in rather than only naming a string.
+   */
+  private retrieval(): DoctorCheck {
+    const { requested, active, dimension } = this.deps.embeddings();
+    const lexicalOnly = active.startsWith('hash');
+
+    if (requested !== 'hash' && lexicalOnly) {
+      return {
+        name: 'retrieval',
+        status: 'warn',
+        summary: `"${requested}" embeddings were requested; the built-in hashing embedder is what is running.`,
+        detail:
+          'The optional model package is missing or its download failed, so retrieval matches words rather than meaning: ' +
+          'a question phrased differently from its answer will find nothing. Install @huggingface/transformers in the ' +
+          'image and re-index from Memory → Knowledge, or keep to the hashing embedder and phrase questions in the ' +
+          'corpus’ own words.',
+      };
+    }
+
+    return {
+      name: 'retrieval',
+      status: 'ok',
+      summary: `${active} (${dimension}d)`,
+      detail: lexicalOnly
+        ? 'The built-in hashing embedder: no download, no network — and no semantics. Retrieval matches words, not meaning.'
+        : 'A sentence-transformer: retrieval bridges a question to an answer that shares no words with it.',
     };
   }
 

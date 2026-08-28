@@ -456,31 +456,87 @@ export class KnowledgeStore {
       }));
   }
 
-  /** Re-embed every chunk written by a different provider. Returns how many. */
-  async reindex(): Promise<number> {
+  /**
+   * Re-embed every chunk written by a different provider. Returns how many.
+   *
+   * Batched, like `MemoryStore.reindex`, so a real sentence-transformer is
+   * asked for a bounded number of vectors at a time rather than for the whole
+   * library in one call — the difference is invisible under the hashing
+   * embedder that ships, and appears the day someone installs the model the
+   * doctor recommends.
+   *
+   * Batched **by document**, though, which memory does not have to care
+   * about: staleness is recorded on the document while the vectors live on
+   * its chunks, so a document may only be marked once *every* one of its
+   * chunks has been rewritten. Marking it halfway would strand the rest
+   * permanently — the query below finds stale chunks through their document,
+   * so chunks under an already-marked document are invisible to the next run.
+   * A document whose chunk count exceeds `batchSize` therefore travels in one
+   * oversized batch on purpose.
+   */
+  async reindex(batchSize = 64): Promise<number> {
     const stale = this.db
       .prepare<[string], { id: string; document_id: string; heading: string; text: string; title: string }>(
         `SELECT c.id, c.document_id, c.heading, c.text, d.title
          FROM document_chunks c JOIN documents d ON d.id = c.document_id
-         WHERE d.embedding_model != ?`,
+         WHERE d.embedding_model != ?
+         ORDER BY c.document_id, c.seq`,
       )
       .all(this.embedder.id);
     if (stale.length === 0) return 0;
 
-    const vectors = await this.embedder.embedBatch(
-      stale.map((row) =>
-        chunkEmbeddingText(row.title, { seq: 0, heading: row.heading, text: row.text }),
-      ),
-    );
+    const byDocument = new Map<string, typeof stale>();
+    for (const row of stale) {
+      const rows = byDocument.get(row.document_id);
+      if (rows) rows.push(row);
+      else byDocument.set(row.document_id, [row]);
+    }
 
-    tx(this.db, () => {
-      const update = this.db.prepare('UPDATE document_chunks SET embedding = ? WHERE id = ?');
-      stale.forEach((row, index) => update.run(packEmbedding(vectors[index]!), row.id));
-      this.db
-        .prepare('UPDATE documents SET embedding_model = ? WHERE embedding_model != ?')
-        .run(this.embedder.id, this.embedder.id);
-    });
-    return stale.length;
+    let count = 0;
+    let batch: typeof stale = [];
+    let documents: string[] = [];
+
+    const flush = async (): Promise<void> => {
+      if (batch.length === 0) return;
+      const pending = batch;
+      const pendingDocuments = documents;
+      batch = [];
+      documents = [];
+
+      const vectors = await this.embedder.embedBatch(
+        pending.map((row) =>
+          chunkEmbeddingText(row.title, { seq: 0, heading: row.heading, text: row.text }),
+        ),
+      );
+      // Skipping a chunk here is not an option the way it is in memory, which
+      // marks each row as it writes it: a document is marked as a whole, so a
+      // short result would strand the unwritten chunks under a document the
+      // next run no longer looks at. Refusing leaves the batch untouched and
+      // still stale, which is the recoverable direction.
+      if (vectors.length !== pending.length) {
+        throw new Error(
+          `embedder ${this.embedder.id} returned ${vectors.length} vectors for ${pending.length} passages`,
+        );
+      }
+
+      tx(this.db, () => {
+        const update = this.db.prepare('UPDATE document_chunks SET embedding = ? WHERE id = ?');
+        const mark = this.db.prepare('UPDATE documents SET embedding_model = ? WHERE id = ?');
+        pending.forEach((row, index) => {
+          update.run(packEmbedding(vectors[index]!), row.id);
+          count += 1;
+        });
+        for (const documentId of pendingDocuments) mark.run(this.embedder.id, documentId);
+      });
+    };
+
+    for (const [documentId, rows] of byDocument) {
+      batch = [...batch, ...rows];
+      documents.push(documentId);
+      if (batch.length >= batchSize) await flush();
+    }
+    await flush();
+    return count;
   }
 
   /* ---------------------------------------------------------------------- */

@@ -713,6 +713,7 @@ export const api = {
     delete: (id: string) => request<{ ok: boolean }>(`/api/knowledge/${id}`, { method: 'DELETE' }),
     search: (q: string, workspaceId?: string) =>
       request<{ results: KnowledgeSearchHit[] }>(`/api/knowledge/search${qs({ q, workspaceId })}`),
+    reindex: () => request<{ affected: number }>('/api/knowledge/reindex', { method: 'POST' }),
   },
 
   /* --------------------------- Automations ---------------------------- */
