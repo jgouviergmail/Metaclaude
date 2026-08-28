@@ -11,6 +11,18 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.10] — 2026-08-28
+
+### Added
+
+- **The workspaces index and the dashboard are tested**, leaving eight
+  components untested. The assertion that earns its keep here guards the only
+  control in the product that erases a directory: the delete dialog's "also
+  delete the files on disk" checkbox defaults to off, changes what the confirm
+  button says, and **resets between workspaces** — ticking it for one project
+  must not arrive pre-armed on the next. Sabotaged to confirm it bites.
+
+
 ## [0.32.9] — 2026-08-28
 
 ### Added
