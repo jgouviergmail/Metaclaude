@@ -293,6 +293,16 @@ restates the code is noise; one that records a decision or a trap is not.
   shape; `--list` prints what each one found. And pluralise with `plural()`,
   never a ternary: `n === 1` is an English rule, French keeps the singular at
   zero, and the ternary silently stays English once the sentence is translated.
+- **`./deploy/check.sh` green on your machine is not `check.sh` green.** Its
+  shellcheck section is guarded by `command -v shellcheck`, so a machine
+  without the tool prints one `skip` among eighty passes and reads as a clean
+  run. CI has it: 80 passed / 9 skipped locally was 105 passed / **2 failed**
+  there, and the two were SC2034 warnings that cost a release its tag. The skip
+  is correct — the check genuinely cannot run — but the local run is then
+  answering a smaller question than the one that gates a push. Shellcheck needs
+  no root: unpack the release tarball into `~/sc` and put it on `PATH`. Run it
+  the way `check.sh` does, `-x --severity=warning`; the default severity adds
+  `info` notes that CI does not fail on.
 - **`attr=t('x')` is not JSX.** A codemod replacing a string literal has to know
   whether it sat in `attr="x"` (needs braces) or inside `attr={…}` (already has
   them). The parser reports the resulting error lines away from the edit, in a

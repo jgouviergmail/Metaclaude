@@ -242,7 +242,7 @@ print_infra_digests() {
 # its last tag is gone, and `docker rmi <id>` refuses outright while more than
 # one name points at it. Only an untagged image is addressed by id.
 prune_images() {
-  local spared="" doomed="" seen="" kept=0 listing ref_file ref id created
+  local spared="" doomed="" seen="" kept=0 listing ref_file ref id
 
   for ref_file in "$CURRENT" "$PREVIOUS"; do
     [ -f "$ref_file" ] || continue
@@ -258,7 +258,11 @@ prune_images() {
 
   # Newest first. One image can appear on several rows, once per tag, so the
   # ceiling counts distinct images rather than rows.
-  while IFS=$'\t' read -r created id ref; do
+  #
+  # The creation date is read into `_` rather than a name: `sort -r` above has
+  # already done everything it is here for, and a named variable nothing reads
+  # is a claim that something does.
+  while IFS=$'\t' read -r _ id ref; do
     [ -n "$id" ] || continue
     case " $seen " in *" $id "*) continue ;; esac
     seen="$seen$id "
@@ -268,7 +272,7 @@ prune_images() {
     doomed="$doomed$id "
   done <<< "$listing"
 
-  while IFS=$'\t' read -r created id ref; do
+  while IFS=$'\t' read -r _ id ref; do
     [ -n "$id" ] || continue
     case " $doomed " in *" $id "*) ;; *) continue ;; esac
     case "$ref" in

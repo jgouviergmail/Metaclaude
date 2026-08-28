@@ -955,11 +955,16 @@ STUB
   (
     PATH="$pi_stub:$PATH"; export MC_CALLS="$pi_calls"; : > "$pi_calls"
     CURRENT="$pi_rel/current"; PREVIOUS="$pi_rel/previous"
+    # These four are `prune_images`'s inputs, read by the function sourced
+    # below. Shellcheck cannot follow a function into a file it is told not to
+    # read, so it sees four assignments nobody uses.
+    # shellcheck disable=SC2034
     ALLOWED_IMAGE_PREFIX="ghcr.io/acme/metaclaude"
     # One, deliberately. At two, the newest two images happen to be current and
     # previous, so the ceiling alone would spare them and this would prove
     # nothing about the sparing. At one, idB survives only because `previous`
     # names it — which is the property worth having.
+    # shellcheck disable=SC2034
     IMAGE_KEEP=1
     log() { :; }
     # shellcheck source=/dev/null

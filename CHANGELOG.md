@@ -11,6 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.34.1] — 2026-08-28
+
+### Fixed
+
+- **Two shellcheck warnings failed the release that 0.34.0 shipped in.** Both
+  are unused variables in the image purge and its test: the second `read` loop
+  named a creation date nothing reads — `sort -r` has already done everything
+  that field is there for — and the harness sets `ALLOWED_IMAGE_PREFIX` and
+  `IMAGE_KEEP` for a function it sources, which shellcheck cannot follow into a
+  file it is told not to read. Neither changes behaviour, and both stopped a
+  green build from becoming a tag.
+- **The shellcheck section is the one `deploy/check.sh` skips most quietly.**
+  It is guarded by `command -v shellcheck`, so a machine without it prints
+  `skip` among eighty passes and reads as a clean run — which is exactly what
+  happened: 80 passed and 9 skipped locally against 105 passed and 2 failed on
+  CI, where the tool exists. The skip is right (the check cannot run), but
+  "check.sh is green here" is not the same claim as "check.sh is green", and
+  only the second one gates a release. Install shellcheck before believing a
+  local run: it needs no root, and the difference is twenty-five assertions.
+
 ## [0.34.0] — 2026-08-28
 
 ### Added
