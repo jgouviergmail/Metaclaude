@@ -293,6 +293,8 @@ export const fr: Record<string, string> = {
   /* Chrome */
   Account: 'Compte',
   'Sign out': 'Se déconnecter',
+  'Show reasoning': 'Afficher le raisonnement',
+  'Expand tool calls': 'Déplier les appels d’outils',
   'Signed out': 'Déconnecté',
   Live: 'En direct',
   'Connected. Streaming updates in real time.': 'Connecté. Mises à jour en temps réel.',

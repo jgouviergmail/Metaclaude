@@ -11,6 +11,38 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.5] — 2026-08-28
+
+### Added
+
+- **Five more components tested — and five defects they had been hiding.**
+  `Modal`, `TaskCard` and `CommandPalette` were paid down last release;
+  `ConnectionBadge`, `Menu`, `UserMenu` and `CopyableCode` follow, taking the
+  ratchet from 22 untested components to 18. Two new ratchets guard the i18n
+  leaks this found.
+
+### Fixed
+
+- **A menu never told assistive technology which item was selected.** The tick
+  beside the active theme, model or tool is `aria-hidden`, and nothing else
+  carried the state — a screen-reader user heard a list of identical items.
+  `MenuItem` now declares `role="menuitemcheckbox"` and `aria-checked`
+  whenever selection is a concept, and stays an ordinary command when it is
+  not: announcing "Delete" as an unchecked box would be worse than silence.
+- **The connection badge imported the translator and never called it.** All
+  four of its states rendered English while `fr.ts` carried their French,
+  unreachable — the same for six strings in the account menu (`Light`,
+  `Transcript`, `Sign out`…), whose translations were also already there.
+- **The account menu closed after the first preference.** A comment beside it
+  promised the menu stays open so several can be set at once; the `keepOpen`
+  prop that would have made that true was missing, so the comment described
+  behaviour the code did not have.
+- **`ConnectionBadge` mounted with a stale state.** It read the socket's
+  current state, which is right, but nothing pinned it — a badge that showed
+  green after mounting on a dropped socket would have waited for a transition
+  that may never come.
+
+
 ## [0.32.4] — 2026-08-28
 
 ### Fixed

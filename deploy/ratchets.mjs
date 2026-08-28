@@ -125,6 +125,61 @@ function countUntranslatedStrings() {
 }
 
 /**
+ * User-visible English left hard-coded in a component that already translates.
+ *
+ * The third and last way a string escapes the catalogue, and the only one the
+ * other two cannot see: the component calls `t()` elsewhere, so the hook
+ * check passes, and the literal never reaches `t()` at all, so the
+ * missing-key check has nothing to look for. `UserMenu` shipped six of these
+ * — `Light`, `Transcript`, `Sign out` — with their French already sitting in
+ * `fr.ts`, unreachable.
+ *
+ * A ceiling rather than a floor of zero: `AgentsPage` carries most of what is
+ * left, and lowering it is ordinary follow-up work. `lib/i18n.tsx` is skipped
+ * because it is the translator itself, where the pattern matches type
+ * annotations rather than prose.
+ */
+function countHardcodedUiText() {
+  const TEXT = />\s*([A-Z][a-z]+(?: [A-Za-z’']+){0,5})\s*</g;
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    if (file.endsWith('lib/i18n.tsx')) continue;
+    const body = read(file);
+    if (!body.includes('useT')) continue;
+    n += (body.match(TEXT) ?? []).length;
+  }
+  return n;
+}
+
+/**
+ * Components that pull in `useT` and never call it.
+ *
+ * `t()` falls back to its English key, so a *missing* translation is invisible
+ * — the previous ratchet covers that direction. This is the other one: a
+ * component that imports the hook, renders raw English, and leaves the
+ * catalogue carrying translations nothing reaches. `ConnectionBadge` did
+ * exactly that for all four of its states, with the French strings sitting in
+ * `fr.ts` unused.
+ *
+ * The reverse check — catalogue entries no `t()` call references — was tried
+ * and rejected: `t(column.label)` and `t(action.group)` pass variables, so 89
+ * of 488 entries looked orphaned and almost none were. A ratchet that cries
+ * wolf gets disabled; this one cannot, because importing a hook and never
+ * calling it has no legitimate form.
+ */
+function countUnusedTranslationHooks() {
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    const body = read(file);
+    if (!body.includes('useT')) continue;
+    if (!/\bt\(/.test(body)) n += 1;
+  }
+  return n;
+}
+
+/**
  * React components with no sibling test file.
  *
  * The API is tested at 0.86 lines of test per line of source; the web app was
@@ -226,6 +281,18 @@ const METRICS = [
     direction: 'down',
     label: 'UI strings missing from the French catalogue',
     measure: countUntranslatedStrings,
+  },
+  {
+    key: 'hardcodedUiText',
+    direction: 'down',
+    label: 'user-visible English not routed through t()',
+    measure: countHardcodedUiText,
+  },
+  {
+    key: 'unusedTranslationHooks',
+    direction: 'down',
+    label: 'components importing useT without calling it',
+    measure: countUnusedTranslationHooks,
   },
   {
     key: 'untestedComponents',

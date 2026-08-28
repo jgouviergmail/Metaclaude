@@ -67,6 +67,14 @@ export const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function MenuI
     <DropdownMenu.Item
       ref={ref}
       disabled={disabled}
+      // The tick below is `aria-hidden`, so without these two attributes the
+      // selected theme, model or tool was visible and nothing more — a
+      // screen-reader user heard a list of identical items. Applied only when
+      // `selected` is passed: announcing "Delete" as an unchecked checkbox
+      // would be worse than saying nothing.
+      {...(selected === undefined
+        ? {}
+        : { role: 'menuitemcheckbox', 'aria-checked': selected })}
       onSelect={(event) => {
         if (keepOpen) event.preventDefault();
         onSelect();

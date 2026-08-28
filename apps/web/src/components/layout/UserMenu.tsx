@@ -67,34 +67,38 @@ export function UserMenu() {
           selected={theme === entry.value}
           onSelect={() => setTheme(entry.value)}
         >
-          {entry.label}
+          {t(entry.label)}
         </MenuItem>
       ))}
 
       <MenuSeparator />
-      <MenuLabel>Transcript</MenuLabel>
+      <MenuLabel>{t('Transcript')}</MenuLabel>
+      {/* `keepOpen` on both, so the two transcript preferences can be set in
+          one opening. The comment here used to claim exactly that while the
+          prop was missing, which closed the menu after the first toggle. */}
       <MenuItem
         icon={showThinking ? <Eye /> : <EyeOff />}
         selected={showThinking}
-        // The menu stays open so several preferences can be toggled at once.
+        keepOpen
         onSelect={() => setShowThinking(!showThinking)}
       >
-        Show reasoning
+        {t('Show reasoning')}
       </MenuItem>
       <MenuItem
         icon={<Wrench />}
         selected={expandTools}
+        keepOpen
         onSelect={() => setExpandTools(!expandTools)}
       >
-        Expand tool calls
+        {t('Expand tool calls')}
       </MenuItem>
 
       <MenuSeparator />
       <MenuItem icon={<Settings />} onSelect={() => navigate('/settings')}>
-        Settings
+        {t('Settings')}
       </MenuItem>
       <MenuItem icon={<LogOut />} tone="danger" onSelect={() => void signOut()}>
-        Sign out
+        {t('Sign out')}
       </MenuItem>
     </Menu>
   );

@@ -29,7 +29,10 @@ export function ConnectionBadge() {
   const copy = COPY[state];
 
   return (
-    <Tooltip content={copy.detail} side="right">
+    // Both strings go through `t`: the badge imported `useT` and never called
+    // it, so the French catalogue carried translations for all four states
+    // that nothing ever reached.
+    <Tooltip content={t(copy.detail)} side="right">
       <span
         className={cn(
           'flex size-8 items-center justify-center rounded-lg',
@@ -38,7 +41,7 @@ export function ConnectionBadge() {
           (state === 'closed' || state === 'unauthorised') && 'text-danger',
         )}
         role="status"
-        aria-label={copy.label}
+        aria-label={t(copy.label)}
       >
         {state === 'open' || state === 'connecting' ? (
           <Wifi className="size-4" aria-hidden />
