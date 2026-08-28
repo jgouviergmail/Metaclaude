@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.36.1] — 2026-08-28
+
+### Fixed
+
+- **`METACLAUDE_PUBLIC_URL` was commented out in `.env.example`.** The pairing
+  with `compose.yml` is checked in both directions and I had verified one:
+  every variable the *guide* names must exist, which it did. The other says
+  every variable *compose reads* must be a real line in the example — because
+  `install-app.sh` warns a deployed `.env` about keys the example has grown,
+  and it cannot warn about a comment. Uncommented and left empty, which is the
+  honest value: empty is the unset state the code reads, and an example address
+  would look configured while being wrong.
+
 ## [0.36.0] — 2026-08-28
 
 ### Added
