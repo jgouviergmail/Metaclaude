@@ -11,6 +11,37 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.32.1] — 2026-08-28
+
+### Changed
+
+- **The no-reranker decision now rests on a much stronger measurement.** The
+  cold review asked the obvious adversarial question — is the wall the
+  embedder, or is it my own relevance gates? Stripping every gate, the fusion
+  and the limit, and letting the embedder rank the whole corpus by raw cosine,
+  the right passage comes back **34th to 76th of 113**, scored like noise
+  (−0.009 to 0.089) while the best-ranked wrong chunk sits at 0.098–0.204;
+  the same measurement on in-vocabulary questions returns rank 1. That bounds
+  *every* reranker rather than one pool size, and rules out the gates as the
+  cause. Pinned as a test that goes red the day an embedder gains semantics.
+- **The rephrased questions live in one place.** The regression test carried
+  four of them and the bench script six — the exact drift `eval-corpus.ts`
+  exists to prevent for the corpus, reproduced for the queries. They are now
+  a single exported set both consume, guarded by a test asserting they really
+  do share no content word with the passage that answers them.
+
+### Fixed
+
+- **The semantic-wall test pinned a bound instead of the measurement.** It
+  allowed a quarter of those questions to start working while the docs went
+  on claiming zero, and its own comment said the failure would be the good
+  news — which a bound tolerating improvement prevents. It now asserts
+  exactly zero.
+- **The re-index control uses the app's tooltip rather than a `title`
+  attribute**, which is unstyled, outside the charter, and never appears on
+  touch — where this screen is used as much as on a desktop. It also counts
+  in the singular, as memory maintenance already did.
+
 ## [0.32.0] — 2026-08-28
 
 ### Added

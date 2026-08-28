@@ -26,7 +26,19 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EvalDocument } from './eval-corpus.js';
-import { EVAL_DOCUMENTS, EVAL_QUERIES, evalCorpus, replicate } from './eval-corpus.js';
+import {
+  EVAL_DOCUMENTS,
+  EVAL_QUERIES,
+  evalCorpus,
+  replicate,
+  SEMANTIC_QUERIES,
+} from './eval-corpus.js';
+
+/** Every labelled answer in the module, whichever set it belongs to. */
+const ALL_ANSWERS: readonly { query: string; probes: string; answers: readonly string[] }[] = [
+  ...EVAL_QUERIES,
+  ...SEMANTIC_QUERIES.map((q) => ({ query: q.query, probes: q.probes, answers: [q.answer] })),
+];
 
 /** The chunker preserves intra-paragraph newlines; ground truth is matched flat. */
 const flat = (text: string) => text.replace(/\s+/gu, ' ');
@@ -41,7 +53,7 @@ describe('the ground truth', () => {
     // ever asked for. A shift-induced collision would land somewhere between.
     for (const copies of [0, 1, 4, 12, 50]) {
       const corpus = evalCorpus(copies);
-      for (const query of EVAL_QUERIES) {
+      for (const query of ALL_ANSWERS) {
         for (const answer of query.answers) {
           expect(
             containing(corpus, answer),
@@ -55,7 +67,7 @@ describe('the ground truth', () => {
   it('names what every query probes', () => {
     // A metric that moves without a probe explaining why is a metric nobody
     // can act on; an empty probe is how that happens quietly.
-    for (const query of EVAL_QUERIES) {
+    for (const query of ALL_ANSWERS) {
       expect(query.probes.trim().length, query.query).toBeGreaterThan(0);
       expect(query.answers.length, query.query).toBeGreaterThan(0);
     }
@@ -65,13 +77,39 @@ describe('the ground truth', () => {
     // Searching the five real documents alone: exactly one hit means the
     // answer is where the query claims it is. Zero would mean the label
     // survives only because a distractor happens to carry the phrase.
-    for (const query of EVAL_QUERIES) {
+    for (const query of ALL_ANSWERS) {
       for (const answer of query.answers) {
         expect(
           containing(EVAL_DOCUMENTS, answer),
           `"${answer}" must live in exactly one of the five real documents`,
         ).toHaveLength(1);
       }
+    }
+  });
+});
+
+describe('the rephrased questions', () => {
+  it('really do share no content word with the passage that answers them', () => {
+    // The set only measures a semantic wall if it is actually semantic. A
+    // question that leaks a distinctive word from its answer would be found
+    // by the lexical arm, quietly turning a "0%" into evidence of nothing.
+    const STOP = new Set([
+      'le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'et', 'ou', 'est', 'en',
+      'à', 'a', 'dans', 'sur', 'par', 'pour', 'avec', 'sans', 'au', 'aux', 'ce',
+      'si', 'je', 'me', 'ma', 'mon', 'il', 'on', 'que', 'qui', 'ne', 'pas', 'y',
+      'the', 'a', 'an', 'of', 'and', 'or', 'is', 'to', 'in', 'at', 'it', 'for',
+    ]);
+    const words = (text: string) =>
+      new Set(
+        text
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((word) => word.length >= 3 && !STOP.has(word)),
+      );
+
+    for (const { query, answer } of SEMANTIC_QUERIES) {
+      const shared = [...words(query)].filter((word) => words(answer).has(word));
+      expect(shared, `"${query}" shares ${shared.join(', ')} with its answer`).toHaveLength(0);
     }
   });
 });

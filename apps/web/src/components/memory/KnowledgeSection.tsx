@@ -25,7 +25,7 @@ import type { KnowledgeDocumentMeta, Workspace } from '@metaclaude/shared';
 
 import { Switch } from '@/components/ui/controls';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
-import { Badge, Button, Card, EmptyState, Input, Label, Skeleton, Textarea } from '@/components/ui/primitives';
+import { Badge, Button, Card, EmptyState, Input, Label, Skeleton, Textarea, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { formatBytes, formatRelative } from '@/lib/utils';
@@ -125,7 +125,9 @@ export function KnowledgeSection({
       toast.success(
         result.affected === 0
           ? t('Everything was already indexed with the current embedder.')
-          : t('{n} passages re-embedded.', { n: String(result.affected) }),
+          : result.affected === 1
+            ? t('1 passage re-embedded.')
+            : t('{n} passages re-embedded.', { n: String(result.affected) }),
       );
     },
     onError: (error) =>
@@ -179,16 +181,20 @@ export function KnowledgeSection({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {documents.length > 0 ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              loading={reindex.isPending}
-              onClick={() => reindex.mutate()}
-              title={t('Recompute every passage’s embedding — needed after changing embedding provider.')}
-            >
-              <RefreshCw className="size-4" />
-              {t('Re-index')}
-            </Button>
+            // The app's Tooltip, not a `title` attribute: the native one is
+            // unstyled, sits outside the charter, and never appears on touch —
+            // where this screen is used as much as on a desktop.
+            <Tooltip content={t('Recompute every passage’s embedding — needed after changing embedding provider.')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                loading={reindex.isPending}
+                onClick={() => reindex.mutate()}
+              >
+                <RefreshCw className="size-4" />
+                {t('Re-index')}
+              </Button>
+            </Tooltip>
           ) : null}
           <Button variant="primary" size="sm" onClick={() => setEditing({ ...EMPTY_DRAFT, workspaceId: scope !== 'all' && scope !== 'global' ? scope : null })}>
             <Plus className="size-4" />

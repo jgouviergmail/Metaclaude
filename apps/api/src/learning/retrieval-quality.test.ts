@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../db/index.js';
-import { migrate, openDatabase } from '../db/index.js';
-import { HashingEmbedder } from './embeddings.js';
-import { evalCorpus, EVAL_QUERIES } from './eval-corpus.js';
+import { migrate, openDatabase, unpackEmbedding } from '../db/index.js';
+import { cosineSimilarity, HashingEmbedder } from './embeddings.js';
+import { evalCorpus, EVAL_QUERIES, SEMANTIC_QUERIES } from './eval-corpus.js';
 import { evaluate, recallAt, type LabelledQuery } from './eval.js';
 import { KnowledgeStore } from './knowledge.js';
 
@@ -166,33 +166,12 @@ describe('retrieval quality on questions phrased in the corpus’ own words', ()
 
 describe('the semantic wall', () => {
   /**
-   * Questions sharing no content word with their answer. A person asks these
-   * constantly — "puis-je partir avant la fin ?" for a notice period — and
-   * the hashing embedder cannot bridge them, because its "similarity" is
-   * character n-gram overlap wearing a cosine's clothes.
+   * The shared set from `eval-corpus.ts` — the same questions the bench
+   * script measures, deliberately not a local copy. A test and a bench that
+   * disagree about what they measure produce two numbers nobody can compare,
+   * which is the failure this file exists to prevent elsewhere.
    */
-  const HARD: Array<{ query: string; answer: string; probes: string }> = [
-    {
-      query: 'puis-je partir avant la fin sans pénalité ?',
-      answer: 'Le délai de préavis est de trois',
-      probes: 'no overlap with préavis / congé',
-    },
-    {
-      query: 'quand mon argent me sera-t-il rendu à la sortie ?',
-      answer: 'restitué dans un délai de deux mois',
-      probes: 'no overlap with dépôt de garantie',
-    },
-    {
-      query: 'on m’a cambriolé, j’ai combien de temps ?',
-      answer: 'ramené à deux jours ouvrés en cas de',
-      probes: 'cambriolé vs vol / effraction',
-    },
-    {
-      query: 'who pays to replace an old boiler?',
-      answer: 'restent à la charge du bailleur',
-      probes: 'English question, French answer',
-    },
-  ];
+  const HARD = SEMANTIC_QUERIES;
 
   it('finds nothing — and this is characterised, not tolerated', async () => {
     await seed(4);
@@ -204,10 +183,51 @@ describe('the semantic wall', () => {
 
     const report = await evaluate(labelled, search(5), 5);
 
-    // Measured at 0/0/0. Asserted as an upper bound: the day an embedding
-    // provider with actual semantics is enabled, this test fails — and that
-    // failure is the good news. Raise the bound then, do not delete the test.
-    expect(report.recall).toBeLessThanOrEqual(0.25);
+    // Measured at exactly 0/0/0, and asserted as exactly that rather than as
+    // a bound. A bound of "≤ 0.25" would let a quarter of these start working
+    // without anyone noticing, while docs/LEARNING.md and the changelog go on
+    // claiming zero — and the comment that used to sit here said the failure
+    // would be the good news, which a bound tolerating improvement prevents.
+    // The day an embedder with real semantics is enabled this goes red: read
+    // the new number, put it in the docs, and re-pin it.
+    expect(report.recall, JSON.stringify(report.queries.filter((q) => q.recall > 0), null, 2)).toBe(0);
+    expect(report.mrr).toBe(0);
+    expect(report.ndcg).toBe(0);
+  });
+
+  it('places the right passage in the bottom half of the embedder’s own ranking', async () => {
+    // The sharpest form of the claim, and the one that bounds *every*
+    // possible reranker rather than one pool size. Strip the gates, the
+    // fusion and the limit: rank all chunks by raw cosine against the query.
+    // A reranker can only reorder a prefix of this list, so where the right
+    // passage sits here is the ceiling on what any reranker could rescue.
+    //
+    // Measured: ranks 34–76 of 113, at cosines of -0.009 to 0.089 while the
+    // best-scoring (wrong) chunk sits at 0.098-0.204. The answer is not
+    // merely ranked low, it is scored like noise — which is what "the
+    // embedder cannot bridge these" means concretely.
+    await seed(4);
+    const embedder = new HashingEmbedder();
+    const rows = db
+      .prepare<[], { id: string; text: string; embedding: Buffer }>(
+        'SELECT id, text, embedding FROM document_chunks',
+      )
+      .all();
+
+    for (const entry of HARD) {
+      const [goldId] = resolve([entry.answer]);
+      const queryVector = await embedder.embed(entry.query);
+      const ranked = rows
+        .map((row) => ({ id: row.id, score: cosineSimilarity(queryVector, unpackEmbedding(row.embedding)!) }))
+        .sort((a, b) => b.score - a.score);
+      const rank = ranked.findIndex((row) => row.id === goldId) + 1;
+
+      expect(
+        rank,
+        `"${entry.query}" — the right passage ranks ${rank}/${ranked.length} by raw cosine. ` +
+          'If this is now near the top, the embedder gained semantics: reranking becomes worth measuring.',
+      ).toBeGreaterThan(ranked.length / 4);
+    }
   });
 
   it('proves a reranker could not help: the answer is not even a candidate', async () => {

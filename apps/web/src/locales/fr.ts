@@ -520,6 +520,7 @@ export const fr: Record<string, string> = {
   'Everything was already indexed with the current embedder.':
     "Tout était déjà indexé avec l'embedder actuel.",
   '{n} passages re-embedded.': '{n} passages ré-indexés.',
+  '1 passage re-embedded.': '1 passage ré-indexé.',
   'Could not re-index.': 'Impossible de réindexer.',
   'Nothing on the shelf yet': "Rien sur l'étagère pour l'instant",
   'Paste the documents your runs keep needing — the contract, the conventions, the runbook — and the agent will cite them instead of guessing.':

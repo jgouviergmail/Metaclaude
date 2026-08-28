@@ -335,11 +335,20 @@ indexed with its document title prefixed; remove that and the test notices).
 
 **On questions sharing no content word with their answer, it finds nothing.**
 Zero on all three metrics — and zero *at the candidate pool*, not merely
-below k. That second number is the one that mattered: **a reranker reorders
-candidates, and there are none to reorder.** Reranking is not a marginal
-improvement here, it is arithmetically incapable of being one, so this
-subsystem has no reranking stage and the decision is recorded in
-`the semantic wall` tests rather than in anyone's memory.
+below k. Pressed further, with every gate, the fusion and the limit stripped
+away so the embedder ranks the whole corpus by raw cosine on its own, the
+right passage comes back **34th to 76th of 113**, scoring −0.009 to 0.089
+while the best-ranked (wrong) chunk sits at 0.098–0.204. The answer is not
+merely ranked low; it is scored like noise. The same measurement on
+in-vocabulary questions returns rank 1.
+
+That bounds **every** reranker rather than one pool size: a reranker reorders
+a prefix of that list, and the right passage is not in any prefix worth
+taking. Reranking is not a marginal improvement here, it is arithmetically
+incapable of being one, so this subsystem has no reranking stage and the
+decision is recorded in `the semantic wall` tests rather than in anyone's
+memory. It also rules out the alternative explanation: the wall is the
+embedder, not the relevance gates — opening them changes nothing.
 
 The lever is the embedding provider. The hashing embedder's "similarity" is
 character-n-gram overlap; a sentence-transformer would bridge those

@@ -28,7 +28,7 @@
 
 import { migrate, openDatabase } from '../dist/db/index.js';
 import { createEmbeddingProvider } from '../dist/learning/embeddings.js';
-import { evalCorpus, EVAL_QUERIES } from '../dist/learning/eval-corpus.js';
+import { evalCorpus, EVAL_QUERIES, SEMANTIC_QUERIES } from '../dist/learning/eval-corpus.js';
 import { evaluate, formatReport, recallAt } from '../dist/learning/eval.js';
 import { KnowledgeStore } from '../dist/learning/knowledge.js';
 
@@ -37,19 +37,11 @@ const copies = Number(argv[argv.indexOf('--copies') + 1]) || 4;
 
 const flat = (text) => text.replace(/\s+/gu, ' ');
 
-/**
- * Questions phrased the way people actually ask them, sharing (almost) no
- * content word with the passage that answers them. The hashing embedder
- * cannot bridge these; a sentence-transformer should.
- */
-const SEMANTIC = [
-  ['puis-je partir avant la fin sans pénalité ?', 'Le délai de préavis est de trois'],
-  ['quand mon argent me sera-t-il rendu à la sortie ?', 'restitué dans un délai de deux mois'],
-  ['on m’a cambriolé, j’ai combien de temps ?', 'ramené à deux jours ouvrés en cas de'],
-  ['combien je paie de ma poche si une canalisation fuit ?', 'franchise de 150 euros'],
-  ['que se passe-t-il si la nouvelle version ne démarre jamais ?', 'rolled back automatically'],
-  ['who pays to replace an old boiler?', 'restent à la charge du bailleur'],
-];
+// The rephrased questions live in eval-corpus.js beside the corpus, so this
+// script and `retrieval-quality.test.ts` measure the same thing. They briefly
+// did not — four here, six there — which is precisely the drift that makes a
+// before/after comparison worthless.
+const SEMANTIC = SEMANTIC_QUERIES;
 
 const embedder = await createEmbeddingProvider({
   provider: process.env.METACLAUDE_EMBEDDINGS ?? 'hash',
@@ -89,7 +81,7 @@ const lexical = await evaluate(
 console.log(formatReport('questions in-vocabulary', lexical));
 
 const semantic = await evaluate(
-  SEMANTIC.map(([query, answer]) => ({ query, probes: 'no lexical overlap', relevant: [resolve(answer)] })),
+  SEMANTIC.map(({ query, answer, probes }) => ({ query, probes, relevant: [resolve(answer)] })),
   async (query) => (await store.search(query, { workspaceId: null, limit: 5 })).map((r) => r.chunkId),
   5,
 );
@@ -97,7 +89,7 @@ console.log(formatReport('questions rephrased', semantic));
 
 // The ceiling: what any reranking stage could possibly be handed.
 let inPool = 0;
-for (const [query, answer] of SEMANTIC) {
+for (const { query, answer } of SEMANTIC) {
   const pool = (await store.search(query, { workspaceId: null, limit: 50 })).map((r) => r.chunkId);
   if (recallAt(50, pool, [resolve(answer)]) > 0) inPool += 1;
 }

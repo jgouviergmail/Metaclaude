@@ -319,6 +319,61 @@ export function evalCorpus(distractorCopies = 4): EvalDocument[] {
 }
 
 /**
+ * Questions phrased the way people actually ask them, sharing (almost) no
+ * content word with the passage that answers them.
+ *
+ * Separated from `EVAL_QUERIES` because they measure a different thing: those
+ * ask whether the pipeline ranks well, these ask whether it can bridge
+ * vocabulary at all. The hashing embedder cannot — its "similarity" is
+ * character-n-gram overlap wearing a cosine's clothes — and the measurement
+ * that this set scores zero *at the candidate pool* is what proved a
+ * reranking stage could not help.
+ *
+ * They live here, beside the corpus, for the reason stated at the top of this
+ * file: the regression test and the bench script must measure the *same*
+ * thing. They did not, briefly — the test carried four of these and the
+ * script six — which is exactly the drift that makes a before/after
+ * comparison meaningless.
+ */
+export const SEMANTIC_QUERIES: readonly {
+  query: string;
+  /** A distinctive substring of the one passage that answers it. */
+  answer: string;
+  probes: string;
+}[] = [
+  {
+    query: 'puis-je partir avant la fin sans pénalité ?',
+    answer: 'Le délai de préavis est de trois',
+    probes: 'no overlap with préavis / congé',
+  },
+  {
+    query: 'quand mon argent me sera-t-il rendu à la sortie ?',
+    answer: 'restitué dans un délai de deux mois',
+    probes: 'no overlap with dépôt de garantie',
+  },
+  {
+    query: 'on m’a cambriolé, j’ai combien de temps ?',
+    answer: 'ramené à deux jours ouvrés en cas de',
+    probes: 'cambriolé vs vol / effraction',
+  },
+  {
+    query: 'combien je paie de ma poche si une canalisation fuit ?',
+    answer: 'franchise de 150 euros',
+    probes: 'colloquial phrasing of a franchise on a dégât des eaux',
+  },
+  {
+    query: 'que se passe-t-il si la nouvelle version ne démarre jamais ?',
+    answer: 'rolled back automatically',
+    probes: 'English paraphrase with no shared content word',
+  },
+  {
+    query: 'who pays to replace an old boiler?',
+    answer: 'restent à la charge du bailleur',
+    probes: 'English question, French answer',
+  },
+];
+
+/**
  * The questions, each naming the weakness it probes.
  *
  * Relevant ids are `${documentId}#${chunkSeq}` — resolved against whatever

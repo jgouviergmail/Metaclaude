@@ -13,7 +13,8 @@ import { renderWithProviders } from '@/test/render';
 
 import { KnowledgeSection } from './KnowledgeSection';
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, toastMock } = vi.hoisted(() => ({
+  toastMock: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
   apiMock: {
     knowledge: {
       list: vi.fn(),
@@ -27,6 +28,7 @@ const { apiMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/api', () => ({ api: apiMock, ApiError: class ApiError extends Error {} }));
+vi.mock('sonner', () => ({ toast: toastMock }));
 
 const WORKSPACES = [
   { id: 'ws_a', name: 'Alpha' },
@@ -179,5 +181,29 @@ describe('re-indexing', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /re-index/i }));
     await waitFor(() => expect(apiMock.knowledge.reindex).toHaveBeenCalled());
+  });
+
+  it('counts in the singular when exactly one passage moved', async () => {
+    // Memory maintenance already says "1 memory affected"; a library that
+    // reports "1 passages" reads as a rounding artefact rather than a count.
+    apiMock.knowledge.reindex.mockResolvedValue({ affected: 1 });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.click(screen.getByRole('button', { name: /re-index/i }));
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('1 passage re-embedded.'));
+  });
+
+  it('says so plainly when there was nothing to re-embed', async () => {
+    apiMock.knowledge.reindex.mockResolvedValue({ affected: 0 });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.click(screen.getByRole('button', { name: /re-index/i }));
+    await waitFor(() =>
+      expect(toastMock.success).toHaveBeenCalledWith(
+        'Everything was already indexed with the current embedder.',
+      ),
+    );
   });
 });
