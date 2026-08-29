@@ -757,6 +757,86 @@ describe('delegation', () => {
     }
   });
 
+  /**
+   * The same leak, reached through the other door.
+   *
+   * The gateway's `start_run` starts a run and walks away — by design, for work
+   * too long to hold an HTTP request open. Stashing its outcome anyway would
+   * grow the map by one entry, holding a whole run and its final text, for the
+   * life of the process; an automation polling every minute would do it all
+   * day. So the stash follows the caller's *declared* intent to wait, not the
+   * kind of run it is: nobody waits, nothing is kept.
+   */
+  it('keeps nothing for a run nobody is waiting on', async () => {
+    const fx = setup();
+    try {
+      // Started the way `start_run` starts one — an `api` run, and no waiter.
+      // A plain `user` run would prove nothing: it was never stashed.
+      const session = fx.newSession();
+      await fx.kernel.submit({
+        sessionId: session.id,
+        prompt: 'fire and forget',
+        triggeredBy: 'api',
+      });
+      await vi.waitFor(() => expect(fx.finished).toHaveLength(1));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const settled = (fx.kernel as unknown as { delegationSettled: Map<string, unknown> })
+        .delegationSettled;
+      expect(settled.size).toBe(0);
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  /**
+   * A run cancelled while queued never reaches the supervisor, so the path
+   * that settles waiters never runs — and the caller blocks for the whole
+   * timeout on a run that has been dead since the moment it was cancelled.
+   * Fifty minutes for a delegation; ten for an HTTP caller holding a request
+   * open. The answer exists immediately and has to be handed over.
+   */
+  it('answers a waiter whose run was cancelled before it started', async () => {
+    const fx = setup({ maxConcurrentRuns: 1 });
+    try {
+      fx.workspaces.create({
+        name: 'docs', slug: 'docs', description: '',
+        path: '/tmp/metaclaude-docs', color: '#6366f1', icon: 'folder',
+        settings: WorkspaceSettingsSchema.parse({}),
+      });
+      // Fill the only slot, so the delegation below queues behind it.
+      fx.supervisor.hold();
+      const blocker = fx.newSession();
+      await fx.kernel.submit({ sessionId: blocker.id, prompt: 'the one running' });
+
+      const attempt = fx.kernel.delegate({
+        fromWorkspaceId: fx.workspace.id,
+        fromTriggeredBy: 'user',
+        target: 'docs',
+        prompt: 'queued behind it',
+      });
+
+      // Cancel it while it is still queued.
+      const queued = await vi.waitFor(() => {
+        const found = fx.runs
+          .listRecent({ limit: 20 })
+          .find((run) => run.prompt === 'queued behind it');
+        expect(found).toBeDefined();
+        return found!;
+      });
+      fx.kernel.interrupt(queued.sessionId);
+
+      const settled = await attempt;
+      expect(settled.status).toBe('interrupted');
+      expect(settled.error).toMatch(/cancelled/i);
+
+      fx.supervisor.finish();
+      await vi.waitFor(() => expect(fx.finished.length).toBeGreaterThanOrEqual(1));
+    } finally {
+      fx.db.close();
+    }
+  });
+
   it('refuses a delegated run delegating again — depth is one, so no loops', async () => {
     // A→B→A would burn quota in a circle with nobody watching. One hop keeps
     // every delegation attributable to a human-started run.

@@ -11,6 +11,44 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.38.1] — 2026-08-29
+
+### Fixed
+
+- **Four defects found by re-reading 0.38.0, not by its tests.** Two of them
+  were mine and shipped green.
+
+  **A run nobody waits on used to be kept forever.** The kernel stashes a
+  finished run's final text for whoever asked, because it exists nowhere else
+  — and 0.38.0 decided who to stash for from the *kind* of run. That reading
+  broke the moment the gateway added `start_run`, which starts a run and walks
+  away on purpose: the stash held a whole run and its text, nobody ever came
+  back for it, and an automation polling every minute grew the map all day.
+  The same family as the timed-out delegation the code already had a set for.
+  The predicate is now the caller's *declared* intent at submission
+  (`SubmitOptions.awaited`), because only the caller knows.
+
+  **A run cancelled while queued left its caller hanging for the full
+  timeout.** It never reaches the supervisor, so nothing downstream ever
+  settled it: fifty minutes for a delegation, ten for an HTTP caller holding a
+  request open, on a run that had been dead since the moment it was cancelled.
+  Pre-existing, and invisible until the gateway made someone wait on the other
+  end. The answer exists immediately and is now handed over immediately.
+
+  **`GET` on the gateway answered 404 where the protocol wants 405.** A
+  Streamable HTTP client opens a `GET` looking for a server-initiated stream;
+  the specification lets a server answer `405` to say it has none, and the
+  reference client treats exactly that status as "carry on" — *every other
+  status becomes an error it raises*. The comment in the route claimed 405
+  while the unregistered method answered 404 from the not-found handler, so a
+  conforming client would have reported a broken server while every request
+  worked. Registered now, inside the guard, rather than asserted in a comment.
+
+  **A failure after `reply.hijack()` left the socket open.** Past the hijack
+  Fastify's error handler cannot answer, so a request that failed instantly
+  hung until the proxy's 30-minute read timeout. It now answers on the raw
+  socket, or at least closes it.
+
 ## [0.38.0] — 2026-08-29
 
 ### Added

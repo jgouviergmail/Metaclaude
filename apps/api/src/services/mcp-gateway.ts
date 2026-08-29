@@ -50,6 +50,7 @@ export interface GatewayDeps {
       prompt: string;
       ceiling: ApiTokenRecord['ceiling'];
       label: string;
+      awaited: boolean;
     }): Promise<{ run: Run; sessionId: string }>;
     awaitRun(runId: string, timeoutMs: number): Promise<{ run: Run; finalText: string }>;
   };
@@ -105,7 +106,7 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
     return found;
   };
 
-  const start = async (input: { workspace: string; prompt: string }) => {
+  const start = async (input: { workspace: string; prompt: string }, awaited = false) => {
     requires('run', 'start runs');
     const workspace = within(input.workspace);
     const prompt = input.prompt.trim();
@@ -116,6 +117,7 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
       prompt,
       ceiling: token.ceiling,
       label: token.name,
+      awaited,
     });
 
     // Recorded at the start, not at the end: a run that never returns is
@@ -148,7 +150,9 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
      * than making them wait.
      */
     ask: async (input: { workspace: string; prompt: string }): Promise<AskResult> => {
-      const started = await start(input);
+      // Declared here, not inferred downstream: the kernel keeps a finished
+      // run's final text only for a caller that said it would come back for it.
+      const started = await start(input, true);
 
       try {
         const settled = await deps.kernel.awaitRun(started.runId, ASK_TIMEOUT_MS);

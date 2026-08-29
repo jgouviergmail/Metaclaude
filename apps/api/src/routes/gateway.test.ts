@@ -165,6 +165,32 @@ describe('the door', () => {
     expect(response.status).toBe(403);
   });
 
+  /**
+   * `405`, not `404`, and the difference is not cosmetic.
+   *
+   * A Streamable HTTP client opens a `GET` to look for a server-initiated
+   * stream. The specification lets a server answer `405` to say it has none,
+   * and the reference client treats exactly that status as "carry on" —
+   * *every other status becomes an error it raises*. Leaving the method
+   * unregistered answers `404` from the not-found handler, which makes a
+   * conforming client report a broken server while every request works.
+   */
+  it('answers 405 on the methods a stateless server has nothing to offer for', async () => {
+    for (const method of ['GET', 'DELETE']) {
+      const response = await fetch(`${baseUrl}/api/gateway/mcp`, {
+        method,
+        headers: { authorization: `Bearer ${secret}` },
+      });
+      expect(response.status, method).toBe(405);
+    }
+  });
+
+  it('still requires a token on those methods', async () => {
+    // They are registered routes now, so they are inside the guard — a status
+    // that leaks whether an endpoint exists is a status handed out for free.
+    expect((await fetch(`${baseUrl}/api/gateway/mcp`, { method: 'GET' })).status).toBe(401);
+  });
+
   it('refuses a revoked token immediately', async () => {
     const minted = await post('/api/tokens', {
       name: 'short lived',

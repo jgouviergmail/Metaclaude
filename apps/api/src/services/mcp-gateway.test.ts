@@ -131,7 +131,26 @@ describe('ask', () => {
       prompt: 'summarise the repo',
       ceiling: 'dontAsk',
       label: 'n8n',
+      // Declared, because the kernel keeps a finished run's final text only
+      // for a caller that says it is coming back for it.
+      awaited: true,
     });
+  });
+
+  /**
+   * The other half of the same contract, and the one that leaks if it is
+   * wrong: `start_run` walks away on purpose, so the kernel must keep nothing.
+   * An automation polling every minute would otherwise grow the stash all day.
+   */
+  it('tells the kernel that start_run will not come back for the answer', async () => {
+    const wired = deps();
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    await handlers.start({ workspace: 'ws_mine', prompt: 'long job' });
+
+    expect(wired.kernel.startForToken).toHaveBeenCalledWith(
+      expect.objectContaining({ awaited: false }),
+    );
   });
 
   /**

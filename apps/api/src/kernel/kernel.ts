@@ -92,6 +92,14 @@ export interface SubmitOptions {
   triggeredBy?: Run['triggeredBy'];
   /** Pending attachments this message carries; bound to the run at admission. */
   attachmentIds?: string[];
+  /**
+   * Whether the caller will block on this run's answer.
+   *
+   * Makes the kernel keep the final text, which exists nowhere else once the
+   * run settles. False — the default — keeps nothing, which is what every
+   * fire-and-forget caller wants and what `start_run` relies on.
+   */
+  awaited?: boolean;
   /** Explicit overrides; when absent the workspace default or the bandit decides. */
   overrides?: Partial<
     Pick<RunPolicy, 'model' | 'effort' | 'permissionMode' | 'agentName' | 'ultracode' | 'toolControls'>
@@ -149,19 +157,7 @@ class RunCancelled extends Error {
 /** Outlasts the run timeout, so the timeout's own report arrives first. */
 const DELEGATION_TIMEOUT_MS = 50 * 60_000;
 
-/**
- * The kinds of run somebody is blocked on the answer to.
- *
- * Two, now: a delegation, where another workspace's agent is waiting, and an
- * `api` run, where an outside program is holding an HTTP request open. They
- * share the whole waiting mechanism because they are the same problem — the
- * final text of a run exists nowhere but in memory when it settles, so it has
- * to be stashed for whoever asked, and the stash has to be released even when
- * the run fails. One set rather than two conditions: a third caller that waits
- * gets the behaviour by being added here, instead of by being remembered in
- * two places forty lines apart.
- */
-const AWAITED: ReadonlySet<Run['triggeredBy']> = new Set(['delegation', 'api']);
+
 
 export class Kernel {
   readonly broker: PermissionBroker;
@@ -214,6 +210,20 @@ export class Kernel {
    * every timed-out delegation leaked one entry for the life of the process.
    */
   private readonly delegationAbandoned = new Set<string>();
+  /**
+   * Runs whose caller declared, at submission, that it will wait.
+   *
+   * The predicate used to be the run's *kind* — a delegation is awaited, so
+   * stash its outcome. That reading broke the moment the gateway added
+   * `start_run`, which starts an `api` run and walks away on purpose: the
+   * stash held a whole run and its final text, nobody ever consumed it, and an
+   * automation polling every minute grew the map all day. Same family as the
+   * timed-out delegation the set above exists for.
+   *
+   * Only the caller knows whether it will wait, so only the caller may say.
+   * Recorded synchronously in `submit`, before the run can possibly settle.
+   */
+  private readonly awaitedRuns = new Set<string>();
 
   private shuttingDown = false;
 
@@ -272,6 +282,10 @@ export class Kernel {
         triggeredBy: options.triggeredBy ?? 'user',
         category: classification.category,
       });
+
+      // Before anything can schedule, and synchronously: from here the run can
+      // settle at any time, and a stash decided later would be a race.
+      if (options.awaited) this.awaitedRuns.add(run.id);
 
       // Bind the message's attachments before anything can execute. The
       // service's UPDATE only lands where run_id IS NULL, so a pending upload
@@ -366,6 +380,7 @@ export class Kernel {
       sessionId: session.id,
       prompt: input.prompt,
       triggeredBy: 'delegation',
+      awaited: true,
     });
 
     const settled = await this.waitForDelegation(
@@ -414,6 +429,12 @@ export class Kernel {
     ceiling: ApiTokenCeiling;
     /** The token's name — it becomes the session title an operator reads. */
     label: string;
+    /**
+     * Whether the caller will block on the answer. `ask_workspace` does;
+     * `start_run` deliberately does not, and keeping its outcome would be a
+     * stash nobody ever comes back for.
+     */
+    awaited: boolean;
   }): Promise<{ run: Run; sessionId: string }> {
     const workspace = this.deps.workspaces.get(input.workspaceId);
     if (!workspace) throw new Error(`Unknown workspace: ${input.workspaceId}`);
@@ -435,6 +456,7 @@ export class Kernel {
       sessionId: session.id,
       prompt: input.prompt,
       triggeredBy: 'api',
+      awaited: input.awaited,
       overrides: {
         permissionMode: capPermissionMode(
           workspace.settings.defaultPermissionMode,
@@ -557,9 +579,16 @@ export class Kernel {
         error: 'Cancelled before it started.',
       });
       this.deps.sessions.setStatus(session.id, 'idle');
-      this.publishRun(this.deps.runs.get(run.id) as Run);
+      const cancelled = this.deps.runs.get(run.id) as Run;
+      this.publishRun(cancelled);
       this.publishSession(session.id);
       this.publishMetrics();
+      // A cancelled run never reaches the supervisor, so nothing downstream
+      // would ever settle it — and a caller blocked on the answer would wait
+      // out the whole timeout for a run that has been dead since the moment it
+      // was cancelled. Fifty minutes for a delegation, ten for an HTTP caller
+      // holding a request open. The answer exists now; hand it over now.
+      this.settleDelegation(cancelled);
       return;
     }
 
@@ -630,7 +659,7 @@ export class Kernel {
 
   /** Resolve a delegation's waiter, or mark its stash consumable. */
   private settleDelegation(run: Run): void {
-    if (!AWAITED.has(run.triggeredBy)) return;
+    if (!this.awaitedRuns.delete(run.id)) return;
 
     if (this.delegationAbandoned.delete(run.id)) {
       this.delegationSettled.delete(run.id);
@@ -840,7 +869,7 @@ export class Kernel {
     // else — but never resolve the waiter here. Resolution waits for the
     // slot release in `execute`'s finally (see settleDelegation), or the
     // next sequential delegation would find this run still "active".
-    if (AWAITED.has(finished.triggeredBy)) {
+    if (this.awaitedRuns.has(finished.id)) {
       this.delegationSettled.set(finished.id, {
         run: finished,
         finalText: outcome.finalText,

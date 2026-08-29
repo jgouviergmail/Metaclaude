@@ -49,13 +49,24 @@ export function registerGatewayRoutes(app: App, context: AppContext): void {
   };
 
   /**
-   * The protocol's single endpoint.
-   *
-   * `POST` only. Streamable HTTP also defines `GET` for a server-initiated
-   * stream and `DELETE` to end a session; a stateless server has neither to
-   * offer, and answering them with an empty 405 is more honest than opening a
-   * stream that will never carry anything.
+   * Streamable HTTP also defines `GET`, for a server-initiated stream, and
+   * `DELETE`, to end a session. A stateless server has neither to offer — and
+   * `405` is not a nicety here, it is the contract: the specification says a
+   * server MAY answer `405` to that `GET`, and the reference client treats
+   * exactly that status as "no stream here, carry on". **Every other status is
+   * an error it raises**, so leaving these unregistered — which answers `404`
+   * from the not-found handler — makes a conforming client report a broken
+   * server while every request actually works. Registered rather than
+   * commented, because the comment saying so was wrong for a release.
    */
+  for (const method of ['get', 'delete'] as const) {
+    app[method]('/api/gateway/mcp', async (request: FastifyRequest, reply: FastifyReply) => {
+      requireApiToken(request);
+      return reply.status(405).send({ error: 'This endpoint is POST only.', code: 'method' });
+    });
+  }
+
+  /** The protocol's one working endpoint. */
   app.post('/api/gateway/mcp', async (request: FastifyRequest, reply: FastifyReply) => {
     const token = requireApiToken(request);
 
@@ -82,6 +93,21 @@ export function registerGatewayRoutes(app: App, context: AppContext): void {
     // Fastify has parsed the body and must now stay out of the way: the
     // transport writes the response itself, including when it streams.
     reply.hijack();
-    await transport.handleRequest(request.raw, reply.raw, request.body);
+    try {
+      await transport.handleRequest(request.raw, reply.raw, request.body);
+    } catch (error) {
+      // Past `hijack()` Fastify's error handler cannot answer — it would try to
+      // send on a reply it no longer owns. Without this the socket simply stays
+      // open, and the caller waits out the proxy's 30-minute read timeout for a
+      // request that failed immediately. Answer on the raw socket, or at least
+      // close it.
+      context.log.error({ err: error }, 'gateway request failed');
+      if (!reply.raw.headersSent) {
+        reply.raw.writeHead(500, { 'content-type': 'application/json' });
+        reply.raw.end(JSON.stringify({ error: 'Internal server error.', code: 'internal' }));
+      } else {
+        reply.raw.end();
+      }
+    }
   });
 }
