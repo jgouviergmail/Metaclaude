@@ -1400,7 +1400,14 @@ function McpTab({
       setAuthorising(null);
     }
   };
-  /** By server name, filled in by a test. Not cached: it costs a connection. */
+  /**
+   * What the *last* test learned, before this page ran.
+   *
+   * Asking costs a connection per server, so it happens on Test and never on a
+   * page load — which used to mean the answer vanished the moment you looked
+   * away. The server keeps it now; this holds what a test in *this* page
+   * learned, and it takes precedence because it is newer.
+   */
   const [descriptions, setDescriptions] = useState<Record<string, McpServerDescription>>({});
 
   const query = useQuery({
@@ -1668,6 +1675,26 @@ function McpTab({
 
   const servers = query.data?.servers ?? [];
 
+  /**
+   * The words to show for one server: this page's test if it ran, otherwise
+   * what the last one stored.
+   *
+   * Freshest wins, and it is only ever the *words*. What a run would actually
+   * mount is still the catalogue's answer — a stored tool the catalogue no
+   * longer lists is not shown, which is the same rule as before with a longer
+   * memory behind it.
+   */
+  const describedFor = (server: McpServerRecord): McpServerDescription | undefined =>
+    descriptions[server.name] ??
+    (server.described
+      ? {
+          instructions: server.described.instructions,
+          serverName: null,
+          serverVersion: null,
+          tools: server.described.tools,
+        }
+      : undefined);
+
   return (
     <div className="space-y-4">
       <SectionIntro
@@ -1772,7 +1799,7 @@ function McpTab({
                       for it, and what the CLI already hands the model as an
                       MCP instructions block — so this shows the operator what
                       the agent is working from, rather than inventing one. */}
-                  {descriptions[server.name]?.instructions ? (
+                  {describedFor(server)?.instructions ? (
                     // Folded like the tool list, and for the same reason: a
                     // server's own account of itself can run to paragraphs, and
                     // a card that unrolls one of them pushes every other server
@@ -1787,7 +1814,7 @@ function McpTab({
                         {t('What this server says it is for')}
                       </summary>
                       <p className="border-t border-line px-2.5 py-2 text-[12px] leading-relaxed text-muted">
-                        {descriptions[server.name]?.instructions}
+                        {describedFor(server)?.instructions}
                       </p>
                     </details>
                   ) : null}
@@ -1795,8 +1822,16 @@ function McpTab({
                   <McpToolList
                     tools={withDescriptions(
                       live.get(server.name)?.tools ?? [],
-                      descriptions[server.name],
+                      describedFor(server),
                     )}
+                    // Dated only where the list *is* the stored one. With a
+                    // catalogue answer in hand the list is current, and a date
+                    // beside it would say the opposite.
+                    learnedAt={
+                      (live.get(server.name)?.tools ?? []).length === 0
+                        ? server.described?.at ?? null
+                        : null
+                    }
                   />
                 </div>
 
@@ -1909,6 +1944,26 @@ export function withDescriptions(
   described: McpServerDescription | undefined,
 ): ClaudeMcpServerStatus['tools'] {
   if (!described) return tools;
+
+  // No live answer at all — the Global scope mounts nothing, and a workspace's
+  // catalogue has not come back yet on the first paint. Falling back to the
+  // stored list is what makes a test worth having pressed: without it the card
+  // went blank again the moment you looked away, and "never asked" and
+  // "exposes nothing" were the same empty space.
+  //
+  // The catalogue still decides what exists *whenever it has an opinion*: the
+  // branch below never adds a tool it did not list. This one is used only when
+  // it has said nothing at all, and the fold is stamped with when it was
+  // learned so a stale list reads as history rather than as fact.
+  if (tools.length === 0) {
+    return described.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      readOnly: null,
+      destructive: null,
+    }));
+  }
+
   const byName = new Map(described.tools.map((tool) => [tool.name, tool.description]));
   return tools.map((tool) => ({ ...tool, description: tool.description || byName.get(tool.name) || '' }));
 }

@@ -446,6 +446,48 @@ describe('withDescriptions', () => {
     { name: 'b', description: '', readOnly: null, destructive: true },
   ];
 
+  /**
+   * The stored list is what makes pressing Test worth having done.
+   *
+   * Asking costs a connection per server, so it never happens on a page load —
+   * and before this, everything learned went blank the moment you looked away.
+   * "Never asked" and "exposes nothing" were the same empty space.
+   */
+  it('falls back to the stored list when the catalogue said nothing at all', () => {
+    const merged = withDescriptions([], {
+      instructions: 'What it is for.',
+      serverName: 's',
+      serverVersion: '1',
+      tools: [{ name: 'a', description: 'Lists things.' }],
+    });
+
+    expect(merged).toEqual([
+      // The annotations are the catalogue's to give, so they are null rather
+      // than invented: a stored list knows the words, not the hints.
+      { name: 'a', description: 'Lists things.', readOnly: null, destructive: null },
+    ]);
+  });
+
+  /**
+   * And only when it said *nothing*. A catalogue that answered is the authority
+   * on what a run would mount, so a stored tool it no longer lists is a tool
+   * that no longer exists — showing it would be the older half of the merge
+   * quietly outvoting the newer one.
+   */
+  it('never resurrects a stored tool the catalogue has dropped', () => {
+    const merged = withDescriptions([{ name: 'a', description: '', readOnly: null, destructive: null }], {
+      instructions: null,
+      serverName: 's',
+      serverVersion: '1',
+      tools: [
+        { name: 'a', description: 'Still here.' },
+        { name: 'gone', description: 'Removed upstream.' },
+      ],
+    });
+
+    expect(merged.map((tool) => tool.name)).toEqual(['a']);
+  });
+
   it('fills in the descriptions the catalogue dropped', () => {
     const merged = withDescriptions(tools, {
       instructions: null,

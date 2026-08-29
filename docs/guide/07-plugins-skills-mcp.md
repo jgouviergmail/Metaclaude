@@ -125,6 +125,26 @@ are merged into the server's environment only at run time. The interface never
 displays a stored secret back, and editing a server keeps the credentials you
 do not retype.
 
+### Testing a server, and what the test leaves behind
+
+Each enabled server carries its own **Test**. It connects exactly as a run
+would — same configuration, same secrets, same OAuth token — and then asks the
+server two things the connection status alone does not carry: what it says it
+is for, and the description of every tool it exposes. Both appear on the card,
+folded, because a server with thirty tools is a wall and its own account of
+itself can run to paragraphs.
+
+Asking costs a connection, so it happens when you press the button and never on
+a page load. What the last test learned is therefore **kept**: come back
+tomorrow and the tools are still listed, with the date of that test beside the
+count. That date is the whole honesty of the arrangement — a stored list is
+what the server answered *then*. Where **From Claude** has a live reading, the
+live one wins, and a tool it no longer lists is not shown however recently it
+was stored.
+
+A test that fails changes nothing about what was stored: a server behind a
+momentary blip should not read as one that exposes nothing.
+
 ### The connector directory
 
 Under the same tab, below your own servers, sits a shelf of MCP servers this

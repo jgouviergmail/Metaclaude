@@ -372,6 +372,13 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
 
     try {
       const described = await describeServer(() => buildMcpTransport(config));
+      // Kept, so it survives the page. Only the words are stored — what a run
+      // would actually mount is still the catalogue's answer, and the card
+      // prefers the live one wherever it has it.
+      context.registry.saveDescription(server.id, {
+        instructions: described.instructions,
+        tools: described.tools,
+      });
       return reply.send({ description: described });
     } catch (error) {
       // A description that cannot be fetched is not an outage: the server may

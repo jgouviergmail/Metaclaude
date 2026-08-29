@@ -17,13 +17,24 @@ import { AlertTriangle, ChevronRight, Eye } from 'lucide-react';
 import type { ClaudeMcpServerStatus } from '@metaclaude/shared';
 import { Badge } from '@/components/ui/primitives';
 import { usePlural, useT } from '@/lib/i18n';
+import { formatRelative } from '@/lib/utils';
 
 export function McpToolList({
   tools,
   defaultOpen = false,
+  learnedAt = null,
 }: {
   tools: ClaudeMcpServerStatus['tools'];
   defaultOpen?: boolean;
+  /**
+   * When this list is a stored answer rather than a live reading.
+   *
+   * Null for the catalogue, which mounts what a run mounts and is therefore
+   * current by construction. A stored list is what one test learned at one
+   * moment, and a snapshot no reader can date is indistinguishable from a
+   * claim about now — so it carries its own date, and says what refreshes it.
+   */
+  learnedAt?: number | null;
 }) {
   const t = useT();
   const plural = usePlural();
@@ -40,6 +51,11 @@ export function McpToolList({
           aria-hidden
         />
         {plural(tools.length, '{n} tool exposed', '{n} tools exposed')}
+        {learnedAt ? (
+          <span className="text-[11px] text-muted/80">
+            {t('· last test: {when}', { when: formatRelative(learnedAt) })}
+          </span>
+        ) : null}
       </summary>
 
       <ul className="space-y-1.5 border-t border-line px-2.5 py-2">

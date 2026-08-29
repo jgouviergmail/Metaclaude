@@ -844,4 +844,24 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_mcp_oauth_states_expiry ON mcp_oauth_states(expires_at);
     `,
   },
+  {
+    version: 19,
+    name: 'mcp_described',
+    sql: /* sql */ `
+      -- What a test last learned about a server, so it survives the page.
+      --
+      -- Asking costs a connection per server, which is why it happens when an
+      -- operator presses Test and never on a page load. The price of that was
+      -- that everything learned vanished on the next render: you tested a
+      -- server, read its tools, navigated away, came back to an empty card —
+      -- with no way to tell "never asked" from "exposes nothing".
+      --
+      -- described_at is what keeps a stored list honest. It is what the server
+      -- answered at that moment, not a claim about now, and the card says when.
+      -- Live data from the catalogue still wins wherever there is any.
+      ALTER TABLE mcp_servers ADD COLUMN described_at INTEGER;
+      ALTER TABLE mcp_servers ADD COLUMN described_instructions TEXT;
+      ALTER TABLE mcp_servers ADD COLUMN described_tools TEXT;
+    `,
+  },
 ];

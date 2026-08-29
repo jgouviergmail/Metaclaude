@@ -11,6 +11,27 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-08-29
+
+### Added
+
+- **What a test learns about an MCP server is kept, and dated.** Asking a server
+  what it exposes costs a connection, so it happens when an operator presses
+  **Test** and never on a page load — which meant everything it learned vanished
+  on the next render. You tested a server, read its tools, navigated away, came
+  back to an empty card, and nothing on that card could tell "never asked" from
+  "exposes nothing". The description and the tool list now live on the row
+  (migration 19), refreshed by every test and stamped with when: the fold reads
+  *last test: 5m ago*, because a stored answer that cannot be dated is
+  indistinguishable from a claim about now. Two rules keep the two sources from
+  being silently mixed — where **From Claude** has a live catalogue reading it
+  wins outright, and a tool it no longer lists is never resurrected from
+  storage; and a probe that fails leaves the stored answer alone, since a
+  momentary blip must not be recorded as a server that exposes nothing. Driven
+  through the edge by a test that stands up a real MCP server on loopback,
+  because storing-and-listing is a decision that lives in the route and in the
+  listing, where neither the probe's tests nor the registry's could see it.
+
 ## [0.36.3] — 2026-08-29
 
 ### Fixed

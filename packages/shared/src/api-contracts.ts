@@ -378,6 +378,23 @@ export const McpServerRecord = z.object({
    * states, and the card has to tell them apart to know which button to show.
    */
   oauthAuthorised: z.boolean().default(false),
+  /**
+   * What the last test learned, kept so it survives the page.
+   *
+   * Asking costs a connection per server, so it happens when an operator
+   * presses Test and never on a page load — which used to mean everything
+   * learned vanished on the next render. `at` is what keeps this honest: it is
+   * what the server answered *then*, not a claim about now, and the card says
+   * so. Live data from the catalogue still wins wherever there is any.
+   */
+  described: z
+    .object({
+      at: Millis,
+      instructions: z.string().nullable(),
+      tools: z.array(z.object({ name: z.string(), description: z.string() })),
+    })
+    .nullable()
+    .default(null),
   createdAt: Millis,
   updatedAt: Millis,
 });

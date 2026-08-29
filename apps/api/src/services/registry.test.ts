@@ -1234,3 +1234,89 @@ describe('bulk actions', () => {
     expect(registry.setSkillsEnabled(ids, false)).toBe(60);
   });
 });
+
+describe('MCP servers — what a test learned', () => {
+  const create = () =>
+    registry.upsertMcpServer({
+      workspaceId: null,
+      name: 'described-server',
+      transport: 'http',
+      url: 'https://example.test/mcp',
+    });
+
+  it('has no description until something has actually asked', () => {
+    // Null and "asked, exposes nothing" are different states, and the card
+    // shows a different thing for each. A default of `{ tools: [] }` would
+    // have collapsed them.
+    expect(create().described).toBeNull();
+  });
+
+  it('keeps what a describe learned, stamped with when', () => {
+    const server = create();
+
+    registry.saveDescription(
+      server.id,
+      { instructions: 'Read notes with it.', tools: [{ name: 'get_note', description: 'One note.' }] },
+      1_700_000_000_000,
+    );
+
+    expect(registry.getMcpServer(server.id)!.described).toEqual({
+      at: 1_700_000_000_000,
+      instructions: 'Read notes with it.',
+      tools: [{ name: 'get_note', description: 'One note.' }],
+    });
+  });
+
+  it('overwrites rather than merges, so a dropped tool stops being listed', () => {
+    const server = create();
+
+    registry.saveDescription(server.id, {
+      instructions: null,
+      tools: [
+        { name: 'kept', description: 'Still there.' },
+        { name: 'gone', description: 'Removed upstream.' },
+      ],
+    });
+    registry.saveDescription(server.id, {
+      instructions: null,
+      tools: [{ name: 'kept', description: 'Still there.' }],
+    });
+
+    expect(registry.getMcpServer(server.id)!.described!.tools.map((tool) => tool.name)).toEqual([
+      'kept',
+    ]);
+  });
+
+  it('survives an edit of the server, which is the point of storing it', () => {
+    const server = create();
+    registry.saveDescription(server.id, {
+      instructions: null,
+      tools: [{ name: 'get_note', description: 'One note.' }],
+    });
+
+    // `upsertMcpServer` resets the *status* on every save — a saved row has
+    // not been reached since. It must not reset what the last test learned,
+    // or renaming a server would silently empty its card.
+    const edited = registry.upsertMcpServer({
+      id: server.id,
+      workspaceId: null,
+      name: 'renamed-server',
+      transport: 'http',
+      url: 'https://example.test/mcp',
+    });
+
+    expect(edited.status).toBe('unknown');
+    expect(edited.described!.tools.map((tool) => tool.name)).toEqual(['get_note']);
+  });
+
+  it('is carried by the listing too, not only by a single read', () => {
+    const server = create();
+    registry.saveDescription(server.id, {
+      instructions: 'Read notes with it.',
+      tools: [{ name: 'get_note', description: 'One note.' }],
+    });
+
+    const listed = registry.listMcpServers(null).find((one) => one.id === server.id);
+    expect(listed!.described!.instructions).toBe('Read notes with it.');
+  });
+});

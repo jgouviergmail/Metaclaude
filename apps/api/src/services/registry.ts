@@ -90,6 +90,9 @@ interface McpRow {
   oauth_client_id: string | null;
   oauth_expires_at: number | null;
   oauth_scope: string | null;
+  described_at: number | null;
+  described_instructions: string | null;
+  described_tools: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -161,6 +164,16 @@ const toMcp = (row: McpRow, authorised: boolean): McpServerRecord => ({
   oauthClientId: row.oauth_client_id ?? null,
   oauthExpiresAt: row.oauth_expires_at ?? null,
   oauthScope: row.oauth_scope ?? null,
+  // Null until something has actually asked. That is a different state from
+  // "asked and it exposes nothing", and the card needs to tell them apart.
+  described:
+    row.described_at === null || row.described_at === undefined
+      ? null
+      : {
+          at: row.described_at,
+          instructions: row.described_instructions,
+          tools: parseJson<{ name: string; description: string }[]>(row.described_tools, []),
+        },
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -772,19 +785,26 @@ export class Registry {
   /* --------------------------- Materialisation -------------------------- */
 
   /**
-   * Build the runtime context handed to the supervisor for a workspace.
-   * Called once per run, so it must stay cheap: it is a handful of indexed
-   * reads plus vault decryption for the enabled servers only.
-   */
-  /**
-   * One server's mounted configuration, secrets resolved.
+   * Keep what a describe just learned.
    *
-   * Extracted from `resolve` so that anything else asking a server a question
-   * — the description probe, for one — connects with exactly what a run would
-   * connect with, rather than a second reading of the same rows that could
-   * drift from it. Null when the row cannot be mounted at all: a stdio server
-   * with no command, an HTTP one with no URL.
+   * Overwrites rather than merges: a server that has dropped a tool should
+   * stop listing it, and merging would make a stale entry immortal. The
+   * timestamp is the reader's warning that this is a snapshot.
    */
+  saveDescription(
+    serverId: string,
+    description: { instructions: string | null; tools: { name: string; description: string }[] },
+    at = Date.now(),
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE mcp_servers
+            SET described_at = ?, described_instructions = ?, described_tools = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(at, description.instructions, JSON.stringify(description.tools), at, serverId);
+  }
+
   /** Whether an access token is held for this server. */
   hasOAuthToken(serverId: string): boolean {
     return this.vault.get(`mcp:${serverId}`, OAUTH_ACCESS_SLOT) !== null;
@@ -816,6 +836,15 @@ export class Registry {
       .run(fields.issuer, fields.metadata, fields.clientId, Date.now(), serverId);
   }
 
+  /**
+   * One server's mounted configuration, secrets resolved.
+   *
+   * Extracted from `resolve` so that anything else asking a server a question
+   * — the description probe, for one — connects with exactly what a run would
+   * connect with, rather than a second reading of the same rows that could
+   * drift from it. Null when the row cannot be mounted at all: a stdio server
+   * with no command, an HTTP one with no URL.
+   */
   mcpConfig(server: McpServerRecord): McpMountConfig | null {
     if (server.transport === 'stdio') {
       if (!server.command) return null;
@@ -857,6 +886,11 @@ export class Registry {
     };
   }
 
+  /**
+   * Build the runtime context handed to the supervisor for a workspace.
+   * Called once per run, so it must stay cheap: it is a handful of indexed
+   * reads plus vault decryption for the enabled servers only.
+   */
   resolve(workspace: Workspace): RuntimeContext {
     const mcpServers: Record<string, unknown> = {};
 

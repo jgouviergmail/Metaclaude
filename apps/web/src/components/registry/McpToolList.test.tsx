@@ -53,6 +53,25 @@ describe('McpToolList', () => {
     expect(screen.queryAllByText(/read-only|destructive/)).toHaveLength(2);
   });
 
+  /**
+   * A stored list is what one test learned at one moment. Undated, it reads as
+   * a statement about now — which is exactly the false confidence the probe
+   * itself is careful never to give.
+   */
+  it('dates the summary when the list is a stored answer', () => {
+    renderWithProviders(<McpToolList tools={tools} learnedAt={Date.now() - 5 * 60_000} />);
+
+    expect(screen.getByText(/last test: 5m ago/)).toBeDefined();
+  });
+
+  it('says nothing about when, for a live catalogue reading', () => {
+    renderWithProviders(<McpToolList tools={tools} />);
+
+    // Current by construction: the catalogue mounts what a run mounts, so a
+    // date beside it would be answering a question nobody asked.
+    expect(screen.queryByText(/last test/)).toBeNull();
+  });
+
   it('renders nothing at all when the server exposed nothing', () => {
     const { container } = renderWithProviders(<McpToolList tools={[]} />);
 

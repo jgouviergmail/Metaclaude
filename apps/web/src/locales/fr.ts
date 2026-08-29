@@ -1632,6 +1632,7 @@ export const fr: Record<string, string> = {
   tokens: 'tokens',
   '{n} tool exposed': '{n} outil exposé',
   '{n} tools exposed': '{n} outils exposés',
+  '· last test: {when}': '· dernier test : {when}',
   'Good — reinforce this approach': 'Bon — renforcer cette approche',
   'Poor — try something else next time': 'Médiocre — essayer autre chose la prochaine fois',
   'Everything checks out.': 'Tout est en ordre.',
