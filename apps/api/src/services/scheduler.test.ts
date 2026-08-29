@@ -709,12 +709,58 @@ describe('recordOutcome', () => {
   });
 
   it('does not count interrupted or queued outcomes as failures', async () => {
-    const { automation, sessionId } = await fired({ maxConsecutiveFailures: 1 });
+    const { automation, sessionId } = await fired({ maxConsecutiveFailures: 3 });
     scheduler.recordOutcome(sessionId, 'interrupted');
     const after = scheduler.get(automation.id)!;
     expect(after.lastStatus).toBe('interrupted');
     expect(after.consecutiveFailures).toBe(0);
     expect(after.enabled).toBe(true);
+  });
+
+  /**
+   * A firing that was stopped is not evidence of health, and it used to be
+   * counted as exactly that: anything other than `failed` reset the streak to
+   * zero. So an automation that never got to finish looked perfectly well —
+   * `lastStatus: 'interrupted'`, `consecutiveFailures: 0`, never disabled —
+   * and it could launder a genuine streak of failures back to nothing simply
+   * by being cut short once.
+   *
+   * The starting counter is what makes this case say anything. Its predecessor
+   * asserted zero on an automation that had never failed, which passes whether
+   * the code resets, increments or does nothing at all.
+   */
+  it('leaves a failure streak exactly where it was when a firing is stopped', async () => {
+    const { automation, sessionId } = await fired({ maxConsecutiveFailures: 3 });
+    scheduler.recordOutcome(sessionId, 'failed');
+    scheduler.recordOutcome(sessionId, 'failed');
+    expect(scheduler.get(automation.id)!.consecutiveFailures).toBe(2);
+
+    scheduler.recordOutcome(sessionId, 'interrupted');
+    const after = scheduler.get(automation.id)!;
+    expect(after.consecutiveFailures).toBe(2);
+    expect(after.lastStatus).toBe('interrupted');
+    expect(after.enabled).toBe(true);
+
+    // And the streak still ends where it should: on a firing that worked.
+    scheduler.recordOutcome(sessionId, 'succeeded');
+    expect(scheduler.get(automation.id)!.consecutiveFailures).toBe(0);
+  });
+
+  /**
+   * The third failure disables it whether or not a stopped firing sat in the
+   * middle. Three firings in a row that did not do the job is not a healthy
+   * automation, and the one that was cut short is not the excuse.
+   */
+  it('still reaches the limit across a stopped firing', async () => {
+    const { automation, sessionId } = await fired({ maxConsecutiveFailures: 3 });
+    scheduler.recordOutcome(sessionId, 'failed');
+    scheduler.recordOutcome(sessionId, 'failed');
+    scheduler.recordOutcome(sessionId, 'interrupted');
+    scheduler.recordOutcome(sessionId, 'failed');
+
+    const after = scheduler.get(automation.id)!;
+    expect(after.consecutiveFailures).toBe(3);
+    expect(after.enabled).toBe(false);
   });
 
   it('never auto-disables when the guard is switched off with 0', async () => {

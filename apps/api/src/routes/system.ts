@@ -14,12 +14,15 @@ import {
   ClaudePairingBeginInput,
   ClaudePairingCodeInput,
   PushSubscriptionInput,
+  RuntimeSettingKey,
+  SetRuntimeSettingRequest,
   type PushStatus,
   type SystemHealth,
 } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
+import { RuntimeSettingsError } from '../services/runtime-settings.js';
 import { queryIntOr, spreadInt, spreadTimestamp } from '../http/query.js';
 
 const execFileAsync = promisify(execFile);
@@ -310,6 +313,48 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
    * published? Applying one stays the tag-driven, health-gated deploy
    * pipeline — no route can trigger it.
    */
+  /**
+   * The operational settings an owner may change without a restart.
+   *
+   * Owner-only, and the list is closed: the service refuses any key that is
+   * not in its own catalogue, so this route cannot be talked into writing a
+   * security setting by a hand-made request. The security tier is not merely
+   * absent from the form — it is absent from the surface.
+   */
+  app.get('/api/system/settings', async (request, reply) => {
+    requireOwner(request);
+    return reply.send({ settings: context.runtimeSettings.all() });
+  });
+
+  app.put<{ Params: { key: string } }>('/api/system/settings/:key', async (request, reply) => {
+    const actor = requireOwner(request);
+    const parsed = SetRuntimeSettingRequest.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+    }
+    const key = RuntimeSettingKey.safeParse(request.params.key);
+    if (!key.success) throw new HttpError(404, 'No such setting.');
+
+    try {
+      // `null` is how the form says "back to the environment", which is a
+      // different act from writing a value and deserves the same route.
+      if (parsed.data.value === null) context.runtimeSettings.clear(key.data);
+      else context.runtimeSettings.set(key.data, parsed.data.value, actor.username);
+    } catch (error) {
+      if (error instanceof RuntimeSettingsError) throw new HttpError(400, error.message);
+      throw error;
+    }
+
+    context.audit.record({
+      actor: actor.username,
+      action: 'system.setting',
+      target: key.data,
+      ipAddress: requestIp(context, request),
+      detail: parsed.data.value === null ? 'cleared' : String(parsed.data.value),
+    });
+    return reply.send({ settings: context.runtimeSettings.all() });
+  });
+
   /**
    * The morning brief — what happened, what needs a human. Owner-only for
    * the same reason as the doctor it embeds.

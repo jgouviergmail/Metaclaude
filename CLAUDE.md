@@ -349,6 +349,36 @@ restates the code is noise; one that records a decision or a trap is not.
   settle. Related: a run cancelled while *queued* never reaches the supervisor,
   so its waiter has to be settled from the cancellation path or it blocks for
   the full timeout on a run that is already dead.
+- **`waitFor` over a negative assertion is satisfied on its first poll.**
+  `await waitFor(() => expect(mock).not.toHaveBeenCalled())` returns
+  immediately and proves nothing; so does asserting on the DOM right after
+  waiting on a mock's call count, because the call lands before React has
+  re-rendered. Two cases written that way passed against the very bugs they
+  were written for. Wait on a *positive* signal the change would produce — a
+  rendered value, a second fetch's result — or assert synchronously on
+  something already true.
+- **React Query shares structure: an identical refetch returns the *same*
+  array.** An effect keyed on `query.data` therefore does **not** re-run when
+  a background fetch answers with unchanged contents, and a "fix" keying it on
+  a signature of the values is insurance against a bug that is not there. It
+  was written here, could not be made to fail under any sabotage, and was
+  removed. When a sabotage cannot turn a test red, suspect the premise before
+  the test.
+- **A zero-delay timer is not "no timer".** `setTimeout(fn, 0)` guarding a run
+  fires before `query()` is called, and an already-aborted signal reaches no
+  listener the SDK registers afterwards — so the abort is invisible to the CLI
+  and the run finishes as a *success* having been stopped. Any ceiling whose
+  `0` means "off" must skip creating the timer entirely.
+- **The CLI is never silent for long while anything is happening.** Measured:
+  during a tool call that ran for 100 seconds it emitted `tool_progress` every
+  30 seconds, plus `task_started` and a rate-limit event. That is what makes an
+  *idle* ceiling usable where a wall-clock one is not, and why nothing has to
+  special-case a tool being in flight.
+- **`MenuItem` with `selected` renders `menuitemcheckbox`, not `menuitem`** —
+  deliberately, so a chosen entry is announced as chosen. A test querying
+  `getByRole('menuitem')` on a picker finds nothing and reads as a menu that
+  never opened. And there is no `jest-dom` here: `toBeDisabled` is not a
+  matcher, assert `(el as HTMLButtonElement).disabled`.
 - **`z.object({…}).partial()` still fires every field's `.default()`.** It reads
   as "absent means untouched" and it is not: a patch naming one field parses
   into an object carrying all the others at their defaults, and a repository

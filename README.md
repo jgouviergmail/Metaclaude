@@ -189,9 +189,31 @@ ticked tool skips its approval card in every mode but Plan, and the run's
 timeline says so each time one is used; whatever a run *was* refused, it ends
 with one line naming it.
 
+**A run may work for as long as it needs to.** Two ceilings bound it and they
+ask different questions: one stops a run that has reported *nothing* for ten
+minutes — the agent speaks every half minute while a tool runs, so silence that
+long means it stopped — and a second, measured in hours, backstops the case
+silence cannot see. Elapsed time is deliberately not a limit on how long work
+may take; a loop or an overnight refactor is normal, and what bounds the *work*
+is the workspace's own turn and cost ceilings.
+
 A pending approval also reaches you: a push notification (see Settings →
 Notifications) with a ten-minute lifetime matching the approval's own, and a
 badge on the installed app's icon that clears when the last decision is made.
+
+### Configuration, changed while it runs
+**Settings → Configuration** (owner only) holds the operational knobs — the two
+run ceilings, how many runs at once, the quota guard, run retention, the log
+level — and a value saved there applies to the next run with no restart. It
+outranks the environment, because the compose file names every one of these
+with a default of its own and a screen that deferred to it would never do
+anything; the cost of winning is honesty, so each row says where the value in
+force came from and offers one action to hand it back.
+
+Security decisions are deliberately absent: bypass mode, allowed origins, proxy
+trust, the master key. What protects those is being unreachable from a
+signed-in browser, and the server refuses any key not on the short list — so
+the absence is a property of the API rather than of the form.
 
 ### Memory
 Three kinds — episodic, semantic, procedural — retrieved by hybrid search:

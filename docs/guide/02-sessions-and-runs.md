@@ -63,6 +63,20 @@ You can keep typing: a message sent into a live run **steers** it — the agent
 reads it mid-flight. **Stop** ends the turn cleanly; the transcript is kept and
 the run is recorded as interrupted, never as a success.
 
+**A run may work for as long as it needs to.** Two ceilings bound it, and they
+ask different questions. The one that normally applies asks whether the run is
+still *alive*: if it reports nothing at all for ten minutes it is stopped, and
+the transcript says so in those words. The agent speaks every half minute while
+a tool is running, so silence that long means it stopped rather than that it is
+busy. The second is a backstop measured in hours, for the one case silence
+cannot see — a tool that never returns.
+
+That is deliberately not a limit on how long work may take. A loop, an overnight
+refactor and an automation that runs for two hours are all normal; a ceiling on
+elapsed time would punish them for working. What bounds the *work* is the
+workspace's own turn and cost limits, which is where they belong. Both ceilings
+are on **Settings → Configuration**, and either can be switched off with 0.
+
 ## After a run
 
 Every result footer states **what actually ran**: the model — the one the CLI

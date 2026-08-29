@@ -25,6 +25,7 @@ import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
 import { GoogleConnectionCard } from '@/components/settings/GoogleConnectionCard';
+import { ConfigurationCard } from '@/components/settings/ConfigurationCard';
 import { McpGatewayCard } from '@/components/settings/McpGatewayCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { PasskeysCard } from '@/components/settings/PasskeysCard';
@@ -106,6 +107,11 @@ export function SettingsPage() {
                 </Tabs.Trigger>
               ) : null}
               {user?.role === 'owner' ? (
+                <Tabs.Trigger value="configuration" className={TAB_CLASS}>
+                  {t('Configuration')}
+                </Tabs.Trigger>
+              ) : null}
+              {user?.role === 'owner' ? (
                 <Tabs.Trigger value="audit" className={TAB_CLASS}>
                   {t('Audit log')}
                 </Tabs.Trigger>
@@ -139,6 +145,14 @@ export function SettingsPage() {
                     same reason — a token that may start runs is a credential
                     for executing things here. */}
                 <McpGatewayCard />
+              </Tabs.Content>
+            ) : null}
+
+            {/* Owner only, exactly like the API behind it: how long a run may
+                take and how many may run at once is not an operator's call. */}
+            {user?.role === 'owner' ? (
+              <Tabs.Content value="configuration">
+                <ConfigurationCard />
               </Tabs.Content>
             ) : null}
 

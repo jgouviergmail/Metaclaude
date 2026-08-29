@@ -376,6 +376,33 @@ Whatever a run *was* refused — by this list, by the mode, or by the auto-mode
 classifier — the run ends with one line naming it, because an unattended run
 that quietly did half its work is the failure that costs the most to find.
 
+### What the configuration screen may and may not touch
+
+Since 0.41 an owner can change operational settings from the app without a
+restart. The line that keeps that safe is **operational versus security**, not
+"hot versus cold".
+
+On the screen: the two run ceilings, how many runs at once, the quota guard, run
+retention, and the log level. Absent, and absent from the *API* rather than
+merely from the form — the server refuses any key that is not on its own short
+list, so a hand-made `PUT` gets a 404:
+
+- `METACLAUDE_ALLOW_BYPASS_PERMISSIONS`, `METACLAUDE_ALLOWED_ORIGINS`,
+  `METACLAUDE_TRUST_PROXY`, `METACLAUDE_INSECURE_COOKIES`, the master key and
+  the bootstrap credentials. What protects these is being unreachable from a
+  signed-in browser; the section above calls bypass mode a deployment-level
+  decision refused at three layers, and a form would have collapsed all three.
+- The data directories and the embedder, which cannot change while the process
+  runs. Switching the embedder would leave every stored vector a different
+  width, and `cosine` answers 0 when the dimensions disagree — retrieval would
+  die in silence rather than fail.
+
+Writes are owner-only and audited (`system.setting`, with the value or
+`cleared`). A stored value outranks the environment, which is forced rather than
+chosen — the compose file names every one of these with a default of its own —
+so every row reports where the value in force came from and offers one action to
+hand it back.
+
 ---
 
 ## Prompt injection

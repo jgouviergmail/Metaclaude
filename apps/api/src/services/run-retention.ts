@@ -45,9 +45,10 @@ export interface RunRetentionDeps {
    */
   attachments: Pick<AttachmentService, 'byRun' | 'delete'>;
   /** 0 switches the sweep off entirely. */
-  retentionDays: number;
+  /** Read per sweep, so the settings screen applies without a restart. */
+  retentionDays: () => number;
   /** Newest runs kept per workspace whatever their age. */
-  keepPerWorkspace: number;
+  keepPerWorkspace: () => number;
   now?: () => number;
 }
 
@@ -56,7 +57,9 @@ export class RunRetention {
 
   /** Returns how many runs were removed. */
   async sweep(): Promise<number> {
-    const { db, retentionDays, keepPerWorkspace } = this.deps;
+    const { db } = this.deps;
+    const retentionDays = this.deps.retentionDays();
+    const keepPerWorkspace = this.deps.keepPerWorkspace();
     if (retentionDays <= 0) return 0;
 
     const cutoff = (this.deps.now?.() ?? Date.now()) - retentionDays * 86_400_000;

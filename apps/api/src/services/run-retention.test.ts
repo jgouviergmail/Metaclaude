@@ -75,8 +75,8 @@ function retention(overrides: Partial<ConstructorParameters<typeof RunRetention>
   return new RunRetention({
     db,
     attachments,
-    retentionDays: 90,
-    keepPerWorkspace: 3,
+    retentionDays: () => 90,
+    keepPerWorkspace: () => 3,
     now: () => NOW,
     ...overrides,
   });
@@ -160,7 +160,7 @@ describe('what it refuses to touch', () => {
   it('does nothing at all when retention is switched off', async () => {
     const ids = [finishedRun(900), finishedRun(900), finishedRun(900), finishedRun(900)];
 
-    expect(await retention({ retentionDays: 0 }).sweep()).toBe(0);
+    expect(await retention({ retentionDays: () => 0 }).sweep()).toBe(0);
     expect(ids.every((id) => runs.get(id) !== null)).toBe(true);
   });
 });

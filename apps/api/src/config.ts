@@ -59,8 +59,32 @@ const EnvSchema = z.object({
    * Automatic starts only: a human pressing the button is never refused.
    */
   METACLAUDE_QUOTA_GUARD_PCT: z.coerce.number().min(0).max(100).default(85),
-  /** Hard ceiling on a single run's wall-clock time. */
-  METACLAUDE_RUN_TIMEOUT_MS: z.coerce.number().int().min(30_000).default(45 * 60 * 1000),
+  /**
+   * Backstop ceiling on a single run's wall-clock time. 0 disables it.
+   *
+   * Not the control that should normally fire — `METACLAUDE_RUN_IDLE_TIMEOUT_MS`
+   * is. Elapsed time is the wrong question for a loop or a long refactor: it
+   * punishes a run for working. This is here for the case silence cannot see,
+   * a tool that never returns at all, which is why the default is hours.
+   */
+  METACLAUDE_RUN_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .refine((ms) => ms === 0 || ms >= 30_000, { message: 'must be 0 (no ceiling) or at least 30000' })
+    .default(4 * 60 * 60 * 1000),
+  /**
+   * How long a run may report *nothing* before it is stopped. 0 disables it.
+   *
+   * Measured rather than guessed: during a tool call that ran for 100 seconds
+   * the CLI emitted `tool_progress` every 30 seconds, so ten minutes of total
+   * silence carries a factor of twenty over the heartbeat and means the agent
+   * has genuinely stopped.
+   */
+  METACLAUDE_RUN_IDLE_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .refine((ms) => ms === 0 || ms >= 30_000, { message: 'must be 0 (no ceiling) or at least 30000' })
+    .default(10 * 60 * 1000),
 
   /**
    * How long a finished run and its transcript are kept. 0 keeps everything.
@@ -135,6 +159,16 @@ export type Env = z.infer<typeof EnvSchema>;
 
 export interface Config {
   env: Env['NODE_ENV'];
+  /**
+   * Names of the environment variables this deployment actually declared.
+   *
+   * Kept because a value and its *provenance* are different facts, and the
+   * settings screen needs the second: `compose.yml` names every operational
+   * setting with a default of its own, so "the environment says 4" and "the
+   * schema defaults to 4" are indistinguishable from the value alone — and
+   * only one of them is something an operator wrote down.
+   */
+  declaredEnv: ReadonlySet<string>;
   host: string;
   port: number;
   dataDir: string;
@@ -149,6 +183,7 @@ export interface Config {
   maxConcurrentRuns: number;
   quotaGuardPct: number;
   runTimeoutMs: number;
+  idleTimeoutMs: number;
   /** Run retention: how long finished runs live, and the per-workspace floor. */
   runRetention: { days: number; keepPerWorkspace: number };
   embeddings: { provider: 'hash' | 'local'; model: string };
@@ -290,6 +325,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
 
   return {
     env: env.NODE_ENV,
+    declaredEnv: new Set(Object.keys(source).filter((key) => source[key] !== undefined)),
     host: env.METACLAUDE_HOST,
     port: env.METACLAUDE_PORT,
     dataDir,
@@ -309,6 +345,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     maxConcurrentRuns: env.METACLAUDE_MAX_CONCURRENT_RUNS,
     quotaGuardPct: env.METACLAUDE_QUOTA_GUARD_PCT,
     runTimeoutMs: env.METACLAUDE_RUN_TIMEOUT_MS,
+    idleTimeoutMs: env.METACLAUDE_RUN_IDLE_TIMEOUT_MS,
     runRetention: {
       days: env.METACLAUDE_RUN_RETENTION_DAYS,
       keepPerWorkspace: env.METACLAUDE_RUN_KEEP_PER_WORKSPACE,

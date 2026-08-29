@@ -63,7 +63,7 @@ function build(options: {
       return {} as never;
     }),
     quota: { utilization: async () => options.utilization ?? null },
-    guardPct: options.guardPct ?? 85,
+    guardPct: () => options.guardPct ?? 85,
     log: () => {},
   });
   return { autopilot, started };

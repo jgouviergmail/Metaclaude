@@ -53,6 +53,7 @@ import { BoardService } from './services/board.js';
 import { BoardGateway } from './services/board-gateway.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
+import { RuntimeSettings } from './services/runtime-settings.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { UpdateChecker } from './services/update-check.js';
 import { UpdateApplier } from './services/update-apply.js';
@@ -91,6 +92,7 @@ export interface AppContext {
   claudeSessions: ClaudeSessions;
   marketplaces: MarketplacesService;
   doctor: Doctor;
+  runtimeSettings: RuntimeSettings;
   brief: BriefService;
   synthesizer: SkillSynthesizer;
   /** Null when METACLAUDE_UPDATE_REPO is set empty. */
@@ -181,6 +183,27 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       'the secret vault could not decrypt some entries — is METACLAUDE_MASTER_KEY correct?',
     );
   }
+
+  /*
+   * The operational settings an owner may change without a restart.
+   *
+   * Constructed here, before anything that reads one, and handed to those
+   * consumers as a getter rather than a number — that is the whole of "hot":
+   * a change is read at the point of use on the next run, with no event and
+   * nothing to keep in step. Only the log level needs doing rather than
+   * reading, because it lives on the logger object.
+   */
+  const runtimeSettings = new RuntimeSettings({
+    db,
+    config,
+    declared: config.declaredEnv,
+    apply: (key, value) => {
+      if (key === 'logLevel') log.level = String(value);
+    },
+  });
+  // A level chosen through the screen has to survive a restart, or the screen
+  // would go on reporting a value the process never adopted.
+  runtimeSettings.applyStored();
 
   const auth = new AuthService(db);
   const apiTokens = new ApiTokenService(db);
@@ -354,7 +377,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     },
     allowBypassPermissions: config.allowBypassPermissions,
     claudeBinPath: config.claude.binPath,
-    runTimeoutMs: config.runTimeoutMs,
+    runTimeoutMs: () => runtimeSettings.number('runTimeoutMs'),
+    idleTimeoutMs: () => runtimeSettings.number('idleTimeoutMs'),
     env: claudeEnv,
     directoryPolicy: { workspacesDir: config.workspacesDir, dataDir: config.dataDir },
     log: kernelLog,
@@ -432,8 +456,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const runRetention = new RunRetention({
     db,
     attachments,
-    retentionDays: config.runRetention.days,
-    keepPerWorkspace: config.runRetention.keepPerWorkspace,
+    retentionDays: () => runtimeSettings.number('runRetentionDays'),
+    keepPerWorkspace: () => runtimeSettings.number('runKeepPerWorkspace'),
   });
 
   const kernel = new Kernel({
@@ -472,7 +496,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       },
     },
     supervisor,
-    maxConcurrentRuns: config.maxConcurrentRuns,
+    maxConcurrentRuns: () => runtimeSettings.number('maxConcurrentRuns'),
+    runTimeoutMs: () => runtimeSettings.number('runTimeoutMs'),
     // Every finished run is offered, not only automation-triggered ones: a human
     // pressing "Run now" produces a `user` run against the automation's session,
     // and its outcome still belongs in that automation's status.
@@ -543,7 +568,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     quota: {
       utilization: async (workspacePath) => planUtilization(await claudeUsage.get(workspacePath)),
     },
-    guardPct: config.quotaGuardPct,
+    guardPct: () => runtimeSettings.number('quotaGuardPct'),
     log: (level, message, data) => log[level](data ?? {}, message),
   });
   autopilotRef = autopilot;
@@ -712,6 +737,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     claudeSessions,
     marketplaces,
     doctor,
+    runtimeSettings,
     brief,
     synthesizer,
     updateChecker,

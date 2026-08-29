@@ -186,6 +186,44 @@ export const fr: Record<string, string> = {
   'Default permission mode': 'Mode de permission par défaut',
   'How much to ask before acting': 'À quel point demander avant d’agir',
 
+  /* Réglages : configuration à chaud */
+  Configuration: 'Configuration',
+  'What this server does on its own, changed without a restart. A value saved here takes effect on the next run and outranks the environment — the row says what it is shadowing, so nothing here disagrees with your .env in silence.':
+    'Ce que ce serveur fait de lui-même, modifiable sans redémarrage. Une valeur enregistrée ici s’applique au run suivant et l’emporte sur l’environnement — la ligne dit ce qu’elle masque, pour que rien ici ne contredise votre .env en silence.',
+  minutes: 'minutes',
+  days: 'jours',
+  'From this deployment’s environment.': 'Depuis l’environnement de ce déploiement.',
+  'Built-in default.': 'Valeur par défaut intégrée.',
+  '{n} minutes': '{n} minutes',
+  'Saved here': 'Enregistré ici',
+  'by {who}': 'par {who}',
+  'by {who}, {when}': 'par {who}, {when}',
+  'the environment says {value}': 'l’environnement dit {value}',
+  'Use the environment’s value': 'Utiliser la valeur de l’environnement',
+  '{n} unsaved change': '{n} modification non enregistrée',
+  '{n} unsaved changes': '{n} modifications non enregistrées',
+  'Stop a run that goes quiet after': 'Arrêter un run devenu silencieux après',
+  'The ceiling that should normally do the stopping: it asks whether a run is still alive, not how long it has worked. The agent reports every half minute while a tool runs, so silence this long means it stopped. 0 switches it off.':
+    'Le plafond qui devrait normalement arrêter : il demande si le run est encore vivant, pas depuis combien de temps il travaille. L’agent se manifeste toutes les trente secondes pendant qu’un outil tourne, donc un silence aussi long signifie qu’il s’est arrêté. 0 le désactive.',
+  'Stop a run outright after': 'Arrêter un run purement et simplement après',
+  'A backstop, deliberately generous: elapsed time is the wrong question for a loop or a long refactor. It exists for the one case silence cannot see — a tool that never returns. 0 switches it off.':
+    'Un filet, volontairement généreux : le temps écoulé est la mauvaise question pour une boucle ou un long remaniement. Il existe pour le seul cas que le silence ne voit pas — un outil qui ne rend jamais la main. 0 le désactive.',
+  'Runs at once': 'Runs simultanés',
+  'Across the whole server. Anything beyond this waits its turn rather than being refused. Lowering it never stops a run already going.':
+    'Sur l’ensemble du serveur. Au-delà, un run attend son tour plutôt que d’être refusé. Baisser cette valeur n’arrête jamais un run déjà lancé.',
+  'Pause automatic starts above': 'Suspendre les démarrages automatiques au-delà de',
+  'Percent of the plan’s tightest quota window. Only automatic starts wait — you pressing the button is never refused. 100 switches the guard off.':
+    'Pourcentage de la fenêtre de quota la plus serrée du plan. Seuls les démarrages automatiques attendent — un clic de votre part n’est jamais refusé. 100 désactive le garde-fou.',
+  'Keep finished runs for': 'Conserver les runs terminés pendant',
+  'Days. Transcripts are the only thing here that grows without limit, and the only sweep that destroys something you wrote. 0 keeps everything.':
+    'En jours. Les transcripts sont la seule chose ici qui grossit sans limite, et le seul balayage qui détruit quelque chose que vous avez écrit. 0 conserve tout.',
+  'Always keep, per workspace': 'Toujours conserver, par workspace',
+  'The newest runs survive the sweep whatever their age, so a workspace left alone for a year still has its history.':
+    'Les runs les plus récents survivent au balayage quel que soit leur âge, pour qu’un workspace laissé de côté un an garde son historique.',
+  'Log level': 'Niveau de journalisation',
+  'What the server writes to its own log. `debug` is worth switching on while chasing something and worth switching off afterwards.':
+    'Ce que le serveur écrit dans son propre journal. `debug` vaut la peine d’être activé le temps d’une investigation, et désactivé ensuite.',
+
   /* Workspace : outils pré-approuvés */
   'Pre-approved tools': 'Outils pré-approuvés',
   'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright.':

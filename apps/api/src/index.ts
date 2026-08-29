@@ -23,7 +23,6 @@ async function main(): Promise<void> {
       dataDir: config.dataDir,
       workspacesDir: config.workspacesDir,
       authMode: config.claude.authMode,
-      maxConcurrentRuns: config.maxConcurrentRuns,
     },
     'Metaclaude starting',
   );
@@ -37,6 +36,18 @@ async function main(): Promise<void> {
   }
 
   const context = await createAppContext(config, log);
+
+  // After the context, not before it: an owner may have overridden these from
+  // the settings screen, and a boot line naming the environment's value would
+  // be the first thing to disagree with the screen that changed it.
+  log.info(
+    {
+      maxConcurrentRuns: context.runtimeSettings.number('maxConcurrentRuns'),
+      runTimeoutMs: context.runtimeSettings.number('runTimeoutMs'),
+      idleTimeoutMs: context.runtimeSettings.number('idleTimeoutMs'),
+    },
+    'run ceilings in force',
+  );
 
   /* ------------------------- First-run bootstrap ------------------------- */
 

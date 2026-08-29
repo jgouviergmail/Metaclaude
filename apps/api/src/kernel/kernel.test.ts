@@ -26,7 +26,7 @@ import { migrate, openDatabase, type Db } from '../db/index.js';
 import { HashingEmbedder } from '../learning/embeddings.js';
 import { KnowledgeStore } from '../learning/knowledge.js';
 import { EventBus } from './bus.js';
-import { deriveTitle, Kernel, languageDirective } from './kernel.js';
+import { delegationTimeoutFor, deriveTitle, Kernel, languageDirective } from './kernel.js';
 import { AttachmentService } from '../services/attachments.js';
 import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import type { RunOutcome, RunRequest, SupervisorCallbacks } from './supervisor.js';
@@ -160,7 +160,8 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     // Real service against the same in-memory database — attachments are part
     // of the storage the kernel is tested against, not a learning collaborator.
     attachments: new AttachmentService(db),
-    maxConcurrentRuns: options.maxConcurrentRuns ?? 2,
+    maxConcurrentRuns: () => options.maxConcurrentRuns ?? 2,
+    runTimeoutMs: () => 60_000,
     ...(options.delegationTimeoutMs !== undefined
       ? { delegationTimeoutMs: options.delegationTimeoutMs }
       : {}),
@@ -1017,5 +1018,39 @@ describe('languageDirective', () => {
     // A run that renamed identifiers or translated command output to satisfy
     // a language setting would be worse than one that answered in English.
     expect(languageDirective('fr')).toMatch(/code|identifier/i);
+  });
+});
+
+/**
+ * A delegation must outlast the run it is waiting on, whatever that run's
+ * ceiling is.
+ *
+ * The constant was 50 minutes with a comment saying it "outlasts the run
+ * timeout" — true against the 45-minute default of the day, and silently false
+ * the moment an operator raised `METACLAUDE_RUN_TIMEOUT_MS` past it. The waiter
+ * would then give up first and report a delegation as timed out while the
+ * delegated run was still working, which is the worst of both: a wrong answer
+ * and a run nobody is reading any more.
+ *
+ * Raising the default to four hours made the comment false in the shipped
+ * configuration, which is what forced the derivation.
+ */
+describe('the delegation waiter against the run ceiling', () => {
+  it('waits longer than the run may possibly take', () => {
+    for (const runTimeoutMs of [45 * 60_000, 4 * 60 * 60_000, 12 * 60 * 60_000]) {
+      expect(delegationTimeoutFor(runTimeoutMs)).toBeGreaterThan(runTimeoutMs);
+    }
+  });
+
+  /**
+   * A run with no absolute ceiling still cannot make the waiter wait forever:
+   * the caller of a delegation is itself a run, and a promise nobody settles
+   * would hold its slot until its own ceiling. So an unbounded run gets a
+   * bounded wait, and the wait is the thing that reports.
+   */
+  it('stays finite when the run has no ceiling at all', () => {
+    const unbounded = delegationTimeoutFor(0);
+    expect(unbounded).toBeGreaterThan(0);
+    expect(Number.isFinite(unbounded)).toBe(true);
   });
 });

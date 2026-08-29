@@ -11,6 +11,74 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.41.0] — 2026-08-29
+
+### Added
+
+- **A run may now work for as long as it needs to.** The ceiling was 45 minutes
+  of *elapsed time*, which is the wrong question: it punishes a run for
+  working, and a loop, an overnight refactor and a two-hour automation are
+  indistinguishable from a wedged subprocess to a clock that only counts. The
+  ceiling that normally fires is an **idle** one — no message from the CLI for
+  ten minutes — and the wall clock stays as a backstop, now measured in hours.
+
+  Silence is usable as a signal because it was measured rather than assumed:
+  during a tool call that ran for 100 seconds the CLI emitted `tool_progress`
+  every 30 seconds, plus `task_started` and a rate-limit event. Ten minutes of
+  nothing therefore carries a factor of twenty over the heartbeat, and nothing
+  has to special-case a tool being in flight. `0` switches either off — and
+  means *no timer*, never a timer of zero, because a zero-delay abort fires
+  before the CLI is spawned and an already-aborted signal reaches no listener:
+  the run would end as a success having been stopped.
+
+- **Settings → Configuration**, owner only: the operational settings this
+  server runs on, changed without a restart. The two ceilings, runs at once,
+  the quota guard, run retention and the log level. A value saved there applies
+  to the next run — consumers read through a getter at the point of use, so
+  there is no notification graph to keep in step — and the log level, which
+  lives on the logger rather than in anything that will look it up again, is
+  replayed at boot.
+
+  A stored value outranks the environment, and that order is forced rather than
+  chosen: `compose.yml` names every one of these with a default of its own, so
+  an environment-wins design would be inert in every real deployment. The price
+  is a second source of truth, paid by reporting provenance on every row — what
+  is in force, what it would fall back to, who wrote it — and one action to
+  hand the setting back.
+
+  What is **not** there is the point of the design. Bypass mode, allowed
+  origins, proxy trust, the master key and the bootstrap credentials stay in
+  the environment, because what protects them is being unreachable from a
+  signed-in browser; the server refuses any key not on its own list, so a
+  hand-made request gets a 404 rather than a stored row. The data directories
+  and the embedder are absent for a different reason — switching the embedder
+  would leave every stored vector a different width, and `cosine` answers 0
+  when the dimensions disagree, so retrieval would die in silence.
+
+### Fixed
+
+- **A cut-short automation looked perfectly healthy, for ever.** Anything other
+  than `failed` reset the consecutive-failure streak, so a firing stopped at a
+  ceiling read as a good one: `consecutiveFailures: 0`, never disabled, and
+  invisible to both the doctor and the brief, which only look at automations
+  the guard has already switched off. It could also launder a real streak back
+  to nothing by being interrupted once. A stopped firing now leaves the streak
+  where it was — it is evidence of neither health nor failure.
+
+- **The delegation wait was a constant that had stopped outlasting the run.**
+  Fifty minutes, with a comment claiming it outlasted the run timeout — true
+  against the 45-minute default of the day, false the moment anyone raised it,
+  and false in the shipped configuration once the backstop became four hours.
+  The waiter giving up first turns "the delegated run hit its limit" into "the
+  delegation timed out", which sends the operator to the wrong place. It is
+  derived from the ceiling now, and a run with no ceiling still gets a bounded
+  wait.
+
+- **The wall clock had never had a test.** Not one, in the module that decides
+  what a stopped run reports — because the fake `query` used to end its stream
+  on abort while the real SDK throws, so the case was unreachable. Four now,
+  each proven by sabotage.
+
 ## [0.40.0] — 2026-08-29
 
 ### Added

@@ -88,6 +88,74 @@ export function patchSchema<Shape extends z.ZodRawShape>(
   return z.object(shape);
 }
 
+/**
+ * The operational settings an owner may change without restarting the server.
+ *
+ * Deliberately a short list, and the line it draws is not "hot versus cold" —
+ * it is **operational versus security**. Bypass mode, allowed origins, proxy
+ * trust, the master key and the bootstrap credentials stay in the environment,
+ * because what protects them is being unreachable from a session cookie;
+ * `docs/SECURITY.md` calls the first of those a deployment-level decision and
+ * refuses it at three layers. The data directories and the embedder are absent
+ * for a different reason: they cannot change while the process runs. Switching
+ * the embedder would leave every stored vector a different width, and `cosine`
+ * answers 0 when the dimensions disagree — retrieval would die in silence.
+ */
+export const RuntimeSettingKey = z.enum([
+  'runTimeoutMs',
+  'idleTimeoutMs',
+  'maxConcurrentRuns',
+  'quotaGuardPct',
+  'runRetentionDays',
+  'runKeepPerWorkspace',
+  'logLevel',
+]);
+export type RuntimeSettingKey = z.infer<typeof RuntimeSettingKey>;
+
+/**
+ * One setting, with the value in force and where that value came from.
+ *
+ * The provenance is not decoration. `compose.yml` names every one of these
+ * with a default of its own, so in a real deployment the environment is always
+ * set — which is why a stored override has to win, and why a screen that did
+ * not say so would be describing a value the operator cannot account for. The
+ * same honesty the doctor applies to the embedder: what is *running*, versus
+ * what was configured.
+ */
+export const RuntimeSettingRecord = z.object({
+  key: RuntimeSettingKey,
+  /** The value in force. A number, or one of `options` for a choice. */
+  value: z.union([z.number(), z.string()]),
+  source: z.enum(['stored', 'environment', 'default']),
+  /**
+   * What this would fall back to if the override were removed — the
+   * environment's value, or the schema's default when the environment is
+   * silent. Null only when the two cannot differ.
+   */
+  fallback: z.union([z.number(), z.string()]).nullable(),
+  kind: z.enum(['duration', 'count', 'percent', 'choice']),
+  /** Bounds for a number. `0` is admissible for a duration and means "off". */
+  min: z.number().nullable(),
+  max: z.number().nullable(),
+  /** The admissible values for a choice, in the order a form should show them. */
+  options: z.array(z.string()),
+  updatedAt: Millis.nullable(),
+  updatedBy: z.string().nullable(),
+});
+export type RuntimeSettingRecord = z.infer<typeof RuntimeSettingRecord>;
+
+/**
+ * Setting a value, or clearing the override with `null`.
+ *
+ * The string is bounded even though the service refuses anything that is not
+ * one of a setting's own options: an edge schema that accepts a megabyte and
+ * relies on a later check to reject it has already done the expensive part.
+ */
+export const SetRuntimeSettingRequest = z.object({
+  value: z.union([z.number(), z.string().max(128)]).nullable(),
+});
+export type SetRuntimeSettingRequest = z.infer<typeof SetRuntimeSettingRequest>;
+
 export const AgentDefinitionRecord = z.object({
   id: z.string(),
   workspaceId: z.string().nullable(),

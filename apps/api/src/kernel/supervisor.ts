@@ -131,7 +131,20 @@ export interface SupervisorDeps {
   broker: () => PermissionBroker;
   allowBypassPermissions: boolean;
   claudeBinPath: string | null;
-  runTimeoutMs: number;
+  /**
+   * Read at the start of every run rather than captured once, so a change made
+   * through the settings screen applies to the next run instead of the next
+   * restart. Same lazy-getter shape as `broker` above, for the same reason.
+   */
+  runTimeoutMs: () => number;
+  /**
+   * How long a run may report nothing before it is stopped. 0 disables it.
+   *
+   * The ceiling that should normally do the stopping: `runTimeoutMs` measures
+   * how long a run has *worked*, which is the wrong question for a loop or a
+   * long refactor.
+   */
+  idleTimeoutMs: () => number;
   /** Extra environment handed to the CLI subprocess (auth token lives here). */
   env: Record<string, string>;
   /** Bounds on what `additionalDirectories` may grant. */
@@ -839,16 +852,67 @@ export class AgentSupervisor {
     const startedAt = Date.now();
     const controller = new AbortController();
 
-    let timedOut = false;
-    // One timer, and it sets the flag *before* aborting. With a second timer at
-    // the same delay the abort could settle the iterator and reach the catch
-    // block while the flag was still false, reporting a timeout as an operator
-    // interrupt.
-    const timeout = setTimeout(() => {
-      timedOut = true;
+    /** Which ceiling stopped this run, if either did. */
+    let stoppedBy: 'idle' | 'limit' | null = null;
+    /*
+     * Two ceilings, because they answer different questions.
+     *
+     * The **idle** one asks whether the run is still alive, and it is the one
+     * that should normally do the stopping. A ceiling on total duration
+     * punishes a run for *working*: a loop, a long refactor and an automation
+     * that genuinely takes two hours are indistinguishable from a wedged
+     * subprocess to a clock that only counts elapsed time.
+     *
+     * Silence is a usable signal, and that was measured rather than assumed:
+     * during a tool call that ran for 100 seconds the CLI emitted
+     * `tool_progress` every 30 seconds, plus `task_started` and a rate-limit
+     * event. So a ten-minute idle ceiling carries a factor of twenty over the
+     * heartbeat, and nothing has to special-case a tool being in flight.
+     *
+     * The **absolute** one is the backstop for the case the first cannot see:
+     * a tool that never returns at all, on a CLI that has stopped saying so.
+     *
+     * Each sets the reason *before* aborting. With the flag set afterwards the
+     * abort could settle the iterator and reach the catch block first,
+     * reporting a stop as an operator interrupt.
+     *
+     * Zero means no timer, not a timer of zero. A `setTimeout(…, 0)` fires
+     * before `query()` is even called, and an already-aborted signal fires no
+     * listener — so the SDK never learns of it and the run ends as a *success*
+     * having been stopped. Measured, in this file's own fake.
+     */
+    /**
+     * Whichever cause arrives first owns the reason.
+     *
+     * Without the guard a timer that fires in the window between an abort and
+     * the catch block reading the flag rewrites it — so an operator pressing
+     * Stop could be told their run went quiet, and a run stopped at its
+     * absolute ceiling could be reported as idle. `unref` does not stop a
+     * timer from firing, it only stops it holding the process open.
+     */
+    const stopWith = (reason: 'idle' | 'limit') => (): void => {
+      if (controller.signal.aborted) return;
+      stoppedBy = reason;
       controller.abort();
-    }, this.deps.runTimeoutMs);
-    timeout.unref?.();
+    };
+
+    // Read once per run: a ceiling that moved mid-run would make the message
+    // below name a figure that never applied.
+    const runTimeoutMs = this.deps.runTimeoutMs();
+    const idleTimeoutMs = this.deps.idleTimeoutMs();
+
+    const limit = runTimeoutMs > 0 ? setTimeout(stopWith('limit'), runTimeoutMs) : null;
+    limit?.unref?.();
+
+    let idle: ReturnType<typeof setTimeout> | null = null;
+    /** Re-arm the liveness clock. Called for every message the CLI sends. */
+    const touch = (): void => {
+      if (idleTimeoutMs <= 0) return;
+      if (idle) clearTimeout(idle);
+      idle = setTimeout(stopWith('idle'), idleTimeoutMs);
+      idle.unref?.();
+    };
+    touch();
 
     // Chain the caller's signal into ours so either can stop the run. An
     // already-aborted signal never fires 'abort', and the kernel can abort
@@ -958,6 +1022,10 @@ export class AgentSupervisor {
 
     try {
       for await (const message of handle) {
+        // Any message at all is proof of life, including the heartbeats the
+        // CLI emits while a tool works — which is what lets the idle ceiling
+        // be measured in minutes rather than hours.
+        touch();
         const captured = state.handle(message);
         if (captured.claudeSessionId) {
           claudeSessionId = captured.claudeSessionId;
@@ -982,7 +1050,7 @@ export class AgentSupervisor {
         // input does not work that way — the session stays open for the next
         // user message, so the generator waits for input while the loop waits
         // for the generator. Every run hung: the answer arrived, the tools ran,
-        // and the badge said `Working` until the 45-minute timeout marked it
+        // and the badge said `Working` until a ceiling marked it
         // interrupted. Closing the stream first lets the CLI wrap up; breaking
         // means a CLI that lingers cannot hold the run open anyway.
         //
@@ -999,16 +1067,22 @@ export class AgentSupervisor {
       const message = caught instanceof Error ? caught.message : String(caught);
       if (controller.signal.aborted) {
         status = 'interrupted';
-        error = timedOut
-          ? `The run exceeded its ${Math.round(this.deps.runTimeoutMs / 60_000)} minute time limit and was stopped.`
-          : 'The run was interrupted.';
+        // Three reasons, three sentences. "Stopped for taking too long" and
+        // "stopped for going quiet" send an operator to different places.
+        error =
+          stoppedBy === 'limit'
+            ? `The run exceeded its ${minutes(runTimeoutMs)} time limit and was stopped.`
+            : stoppedBy === 'idle'
+              ? `The run reported nothing for ${minutes(idleTimeoutMs)} and was stopped. Working takes messages; silence that long means the agent had stopped.`
+              : 'The run was interrupted.';
       } else {
         status = 'failed';
         error = message;
         this.deps.log('error', `run ${request.runId} failed`, { message });
       }
     } finally {
-      clearTimeout(timeout);
+      if (limit) clearTimeout(limit);
+      if (idle) clearTimeout(idle);
       request.abortSignal.removeEventListener('abort', onExternalAbort);
       // Order matters on the way out: stop accepting input, then forget the
       // run, then flush the transcript. Closing the stream is what lets the
@@ -1948,6 +2022,12 @@ export class StreamState {
   nextSeq(): number {
     return this.seq++;
   }
+}
+
+/** `600000` → `10 minutes`, `60000` → `1 minute`. Ceilings are operator-set. */
+function minutes(ms: number): string {
+  const value = Math.round(ms / 60_000);
+  return `${value} ${value === 1 ? 'minute' : 'minutes'}`;
 }
 
 function describeResultError(message: Extract<SDKMessage, { type: 'result' }>): string {

@@ -39,7 +39,11 @@ services:
       METACLAUDE_ALLOWED_ORIGINS: ${METACLAUDE_ALLOWED_ORIGINS:-}
       METACLAUDE_MAX_CONCURRENT_RUNS: ${METACLAUDE_MAX_CONCURRENT_RUNS:-4}
       METACLAUDE_QUOTA_GUARD_PCT: ${METACLAUDE_QUOTA_GUARD_PCT:-85}
-      METACLAUDE_RUN_TIMEOUT_MS: ${METACLAUDE_RUN_TIMEOUT_MS:-2700000}
+      # Two ceilings, and the idle one is the one that should fire. A ceiling on
+      # elapsed time punishes a run for working, which is the wrong answer for a
+      # loop or a long refactor; silence is what actually means "stopped".
+      METACLAUDE_RUN_IDLE_TIMEOUT_MS: ${METACLAUDE_RUN_IDLE_TIMEOUT_MS:-600000}
+      METACLAUDE_RUN_TIMEOUT_MS: ${METACLAUDE_RUN_TIMEOUT_MS:-14400000}
       METACLAUDE_RUN_RETENTION_DAYS: ${METACLAUDE_RUN_RETENTION_DAYS:-180}
       METACLAUDE_RUN_KEEP_PER_WORKSPACE: ${METACLAUDE_RUN_KEEP_PER_WORKSPACE:-50}
       # The public origin, needed only so an MCP server's authorization server

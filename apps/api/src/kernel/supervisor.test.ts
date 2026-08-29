@@ -11,7 +11,7 @@
  * carries the control methods, exactly as the SDK's type declares.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '@metaclaude/shared';
 import {
   AgentSupervisor,
@@ -360,13 +360,19 @@ function fakeQuery() {
 function makeSupervisor(
   query: unknown,
   broker?: { request: () => Promise<unknown> },
-  extra: { delegate?: () => Promise<never>; board?: unknown } = {},
+  extra: {
+    delegate?: () => Promise<never>;
+    board?: unknown;
+    runTimeoutMs?: number;
+    idleTimeoutMs?: number;
+  } = {},
 ) {
   return new AgentSupervisor({
     broker: () => (broker ?? { request: async () => ({ behavior: 'allow' }) }) as never,
     allowBypassPermissions: false,
     claudeBinPath: null,
-    runTimeoutMs: 60_000,
+    runTimeoutMs: () => extra.runTimeoutMs ?? 60_000,
+    idleTimeoutMs: () => extra.idleTimeoutMs ?? 0,
     env: {},
     directoryPolicy: { workspacesDir: '/srv/metaclaude/workspaces', dataDir: '/var/lib/metaclaude' },
     log: () => {},
@@ -565,7 +571,7 @@ describe('a turn that produces a result ends the run', () => {
   /**
    * The bug this pins down shipped and reached a real deployment: the answer
    * arrived, the tools ran, the file was written — and the badge said
-   * `Working` until the 45-minute timeout marked the run interrupted.
+   * `Working` until a ceiling marked the run interrupted.
    *
    * `Query` is an AsyncGenerator. Under a *string* prompt the CLI answers and
    * exits, so `for await` ends on its own; under streaming input the session
@@ -1778,7 +1784,8 @@ describe('buildOptions', () => {
       broker: () => ({ request: async () => ({ behavior: 'allow' }) }) as never,
       allowBypassPermissions: false,
       claudeBinPath: null,
-      runTimeoutMs: 60_000,
+      runTimeoutMs: () => 60_000,
+      idleTimeoutMs: () => 0,
       env: {},
       directoryPolicy: {
         workspacesDir: '/srv/metaclaude/workspaces',
@@ -2207,5 +2214,119 @@ describe('a run whose tool calls were refused without a prompt', () => {
     });
     expect(notes).toHaveLength(1);
     expect(notes[0]!.message).toContain('Write');
+  });
+});
+
+/**
+ * When a run is stopped for taking too long, and what "too long" means.
+ *
+ * The wall clock had never been tested, and it was measuring the wrong thing:
+ * a ceiling on total duration punishes a run for *working*, when what it is
+ * there to catch is a run that has stopped working. A loop, a long refactor, an
+ * automation that genuinely takes two hours are all indistinguishable from a
+ * wedged subprocess to a clock that only counts elapsed time.
+ *
+ * Measured against the real CLI: during a tool call that ran for 100 seconds it
+ * emitted `tool_progress` every 30 seconds, plus `task_started` and a rate
+ * limit event. The stream is never silent for long while anything is happening,
+ * which is what makes silence a usable signal and gives an idle ceiling of
+ * minutes a factor of twenty of margin over the heartbeat.
+ *
+ * So there are two, and they answer different questions. The idle ceiling asks
+ * "is this still alive?"; the absolute one is the backstop for a tool that
+ * never returns at all. Either may be switched off with 0.
+ */
+describe('the two ceilings on a run', () => {
+  /** Drives a run under fake timers; `emit` at each step keeps it talking. */
+  async function runFor(
+    ms: number,
+    options: { runTimeoutMs?: number; idleTimeoutMs?: number; chatty?: boolean },
+  ) {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query, undefined, {
+      ...(options.runTimeoutMs !== undefined ? { runTimeoutMs: options.runTimeoutMs } : {}),
+      ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
+    });
+    const outcome = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+
+    // One step per minute; a chatty run says something on every one of them.
+    const step = 60_000;
+    for (let elapsed = 0; elapsed < ms; elapsed += step) {
+      if (options.chatty) {
+        control.emit({ type: 'system', subtype: 'tool_progress', session_id: 's' });
+      }
+      await vi.advanceTimersByTimeAsync(step);
+    }
+    return { outcome, control };
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('stops a run that has gone silent, and says that is why', async () => {
+    const { outcome } = await runFor(12 * 60_000, {
+      idleTimeoutMs: 10 * 60_000,
+      runTimeoutMs: 0,
+    });
+    const result = await outcome;
+
+    expect(result.status).toBe('interrupted');
+    expect(result.error).toMatch(/10 minutes/);
+    expect(result.error).toMatch(/nothing|silent|no activity/i);
+    // Not the other message: the two reasons must not be confusable.
+    expect(result.error).not.toMatch(/time limit/);
+  });
+
+  /**
+   * The property the whole change exists for. Ninety minutes of work, past an
+   * idle ceiling of ten, with the CLI reporting as it did in the measurement —
+   * and the run is left alone.
+   */
+  it('leaves a run alone however long it works, as long as it keeps reporting', async () => {
+    const { outcome, control } = await runFor(90 * 60_000, {
+      idleTimeoutMs: 10 * 60_000,
+      runTimeoutMs: 0,
+      chatty: true,
+    });
+    control.finish();
+    const result = await outcome;
+
+    expect(result.status).toBe('succeeded');
+    expect(result.error).toBeNull();
+  });
+
+  it('still stops a chatty run at the absolute ceiling', async () => {
+    const { outcome } = await runFor(70 * 60_000, {
+      idleTimeoutMs: 10 * 60_000,
+      runTimeoutMs: 60 * 60_000,
+      chatty: true,
+    });
+    const result = await outcome;
+
+    expect(result.status).toBe('interrupted');
+    expect(result.error).toMatch(/60 minute/);
+    expect(result.error).toMatch(/time limit/);
+  });
+
+  /**
+   * An idle ceiling of 0 switches that clock off and nothing else: a run that
+   * says nothing for half an hour is left alone, while the absolute ceiling it
+   * still has stays armed.
+   *
+   * The first version of this case asserted the same thing for `runTimeoutMs:
+   * 0` as well, and it could not be made to fail — a zero-delay timer aborts
+   * before `query()` is called, and an already-aborted signal fires no
+   * listener, so the fake never learned of it and the run finished as a
+   * success either way. A case that passes whether or not the code is right is
+   * worse than no case, so it asserts what it can actually see.
+   */
+  it('switches off only the clock it names when that clock is 0', async () => {
+    const quiet = await runFor(30 * 60_000, { idleTimeoutMs: 0, runTimeoutMs: 60 * 60_000 });
+    quiet.control.finish();
+    const result = await quiet.outcome;
+
+    expect(result.status).toBe('succeeded');
+    expect(result.error).toBeNull();
   });
 });

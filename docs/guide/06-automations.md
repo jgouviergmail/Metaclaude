@@ -52,6 +52,21 @@ permissions chapter.
 Whatever a firing was refused, the run's timeline ends with a line naming it,
 so an automation that quietly did half its job says so.
 
+## How long a firing may take
+
+As long as it needs. A firing is stopped only if it reports *nothing* for ten
+minutes — the agent speaks every half minute while a tool runs, so that means it
+stopped rather than that it is busy — with a second ceiling in hours behind it
+for a tool that never returns. Both are on **Settings → Configuration**, and
+either can be switched off.
+
+A firing that was cut short is neither a success nor a failure, and the failure
+guard treats it as exactly that: it leaves the streak where it was rather than
+resetting it. It used to reset, which meant an automation cut short at every
+firing showed a clean record for ever — never disabled, and invisible to the
+doctor and the brief, which only look at automations the guard has already
+switched off.
+
 ## Patterns that work
 
 A nightly dependency-and-CI review per repository. A continuous watcher that

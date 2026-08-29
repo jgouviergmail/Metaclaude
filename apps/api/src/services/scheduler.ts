@@ -366,8 +366,30 @@ export class Scheduler {
       .get(sessionId);
     if (!row) return;
 
+    /*
+     * Three outcomes, three answers — and the middle one is the correction.
+     *
+     * `succeeded` ends a streak. `failed` extends it. Anything else — a firing
+     * stopped at a ceiling, cancelled, or cut off by a restart — leaves it
+     * exactly where it was, because a firing that never got to finish is not
+     * evidence either way.
+     *
+     * It used to reset the streak, which made a stopped firing read as a
+     * healthy one: an automation cut short at every firing showed
+     * `consecutiveFailures: 0` for ever, was never disabled, and appeared in
+     * neither the doctor nor the brief — both of which only look at
+     * automations the guard has already switched off. It could also launder a
+     * real streak back to nothing by being interrupted once.
+     */
     const failed = status === 'failed';
-    const consecutive = attended ? row.consecutive_failures : failed ? row.consecutive_failures + 1 : 0;
+    const succeeded = status === 'succeeded';
+    const consecutive = attended
+      ? row.consecutive_failures
+      : failed
+        ? row.consecutive_failures + 1
+        : succeeded
+          ? 0
+          : row.consecutive_failures;
     const shouldDisable =
       !attended &&
       failed &&

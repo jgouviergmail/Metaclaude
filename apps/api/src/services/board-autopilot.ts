@@ -42,7 +42,8 @@ export interface BoardAutopilotDeps {
    */
   quota: { utilization(workspacePath: string): Promise<number | null> };
   /** Automatic starts wait above this percentage. 100 disables the guard. */
-  guardPct: number;
+  /** Read per decision, so the settings screen applies without a restart. */
+  guardPct: () => number;
   log: (level: 'info' | 'warn', message: string, data?: unknown) => void;
 }
 
@@ -126,11 +127,12 @@ export class BoardAutopilot {
       // Fail open on null: an unknowable quota (API-key mode, a broken
       // probe) must not silently freeze the queue — runs stay visible,
       // a frozen board is not.
-      if (utilization !== null && utilization >= this.deps.guardPct) {
+      const guardPct = this.deps.guardPct();
+      if (utilization !== null && utilization >= guardPct) {
         this.deps.log('info', 'autopilot deferred to the quota guard', {
           workspaceId,
           utilization,
-          guardPct: this.deps.guardPct,
+          guardPct,
         });
         return { started: null, reason: 'quota' };
       }

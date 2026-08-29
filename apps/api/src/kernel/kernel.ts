@@ -121,9 +121,14 @@ export interface KernelDeps {
   contextProvider: ContextProvider;
   supervisor: AgentSupervisor;
   attachments: AttachmentService;
-  maxConcurrentRuns: number;
+  maxConcurrentRuns: () => number;
   /** How long a delegation waits for its run. Injectable so tests need not. */
   delegationTimeoutMs?: number;
+  /**
+   * The run ceiling this deployment is configured with, so the delegation wait
+   * can be derived from it rather than guessed at. See `delegationTimeoutFor`.
+   */
+  runTimeoutMs: () => number;
   /** Overridable so a test can reach the boundary without writing 400 events. */
   mcpSessionMaxEvents?: number;
   /**
@@ -156,8 +161,31 @@ class RunCancelled extends Error {
   }
 }
 
-/** Outlasts the run timeout, so the timeout's own report arrives first. */
-const DELEGATION_TIMEOUT_MS = 50 * 60_000;
+/** Margin by which a delegation outlasts the run it waits on. */
+const DELEGATION_GRACE_MS = 5 * 60_000;
+/** The wait for a run that has no ceiling of its own. */
+const DELEGATION_UNBOUNDED_MS = 4 * 60 * 60_000;
+
+/**
+ * How long to wait on a delegated run, derived from that run's own ceiling.
+ *
+ * It must outlast the run, so that a run stopped at its ceiling gets to report
+ * *why* — the waiter giving up first turns "the delegated run hit its limit"
+ * into "the delegation timed out", which sends the operator looking in the
+ * wrong place.
+ *
+ * It was a constant of fifty minutes, with a comment claiming exactly this
+ * property. True against the forty-five minute default of the day, and false
+ * the moment anyone raised `METACLAUDE_RUN_TIMEOUT_MS` past it — including
+ * when the default itself became four hours.
+ *
+ * A run with no ceiling still gets a bounded wait: the delegating side is
+ * itself a run holding a concurrency slot, and a promise nobody settles would
+ * hold it until its own clock ran out with nothing to say.
+ */
+export function delegationTimeoutFor(runTimeoutMs: number): number {
+  return runTimeoutMs > 0 ? runTimeoutMs + DELEGATION_GRACE_MS : DELEGATION_UNBOUNDED_MS;
+}
 
 /**
  * How much transcript one gateway session may accumulate before the next call
@@ -399,7 +427,7 @@ export class Kernel {
 
     const settled = await this.waitForDelegation(
       run.id,
-      this.deps.delegationTimeoutMs ?? DELEGATION_TIMEOUT_MS,
+      this.deps.delegationTimeoutMs ?? delegationTimeoutFor(this.deps.runTimeoutMs()),
     );
     return {
       runId: settled.run.id,
@@ -637,7 +665,7 @@ export class Kernel {
   }
 
   private acquireSlot(runId: string): Promise<void> {
-    if (this.active.size < this.deps.maxConcurrentRuns) return Promise.resolve();
+    if (this.active.size < this.deps.maxConcurrentRuns()) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       this.queue.push({ runId, resolve, reject });
       this.publishMetrics();

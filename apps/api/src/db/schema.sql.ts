@@ -898,4 +898,31 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_api_tokens_created ON api_tokens(created_at DESC);
     `,
   },
+  {
+    version: 21,
+    name: 'runtime_settings',
+    sql: /* sql */ `
+      -- Operational settings an owner may change without a restart.
+      --
+      -- An override, never the whole configuration: absent means "whatever the
+      -- environment or the schema says", so a fresh database behaves exactly
+      -- as it did before this table existed, and deleting a row is how you go
+      -- back rather than a special case.
+      --
+      -- Deliberately only the operational tier. Anything that is a security
+      -- decision -- bypass mode, allowed origins, proxy trust, the master key
+      -- -- stays in the environment, because what protects those values is
+      -- being unreachable from a session cookie. The API refuses a key that is
+      -- not on its own list, so a row here cannot widen that by being written.
+      --
+      -- The value is text and typed on the way out by the same catalogue that
+      -- validates it going in: one column, whatever a setting turns out to be.
+      CREATE TABLE runtime_settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        updated_by TEXT NOT NULL
+      );
+    `,
+  },
 ];

@@ -256,3 +256,40 @@ describe('the push subject', () => {
   });
 });
 
+
+/**
+ * The two ceilings on a run, where the schema decides what an operator may
+ * write. `0` is the only value below the floor that means something, and it
+ * means "no ceiling" rather than "a ceiling of nothing" — a distinction the
+ * supervisor depends on, because a timer of zero fires before the CLI is even
+ * spawned and an already-aborted signal reaches no listener.
+ */
+describe('the run ceilings', () => {
+  const load = (env: Record<string, string>) =>
+    loadConfig({
+      NODE_ENV: 'test',
+      METACLAUDE_DATA_DIR: join(tmpdir(), 'mc-cfg-data'),
+      METACLAUDE_WORKSPACES_DIR: join(tmpdir(), 'mc-cfg-ws'),
+      METACLAUDE_WEB_DIR: join(tmpdir(), 'mc-cfg-web'),
+      ...env,
+    } as NodeJS.ProcessEnv);
+
+  it('defaults to hours of work and ten minutes of silence', () => {
+    const config = load({});
+    expect(config.runTimeoutMs).toBe(4 * 60 * 60 * 1000);
+    expect(config.idleTimeoutMs).toBe(10 * 60 * 1000);
+  });
+
+  it('accepts 0 for either, which switches that ceiling off', () => {
+    const config = load({ METACLAUDE_RUN_TIMEOUT_MS: '0', METACLAUDE_RUN_IDLE_TIMEOUT_MS: '0' });
+    expect(config.runTimeoutMs).toBe(0);
+    expect(config.idleTimeoutMs).toBe(0);
+  });
+
+  it('refuses a value that is neither 0 nor a sane floor', () => {
+    for (const key of ['METACLAUDE_RUN_TIMEOUT_MS', 'METACLAUDE_RUN_IDLE_TIMEOUT_MS']) {
+      expect(() => load({ [key]: '5000' })).toThrow();
+      expect(() => load({ [key]: '-1' })).toThrow();
+    }
+  });
+});

@@ -126,6 +126,43 @@ asking — is read at the end of every run and written to the transcript as one
 line. It used to be dropped, leaving the agent's closing paragraph as the only
 trace, which nobody reads on an unattended run.
 
+### Two ceilings on a run
+`runTimeoutMs` measured elapsed time and nothing else, which is the wrong
+question: it punishes a run for working, and a loop, a long refactor and a
+two-hour automation are indistinguishable from a wedged subprocess to a clock.
+So the ceiling that normally fires is an **idle** one — no message from the CLI
+for N minutes — re-armed on every message the stream carries. That silence is a
+usable signal because it was measured: during a tool call that ran for 100
+seconds the CLI emitted `tool_progress` every 30 seconds, so ten minutes of
+nothing carries a factor of twenty over the heartbeat and needs no special case
+for a tool being in flight. The absolute ceiling remains as the backstop for
+what silence cannot see — a tool that never returns — and is measured in hours.
+
+Zero means *no timer*, never a timer of zero: a zero-delay abort fires before
+`query()` is called, an already-aborted signal reaches no listener, and the run
+would then end as a success having been stopped.
+
+The delegation waiter derives from the absolute ceiling rather than restating
+it. It was a constant of fifty minutes with a comment claiming it outlasted the
+run timeout — true against the forty-five minute default of the day, false the
+moment anyone raised it, and the waiter giving up first turns "the delegated run
+hit its limit" into "the delegation timed out".
+
+### Settings that change while it runs
+`RuntimeSettings` resolves **stored override > environment > schema default**,
+and that order is forced rather than chosen: `compose.yml` names every
+operational setting with a default of its own, so the environment is always
+present and an environment-wins design would be inert in every real deployment.
+The price is a second source of truth, paid by reporting provenance on every
+record — what is in force, and what it would fall back to.
+
+Nothing is pushed. Consumers hold a getter (`runTimeoutMs: () => number`, the
+same lazy shape as `broker`) and read at the point of use, so a change applies
+to the next run with no notification graph to keep in step. The one exception is
+a setting whose effect lives outside anything that will look it up again — the
+log level sits on the logger object — and those declare `applies` and are
+replayed at boot.
+
 ### Recovery
 A crash leaves runs marked `running` and sessions marked busy. Both repositories
 expose `recoverOrphaned()`, called once at boot, which marks them interrupted.

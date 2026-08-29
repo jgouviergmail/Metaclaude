@@ -81,6 +81,34 @@ verdicts, transcripts).
 **Theme.** Light, dark, or follow the system. The whole interface is built on
 one token set, so both themes are first-class — including the charts.
 
+## Configuration
+
+Owner only. The operational settings this server runs on — how long a run may
+go quiet before it is stopped, how many may run at once, when the quota guard
+pauses automatic starts, how long finished runs are kept, and what the server
+writes to its own log. A value saved here applies to the **next run**, with no
+restart.
+
+Two things are worth knowing before you change one.
+
+**A saved value outranks the environment**, and the row says what it is
+shadowing. That order is not arbitrary: the compose file names every one of
+these with a default of its own, so the environment is always set and a screen
+that deferred to it would never do anything. The cost of winning is honesty, so
+each row reports where the value in force came from — saved here, from the
+environment, or the built-in default — and offers **Use the environment's
+value** to hand it back. You do not have to remember what the `.env` said; the
+row tells you.
+
+**Anything that is a security decision is deliberately not here.** Bypass mode,
+allowed origins, proxy trust, the master key, the bootstrap account: those stay
+in the environment, because what protects them is being unreachable from a
+signed-in browser. The server refuses any key that is not on this short list,
+so the absence is a property of the API and not of the form. The data
+directories and the embedder are absent for a different reason — they cannot
+change while the process runs, and switching the embedder would leave every
+stored memory unreadable to the new one.
+
 ## System, doctor and updates
 
 The System tab shows the server's vitals — version, uptime, memory, disk, and

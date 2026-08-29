@@ -63,6 +63,7 @@ import {
   type DoctorReport,
   type Marketplace,
   type UpdateApplyStatus,
+  type RuntimeSettingRecord,
   type UpdateCheck,
   type MarketplaceCatalogue,
   type MarketplaceInput,
@@ -467,6 +468,17 @@ export const api = {
 
   updateCheck: (refresh = false) =>
     request<UpdateCheck | { disabled: true }>(`/api/system/update-check${qs({ refresh })}`),
+
+  /** The operational settings an owner may change without a restart. */
+  runtimeSettings: () =>
+    request<{ settings: RuntimeSettingRecord[] }>('/api/system/settings'),
+
+  /** `null` clears the override and hands the setting back to the environment. */
+  setRuntimeSetting: (key: string, value: number | string | null) =>
+    request<{ settings: RuntimeSettingRecord[] }>(`/api/system/settings/${key}`, {
+      method: 'PUT',
+      body: { value },
+    }),
 
   /**
    * The CLI's own transcript store for a workspace's directory — including
