@@ -9,7 +9,13 @@
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
-import type { PermissionMode, User, UserRole, Workspace } from '@metaclaude/shared';
+import type {
+  ApiTokenRecord,
+  PermissionMode,
+  User,
+  UserRole,
+  Workspace,
+} from '@metaclaude/shared';
 import { CSRF_HEADER, SESSION_COOKIE } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { clientKey } from '../security/ratelimit.js';
@@ -19,6 +25,15 @@ declare module 'fastify' {
     /** Populated by the authentication hook for every non-public route. */
     currentUser?: User;
     authSessionId?: string;
+    /**
+     * Populated instead of `currentUser` on a bearer route.
+     *
+     * Deliberately a *different* field. A token is not a user, and the role
+     * helpers must not accidentally accept one: `requireOperator` reads
+     * `currentUser`, finds nothing, and answers 401 — which is the right
+     * answer for a token that wandered onto a human's route.
+     */
+    apiToken?: ApiTokenRecord;
   }
 }
 
@@ -46,6 +61,19 @@ const PUBLIC_PATHS = new Set([
   '/api/mcp/oauth/callback',
 ]);
 
+/**
+ * Routes authenticated by a machine token instead of a session cookie.
+ *
+ * Deliberately its own set rather than an entry in `PUBLIC_PATHS`: public
+ * means *unauthenticated*, and a gateway that executes tools is the last place
+ * that should be. A path listed here is still closed — it simply presents a
+ * different credential.
+ *
+ * The cookie is not merely unnecessary on these routes, it is refused: see
+ * `authenticateBearer`.
+ */
+const BEARER_PATHS = new Set(['/api/gateway/mcp']);
+
 /** Methods that cannot change state and therefore need no CSRF token. */
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -62,6 +90,54 @@ export class HttpError extends Error {
 
 export function isPublicPath(path: string): boolean {
   return PUBLIC_PATHS.has(path);
+}
+
+export function isBearerPath(path: string): boolean {
+  return BEARER_PATHS.has(path);
+}
+
+/**
+ * Authenticate a machine token, and refuse everything a browser would send.
+ *
+ * Three refusals, each closing a hole that would otherwise be invisible:
+ *
+ *  - **No `Authorization` header, no access.** A session cookie is ignored
+ *    here even when it is valid and even when it belongs to the owner. This is
+ *    the confused-deputy defence: these routes carry no CSRF token, so a route
+ *    that honoured ambient cookie authority would let any page on the internet
+ *    POST a tool call into a signed-in operator's session.
+ *
+ *  - **No `Origin`.** A real MCP client is a server or a CLI and sends none.
+ *    Its presence means a browser is calling, which is either an attack or a
+ *    mistake — and refusing it also closes DNS rebinding, which the MCP
+ *    specification calls out for HTTP servers specifically.
+ *
+ *  - **One 401 for every failure.** Malformed, unknown, revoked and expired
+ *    are indistinguishable from outside; telling them apart is how a caller
+ *    learns which ids exist.
+ */
+export function authenticateBearer(context: AppContext, request: FastifyRequest): void {
+  if (request.headers.origin !== undefined) {
+    throw new HttpError(403, 'Cross-origin request rejected.', 'bad_origin');
+  }
+
+  const header = request.headers.authorization;
+  const presented = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : null;
+  if (!presented) {
+    throw new HttpError(401, 'A bearer token is required.', 'unauthenticated');
+  }
+
+  const token = context.apiTokens.verify(presented);
+  if (!token) throw new HttpError(401, 'That token is not valid.', 'unauthenticated');
+
+  request.apiToken = token;
+}
+
+/** The token behind a gateway request, or a 401 if the guard did not run. */
+export function requireApiToken(request: FastifyRequest): ApiTokenRecord {
+  const token = request.apiToken;
+  if (!token) throw new HttpError(401, 'A bearer token is required.', 'unauthenticated');
+  return token;
 }
 
 /**

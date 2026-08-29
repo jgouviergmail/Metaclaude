@@ -25,6 +25,7 @@ import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
 import { GoogleConnectionCard } from '@/components/settings/GoogleConnectionCard';
+import { McpGatewayCard } from '@/components/settings/McpGatewayCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { PasskeysCard } from '@/components/settings/PasskeysCard';
 import { UpdateCard } from '@/components/settings/UpdateCard';
@@ -134,6 +135,10 @@ export function SettingsPage() {
             {user?.role === 'owner' ? (
               <Tabs.Content value="connections" className="space-y-4">
                 <GoogleConnectionCard />
+                {/* The other direction: what *reaches in*. Owner-only for the
+                    same reason — a token that may start runs is a credential
+                    for executing things here. */}
+                <McpGatewayCard />
               </Tabs.Content>
             ) : null}
 

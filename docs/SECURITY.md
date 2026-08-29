@@ -7,12 +7,17 @@ files in your projects, reachable over the network from your phone. That is a
 larger attack surface than most self-hosted tools, and it deserves to be treated
 as one.
 
-Three distinct threats:
+Four distinct threats:
 
 1. **An attacker on the network**, with no credentials, trying to get in.
 2. **Content the agent reads** — a cloned repository, a fetched page — trying to
    steer the agent into doing something you did not ask for.
 3. **A stolen data volume**, offline.
+4. **An authenticated but credulous caller.** Since 0.38 another application can
+   hold a token and ask the agent to work through the MCP gateway. If that
+   application reads anything hostile — an inbox, a webhook payload, a ticket —
+   the injection reaches a run with nobody in the room. See *The MCP gateway*
+   below.
 
 ---
 
@@ -136,6 +141,73 @@ window that slides forward (written at most once a minute, so this does not
 dominate the WAL) and a 90-day absolute cap. Changing your password revokes every
 session including the current one — that is the whole point of changing it after
 a suspected compromise.
+
+---
+
+## The MCP gateway
+
+Metaclaude can be reached *as* an MCP server, so other applications can ask this
+agent to work. That is one endpoint — `POST /api/gateway/mcp` — and it is the
+only place in the deployment where a program holding a long-lived credential can
+cause something to execute. It is treated accordingly.
+
+**A token is not a user.** It is a capability with an expiry that is never null,
+a list of workspaces that is never a wildcard, and a ceiling on what a run it
+starts may do. Only the SHA-256 of the value is stored; the value is shown once,
+at creation. The shape is `mck_<id>_<secret>` — the id makes verification an
+indexed read and makes a leaked value greppable and revocable. Minting is
+owner-only: an `operator` may change nearly everything else here and still not
+issue one.
+
+**It authenticates differently, not less.** The path is not in `PUBLIC_PATHS`
+— public means *unauthenticated*, which a tool-executing endpoint must never be.
+It sits in its own `BEARER_PATHS` set, and `authenticateBearer` runs in the same
+global hook as everything else. Three refusals matter:
+
+- **The session cookie is ignored, however valid.** This route carries no CSRF
+  token, so a route that honoured ambient cookie authority would let any page on
+  the internet POST a tool call in a signed-in operator's name. That is the
+  confused-deputy attack, and it is the reason the two credentials are never
+  accepted on the same path.
+- **Any `Origin` header is refused.** A real MCP client is a server or a CLI and
+  sends none; its presence means a browser is calling. This also closes DNS
+  rebinding, which the MCP specification calls out for HTTP servers.
+- **One `401` for everything.** Malformed, unknown, revoked and expired are
+  indistinguishable from outside.
+
+**Runs are capped, not prompted.** Nobody is watching a gateway run, and a
+permission prompt nobody answers expires after ten minutes — a worse outcome
+than a refusal, because it burns a slot and reports a timeout instead of a
+reason. `capPermissionMode` therefore replaces every interactive mode
+(`default`, `auto`) and `bypassPermissions` with the token's ceiling, and never
+widens a workspace that is already narrower. The ceiling itself is one of
+`plan`, `dontAsk` or `acceptEdits`.
+
+**Scope is not a suggestion.** Every tool resolves its workspace through one
+check, and a workspace that exists but is not this token's answers exactly as
+one that does not exist — confirming the difference would leak the deployment's
+map. Delegation is withheld from gateway runs entirely: it reaches *other*
+workspaces by design, which would put the whole scope one prompt away from
+being bypassed.
+
+**The gateway is stateless.** A fresh MCP server and transport per request, so
+there is no session table to grow or to confuse one token's request with
+another's — the token on this request decides what this request sees.
+
+**What it cannot reach at all**: secrets, users, integrations, the update
+button, arbitrary file writes. Those are absent from the tool list rather than
+guarded inside it, because absent cannot be forgotten.
+
+Every run a token starts is recorded in the audit trail under `token:<name>`,
+and marked `api` in the run history, so a run nobody typed never reads as one
+somebody did. Each token's last use is stored, which is what makes an abandoned
+integration visible as one nobody is using.
+
+**What this does not solve.** A token is a credential in someone else's
+software. If that application is compromised, or if it feeds the agent content
+an attacker controls, the ceiling and the workspace list are what bound the
+damage — not the absence of it. Give a token the narrowest ceiling that does the
+job, name only the workspaces it needs, and set an expiry you will notice.
 
 ---
 

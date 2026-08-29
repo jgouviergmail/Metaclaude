@@ -1683,6 +1683,21 @@ describe('buildOptions — the delegation tool', () => {
     expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude');
   });
 
+  /**
+   * Not an affordance question like the one above — a scope question.
+   *
+   * A token names the workspaces it may reach. Delegation reaches *other*
+   * workspaces by design, so a run started through the gateway holding that
+   * tool would be one prompt away from consulting a workspace nobody granted
+   * it, through an agent that would answer helpfully.
+   */
+  it('withholds it from a run an outside token started — scope is not a suggestion', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'api' }));
+
+    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude');
+  });
+
   it('offers nothing when delegation is not wired at all', () => {
     const supervisor = makeSupervisor(fakeQuery().query);
     const options = supervisor.buildOptions(makeRequest());

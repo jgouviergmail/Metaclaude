@@ -34,6 +34,7 @@ import { MemoryStore } from './learning/memory.js';
 import { KnowledgeStore } from './learning/knowledge.js';
 import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
+import { ApiTokenService } from './security/api-tokens.js';
 import { AuthService } from './security/auth.js';
 import { WebAuthnService } from './security/webauthn.js';
 import { Vault } from './security/vault.js';
@@ -75,6 +76,8 @@ export interface AppContext {
   bus: EventBus;
 
   auth: AuthService;
+  /** Machine identities — what the MCP gateway authenticates. */
+  apiTokens: ApiTokenService;
   webauthn: WebAuthnService;
   audit: AuditLog;
   vault: Vault;
@@ -180,6 +183,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   }
 
   const auth = new AuthService(db);
+  const apiTokens = new ApiTokenService(db);
   const audit = new AuditLog(db);
 
   const workspaceRepo = new WorkspaceRepo(db);
@@ -674,6 +678,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     db,
     bus,
     auth,
+    apiTokens,
     webauthn: new WebAuthnService({ db, auth }),
     audit,
     vault,

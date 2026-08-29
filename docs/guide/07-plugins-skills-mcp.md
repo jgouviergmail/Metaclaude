@@ -181,6 +181,48 @@ exactly what a run would — your configured servers, your custom agents,
 under the same policy locks — so what it reports is the world a run really
 sees. Refresh it after fixing a server's command; that read skips the cache.
 
+## The other direction: Metaclaude *as* an MCP server
+
+Everything above is Metaclaude consuming other people's servers. Since 0.38 it
+also exposes one of its own, so your other software can ask this agent to work:
+a script, an automation platform, Claude Code on your laptop, anything that
+speaks MCP over HTTP.
+
+**Settings → Connections → MCP access** mints the credential. A token names the
+workspaces it may reach — there is deliberately no "all workspaces", so a token
+made for one integration does not follow the deployment into every workspace
+you create afterwards — what it may do (start runs, read notes and the board),
+and a **ceiling**: the most a run it starts may do on its own. The value is
+shown once, at creation; only its fingerprint is kept, so a lost token is
+replaced rather than recovered.
+
+The ceiling exists because nobody is watching these runs. A permission prompt
+with no one to answer it expires after ten minutes and fails, which is a worse
+answer than a refusal — so a gateway run never prompts. *Plan only* executes
+nothing at all; *Run what is already allowed* does what the workspace has
+already permitted and refuses the rest; *Run and edit files* adds file edits.
+A workspace set to less than the ceiling stays at less: the ceiling is a
+maximum, never a grant.
+
+Connecting is one line. In Claude Code:
+
+```bash
+claude mcp add --transport http metaclaude https://your-site/api/gateway/mcp   --header "Authorization: Bearer mck_…"
+```
+
+The tools it offers: `list_workspaces`, `ask_workspace` (the main one — it runs
+in that workspace with its memory, skills and conventions, and waits for the
+answer), `start_run` for work too long to hold a request open, `search_notes`,
+and `list_tasks`.
+
+**Treat a token as a password with a blast radius.** Anything holding one can
+ask this agent to work in the workspaces you named, and the agent runs shell
+commands. Give it the narrowest ceiling that does the job, and an expiry you
+will notice. Every run it starts appears in the run history marked as coming
+from the API, and in the audit trail under the token's name — the listing also
+shows when each token was last used, which is how an integration you forgot
+about becomes visible.
+
 ## Where are my claude.ai connectors?
 
 Not here, and knowably so. The connectors you enable on claude.ai (Gmail,

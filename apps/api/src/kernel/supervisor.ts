@@ -576,8 +576,14 @@ export class AgentSupervisor {
     // human (or an automation) started — a delegated run never sees it, so
     // the affordance matches the kernel's depth-one rule instead of dangling
     // a tool that would only ever be refused.
+    //
+    // An `api` run is excluded for a different and stronger reason: its caller
+    // holds a token scoped to named workspaces, and delegation reaches *other*
+    // workspaces by design. Leaving the tool in reach would make the scope a
+    // suggestion — one prompt away from an agent consulting a workspace the
+    // token was never given.
     const delegationServer: NonNullable<Options['mcpServers']> =
-      this.deps.delegate && request.triggeredBy !== 'delegation'
+      this.deps.delegate && request.triggeredBy !== 'delegation' && request.triggeredBy !== 'api'
         ? { metaclaude: this.buildDelegationServer(request) }
         : {};
     // The board tools, scoped to this run's workspace and signing as this run.

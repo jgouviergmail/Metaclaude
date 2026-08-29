@@ -812,3 +812,95 @@ export const UsagePoint = z.object({
   medianDurationMs: z.number().nonnegative(),
 });
 export type UsagePoint = z.infer<typeof UsagePoint>;
+
+/* -------------------------------------------------------------------------- */
+/* API tokens — the MCP gateway's identities                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a token may do at all.
+ *
+ * Two capabilities rather than a role, because the roles this application has
+ * describe people: an operator is someone who can be asked what they meant. A
+ * token is a capability handed to a program, and the only question worth
+ * asking about it is whether it may *start a run* — everything else it can
+ * reach is reading.
+ */
+export const ApiTokenScope = z.enum(['run', 'read']);
+export type ApiTokenScope = z.infer<typeof ApiTokenScope>;
+
+/**
+ * The most a run started by this token may do without asking a human.
+ *
+ * Deliberately not the full `PermissionMode` set. `default` and `auto` can
+ * open a permission prompt, and nobody is watching one: the request would sit
+ * for ten minutes and then fail, which is a worse answer than a refusal.
+ * `bypassPermissions` is absent because a token is exactly the caller that
+ * must never have it.
+ *
+ * Ordered by capability — `plan` executes nothing at all, `dontAsk` runs what
+ * the workspace has already allowed and refuses the rest, `acceptEdits` adds
+ * file edits. A run takes the *lesser* of this and the workspace's own mode.
+ */
+export const ApiTokenCeiling = z.enum(['plan', 'dontAsk', 'acceptEdits']);
+export type ApiTokenCeiling = z.infer<typeof ApiTokenCeiling>;
+
+/** A token as the interface sees it. The secret itself appears nowhere. */
+export const ApiTokenRecord = z.object({
+  id: z.string(),
+  name: z.string(),
+  scopes: z.array(ApiTokenScope),
+  /**
+   * The workspaces this token can reach, by id.
+   *
+   * Never empty, and never a wildcard: "every workspace" is not offered,
+   * because a token minted for one integration would then follow the
+   * deployment into every workspace created afterwards. Widening it is an
+   * edit somebody makes on purpose.
+   */
+  workspaceIds: z.array(z.string()),
+  ceiling: ApiTokenCeiling,
+  createdBy: z.string(),
+  createdAt: Millis,
+  /** Always set: a token that never expires is a credential nobody retires. */
+  expiresAt: Millis,
+  lastUsedAt: Millis.nullable(),
+  revokedAt: Millis.nullable(),
+  /** The leading characters of the value, enough to tell two tokens apart. */
+  hint: z.string(),
+});
+export type ApiTokenRecord = z.infer<typeof ApiTokenRecord>;
+
+/** How long a new token may live. A year is the outer bound, not a default. */
+export const MAX_API_TOKEN_DAYS = 365;
+
+export const CreateApiTokenRequest = z.object({
+  name: z.string().trim().min(1).max(60),
+  scopes: z.array(ApiTokenScope).min(1),
+  workspaceIds: z.array(z.string()).min(1),
+  ceiling: ApiTokenCeiling,
+  expiresInDays: z.number().int().min(1).max(MAX_API_TOKEN_DAYS),
+});
+export type CreateApiTokenRequest = z.infer<typeof CreateApiTokenRequest>;
+
+/**
+ * Editing a token changes its reach, never its secret.
+ *
+ * Rotating a secret in place would leave every holder of the old value
+ * authenticated as the new one; rotation is a new token and a revocation.
+ */
+export const UpdateApiTokenRequest = z.object({
+  name: z.string().trim().min(1).max(60).optional(),
+  scopes: z.array(ApiTokenScope).min(1).optional(),
+  workspaceIds: z.array(z.string()).min(1).optional(),
+  ceiling: ApiTokenCeiling.optional(),
+});
+export type UpdateApiTokenRequest = z.infer<typeof UpdateApiTokenRequest>;
+
+/** The one moment the secret exists outside the client's own storage. */
+export const CreateApiTokenResponse = z.object({
+  token: ApiTokenRecord,
+  /** Shown once. Only its SHA-256 is kept, so this cannot be recovered. */
+  secret: z.string(),
+});
+export type CreateApiTokenResponse = z.infer<typeof CreateApiTokenResponse>;

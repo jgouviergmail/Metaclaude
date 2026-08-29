@@ -15,7 +15,9 @@ import { SESSION_COOKIE } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import {
   authenticate,
+  authenticateBearer,
   HttpError,
+  isBearerPath,
   isPublicPath,
   requestIp,
   requireOperator,
@@ -351,5 +353,153 @@ describe('sendError', () => {
 
     expect(target.captured.status).toBe(500);
     expect((target.captured.body as { error: string }).error).toBe('Internal server error.');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The gateway's credential.
+ *
+ * This is the newest way into the application and the only one that executes
+ * tools for a caller nobody is watching, so the tests are written as attempts
+ * to get in with the wrong thing — including with the *right* thing presented
+ * the wrong way, which is where the interesting failures live.
+ */
+describe('authenticateBearer', () => {
+  const TOKEN = {
+    id: 'tok_1',
+    name: 'n8n',
+    scopes: ['run'],
+    workspaceIds: ['ws_1'],
+    ceiling: 'dontAsk',
+    createdBy: 'jules',
+    createdAt: 1,
+    expiresAt: 2,
+    lastUsedAt: null,
+    revokedAt: null,
+    hint: 'mck_tok_01',
+  } as const;
+
+  const withTokens = (verify: (presented: string) => unknown): AppContext =>
+    ({ apiTokens: { verify: vi.fn(verify) } }) as unknown as AppContext;
+
+  it('accepts a valid token and hangs it on the request, not on currentUser', () => {
+    const req = request({ headers: { authorization: 'Bearer mck_tok_1_secret' } });
+
+    authenticateBearer(withTokens(() => TOKEN), req);
+
+    expect(req.apiToken?.id).toBe('tok_1');
+    // A token is not a user. `requireOperator` reads `currentUser`, so leaving
+    // it unset is what keeps a token off every human route in the application.
+    expect(req.currentUser).toBeUndefined();
+    expectHttpError(() => requireOperator(req), 401);
+  });
+
+  it('refuses a request with no Authorization header', () => {
+    expectHttpError(
+      () => authenticateBearer(withTokens(() => TOKEN), request()),
+      401,
+      'unauthenticated',
+    );
+  });
+
+  /**
+   * The confused-deputy case, and the reason this guard exists at all.
+   *
+   * A bearer route carries no CSRF token. If it also honoured the session
+   * cookie, any page on the internet could POST a tool call and it would run
+   * with a signed-in operator's authority — a cross-site request that needs no
+   * token to forge, because the browser attaches the credential itself.
+   */
+  it('ignores a session cookie entirely, however valid it is', () => {
+    const context = withTokens(() => TOKEN);
+    const req = request({ cookies: { [SESSION_COOKIE]: 'a-perfectly-good-session' } });
+
+    expectHttpError(() => authenticateBearer(context, req), 401);
+    expect(req.currentUser).toBeUndefined();
+  });
+
+  /**
+   * A real MCP client is a server or a CLI and sends no Origin. Its presence
+   * means a browser is calling — which also closes DNS rebinding, the attack
+   * the MCP specification singles out for HTTP servers.
+   */
+  it('refuses anything that arrives with an Origin, valid token or not', () => {
+    expectHttpError(
+      () =>
+        authenticateBearer(
+          withTokens(() => TOKEN),
+          request({
+            headers: { authorization: 'Bearer mck_tok_1_secret', origin: 'https://example.test' },
+          }),
+        ),
+      403,
+      'bad_origin',
+    );
+  });
+
+  it('refuses a token the service rejects, without saying why', () => {
+    const error = expectHttpError(
+      () =>
+        authenticateBearer(
+          withTokens(() => null),
+          request({ headers: { authorization: 'Bearer mck_tok_1_wrong' } }),
+        ),
+      401,
+    );
+    // Revoked, expired, unknown and malformed are one answer from outside.
+    expect(error.message).not.toMatch(/revoked|expired|unknown|malformed/i);
+  });
+
+  it('refuses a header that is not a Bearer scheme', () => {
+    for (const authorization of ['mck_tok_1_secret', 'Basic dXNlcjpwYXNz', 'Bearer', 'Bearer  ']) {
+      expectHttpError(
+        () => authenticateBearer(withTokens(() => TOKEN), request({ headers: { authorization } })),
+        401,
+      );
+    }
+  });
+});
+
+describe('isBearerPath', () => {
+  it('names the gateway, and the gateway is not also public', () => {
+    expect(isBearerPath('/api/gateway/mcp')).toBe(true);
+    // The distinction the whole design rests on: authenticated differently is
+    // not the same as unauthenticated.
+    expect(isPublicPath('/api/gateway/mcp')).toBe(false);
+  });
+
+  it('is a closed set', () => {
+    for (const path of ['/api/workspaces', '/api/gateway', '/api/gateway/mcp/', '/api/health']) {
+      expect(isBearerPath(path), path).toBe(false);
+    }
+  });
+
+  /**
+   * Same shape as the OAuth-callback test above, and for the same reason: a
+   * route registered under `/api/gateway/` that nobody adds to the set would
+   * be authenticated as a *human* route — which means every call fails with
+   * "Not signed in" rather than silently opening, but the failure would be
+   * blamed on the token. The inverse mistake is worse and this catches it too:
+   * a gateway route left out of both sets reaches `authenticate`, and a
+   * gateway route added to `PUBLIC_PATHS` would be open to the world.
+   */
+  it('covers every gateway route the routes actually register', () => {
+    const dir = new URL('../routes/', import.meta.url);
+    const found: string[] = [];
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.ts') || file.includes('.test.')) continue;
+      const source = readFileSync(new URL(file, dir), 'utf8');
+      for (const match of source.matchAll(/'(\/api\/gateway\/[a-z0-9/_-]*)'/g)) {
+        found.push(match[1]!);
+      }
+    }
+
+    expect(found.length).toBeGreaterThanOrEqual(1);
+    for (const path of found) {
+      expect(isBearerPath(path), `${path} must authenticate a token`).toBe(true);
+      expect(isPublicPath(path), `${path} must never be public`).toBe(false);
+    }
   });
 });

@@ -344,8 +344,15 @@ export const Run = z.object({
   /** Composite reward computed by the learning subsystem, 0..1. */
   reward: z.number().min(0).max(1).nullable(),
   /** Whether this run was started by an automation rather than a human. */
-  /** `delegation` marks a run another workspace's agent asked for. */
-  triggeredBy: z.enum(['user', 'automation', 'loop', 'system', 'delegation']),
+  /**
+   * `delegation` marks a run another workspace's agent asked for; `api` marks
+   * one an outside application asked for through the MCP gateway.
+   *
+   * `api` is not cosmetic. The run history is the only place an operator sees
+   * what the agent actually did, and a run started by a token nobody was
+   * watching must not read there as a run somebody typed.
+   */
+  triggeredBy: z.enum(['user', 'automation', 'loop', 'system', 'delegation', 'api']),
   /**
    * The CLI's uuid for the user message that started this run.
    *

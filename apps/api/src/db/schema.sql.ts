@@ -864,4 +864,38 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE mcp_servers ADD COLUMN described_tools TEXT;
     `,
   },
+  {
+    version: 20,
+    name: 'api_tokens',
+    sql: /* sql */ `
+      -- Machine identities for the MCP gateway.
+      --
+      -- Not a second user table: a user is somebody who can be asked what they
+      -- meant, and everything about this row exists because a token cannot be.
+      -- Hence an expiry that is never null, a workspace list that is never a
+      -- wildcard, and a ceiling on what a run it starts may do unattended.
+      --
+      -- Only the SHA-256 of the secret is stored, exactly as for auth sessions:
+      -- the value has full entropy, so there is nothing to brute-force, and a
+      -- stolen database yields no usable token.
+      CREATE TABLE api_tokens (
+        id                 TEXT PRIMARY KEY,
+        name               TEXT NOT NULL,
+        token_hash         TEXT NOT NULL UNIQUE,
+        -- JSON arrays. Read by the verifier on every request, so both are kept
+        -- small deliberately: capabilities, not an access-control language.
+        scopes             TEXT NOT NULL,
+        workspace_ids      TEXT NOT NULL,
+        ceiling            TEXT NOT NULL,
+        hint               TEXT NOT NULL,
+        created_by         TEXT NOT NULL,
+        created_at         INTEGER NOT NULL,
+        expires_at         INTEGER NOT NULL,
+        last_used_at       INTEGER,
+        revoked_at         INTEGER
+      );
+      -- The listing is ordered by age, and it is the only read that scans.
+      CREATE INDEX idx_api_tokens_created ON api_tokens(created_at DESC);
+    `,
+  },
 ];

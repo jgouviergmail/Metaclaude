@@ -19,9 +19,19 @@ import websocket from '@fastify/websocket';
 import Fastify, { LogController, type FastifyRequest } from 'fastify';
 import type { AppContext } from './context.js';
 import type { App } from './http/types.js';
-import { authenticate, isPublicPath, requestIp, sendError, verifyCsrf } from './http/guards.js';
+import {
+  authenticate,
+  authenticateBearer,
+  isBearerPath,
+  isPublicPath,
+  requestIp,
+  sendError,
+  verifyCsrf,
+} from './http/guards.js';
 import { registerAdvisorRoutes } from './routes/advisor.js';
 import { registerIntegrationRoutes } from './routes/integrations.js';
+import { registerGatewayRoutes } from './routes/gateway.js';
+import { registerTokenRoutes } from './routes/tokens.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerBoardRoutes } from './routes/board.js';
 import { registerFileRoutes } from './routes/files.js';
@@ -182,6 +192,15 @@ export async function buildServer(context: AppContext): Promise<App> {
 
     if (isPublicPath(route)) return;
 
+    // A machine token instead of a session. Not a weaker check — a different
+    // credential, and one that deliberately ignores the cookie: these routes
+    // carry no CSRF token, so honouring ambient cookie authority here would
+    // hand any page on the internet a tool call in the operator's name.
+    if (isBearerPath(route)) {
+      authenticateBearer(context, request);
+      return;
+    }
+
     authenticate(context, request);
     verifyCsrf(context, request);
   });
@@ -213,6 +232,8 @@ export async function buildServer(context: AppContext): Promise<App> {
   registerBoardRoutes(app, context);
   registerAdvisorRoutes(app, context);
   registerIntegrationRoutes(app, context);
+  registerGatewayRoutes(app, context);
+  registerTokenRoutes(app, context);
   registerWebSocket(app, context);
 
   /* ------------------------------- Static ------------------------------- */

@@ -40,6 +40,7 @@ export const ID_PREFIXES = {
   proposal: 'prp',
   document: 'doc',
   chunk: 'chk',
+  apiToken: 'tok',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

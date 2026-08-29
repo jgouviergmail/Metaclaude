@@ -14,6 +14,7 @@
  */
 
 import type {
+  ApiTokenCeiling,
   ApprovalRequest,
   MarketplaceSource,
   RewindResult,
@@ -34,7 +35,7 @@ import type { ReflexionEngine } from '../learning/reflexion.js';
 import type { AttachmentService } from '../services/attachments.js';
 import type { EventBus } from './bus.js';
 import { selectMemoryContext, selectKnowledgeContext } from './context.js';
-import { PermissionBroker } from './permissions.js';
+import { capPermissionMode, PermissionBroker } from './permissions.js';
 import { planRewind } from './rewind.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import { AgentSupervisor, type RunRequest } from './supervisor.js';
@@ -147,6 +148,20 @@ class RunCancelled extends Error {
 
 /** Outlasts the run timeout, so the timeout's own report arrives first. */
 const DELEGATION_TIMEOUT_MS = 50 * 60_000;
+
+/**
+ * The kinds of run somebody is blocked on the answer to.
+ *
+ * Two, now: a delegation, where another workspace's agent is waiting, and an
+ * `api` run, where an outside program is holding an HTTP request open. They
+ * share the whole waiting mechanism because they are the same problem — the
+ * final text of a run exists nowhere but in memory when it settles, so it has
+ * to be stashed for whoever asked, and the stash has to be released even when
+ * the run fails. One set rather than two conditions: a third caller that waits
+ * gets the behaviour by being added here, instead of by being remembered in
+ * two places forty lines apart.
+ */
+const AWAITED: ReadonlySet<Run['triggeredBy']> = new Set(['delegation', 'api']);
 
 export class Kernel {
   readonly broker: PermissionBroker;
@@ -366,6 +381,82 @@ export class Kernel {
     };
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* The gateway — runs an outside program asked for                         */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Start a run on behalf of an authenticated machine token.
+   *
+   * Three things make this different from `submit`, and each one exists
+   * because nobody is watching:
+   *
+   *  - **The permission mode is capped.** A workspace left on `default` would
+   *    open a prompt nobody answers, and the request would fail ten minutes
+   *    later with a timeout instead of a reason. `capPermissionMode` replaces
+   *    every interactive mode with the token's ceiling, and never widens a
+   *    workspace that is already narrower.
+   *  - **The run is marked `api`.** The run history is where an operator sees
+   *    what the agent did; a run nobody typed must not read there as one
+   *    somebody did.
+   *  - **The session is named after the token.** One standing session per
+   *    token per workspace, so an integration's history accumulates in one
+   *    place and is attributable at a glance — and a second concurrent ask
+   *    opens a parallel session rather than being refused.
+   *
+   * The caller decides whether to wait: `awaitRun` is the same mechanism
+   * delegation uses, and a caller that does not wait gets a run id it can ask
+   * about later.
+   */
+  async startForToken(input: {
+    workspaceId: string;
+    prompt: string;
+    ceiling: ApiTokenCeiling;
+    /** The token's name — it becomes the session title an operator reads. */
+    label: string;
+  }): Promise<{ run: Run; sessionId: string }> {
+    const workspace = this.deps.workspaces.get(input.workspaceId);
+    if (!workspace) throw new Error(`Unknown workspace: ${input.workspaceId}`);
+
+    const title = `MCP: ${input.label}`;
+    const sessions = this.deps.sessions.list(workspace.id, { includeArchived: false });
+    let session = sessions.find(
+      (candidate) => candidate.title === title && !this.hasActiveRunForSession(candidate.id),
+    );
+    session ??= this.deps.sessions.create({
+      workspaceId: workspace.id,
+      title,
+      model: String(workspace.settings.defaultModel),
+      effort: workspace.settings.defaultEffort,
+      permissionMode: workspace.settings.defaultPermissionMode,
+    });
+
+    const run = await this.submit({
+      sessionId: session.id,
+      prompt: input.prompt,
+      triggeredBy: 'api',
+      overrides: {
+        permissionMode: capPermissionMode(
+          workspace.settings.defaultPermissionMode,
+          input.ceiling,
+        ),
+      },
+    });
+
+    return { run, sessionId: session.id };
+  }
+
+  /**
+   * Wait for a run somebody is blocked on, then hand back its final text.
+   *
+   * Public because the gateway waits from outside the kernel, and the stash
+   * this reads is the only place a finished run's final text exists — it is
+   * never written to the run row.
+   */
+  awaitRun(runId: string, timeoutMs: number): Promise<{ run: Run; finalText: string }> {
+    return this.waitForDelegation(runId, timeoutMs);
+  }
+
   /** Consume a ready stash, or wait for settleDelegation to hand one over. */
   private waitForDelegation(
     runId: string,
@@ -539,7 +630,7 @@ export class Kernel {
 
   /** Resolve a delegation's waiter, or mark its stash consumable. */
   private settleDelegation(run: Run): void {
-    if (run.triggeredBy !== 'delegation') return;
+    if (!AWAITED.has(run.triggeredBy)) return;
 
     if (this.delegationAbandoned.delete(run.id)) {
       this.delegationSettled.delete(run.id);
@@ -745,11 +836,11 @@ export class Kernel {
       });
     }
 
-    // Delegations only: stash the outcome — the final text exists nowhere
+    // Awaited runs only: stash the outcome — the final text exists nowhere
     // else — but never resolve the waiter here. Resolution waits for the
     // slot release in `execute`'s finally (see settleDelegation), or the
     // next sequential delegation would find this run still "active".
-    if (finished.triggeredBy === 'delegation') {
+    if (AWAITED.has(finished.triggeredBy)) {
       this.delegationSettled.set(finished.id, {
         run: finished,
         finalText: outcome.finalText,

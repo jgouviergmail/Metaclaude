@@ -15,10 +15,13 @@ import {
   CSRF_COOKIE,
   type AdvisorProposal,
   type AgentDefinitionRecord,
+  type ApiTokenRecord,
   type AnalyticsSummary,
   type ApprovalRequest,
   type Attachment,
   type AuditEntry,
+  type CreateApiTokenRequest,
+  type UpdateApiTokenRequest,
   type ClaudeCredentialStatus,
   type ClaudePairingStart,
   type ClaudePairingState,
@@ -866,4 +869,31 @@ export const api = {
 
   verifyAudit: () =>
     request<{ ok: boolean; entries: number; brokenAt?: string }>('/api/audit/verify'),
+
+  /* ----------------------------- MCP gateway ---------------------------- */
+
+  apiTokens: () => request<{ tokens: ApiTokenRecord[] }>('/api/tokens'),
+
+  /**
+   * The one call that ever sees a secret. Everything else works from the
+   * record, so nothing but the screen that mints a token has to be careful
+   * with what it holds.
+   */
+  createApiToken: (body: CreateApiTokenRequest) =>
+    request<{ token: ApiTokenRecord; secret: string }>('/api/tokens', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateApiToken: (id: string, body: UpdateApiTokenRequest) =>
+    request<{ token: ApiTokenRecord }>(`/api/tokens/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  revokeApiToken: (id: string) =>
+    request<{ token: ApiTokenRecord }>(`/api/tokens/${id}`, { method: 'DELETE' }),
+
+  /** Null when the deployment has no public URL configured to hand out. */
+  gatewayEndpoint: () => request<{ url: string | null }>('/api/tokens/endpoint'),
 };

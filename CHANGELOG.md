@@ -11,6 +11,54 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.38.0] — 2026-08-29
+
+### Added
+
+- **Metaclaude is now an MCP server, and other applications can hold a token to
+  reach it.** One endpoint — `POST /api/gateway/mcp` — offering `ask_workspace`
+  (run a prompt in a workspace with its own memory, skills and conventions, and
+  wait for the answer), `start_run` for work too long to hold a request open,
+  `list_workspaces`, `search_notes` and `list_tasks`. Connecting is one line of
+  `claude mcp add --transport http`, and the same for anything else that speaks
+  MCP over HTTP.
+
+  The interesting half is what bounds it, because a token that may start runs
+  can make this deployment execute things with nobody in the room. A token is
+  not a second user: the expiry is never null, the workspace list is never a
+  wildcard — there is deliberately no "all workspaces", or a token minted for
+  one integration would follow the deployment into every workspace created
+  afterwards — and it carries a *ceiling* on what a run it starts may do. Only
+  the SHA-256 of the value is stored and it is shown once; minting is
+  owner-only, an `operator` may change nearly everything else here and still
+  not issue one.
+
+  Three refusals in the guard are the ones that matter. The path is **not** in
+  `PUBLIC_PATHS`, because public means unauthenticated and a tool-executing
+  endpoint must never be: it has its own bearer set, checked in the same global
+  hook. The **session cookie is ignored there however valid it is** — this route
+  carries no CSRF token, so honouring ambient cookie authority would hand any
+  page on the internet a tool call in a signed-in operator's name. And **any
+  `Origin` header is refused**, because a real MCP client is a server or a CLI
+  and sends none, which also closes the DNS rebinding the MCP specification
+  singles out for HTTP servers.
+
+  A gateway run never prompts: a permission request nobody answers expires
+  after ten minutes and fails, which is a worse answer than a refusal. Every
+  interactive mode is replaced by the token's ceiling (`plan`, `dontAsk` or
+  `acceptEdits`), and a workspace already narrower stays narrower — the ceiling
+  is a maximum, never a grant. Scope is checked on every path and answers
+  identically for "not yours" and "does not exist", since confirming the
+  difference leaks the deployment's map; delegation is withheld from these runs
+  outright, because it reaches other workspaces by design and would put the
+  whole scope one prompt away. The gateway is stateless — a fresh server and
+  transport per request, so nothing carries between two tokens. Runs are marked
+  `api` in the history and audited under `token:<name>`, and each token records
+  when it was last used, which is what makes a forgotten integration visible.
+
+  `docs/SECURITY.md` gains a fourth threat: an authenticated but credulous
+  caller — an application that holds a token and reads something hostile.
+
 ## [0.37.0] — 2026-08-29
 
 ### Added

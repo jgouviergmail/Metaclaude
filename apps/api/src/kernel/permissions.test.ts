@@ -5,6 +5,7 @@ import {
   PermissionBroker,
   type PermissionOutcome,
   assessRisk,
+  capPermissionMode,
   resolvePermissionMode,
   summarise,
 } from './permissions.js';
@@ -451,5 +452,40 @@ describe('PermissionBroker', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * The ceiling a token puts on the runs it starts.
+ *
+ * Every case below is one an operator would otherwise meet in production as a
+ * request that hangs for ten minutes: the interactive modes have nobody to be
+ * interactive with, and a workspace left on `default` is the common case, not
+ * the exotic one.
+ */
+describe('capPermissionMode', () => {
+  it('replaces every interactive or unbounded mode with the ceiling', () => {
+    for (const mode of ['default', 'auto', 'bypassPermissions'] as const) {
+      expect(capPermissionMode(mode, 'dontAsk')).toBe('dontAsk');
+      // Including — especially — when the ceiling is the narrowest one.
+      expect(capPermissionMode(mode, 'plan')).toBe('plan');
+    }
+  });
+
+  it('keeps the workspace’s mode when it is already narrower', () => {
+    expect(capPermissionMode('plan', 'acceptEdits')).toBe('plan');
+    expect(capPermissionMode('dontAsk', 'acceptEdits')).toBe('dontAsk');
+  });
+
+  it('never widens a workspace beyond its own setting', () => {
+    // The ceiling is a maximum. A token allowed to edit does not turn a
+    // workspace that only plans into one that writes.
+    expect(capPermissionMode('plan', 'dontAsk')).toBe('plan');
+    expect(capPermissionMode('dontAsk', 'dontAsk')).toBe('dontAsk');
+  });
+
+  it('narrows a workspace that is wider than the token', () => {
+    expect(capPermissionMode('acceptEdits', 'dontAsk')).toBe('dontAsk');
+    expect(capPermissionMode('acceptEdits', 'plan')).toBe('plan');
   });
 });
