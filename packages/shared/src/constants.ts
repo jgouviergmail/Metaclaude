@@ -1,7 +1,17 @@
 /** Constants shared by the API and the web app. */
 
 export const APP_NAME = 'Metaclaude';
-export const APP_VERSION = '0.38.1';
+export const APP_VERSION = '0.38.2';
+
+/**
+ * How long a machine token may live. A year is the outer bound, not a default.
+ *
+ * Here rather than beside its schema in `api-contracts.ts`: the form that mints
+ * a token needs the *value* at runtime, and a value import would pull that
+ * whole module — every API-only Zod schema in it — into the web app's runtime
+ * graph. Types are free to cross; values are not.
+ */
+export const MAX_API_TOKEN_DAYS = 365;
 
 /** Name of the httpOnly session cookie. Never readable from JavaScript. */
 export const SESSION_COOKIE = 'mc_session';

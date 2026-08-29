@@ -175,6 +175,16 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
       }
     },
 
+    /**
+     * Search one workspace's knowledge — **and the global shelf**.
+     *
+     * That is the store's contract for a named workspace, and it is the right
+     * one: it returns exactly what a run in that workspace would retrieve, so
+     * the tool cannot answer better or worse than the agent it stands in for.
+     * Worth stating plainly, because "scoped to a workspace" reads as "only
+     * that workspace" — a token scoped to one project can read anything filed
+     * globally, and an operator granting `read` should know that.
+     */
     searchNotes: async (input: {
       workspace: string;
       query: string;
@@ -274,7 +284,8 @@ export function buildGatewayServer(
       ),
       sdkTool(
         'search_notes',
-        "Search a workspace's knowledge base. Cheap, and nothing executes — prefer " +
+        "Search a workspace's knowledge base, plus anything filed globally — the " +
+          'same shelf a run there would read. Cheap, and nothing executes: prefer ' +
           'it over a run when the answer is something already written down.',
         {
           workspace: WORKSPACE,

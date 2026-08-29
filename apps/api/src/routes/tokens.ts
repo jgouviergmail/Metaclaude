@@ -7,11 +7,18 @@
  * `operator` role deliberately does not carry it.
  *
  * The secret is returned by exactly one route, exactly once. Everything else
- * — listing, editing, revoking — works from the record, which carries a hint
- * and never the value.
+ * — listing, revoking — works from the record, which carries a hint and never
+ * the value.
+ *
+ * **There is deliberately no route that edits a token's reach.** Widening one
+ * would extend a secret that has been in circulation for months into somewhere
+ * it was never issued for; narrowing one leaves the holder with a credential
+ * whose behaviour silently changed under it. A token whose reach must change is
+ * a new token and a revocation — which has the property that matters: the
+ * secret changes hands again, deliberately, at the moment the trust does.
  */
 
-import { CreateApiTokenRequest, UpdateApiTokenRequest } from '@metaclaude/shared';
+import { CreateApiTokenRequest } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOwner } from '../http/guards.js';
 import type { App } from '../http/types.js';
@@ -50,31 +57,6 @@ export function registerTokenRoutes(app: App, context: AppContext): void {
     });
 
     return reply.status(201).send({ token, secret });
-  });
-
-  app.patch<{ Params: { id: string } }>('/api/tokens/:id', async (request, reply) => {
-    const actor = requireOwner(request);
-    const parsed = UpdateApiTokenRequest.safeParse(request.body);
-    if (!parsed.success) throw parsed.error;
-
-    for (const workspaceId of parsed.data.workspaceIds ?? []) {
-      if (!context.workspaceRepo.get(workspaceId)) {
-        throw new HttpError(400, 'That workspace does not exist.');
-      }
-    }
-
-    const token = context.apiTokens.update(request.params.id, parsed.data);
-    if (!token) throw new HttpError(404, 'Token not found.');
-
-    context.audit.record({
-      actor: actor.username,
-      action: 'token.update',
-      target: token.id,
-      ipAddress: requestIp(context, request),
-      detail: `${token.name}: ${token.scopes.join('+')} on ${token.workspaceIds.length} workspace(s), ceiling ${token.ceiling}`,
-    });
-
-    return reply.send({ token });
   });
 
   /**

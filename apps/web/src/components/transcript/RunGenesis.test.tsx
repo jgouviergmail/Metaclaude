@@ -44,6 +44,39 @@ describe('RunGenesis', () => {
     expect(apiMock.runGenesis).not.toHaveBeenCalled();
   });
 
+  /**
+   * A run nobody in this browser typed must not read as one somebody did.
+   *
+   * `docs/SECURITY.md` and the guide both promise this for gateway runs — that
+   * an outside program's run is visible as such in the history. Until this
+   * shipped, the promise was true of the database and false of the screen:
+   * `triggeredBy` was stored and rendered nowhere at all.
+   */
+  it('says who asked, when it was not the person reading', () => {
+    renderWithProviders(<RunGenesis run={run({ triggeredBy: 'api' })} />);
+
+    expect(screen.getByText('asked through the API')).toBeDefined();
+  });
+
+  it('names the other non-human origins too', () => {
+    for (const [trigger, phrase] of [
+      ['automation', 'started by an automation'],
+      ['delegation', 'asked by another workspace'],
+    ] as const) {
+      const { unmount } = renderWithProviders(<RunGenesis run={run({ triggeredBy: trigger })} />);
+      expect(screen.getByText(phrase), trigger).toBeDefined();
+      unmount();
+    }
+  });
+
+  it('says nothing for an ordinary run somebody typed', () => {
+    // The common case. A strip that labels every run "started by you" stops
+    // being read, which would cost the line above its meaning.
+    renderWithProviders(<RunGenesis run={run({ triggeredBy: 'user' })} />);
+
+    expect(screen.queryByText(/started by|asked (through|by)/)).toBeNull();
+  });
+
   it('opening fetches the detail: recalled memories and the posterior', async () => {
     renderWithProviders(<RunGenesis run={run()} />);
     fireEvent.click(screen.getByRole('button', { expanded: false }));

@@ -13,9 +13,11 @@
  * workspace exists but is not yours" has already leaked the deployment's map.
  */
 
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiTokenRecord } from '@metaclaude/shared';
-import { createGatewayHandlers, type GatewayDeps } from './mcp-gateway.js';
+import { buildGatewayServer, createGatewayHandlers, type GatewayDeps } from './mcp-gateway.js';
 
 const TOKEN: ApiTokenRecord = {
   id: 'tok_1',
@@ -191,8 +193,72 @@ describe('ask', () => {
   });
 });
 
+/**
+ * The input schemas are enforced by the agent SDK, not by this code.
+ *
+ * That is the trap CLAUDE.md names about edge schemas, seen from the other
+ * side: every handler test below calls the handlers directly, so a schema that
+ * silently stopped validating would break nothing here — while a caller could
+ * push a megabyte of prompt straight into a run. When a dependency decides
+ * what may be submitted, test the dependency's decision.
+ */
+describe('what the protocol refuses before a handler ever runs', () => {
+  const connect = async (wired: GatewayDeps) => {
+    const server = buildGatewayServer(wired, TOKEN).instance;
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverSide);
+    const client = new Client({ name: 'outside', version: '1.0.0' });
+    await client.connect(clientSide);
+    return client;
+  };
+
+  it('rejects an oversized prompt without reaching the kernel', async () => {
+    const wired = deps();
+    const client = await connect(wired);
+
+    const result = (await client.callTool({
+      name: 'ask_workspace',
+      arguments: { workspace: 'mine', prompt: 'x'.repeat(30_000) },
+    })) as { content: Array<{ text: string }>; isError?: boolean };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/too_big|Too big/);
+    // The point: no run was started. A prompt that fails validation must cost
+    // nothing at all.
+    expect(wired.kernel.startForToken).not.toHaveBeenCalled();
+    await client.close();
+  });
+
+  it('rejects a missing argument and an out-of-range one', async () => {
+    const wired = deps();
+    const client = await connect(wired);
+
+    const missing = (await client.callTool({
+      name: 'ask_workspace',
+      arguments: { workspace: 'mine' },
+    })) as { isError?: boolean };
+    expect(missing.isError).toBe(true);
+
+    const tooMany = (await client.callTool({
+      name: 'search_notes',
+      arguments: { workspace: 'mine', query: 'x', limit: 999 },
+    })) as { isError?: boolean };
+    expect(tooMany.isError).toBe(true);
+
+    expect(wired.knowledge.search).not.toHaveBeenCalled();
+    await client.close();
+  });
+});
+
 describe('search_notes', () => {
-  it('scopes the search to the named workspace, never the whole shelf', async () => {
+  /**
+   * Named here because the answer is not the obvious one: the store returns
+   * that workspace *plus* the global shelf, which is what a run there would
+   * read. An earlier version of this test claimed "never the whole shelf",
+   * which was wrong in the direction that matters — a token granted `read` on
+   * one project can reach anything filed globally.
+   */
+  it('asks for exactly what a run in that workspace would see', async () => {
     const wired = deps();
     const handlers = createGatewayHandlers(wired, TOKEN);
 

@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod';
+import { MAX_API_TOKEN_DAYS } from './constants.js';
 import {
   ClaudeAccountInfo,
   ClaudeAgentInfo,
@@ -871,9 +872,6 @@ export const ApiTokenRecord = z.object({
 });
 export type ApiTokenRecord = z.infer<typeof ApiTokenRecord>;
 
-/** How long a new token may live. A year is the outer bound, not a default. */
-export const MAX_API_TOKEN_DAYS = 365;
-
 export const CreateApiTokenRequest = z.object({
   name: z.string().trim().min(1).max(60),
   scopes: z.array(ApiTokenScope).min(1),
@@ -882,20 +880,6 @@ export const CreateApiTokenRequest = z.object({
   expiresInDays: z.number().int().min(1).max(MAX_API_TOKEN_DAYS),
 });
 export type CreateApiTokenRequest = z.infer<typeof CreateApiTokenRequest>;
-
-/**
- * Editing a token changes its reach, never its secret.
- *
- * Rotating a secret in place would leave every holder of the old value
- * authenticated as the new one; rotation is a new token and a revocation.
- */
-export const UpdateApiTokenRequest = z.object({
-  name: z.string().trim().min(1).max(60).optional(),
-  scopes: z.array(ApiTokenScope).min(1).optional(),
-  workspaceIds: z.array(z.string()).min(1).optional(),
-  ceiling: ApiTokenCeiling.optional(),
-});
-export type UpdateApiTokenRequest = z.infer<typeof UpdateApiTokenRequest>;
 
 /** The one moment the secret exists outside the client's own storage. */
 export const CreateApiTokenResponse = z.object({

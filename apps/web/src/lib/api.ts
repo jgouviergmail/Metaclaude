@@ -21,7 +21,6 @@ import {
   type Attachment,
   type AuditEntry,
   type CreateApiTokenRequest,
-  type UpdateApiTokenRequest,
   type ClaudeCredentialStatus,
   type ClaudePairingStart,
   type ClaudePairingState,
@@ -882,13 +881,11 @@ export const api = {
   createApiToken: (body: CreateApiTokenRequest) =>
     request<{ token: ApiTokenRecord; secret: string }>('/api/tokens', {
       method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
-  updateApiToken: (id: string, body: UpdateApiTokenRequest) =>
-    request<{ token: ApiTokenRecord }>(`/api/tokens/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
+      // `request` serialises the body itself — passing a string here encodes it
+      // twice, and the API's schema then rejects an object it received as a
+      // JSON string. That shipped in 0.38.0 and broke the only screen that
+      // mints a token.
+      body,
     }),
 
   revokeApiToken: (id: string) =>

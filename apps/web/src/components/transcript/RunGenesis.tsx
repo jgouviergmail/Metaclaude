@@ -30,6 +30,24 @@ const SOURCE_PHRASE: Record<RunPolicy['source'], string> = {
   explicit: 'your choice',
 };
 
+/**
+ * Who asked for this run, when it was not the person reading.
+ *
+ * `user` is absent on purpose: it is the ordinary case, and a strip that
+ * labels every run "started by you" stops being read. What matters is the
+ * opposite — a run nobody in this browser typed must not read as one somebody
+ * did. `api` is the sharpest case: an outside program holding a token asked
+ * for it, possibly while nobody was watching, and the run history is the only
+ * place that fact surfaces.
+ */
+const TRIGGER_PHRASE: Partial<Record<Run['triggeredBy'], string>> = {
+  automation: 'started by an automation',
+  loop: 'started by a loop',
+  system: 'started by the system',
+  delegation: 'asked by another workspace',
+  api: 'asked through the API',
+};
+
 const ACTIVE_STATUSES = new Set<Run['status']>(['queued', 'running', 'waiting_approval']);
 
 export function RunGenesis({ run }: { run: Run }) {
@@ -49,7 +67,9 @@ export function RunGenesis({ run }: { run: Run }) {
   });
 
   const model = String(run.policy.model);
+  const trigger = TRIGGER_PHRASE[run.triggeredBy];
   const segments: string[] = [
+    ...(trigger ? [t(trigger)] : []),
     ...(run.category ? [run.category] : []),
     `${model === 'default' ? 'auto' : model}${run.policy.effort ? ` @ ${run.policy.effort}` : ''}`,
     t(SOURCE_PHRASE[run.policy.source]),

@@ -11,6 +11,66 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.38.2] — 2026-08-29
+
+### Fixed
+
+- **Creating a token from the interface was broken on arrival.** `request`
+  serialises the body itself, and `createApiToken` handed it a string it had
+  already stringified — so the API received a JSON *string* where its schema
+  wanted an object and answered "expected object, received string". Every
+  end-to-end test of the gateway was green because they all call `fetch`
+  directly; the only caller that went through the client was the only screen
+  that mints a token. Two tests now stand where none could: one reads the
+  source for the mistake in any caller, present or future, and one drives the
+  client and parses what actually reaches the wire.
+
+- **A run started from outside was invisible as such.** `docs/SECURITY.md` and
+  the guide both promised that a gateway run "never reads as one somebody
+  typed" — true of the database and false of the screen, because `triggeredBy`
+  was rendered nowhere at all. The genesis strip now names any non-human
+  origin: an API call, a delegation, an automation, a loop, the system. `user`
+  stays silent, because a strip that labels every run "started by you" stops
+  being read.
+
+- **The route that edited a token's reach is gone.** It had no interface, no
+  edge test, and no good behaviour: widening extends a secret that has been in
+  circulation for months into somewhere it was never issued for, and narrowing
+  changes what a holder can do without telling them. A token whose reach must
+  change is a new token and a revocation — which has the property that matters,
+  the secret changing hands at the moment the trust does.
+
+- **`search_notes` said "scoped to a workspace" and returned the global shelf
+  too.** That is the knowledge store's contract for a named workspace and the
+  right behaviour — it returns exactly what a run there would read — but the
+  tool description, the code comment and a test all implied otherwise. A token
+  granted `read` on one project can reach anything filed globally, and an
+  operator should learn that from the tool, not from a surprise.
+
+- **Nothing tested that the gateway's input schemas are enforced.** They are —
+  by the agent SDK, which refuses an oversized prompt before a handler runs —
+  but that is a dependency's decision, and the handler tests call the handlers
+  directly where a schema that stopped validating would break nothing. Proven
+  now over a real protocol round trip, including that no run is started.
+
+### Changed
+
+- **A new i18n ratchet: copy tables the catalogue carries only part of.** The
+  three existing measures all rest on a first-letter-capital heuristic, which
+  is not fussiness — relaxing it surfaces 76 candidates here and about seventy
+  are Tailwind class strings. So lowercase copy escaped, and it was real copy:
+  `QUESTION_NAMES` had been interpolating "models, slash commands" into a
+  French sentence for releases, and five run-origin phrases went through a
+  review untranslated. The new measure has no false positives by construction —
+  a module-level table whose string values are *already* in the catalogue is a
+  copy table by demonstration, and every one of its values must be. It found
+  two more omissions the day it was written.
+
+- `MAX_API_TOKEN_DAYS` moved to `constants.ts`. The form that mints a token
+  needs the value at runtime, and importing it from `api-contracts.ts` would
+  have pulled every API-only Zod schema into the web app's runtime graph —
+  the bundle trap CLAUDE.md documents, walked into and backed out of.
+
 ## [0.38.1] — 2026-08-29
 
 ### Fixed

@@ -481,6 +481,62 @@ function countUntranslatedSharedCopy() {
  * constant whose French exists is right whether or not the render site could
  * be proved to call `t`.
  */
+/**
+ * Copy tables that are half translated.
+ *
+ * The three measures above all rest on `SENTENCE`, which requires a capital
+ * first letter. That is not fussiness: relaxing it surfaces 76 candidates in
+ * this repository and roughly seventy of them are Tailwind class strings —
+ * `flex items-start gap-2` is indistinguishable from prose by any cheap rule.
+ * So lowercase copy escapes, and it is real copy: `QUESTION_NAMES` interpolated
+ * "models, slash commands" into a French sentence for releases, and
+ * `TRIGGER_PHRASE` shipped five untranslated segments through a review.
+ *
+ * This closes the case that actually regresses, with no false positives at
+ * all: a module-level object whose string values are *already* in the
+ * catalogue is a copy table by demonstration, and every one of its values must
+ * be. Adding a sixth entry to a translated table of five is the mistake; a
+ * brand-new table is caught the moment its first value is translated.
+ */
+function countHalfTranslatedTables() {
+  const ts = typescript();
+  if (!ts) return null;
+
+  let missing = 0;
+  for (const { file, sf } of webComponents(ts)) {
+    for (const statement of sf.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const decl of statement.declarationList.declarations) {
+        if (!decl.initializer || !ts.isObjectLiteralExpression(decl.initializer)) continue;
+
+        const values = [];
+        for (const property of decl.initializer.properties) {
+          if (!ts.isPropertyAssignment(property)) continue;
+          const value = property.initializer;
+          if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+            // An empty string is never copy. `EMPTY_DRAFT` in MemoryPage is a
+            // form's initial state whose `kind: 'semantic'` happens to be a
+            // catalogue key, which would otherwise indict three blank fields.
+            if (value.text.trim()) values.push(value.text.trim());
+          }
+        }
+        if (values.length < 2) continue;
+
+        const known = values.filter((text) => translated(text));
+        // Demonstrated to be copy, and only then held to the whole set.
+        if (known.length === 0) continue;
+
+        for (const text of values) {
+          if (translated(text)) continue;
+          missing += 1;
+          note('half', file, text);
+        }
+      }
+    }
+  }
+  return missing;
+}
+
 function countUntranslatedConstants() {
   const ts = typescript();
   if (!ts) return null;
@@ -736,6 +792,13 @@ const METRICS = [
     direction: 'down',
     label: 'module-level copy the French catalogue does not carry',
     measure: countUntranslatedConstants,
+    optional: true,
+  },
+  {
+    key: 'halfTranslatedTables',
+    direction: 'down',
+    label: 'copy tables the French catalogue carries only part of',
+    measure: countHalfTranslatedTables,
     optional: true,
   },
   {

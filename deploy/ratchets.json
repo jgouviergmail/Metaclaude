@@ -1,7 +1,7 @@
 {
   "metrics": {
-    "tests": 2424,
-    "testFiles": 178,
+    "tests": 2431,
+    "testFiles": 179,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
     "initialJsGzipKb": 187,
@@ -12,7 +12,8 @@
     "unusedTranslationHooks": 0,
     "untranslatedConstants": 0,
     "misplacedHooks": 0,
-    "untranslatedSharedCopy": 0
+    "untranslatedSharedCopy": 0,
+    "halfTranslatedTables": 0
   },
   "updated": "2026-08-29"
 }

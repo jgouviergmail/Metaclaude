@@ -48,7 +48,15 @@ const MCP_STATUS: Record<
   unknown: { label: 'unknown', tone: 'neutral', icon: <Clock className="size-3.5" /> },
 };
 
-/** Human names for the questions the CLI can decline to answer. */
+/**
+ * Human names for the questions the CLI can decline to answer.
+ *
+ * Translated at render — the table is module-level, where no hook can run.
+ * They used to be interpolated straight into a French sentence, which read as
+ * "Ce CLI n'a pas pu répondre sur models, slash commands", and no i18n ratchet
+ * saw it: all five begin with a lowercase letter, and the measures skip those
+ * to avoid drowning in Tailwind class strings.
+ */
 const QUESTION_NAMES: Record<string, string> = {
   models: 'models',
   commands: 'slash commands',
@@ -131,7 +139,14 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         <p className="rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-ink">
           {t(
             'This CLI could not answer about {questions}. Those sections are empty because the question failed, not because there is nothing there.',
-            { questions: missing.map((name) => QUESTION_NAMES[name] ?? name).join(', ') },
+            {
+              questions: missing
+                .map((name) => {
+                  const known = QUESTION_NAMES[name];
+                  return known ? t(known) : name;
+                })
+                .join(', '),
+            },
           )}
         </p>
       ) : null}

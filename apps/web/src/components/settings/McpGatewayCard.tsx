@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Plug, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { MAX_API_TOKEN_DAYS } from '@metaclaude/shared';
 import type { ApiTokenCeiling, ApiTokenRecord, ApiTokenScope } from '@metaclaude/shared';
 import { CopyableCode } from '@/components/ui/CopyableCode';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -313,7 +314,9 @@ export function McpGatewayCard() {
             <Input
               type="number"
               min={1}
-              max={365}
+              // The API refuses anything above this; a form that offered more
+              // would produce a 400 the operator has no way to read.
+              max={MAX_API_TOKEN_DAYS}
               value={draft.expiresInDays}
               onChange={(event) =>
                 setDraft({ ...draft, expiresInDays: Number(event.target.value) || 1 })
