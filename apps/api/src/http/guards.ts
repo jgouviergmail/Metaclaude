@@ -37,6 +37,13 @@ const PUBLIC_PATHS = new Set([
   // instead — 256 random bits, minted for one owner, single use, ten minutes.
   // See routes/integrations.ts.
   '/api/integrations/google/callback',
+  // An MCP server's authorization server, redirecting back for the same
+  // reason and with the same credential. The route above had this comment and
+  // it still did not stop the second one from shipping guarded: the handler
+  // said "deliberately outside the authenticated surface" while the path was
+  // never added here, so the guard answered "Not signed in." before it ran.
+  // `guards.test.ts` now asserts the pair rather than trusting a comment.
+  '/api/mcp/oauth/callback',
 ]);
 
 /** Methods that cannot change state and therefore need no CSRF token. */

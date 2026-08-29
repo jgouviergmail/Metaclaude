@@ -1764,4 +1764,5 @@ export const fr: Record<string, string> = {
   '{name} is no longer authorised.': '{name} n’est plus autorisé.',
   'The stored tokens were deleted. Runs will find it unauthorised.': 'Les jetons enregistrés ont été supprimés. Les runs le trouveront non autorisé.',
   'Could not forget that authorization.': 'Cette autorisation n’a pas pu être oubliée.',
+  'What this server says it is for': 'Ce que ce serveur dit faire',
 };

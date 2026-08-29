@@ -14,6 +14,7 @@ import {
   BookOpen,
   Bot,
   ChevronDown,
+  ChevronRight,
   Download,
   ExternalLink,
   Filter,
@@ -1772,9 +1773,23 @@ function McpTab({
                       MCP instructions block — so this shows the operator what
                       the agent is working from, rather than inventing one. */}
                   {descriptions[server.name]?.instructions ? (
-                    <p className="rounded-lg border border-line bg-sunken/40 px-2.5 py-1.5 text-[12px] leading-relaxed text-muted">
-                      {descriptions[server.name]?.instructions}
-                    </p>
+                    // Folded like the tool list, and for the same reason: a
+                    // server's own account of itself can run to paragraphs, and
+                    // a card that unrolls one of them pushes every other server
+                    // off the screen. The summary says it is there; opening it
+                    // is a decision.
+                    <details className="group rounded-lg border border-line bg-sunken/40">
+                      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+                        <ChevronRight
+                          className="size-3.5 shrink-0 transition-transform group-open:rotate-90"
+                          aria-hidden
+                        />
+                        {t('What this server says it is for')}
+                      </summary>
+                      <p className="border-t border-line px-2.5 py-2 text-[12px] leading-relaxed text-muted">
+                        {descriptions[server.name]?.instructions}
+                      </p>
+                    </details>
                   ) : null}
 
                   <McpToolList

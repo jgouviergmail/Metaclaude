@@ -11,6 +11,29 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.36.3] — 2026-08-29
+
+### Fixed
+
+- **"Not signed in." was our own guard refusing the OAuth callback.** A redirect
+  back from a provider's consent screen is a cross-site top-level navigation, so
+  it carries no `SameSite=Strict` cookie and cannot be authenticated the usual
+  way — its `state` is the credential instead. The handler said exactly that in
+  its own comment and the path was never added to `PUBLIC_PATHS`, so the guard
+  answered 401 before the handler ever ran and the flow died on its last step.
+  The Google callback had been carrying that same reasoning, written out, for
+  releases — and it did not stop the second one shipping guarded.
+- **So the test reads the routes rather than naming the paths.** It finds every
+  `/api/…/callback` the route files register and asserts each is public,
+  including a count check so it cannot quietly pass by finding none. Naming the
+  two paths would have had the same weakness the comment did.
+
+### Changed
+
+- **A server's own description folds, like its tools.** It can run to
+  paragraphs, and a card that unrolls one pushes every other server off the
+  screen. The summary says it is there; opening it is a decision.
+
 ## [0.36.2] — 2026-08-29
 
 ### Fixed

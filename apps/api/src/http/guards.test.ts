@@ -7,6 +7,7 @@
  */
 
 import type { FastifyRequest } from 'fastify';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { User } from '@metaclaude/shared';
@@ -92,6 +93,45 @@ describe('isPublicPath', () => {
     // The passkey sign-in ceremony happens before a session can exist.
     expect(isPublicPath('/api/auth/passkey/begin')).toBe(true);
     expect(isPublicPath('/api/auth/passkey/finish')).toBe(true);
+  });
+
+  /**
+   * Every OAuth callback, found in the routes rather than listed here.
+   *
+   * A redirect back from a third party's consent screen is a cross-site
+   * top-level navigation, so it carries no `SameSite=Strict` cookie and cannot
+   * be authenticated the usual way — its `state` is the credential instead.
+   * That reasoning was written out on the Google callback, and it still did not
+   * stop the MCP one from shipping guarded: the handler's comment said
+   * "deliberately outside the authenticated surface" while the path was never
+   * added to the set, so the guard answered "Not signed in." before the handler
+   * ran, and the flow died on the last step.
+   *
+   * Naming the two paths here would have the same weakness as the comment did.
+   * This reads the routes instead, so a third callback is covered the day it is
+   * written.
+   */
+  it('covers every OAuth callback the routes actually register', () => {
+    const dir = new URL('../routes/', import.meta.url);
+    const found: string[] = [];
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.ts') || file.includes('.test.')) continue;
+      const source = readFileSync(new URL(file, dir), 'utf8');
+      // Both spellings the two routes happen to use: `/…/oauth/callback` and
+      // `/…/google/callback`. Matching on the trailing `/callback` under
+      // `/api/` is the property that matters — a route named for the provider
+      // rather than for the protocol is the same kind of route.
+      for (const match of source.matchAll(/'(\/api\/[a-z0-9/_-]*\/callback)'/g)) {
+        found.push(match[1]!);
+      }
+    }
+
+    // The test is worthless if it finds nothing: it would pass on a repository
+    // with no callbacks at all, and that is exactly the day it stops guarding.
+    expect(found.length).toBeGreaterThanOrEqual(2);
+    for (const path of found) {
+      expect(isPublicPath(path), `${path} must be reachable without a session`).toBe(true);
+    }
   });
 
   it('is a closed set — anything else is guarded', () => {
