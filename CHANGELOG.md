@@ -11,6 +11,18 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.39.1] — 2026-08-29
+
+### Fixed
+
+- **Two new kernel tests closed the database under a run still finishing.**
+  They start a gateway run without awaiting it — which is the behaviour under
+  test — and then closed the in-memory database in their `finally`, while the
+  tail of the schedule chain was still reading from it. `TypeError: The
+  database connection is not open`, twice, as unhandled errors. Exactly the
+  trap the delegation-leak test documents a few lines above, and CI caught it
+  the same way it caught that one. Both now wait for the runs to land first.
+
 ## [0.39.0] — 2026-08-29
 
 ### Added

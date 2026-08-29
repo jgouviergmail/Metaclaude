@@ -869,6 +869,13 @@ describe('delegation', () => {
       expect(second.sessionId).not.toBe(first.sessionId);
       // Same name: the history stays attributable to the token at a glance.
       expect(fx.sessions.get(second.sessionId)?.title).toBe('MCP: n8n');
+
+      // Both runs must land before the database closes under them. The second
+      // was started and not awaited, and the tail of its schedule chain reads
+      // runs — on a connection this `finally` is about to shut. Same trap the
+      // delegation leak test documents, and CI caught it here too.
+      await vi.waitFor(() => expect(fx.finished).toHaveLength(2));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     } finally {
       fx.db.close();
     }
@@ -895,6 +902,9 @@ describe('delegation', () => {
       });
 
       expect(second.sessionId).toBe(first.sessionId);
+
+      await vi.waitFor(() => expect(fx.finished).toHaveLength(2));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     } finally {
       fx.db.close();
     }
