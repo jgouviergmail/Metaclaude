@@ -17,6 +17,7 @@ import {
   createSdkMcpServer,
   query as sdkQuery,
   tool as sdkTool,
+  type McpServerStatus,
   type Options,
   type Query,
   type SDKMessage,
@@ -204,6 +205,59 @@ interface LiveRun {
 export type UserContent = SDKUserMessage['message']['content'];
 
 const INLINE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
+/**
+ * How long the catalogue probe waits for MCP servers to stop connecting.
+ *
+ * The SDK caps its own connect attempt at five seconds, so anything still
+ * pending past eight has not been slow — it has failed to say so yet, and
+ * `pending` is then the honest answer rather than a value worth waiting for.
+ */
+const MCP_SETTLE_TIMEOUT_MS = 8_000;
+const MCP_SETTLE_POLL_MS = 300;
+
+/**
+ * MCP status, once the servers have stopped connecting.
+ *
+ * MCP startup is non-blocking by design — a run must not wait on a slow server
+ * before its first turn — so `mcpServerStatus()` asked immediately answers
+ * `pending` for anything that has not finished. The probe took that snapshot
+ * and reported it. Measured against a server that takes four seconds: the probe
+ * returned in 1.2 s with `pending` and zero tools, and an operator pressing
+ * Test read "still connecting" however many times they pressed, because every
+ * press asked just as early as the last.
+ *
+ * So it asks again until nothing is pending. Polling rather than the SDK's
+ * `alwaysLoad`, which also blocks startup but does it by putting every one of
+ * that server's tools into every prompt — a real cost on the *run* path, paid
+ * to fix a reporting problem on the probe path.
+ *
+ * The deadline is what makes waiting safe: a server that never connects leaves
+ * the loop still `pending`, which is the truth about it, and the caller says so
+ * rather than hanging. Exported because the loop is the whole of the behaviour
+ * and driving it through a live CLI would test the CLI.
+ */
+export async function settleMcpStatus(
+  read: () => Promise<McpServerStatus[]>,
+  options: {
+    timeoutMs?: number;
+    pollMs?: number;
+    now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
+): Promise<McpServerStatus[]> {
+  const now = options.now ?? Date.now;
+  const sleep =
+    options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const deadline = now() + (options.timeoutMs ?? MCP_SETTLE_TIMEOUT_MS);
+
+  let status = await read();
+  while (status.some((server) => server.status === 'pending') && now() < deadline) {
+    await sleep(options.pollMs ?? MCP_SETTLE_POLL_MS);
+    status = await read();
+  }
+  return status;
+}
 
 function inlineImageType(mime: string): 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | null {
   return INLINE_IMAGE_TYPES.has(mime)
@@ -953,6 +1007,26 @@ export class AgentSupervisor {
    * claude.ai account connectors cannot appear: a `setup-token` credential
    * carries inference scope only, and runs mount servers explicitly.
    */
+  /**
+   * MCP status, once the servers have stopped connecting.
+   *
+   * MCP startup is non-blocking by design — a run must not wait on a slow
+   * server before its first turn — so `mcpServerStatus()` asked immediately
+   * answers `pending` for anything that has not finished. The probe took that
+   * snapshot and reported it: measured against a server that takes four
+   * seconds, the probe returned in 1.2 s with `pending` and zero tools. An
+   * operator pressing Test then read "still connecting" forever, because every
+   * press asked just as early as the last one.
+   *
+   * So it asks again until nothing is pending. Polling rather than the SDK's
+   * `alwaysLoad`, which also blocks startup but does it by putting every one of
+   * that server's tools into every prompt — a real cost on the *run* path, paid
+   * to fix a reporting problem on the probe path.
+   *
+   * The deadline is what makes this safe: a server that never connects leaves
+   * the loop as `pending`, which is the truth about it, and the caller reports
+   * that rather than hanging.
+   */
   async catalogue(
     workspacePath: string,
     runtime?: {
@@ -1009,7 +1083,7 @@ export class AgentSupervisor {
           ask('models', () => handle.supportedModels()),
           ask('commands', () => handle.supportedCommands()),
           ask('agents', () => handle.supportedAgents()),
-          ask('mcpServers', () => handle.mcpServerStatus()),
+          ask('mcpServers', () => settleMcpStatus(() => handle.mcpServerStatus())),
           ask('account', () => handle.accountInfo()),
         ]);
 

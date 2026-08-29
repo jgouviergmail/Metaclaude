@@ -11,6 +11,25 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.36.2] — 2026-08-29
+
+### Fixed
+
+- **"Still connecting", however many times you pressed Test.** MCP startup is
+  non-blocking by design — a run must not wait on a slow server before its
+  first turn — so `mcpServerStatus()` asked immediately answers `pending` for
+  anything that has not finished, and the probe took that snapshot and reported
+  it. Every press asked just as early as the last, so the answer never changed.
+  Measured against a server that takes four seconds: the probe returned in
+  1.2 s with `pending` and zero tools; it now waits and returns `connected`
+  with its tools in 5.2 s.
+- **Polled, not `alwaysLoad`.** The SDK flag also blocks startup until a server
+  is connected, and it does it by putting every one of that server's tools into
+  every prompt — a real cost on the *run* path, paid to fix a reporting problem
+  on the probe path. The deadline is what makes waiting safe: a server that
+  never connects leaves the loop still `pending`, which is the truth about it,
+  and 0.35.1 already gave that its own sentence.
+
 ## [0.36.1] — 2026-08-28
 
 ### Fixed
