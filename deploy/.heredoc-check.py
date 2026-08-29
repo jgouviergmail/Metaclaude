@@ -20,7 +20,12 @@ problems = []
 for path in sys.argv[1:]:
     if not os.path.isfile(path):
         continue
-    lines = open(path).read().split("\n")
+    # The encoding is explicit because the default is the *locale's*, and these
+    # scripts carry em-dashes and accents: on a Windows checkout the default is
+    # cp1252, `open(path).read()` raises UnicodeDecodeError, and check.sh
+    # reports "prose inside a heredoc will be executed by the shell" — a
+    # security finding, for a file it never managed to read.
+    lines = open(path, encoding="utf-8").read().split("\n")
     i = 0
     while i < len(lines):
         m = re.search(r"<<-?\s*([A-Za-z_][A-Za-z0-9_]*)\s*$", lines[i])

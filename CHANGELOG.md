@@ -11,6 +11,52 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.38.5] — 2026-08-29
+
+### Fixed
+
+- **`check.sh` does run on a Windows checkout, and it had been lying.** The
+  previous release said it could not run here and leaned on CI for it. It runs:
+  64 of its checks pass, and the 27 that fail all want `docker`, `flock` or
+  PyYAML. Three failures were the script's own portability, not the
+  environment's, and all three reported something alarming and false:
+
+  - **Windows Python writes CRLF on stdout.** Three checks feed a heredoc
+    script's output through `while read`, so every extracted pattern carried a
+    trailing carriage return and matched nothing. That is how a local run
+    claimed the guide sends readers to four Settings screens that do not exist,
+    and that a documented log line had vanished from the code. Piped through
+    `tr -d`, which is inert on Linux.
+  - **`deploy/.heredoc-check.py` opened files in the locale's encoding.** On a
+    Windows checkout the default is cp1252, these scripts carry em-dashes, and
+    the read raised `UnicodeDecodeError` — reported as "prose inside a heredoc
+    will be executed by the shell", a security finding about a file it never
+    managed to read. Explicit `encoding="utf-8"`.
+  - **A `.gitattributes`, which the repository had never had.** Without one, a
+    Windows checkout converts all twelve shell scripts and `docker/entrypoint.sh`
+    to CRLF. The image was never affected because CI builds it on Linux, but a
+    build from a Windows working copy would have shipped a container that
+    cannot start: a shebang ending in a carriage return is not a shebang, and
+    the kernel reports "no such file or directory" about a file that is plainly
+    there.
+
+- **Two flaky component tests, named at last.** `HelpPage` and the composer's
+  permission control each failed once in a full run and never in an isolated
+  one — the signature of a timeout, not of a defect. Both wait on a dynamic
+  `import()` rather than on a state update: eleven guide chapters through
+  `import.meta.glob`, and the French catalogue's own lazy chunk. RTL's default
+  patience is one second, which is enough on an idle machine and sometimes not
+  when three suites run at once. `asyncUtilTimeout` is now set once in the test
+  setup, where a new file gets it by existing. Only patience widened; a
+  genuinely broken screen still fails, five seconds later.
+
+- **A NUL byte in `permissions.ts` made git treat it as binary.** `grantKey`
+  deliberately prefixes an unparseable command's key with NUL so no real verb
+  can collide with it — correct, and worth keeping — but it was written as a
+  raw byte rather than the escape. Same string once compiled; the difference is
+  that the file had no readable diff and no usable blame for releases, in the
+  module that decides what the agent is allowed to run.
+
 ## [0.38.4] — 2026-08-29
 
 ### Changed

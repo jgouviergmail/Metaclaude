@@ -1371,7 +1371,7 @@ section "A container probed through docker exec has something to reap the probe"
 # So: a service with a healthcheck needs a reaper. `init: true` is one; an image
 # whose entrypoint is tini is the other, which is what the app image ships.
 if command -v python3 >/dev/null 2>&1; then
-  reaper_report="$(python3 - "$REPO_ROOT" <<'PY'
+  reaper_report="$(python3 - "$REPO_ROOT" <<'PY' | tr -d '\r'
 import pathlib, re, sys, yaml
 
 root = pathlib.Path(sys.argv[1])
@@ -1604,7 +1604,7 @@ section "Every log line the documentation says to grep for is one the code write
 #
 # The patterns are lifted out of the docs rather than listed here, so a new one
 # is covered the day it is written.
-patterns="$(python3 - "$REPO_ROOT" <<'PY'
+patterns="$(python3 - "$REPO_ROOT" <<'PY' | tr -d '\r'
 import pathlib, re, sys
 
 root = pathlib.Path(sys.argv[1])
@@ -1672,7 +1672,7 @@ section "Every screen the guide sends the reader to still exists"
 # "Settings →" must appear somewhere in SettingsPage.tsx, tab label or card
 # title. That is enough to catch a screen that is not there at all, without
 # pretending to parse the route tree.
-paths="$(python3 - "$REPO_ROOT" <<'PY'
+paths="$(python3 - "$REPO_ROOT" <<'PY' | tr -d '\r'
 import pathlib, re, sys
 
 root = pathlib.Path(sys.argv[1])

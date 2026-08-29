@@ -1,0 +1,23 @@
+# Line endings.
+#
+# Everything below is read by a Unix runtime — a shell, Docker, Caddy — and a
+# CRLF checkout breaks it in ways that are hard to attribute. `#!/bin/sh\r` is
+# not a shebang: the kernel looks for an interpreter whose name ends in a
+# carriage return and reports "no such file or directory" about a file that is
+# plainly there. Inside a script, a heredoc's body carries the `\r` into the
+# variables it feeds, so a comparison against clean data silently fails.
+#
+# That is not hypothetical here. Without this file, a Windows checkout produced
+# CRLF for all twelve shell scripts, and `deploy/check.sh` reported two
+# documentation checks as failing because the patterns it extracted through a
+# heredoc each carried a trailing `\r` — a local run answering a different
+# question from the one CI answers, which is exactly what CLAUDE.md warns
+# about. The image was never affected because CI builds it on Linux; a build
+# from a Windows working copy would have shipped a container that cannot start.
+*.sh text eol=lf
+deploy/bin/* text eol=lf
+docker/entrypoint.sh text eol=lf
+docker/Caddyfile text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
