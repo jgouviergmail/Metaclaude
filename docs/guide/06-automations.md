@@ -36,6 +36,22 @@ Autonomy without rails is an incident generator, so the rails are built in:
 Every firing is an ordinary run: transcript, cost, permission prompts under
 the automation's chosen mode, and a rating you can still give afterwards.
 
+## Which mode an automation should be on
+
+The one thing that catches everybody: **Ask** is the default, and an
+automation on Ask stops at its first consequential call and waits for you.
+Nobody is there at 3am, so ten minutes later that call is declined and the
+firing carries on crippled — or fails outright.
+
+**Don't ask** is the mode built for this, and it goes with the workspace's
+pre-approved tools: nothing waits, and what may run is the short list you
+ticked. An automation that reads the web and writes a summary needs *Web
+search* — or *Fetch a page* — pre-approved and nothing else. See the
+permissions chapter.
+
+Whatever a firing was refused, the run's timeline ends with a line naming it,
+so an automation that quietly did half its job says so.
+
 ## Patterns that work
 
 A nightly dependency-and-CI review per repository. A continuous watcher that

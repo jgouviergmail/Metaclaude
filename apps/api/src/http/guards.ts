@@ -16,8 +16,9 @@ import type {
   UserRole,
   Workspace,
 } from '@metaclaude/shared';
-import { CSRF_HEADER, SESSION_COOKIE } from '@metaclaude/shared';
+import { CSRF_HEADER, SESSION_COOKIE, reviewToolNames } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
+import { reviewAdditionalDirectories } from '../security/directories.js';
 import { clientKey } from '../security/ratelimit.js';
 
 declare module 'fastify' {
@@ -268,6 +269,79 @@ export function assertPermissionModeAllowed(
       'Bypass mode is disabled on this deployment. Set METACLAUDE_ALLOW_BYPASS_PERMISSIONS to enable it.',
     );
   }
+}
+
+/** The two settings fields that say what a workspace's runs may reach. */
+type ToolSettings = { allowedTools?: string[]; disallowedTools?: string[] };
+
+/**
+ * Vet and normalise a workspace's tool lists, or fail with 400.
+ *
+ * Rejecting here rather than dropping at run time is the same choice
+ * `additionalDirectories` makes: the operator learns the setting did not take,
+ * instead of reading a saved screen whose value never reaches a run.
+ *
+ * The contradiction is refused rather than resolved. `AgentSupervisor` already
+ * settles it safely — forbidding wins — but a form that accepts a tool on both
+ * lists and then honours one of them is a form that lies about what it stored.
+ *
+ * `stored` is what the workspace already carries, and leaving it out was a
+ * hole in the first version of this function: a PATCH naming one list is
+ * merged with the other, so comparing within the request alone accepted
+ * exactly the contradiction the check exists to refuse. The dialog always
+ * sends both lists, which is why nothing caught it — the gap is only
+ * reachable through the API, and that is reason to close it rather than not.
+ *
+ * Returns the normalised lists to store: trimmed and de-duplicated, so the
+ * value read back is the value that will be matched against a tool call.
+ */
+export function reviewToolSettings(
+  settings: ToolSettings | undefined,
+  stored: ToolSettings = {},
+): ToolSettings {
+  if (!settings) return {};
+  const patch: ToolSettings = {};
+
+  for (const field of ['allowedTools', 'disallowedTools'] as const) {
+    const names = settings[field];
+    if (!names) continue;
+    const review = reviewToolNames(names);
+    const first = review.rejected[0];
+    if (first) throw new HttpError(400, `"${first.name}" ${first.reason}.`);
+    patch[field] = review.allowed;
+  }
+
+  // The merged state, exactly as the repository will store it.
+  const allowed = patch.allowedTools ?? stored.allowedTools ?? [];
+  const forbidden = new Set(patch.disallowedTools ?? stored.disallowedTools ?? []);
+  const both = allowed.find((name) => forbidden.has(name));
+  if (both) {
+    throw new HttpError(400, `"${both}" cannot be both pre-approved and forbidden.`);
+  }
+
+  return patch;
+}
+
+/**
+ * Refuse an additional directory the server would not grant, or fail with 400.
+ *
+ * Ran on update and not on creation, so a workspace could be born naming a
+ * directory every run then dropped in silence — the operator was shown a saved
+ * setting that did nothing. Centralised here for the reason the mode check
+ * above was: a rule written at one of two call sites is a rule missing from
+ * the other.
+ */
+export function assertAdditionalDirectoriesAllowed(
+  context: AppContext,
+  directories: string[] | undefined,
+): void {
+  if (!directories || directories.length === 0) return;
+  const review = reviewAdditionalDirectories(directories, {
+    workspacesDir: context.config.workspacesDir,
+    dataDir: context.config.dataDir,
+  });
+  const first = review.rejected[0];
+  if (first) throw new HttpError(400, `"${first.path}" ${first.reason}.`);
 }
 
 /** Consistent JSON error body. */

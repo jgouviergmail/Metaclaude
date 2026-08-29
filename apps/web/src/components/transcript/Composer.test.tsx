@@ -9,7 +9,7 @@
 import { screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClaudeCatalogue } from '@metaclaude/shared';
-import { renderWithProviders } from '@/test/render';
+import { renderInFrench, renderWithProviders } from '@/test/render';
 import type { PendingAttachment } from '@/lib/attachments';
 import { Composer, type ComposerValue } from './Composer';
 
@@ -43,23 +43,37 @@ const incapable: ClaudeCatalogue['models'][number] = {
   supportsAdaptiveThinking: false,
 };
 
-function renderComposer(value: Partial<ComposerValue>, cat?: ClaudeCatalogue) {
+function composerProps(value: Partial<ComposerValue>, cat?: ClaudeCatalogue) {
   const onChange = vi.fn();
-  const props = {
-    value: {
-      model: 'opus',
-      effort: null,
-      permissionMode: 'default',
-      ultracode: false,
-      ...value,
-    } as ComposerValue,
+  return {
     onChange,
-    onSubmit: vi.fn(),
-    onInterrupt: vi.fn(),
-    isRunning: false,
-    catalogue: cat,
+    props: {
+      value: {
+        model: 'opus',
+        effort: null,
+        permissionMode: 'default',
+        ultracode: false,
+        ...value,
+      } as ComposerValue,
+      onChange,
+      onSubmit: vi.fn(),
+      onInterrupt: vi.fn(),
+      isRunning: false,
+      catalogue: cat,
+    },
   };
+}
+
+function renderComposer(value: Partial<ComposerValue>, cat?: ClaudeCatalogue) {
+  const { onChange, props } = composerProps(value, cat);
   renderWithProviders(<Composer {...props} />);
+  return { onChange };
+}
+
+/** The same, with the French catalogue already loaded. See `renderInFrench`. */
+async function renderComposerInFrench(value: Partial<ComposerValue>, cat?: ClaudeCatalogue) {
+  const { onChange, props } = composerProps(value, cat);
+  await renderInFrench(<Composer {...props} />);
   return { onChange };
 }
 
@@ -84,13 +98,12 @@ describe('the permission-mode control', () => {
   });
 
   it('shows the French label and description once the catalogue is French', async () => {
-    window.localStorage.setItem('mc-lang', 'fr');
-    try {
-      renderComposer({ permissionMode: 'default' }, catalogue([capable]));
-      expect(await screen.findByText('Demander')).toBeDefined();
-    } finally {
-      window.localStorage.removeItem('mc-lang');
-    }
+    // Through the shared helper: it awaits the catalogue chunk before
+    // rendering, so the assertion no longer races a dynamic `import()`. This
+    // case failed once in a loaded full run and never in an isolated one,
+    // which is the signature of that race rather than of a broken control.
+    await renderComposerInFrench({ permissionMode: 'default' }, catalogue([capable]));
+    expect(await screen.findByText('Demander')).toBeDefined();
   });
 });
 

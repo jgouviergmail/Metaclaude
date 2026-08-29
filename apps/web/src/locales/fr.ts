@@ -169,6 +169,14 @@ export const fr: Record<string, string> = {
   'Permission mode': 'Mode de permission',
   Branch: 'Branche',
   'Not a git repository': 'Pas un dépôt git',
+  '{n} fact': '{n} fait',
+  '{n} facts': '{n} faits',
+  '{n} procedure': '{n} procédure',
+  '{n} procedures': '{n} procédures',
+  '{n} modified file': '{n} fichier modifié',
+  '{n} modified files': '{n} fichiers modifiés',
+  '{n} untracked file': '{n} fichier non suivi',
+  '{n} untracked files': '{n} fichiers non suivis',
   'Uncommitted changes': 'Modifications non committées',
   'From the CLI': 'Depuis le CLI',
   'Starting your first session': 'Démarrage de votre première session',
@@ -177,6 +185,22 @@ export const fr: Record<string, string> = {
   'Default effort': 'Effort par défaut',
   'Default permission mode': 'Mode de permission par défaut',
   'How much to ask before acting': 'À quel point demander avant d’agir',
+
+  /* Workspace : outils pré-approuvés */
+  'Pre-approved tools': 'Outils pré-approuvés',
+  'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright.':
+    'Un outil coché s’exécute sans sa carte d’approbation, dans tous les modes sauf Plan. C’est aussi la seule chose qu’un run sans surveillance peut utiliser : en mode « Ne pas demander » — là où atterrissent les automatisations et la passerelle MCP — tout ce qui n’est pas coché ici est refusé d’emblée.',
+  'Reads a page the agent names. The container fetches it directly.':
+    'Lit une page que l’agent désigne. Le conteneur va la chercher lui-même.',
+  'Searches the web. The search runs upstream; the container makes no request itself.':
+    'Cherche sur le web. La recherche a lieu en amont ; le conteneur n’émet aucune requête.',
+  'Runs a shell command. By far the widest of these — it can do anything the others can.':
+    'Exécute une commande shell. De loin le plus large — il peut faire tout ce que font les autres.',
+  'Creates a file in the workspace.': 'Crée un fichier dans le workspace.',
+  'Changes a file that already exists.': 'Modifie un fichier qui existe déjà.',
+  'Changes a cell in a Jupyter notebook.': 'Modifie une cellule d’un notebook Jupyter.',
+  'Stops a background command it started earlier.':
+    'Arrête une commande d’arrière-plan qu’il avait lancée.',
   Autonomy: 'Autonomie',
   'Marketplace plugins': 'Plugins de la marketplace',
   'Max turns per run': 'Tours maximum par run',
@@ -1767,7 +1791,8 @@ export const fr: Record<string, string> = {
   'Could not forget that authorization.': 'Cette autorisation n’a pas pu être oubliée.',
   'What this server says it is for': 'Ce que ce serveur dit faire',
   'Research and answer only — no tool ever executes.': 'Recherche et réponse seulement — aucun outil ne s’exécute.',
-  'Runs what this workspace already allows, and refuses the rest.': 'Exécute ce que cet espace autorise déjà, et refuse le reste.',
+  'Runs the tools this workspace pre-approves in its settings, and refuses the rest.':
+    'Exécute les outils que ce workspace pré-approuve dans ses réglages, et refuse le reste.',
   'Also edits files, without asking.': 'Modifie aussi les fichiers, sans demander.',
   'Token revoked': 'Jeton révoqué',
   'Anything still using it is refused from now on.': 'Tout ce qui l’utilise encore est refusé désormais.',

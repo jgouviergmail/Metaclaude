@@ -347,6 +347,35 @@ validators, the workspace settings endpoint, and the supervisor when it builds
 SDK options. A workspace, a session, a run and an automation each check it
 independently.
 
+### Standing grants
+
+A prompt needs somebody to answer it, and an unattended run has nobody. A
+workspace can therefore **pre-approve** named tools: those run without a card,
+and under `dontAsk` — where automations and every MCP gateway call land — they
+are the *only* thing that runs at all. Four properties keep that a grant rather
+than a hole.
+
+- **It is a list of whole tool names, and nothing else.** Scoped rules are
+  refused at the edge and again at run time. Measured: `WebFetch(domain:
+  example.com)` handed to the CLI on the flag channel allowed a fetch of a
+  different domain entirely, so a rule written to *narrow* an approval widened
+  it instead. Refusing the shape is the only honest answer, and it also keeps
+  one entry from meaning two different things in two different modes.
+- **Forbidding wins.** A tool named on both lists is refused, at the edge
+  against the *merged* settings rather than against the request, and subtracted
+  again in the supervisor for a row written by an older version.
+- **`plan` grants nothing.** Its promise is that no tool executes, and a
+  settings checkbox must not become its one exception.
+- **It is not silent.** Outside `dontAsk` the decision is taken by Metaclaude's
+  own broker, which writes a line into the transcript naming the tool. The CLI
+  is told only under `dontAsk`, and only through managed permission rules — the
+  one tier the policy locks still honour, so a cloned repository's own
+  `.claude/settings.json` still cannot add a rule of its own.
+
+Whatever a run *was* refused — by this list, by the mode, or by the auto-mode
+classifier — the run ends with one line naming it, because an unattended run
+that quietly did half its work is the failure that costs the most to find.
+
 ---
 
 ## Prompt injection
@@ -396,7 +425,7 @@ mutation-XSS class, because the browser's own parser resolves every ambiguity
 before we inspect it.
 
 URLs are scheme-checked **after** stripping control characters, so `java\nscript:`
-and `javascript:` are both blocked. Links get
+and `\x01javascript:` are both blocked. Links get
 `rel="noopener noreferrer nofollow"`.
 
 A strict CSP backs this up: `script-src 'self'`, `object-src 'none'`,
@@ -516,6 +545,17 @@ new one appears.
 `/tmp` is `nosuid` but deliberately **not** `noexec`: build tooling the agent
 legitimately runs (node-gyp, cargo, pip) executes helpers it writes there.
 Forbidding that breaks ordinary development work rather than an attack.
+
+**There is no browser in the container, and the agent cannot install one.**
+Measured against the shipped image: none of Chromium's ten runtime libraries
+are present, no browser binary is, and `apt-get` refuses for want of root. A
+browser downloaded into the writable home volume would not start. That is a
+consequence of the four rows above rather than a separate control, but it is
+worth stating, because "drive a browser" is a thing people reasonably try to
+add — and a large network-facing surface beside a process that already executes
+model-authored commands is exactly what this table exists to avoid. `WebFetch`
+covers reading a page; a browser reached over MCP, running elsewhere, covers
+the rest.
 
 The only route in is Caddy, which terminates TLS, sets HSTS, `nosniff`,
 `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive

@@ -11,6 +11,7 @@
 import { join } from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
 import { chromium } from '@playwright/test';
+import { pathToFileURL } from 'node:url';
 import { PASSWORD, REPO_ROOT, startServer, USERNAME } from './harness.mjs';
 
 const OUT = process.argv[2] ?? 'shots';
@@ -38,7 +39,7 @@ const ws = context.workspaceRepo.create({
   path: join(server.config.workspacesDir, 'metaclaude'),
   color: '#6366f1',
   icon: 'folder',
-  settings: (await import(join(REPO_ROOT, 'apps/api/dist/kernel/repositories.js'))).defaultWorkspaceSettings(),
+  settings: (await import(pathToFileURL(join(REPO_ROOT, 'apps/api/dist/kernel/repositories.js')).href)).defaultWorkspaceSettings(),
 });
 
 // Memories with a believable spread of kinds, confidence and recency.
@@ -140,7 +141,7 @@ for (const [category, model, effort, alpha, betaV, trials] of ARMS) {
 }
 
 // A board with cards across columns.
-const { BoardService } = await import(join(REPO_ROOT, 'apps/api/dist/services/board.js'));
+const { BoardService } = await import(pathToFileURL(join(REPO_ROOT, 'apps/api/dist/services/board.js')).href);
 const board = new BoardService(context.db);
 const CARDS = [
   ['backlog', 'Draw the constellation legend on mobile'],

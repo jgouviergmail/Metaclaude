@@ -607,6 +607,26 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
         return null;
       }
     },
+    /**
+     * One outbound request, to the host the CLI itself must reach.
+     *
+     * Any status code is a success: the question is whether a TLS connection
+     * to a public host can be made at all, not what that host answers to a
+     * bare GET. A five-second budget keeps a wedged network from holding the
+     * diagnostics page open.
+     */
+    reachOut: async () => {
+      const started = Date.now();
+      try {
+        const response = await fetch('https://api.anthropic.com/', {
+          method: 'GET',
+          signal: AbortSignal.timeout(5_000),
+        });
+        return { ok: true, detail: `HTTP ${response.status} in ${Date.now() - started} ms` };
+      } catch (error) {
+        return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+      }
+    },
     credentialMode: () => claudeCredentials.status().mode,
     embeddings: () => ({
       requested: config.embeddings.provider,

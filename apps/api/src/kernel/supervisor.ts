@@ -36,7 +36,13 @@ import type {
   TranscriptEvent,
   Workspace,
 } from '@metaclaude/shared';
-import { ATTACHMENT_LIMITS, MAX_TOOL_RESULT_CHARS, newId } from '@metaclaude/shared';
+import {
+  ATTACHMENT_LIMITS,
+  MAX_TOOL_RESULT_CHARS,
+  isPreapprovedTool,
+  newId,
+  reviewToolNames,
+} from '@metaclaude/shared';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
@@ -429,8 +435,64 @@ const MANAGED_POLICY_LOCKS = {
 export class AgentSupervisor {
   constructor(private readonly deps: SupervisorDeps) {}
 
-  /** Build the SDK options for a run. See the `buildOptions` describe in supervisor.test.ts. */
-  buildOptions(request: RunRequest): Options {
+  /**
+   * The run's permission mode and the tools this workspace pre-approves.
+   *
+   * Shared by `buildOptions` and `execute` rather than computed twice: the two
+   * halves of the pre-approval have to agree about which tools are covered, or
+   * a run would be told one thing by the CLI and another by the broker.
+   *
+   * Three rules, and each one is here because of something measured:
+   *
+   *  - **Forbidding wins.** `disallowedTools` removes the tool from the CLI's
+   *    list outright, so a row naming a tool on both lists must not be handed
+   *    a pre-approval the tool can never use. Re-checked here, not only where
+   *    the setting is saved — this is the call that actually widens what the
+   *    agent may do.
+   *  - **A scoped rule is refused.** `WebFetch(domain:example.com)` on this
+   *    channel, under the managed policy locks, allowed a fetch of a different
+   *    domain entirely: the CLI reads it as an allow of the whole tool. A rule
+   *    that quietly means more than it says is worse than no rule.
+   *  - **Plan mode pre-approves nothing.** It promises that no tool is ever
+   *    executed, and a settings checkbox must not become its one exception.
+   */
+  private resolvePreapproval(request: RunRequest): {
+    mode: RunPolicy['permissionMode'];
+    preapproved: string[];
+    forbidden: string[];
+  } {
+    const mode = resolvePermissionMode(
+      request.policy.permissionMode,
+      this.deps.allowBypassPermissions,
+    );
+    const settings = request.workspace.settings;
+    const forbidden = reviewToolNames(settings.disallowedTools).allowed;
+    if (mode === 'plan') return { mode, preapproved: [], forbidden };
+
+    const cut = new Set(forbidden);
+    const review = reviewToolNames(settings.allowedTools);
+    for (const { name, reason } of review.rejected) {
+      this.deps.log('warn', `refusing to pre-approve "${name}": it ${reason}`);
+    }
+    return { mode, preapproved: review.allowed.filter((name) => !cut.has(name)), forbidden };
+  }
+
+  /**
+   * Build the SDK options for a run. See the `buildOptions` describe in
+   * supervisor.test.ts.
+   *
+   * `resolved` is a parameter only so `execute` can compute it once and pass
+   * the same answer to both halves — a second call would repeat the warnings
+   * about a malformed pre-approval on every run.
+   */
+  buildOptions(
+    request: RunRequest,
+    resolved: {
+      mode: RunPolicy['permissionMode'];
+      preapproved: string[];
+      forbidden: string[];
+    } = this.resolvePreapproval(request),
+  ): Options {
     const { workspace, policy } = request;
     const settings = workspace.settings;
 
@@ -452,10 +514,7 @@ export class AgentSupervisor {
     // again now. `resolvePermissionMode` is the same rule the routes enforce,
     // shared rather than restated: it had been written and left with no caller,
     // which is how the inline copy here drifted out of anyone's sight.
-    const permissionMode = resolvePermissionMode(
-      policy.permissionMode,
-      this.deps.allowBypassPermissions,
-    );
+    const permissionMode = resolved.mode;
 
     // The Tools picker's soft half. Requirement and preference are *written*,
     // beside the hard halves below (the skills filter, the unmounted server):
@@ -554,8 +613,49 @@ export class AgentSupervisor {
 
     if (settings.maxTurns !== null) options.maxTurns = settings.maxTurns;
     if (settings.maxBudgetUsd !== null) options.maxBudgetUsd = settings.maxBudgetUsd;
-    if (settings.allowedTools.length > 0) options.allowedTools = settings.allowedTools;
-    if (settings.disallowedTools.length > 0) options.disallowedTools = settings.disallowedTools;
+    /*
+     * The pre-approval, told to the CLI in exactly one mode and through
+     * exactly one channel. Both halves of that were measured.
+     *
+     * **One mode.** A pre-approval the CLI knows about auto-approves the tool
+     * *before* `canUseTool` is consulted — the SDK warns about it by name, and
+     * a run in `default` mode with `allowedTools: ['WebFetch']` fetched a page
+     * with no approval card at all. Telling it in every mode would delete the
+     * Ask mode's whole promise as a side effect of a settings checkbox. So
+     * only `dontAsk`, which is the one mode where the broker is never asked:
+     * the CLI answers "denied, nothing is pre-approved" on its own. Everywhere
+     * else `execute` lets the broker seam decide, which keeps the decision —
+     * and its transcript line — inside Metaclaude.
+     *
+     * **One channel, and not the obvious one.** `--allowedTools` (the SDK's
+     * `allowedTools`) is not enough: under `dontAsk` it let `WebFetch` through
+     * and left `WebSearch` refused. `WebSearch` runs upstream rather than in
+     * the CLI, and only a *permission rule* covers it. That took an
+     * end-to-end run to see — offered both tools, the model reached for
+     * `WebFetch` every time, and the first measurement read as a pass.
+     *
+     * The rules ride `managedSettings`, which is also where the policy locks
+     * live, so they arrive at the one tier `allowManagedPermissionRulesOnly`
+     * still honours. A machine with its own IT-managed settings would drop
+     * them — the SDK filters this payload restrictive-only against an admin
+     * tier — which fails closed, and no Metaclaude container has one.
+     *
+     * One asymmetry to name rather than leave to be discovered: in `dontAsk`
+     * the CLI answers first, so `execute`'s wrapper never runs and no
+     * "pre-approved" line is written for those calls. The tool call itself is
+     * still in the transcript, and in a mode whose whole promise is that
+     * nothing ever asks, a line explaining why no card appeared would be true
+     * of every call in the run.
+     */
+    if (permissionMode === 'dontAsk' && resolved.preapproved.length > 0) {
+      options.managedSettings = {
+        ...MANAGED_POLICY_LOCKS,
+        permissions: { allow: resolved.preapproved },
+      };
+    }
+    // Forbidding is mode-independent: it removes the tool from the CLI's list
+    // outright, so the model never sees it rather than being refused it.
+    if (resolved.forbidden.length > 0) options.disallowedTools = resolved.forbidden;
     // Re-checked here, not just where the setting is saved: this is the call
     // that actually widens the agent's filesystem scope, and a row written
     // before the rule existed (or by any future path into the settings) must
@@ -771,7 +871,8 @@ export class AgentSupervisor {
     const stream = new PromptStream();
     controller.signal.addEventListener('abort', () => stream.close(), { once: true });
 
-    const options = this.buildOptions(request);
+    const resolved = this.resolvePreapproval(request);
+    const options = this.buildOptions(request, resolved);
     options.abortController = controller;
 
     /*
@@ -794,10 +895,36 @@ export class AgentSupervisor {
      * because a run left permanently marked as waiting is the same bug wearing
      * a different hat.
      */
+    const state = new StreamState(request, callbacks);
+
     const ask = options.canUseTool;
     if (ask) {
       let outstanding = 0;
       options.canUseTool = async (...args: Parameters<typeof ask>) => {
+        /*
+         * The workspace's standing pre-approval, answered here rather than by
+         * the CLI.
+         *
+         * `buildOptions` hands the same list to the CLI in `dontAsk` and only
+         * there, because that is the one mode where the CLI answers before
+         * `canUseTool` ever runs. Every other mode arrives here, which is what
+         * keeps the decision inside Metaclaude — and, more to the point, what
+         * keeps it *visible*: a bare name in the CLI's own `allowedTools`
+         * silently skips the broker in the Ask mode too, leaving nothing in
+         * the transcript to say why no card appeared.
+         *
+         * The note is the whole reason for the seam. "A grant that silently
+         * authorises tool calls is a grant nobody can audit" was already
+         * written beside `onGrantUsed`, a hook that nothing had ever wired.
+         */
+        const [toolName] = args;
+        if (isPreapprovedTool(resolved.preapproved, toolName)) {
+          state.note(
+            'info',
+            `${toolName} was allowed without asking — this workspace pre-approves it.`,
+          );
+          return { behavior: 'allow' };
+        }
         if (outstanding++ === 0) callbacks.onWaitingChange(true);
         try {
           return await ask(...args);
@@ -807,7 +934,6 @@ export class AgentSupervisor {
       };
     }
 
-    const state = new StreamState(request, callbacks);
     let claudeSessionId: string | null = null;
     let servedModel: string | null = null;
     let rewindPoint: string | null = null;
@@ -1507,17 +1633,31 @@ export class StreamState {
     const note = narrate(message);
     if (!note) return {};
 
+    this.note(note.level, note.message, note.data);
+    return {};
+  }
+
+  /**
+   * Add one system line to the transcript.
+   *
+   * Public because `execute` needs it too: a pre-approved tool call is
+   * answered outside the message stream, and the note about it has to carry
+   * this run's `seq`. `transcript_events` has a unique index on
+   * `(run_id, seq)`, so a second writer computing its own sequence would
+   * collide with this counter and throw — which is why the whole run's
+   * transcript comes through here and nowhere else.
+   */
+  note(level: 'info' | 'warn' | 'error', message: string, data?: unknown): void {
     this.emit({
       kind: 'system',
       id: newId('event'),
       runId: this.request.runId,
       seq: this.seq++,
       at: Date.now(),
-      level: note.level,
-      message: note.message,
-      ...(note.data ? { data: note.data } : {}),
+      level,
+      message,
+      ...(data ? { data } : {}),
     });
-    return {};
   }
 
   /* ------------------------------------------------------------------ */
@@ -1540,15 +1680,7 @@ export class StreamState {
         this.openToolCalls.delete(denied.tool_use_id);
         this.emit(open, true);
       } else {
-        this.emit({
-          kind: 'system',
-          id: newId('event'),
-          runId: this.request.runId,
-          seq: this.seq++,
-          at: Date.now(),
-          level: 'warn',
-          message: `${denied.tool_name} was denied: ${denied.message}`,
-        });
+        this.note('warn', `${denied.tool_name} was denied: ${denied.message}`);
       }
       return {};
     }
@@ -1754,6 +1886,30 @@ export class StreamState {
       durationMs: message.duration_ms ?? 0,
       turns: message.num_turns ?? 0,
     };
+
+    /*
+     * What the CLI refused on its own, said once and plainly.
+     *
+     * `permission_denials` is its authoritative record of the calls that never
+     * reached a human: the `dontAsk` short-circuit, the auto-mode classifier,
+     * a deny rule. Nothing read it, so the only trace was whatever the model
+     * chose to put in its closing paragraph — and for a run nobody watches, an
+     * automation or a gateway call, that paragraph is read by no one. The run
+     * landed as a success having quietly done half the work.
+     *
+     * The cause is deliberately not guessed at: several paths arrive here and
+     * the run already carries its permission mode. The count is of calls and
+     * the list is of names, because one tool refused five times is one thing
+     * to fix, not five.
+     */
+    const denials = message.permission_denials ?? [];
+    if (denials.length > 0) {
+      const tools = [...new Set(denials.map((denial) => denial.tool_name))];
+      this.note(
+        'warn',
+        `${denials.length} tool call${denials.length === 1 ? '' : 's'} refused without asking you: ${tools.join(', ')}.`,
+      );
+    }
 
     // `subtype: 'success'` only means the turn completed the protocol — it can
     // still carry `is_error: true`, with the API's error text in `result`.

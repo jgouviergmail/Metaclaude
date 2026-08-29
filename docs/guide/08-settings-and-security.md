@@ -88,12 +88,20 @@ the Claude CLI's state. For the owner, two more cards:
 
 **Doctor** runs every self-check the system knows in one pass — database
 integrity, the audit chain, the secrets vault, disk space on both volumes,
-the age of the last completed backup, the CLI and its credential, and any
-automation the failure guard switched off. Each check answers with a verdict
-and its evidence, and nothing is changed by running it. The backup check
-reads the marker the host's nightly backup writes after each completed
-archive; a warning there means backups have quietly stopped — or never
-started — which is exactly the day-late news you want a day early.
+the age of the last completed backup, whether anything can reach the internet
+from this container, the CLI and its credential, and any automation the
+failure guard switched off. Each check answers with a verdict and its
+evidence, and nothing is changed by running it. The backup check reads the
+marker the host's nightly backup writes after each completed archive; a
+warning there means backups have quietly stopped — or never started — which
+is exactly the day-late news you want a day early.
+
+The network check is a `fail` rather than a warning, because with no egress
+nothing the product does works at all: the CLI cannot reach the API, `git
+clone` cannot resolve a remote, and no HTTP MCP server connects. It is the
+first thing to look at when runs fail for no visible reason — it separates
+"this server has no network" from "the model was refused", which otherwise
+look identical from a transcript.
 
 **Updates** compares this version against the latest published release
 (`METACLAUDE_UPDATE_REPO`; set it empty to disable the check) — and, on a

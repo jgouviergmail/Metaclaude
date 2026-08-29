@@ -12,6 +12,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   PERMISSION_MODE_INFO,
+  PREAPPROVABLE_TOOLS,
   type EffortLevel,
   type PermissionMode,
   type WorkspaceSettings,
@@ -188,7 +189,11 @@ export function WorkspacePage() {
               value={totalMemories}
               hint={
                 memoryStats
-                  ? `${memoryStats.semantic} facts · ${memoryStats.procedural} procedures`
+                  ? `${plural(memoryStats.semantic, '{n} fact', '{n} facts')} · ${plural(
+                      memoryStats.procedural,
+                      '{n} procedure',
+                      '{n} procedures',
+                    )}`
                   : undefined
               }
             />
@@ -196,7 +201,7 @@ export function WorkspacePage() {
               label={t('Permission mode')}
               value={
                 <span className="text-base">
-                  {PERMISSION_MODE_INFO[workspace.settings.defaultPermissionMode].label}
+                  {t(PERMISSION_MODE_INFO[workspace.settings.defaultPermissionMode].label)}
                 </span>
               }
               tone={
@@ -210,7 +215,15 @@ export function WorkspacePage() {
               value={<span className="text-base">{git?.branch ?? '—'}</span>}
               hint={
                 git?.isRepo
-                  ? `${git.modified.length} modified · ${git.untracked.length} untracked`
+                  ? `${plural(
+                      git.modified.length,
+                      '{n} modified file',
+                      '{n} modified files',
+                    )} · ${plural(
+                      git.untracked.length,
+                      '{n} untracked file',
+                      '{n} untracked files',
+                    )}`
                   : t('Not a git repository')
               }
             />
@@ -348,6 +361,27 @@ const LANGUAGE_INFO: Record<
   },
   fr: { label: 'Français', description: 'Every answer in French, subagents included.' },
   en: { label: 'English', description: 'Every answer in English, subagents included.' },
+};
+
+/**
+ * What each pre-approvable tool actually does, in one line.
+ *
+ * A tool name is not self-explanatory to the person deciding: `WebFetch` and
+ * `WebSearch` differ in *where the network call happens*, which is the whole
+ * question for a self-hosted deployment, and nothing in the name says so.
+ *
+ * English kept as data and translated at render, which is the pattern
+ * `i18n.tsx` documents: a constant evaluated at import time must never bake a
+ * language in.
+ */
+const TOOL_HINTS: Readonly<Record<(typeof PREAPPROVABLE_TOOLS)[number], string>> = {
+  WebFetch: 'Reads a page the agent names. The container fetches it directly.',
+  WebSearch: 'Searches the web. The search runs upstream; the container makes no request itself.',
+  Bash: 'Runs a shell command. By far the widest of these — it can do anything the others can.',
+  Write: 'Creates a file in the workspace.',
+  Edit: 'Changes a file that already exists.',
+  NotebookEdit: 'Changes a cell in a Jupyter notebook.',
+  KillShell: 'Stops a background command it started earlier.',
 };
 
 function WorkspaceSettingsModal({
@@ -518,7 +552,7 @@ function WorkspaceSettingsModal({
             side="bottom"
             trigger={
               <Button variant="secondary" size="sm" className="w-full justify-between">
-                {PERMISSION_MODE_INFO[draft.defaultPermissionMode].label}
+                {t(PERMISSION_MODE_INFO[draft.defaultPermissionMode].label)}
               </Button>
             }
           >
@@ -528,14 +562,41 @@ function WorkspaceSettingsModal({
                 key={mode}
                 selected={draft.defaultPermissionMode === mode}
                 onSelect={() => update('defaultPermissionMode', mode)}
-                description={PERMISSION_MODE_INFO[mode].description}
+                description={t(PERMISSION_MODE_INFO[mode].description)}
                 tone={PERMISSION_MODE_INFO[mode].risk === 'high' ? 'danger' : undefined}
               >
-                {PERMISSION_MODE_INFO[mode].label}
+                {t(PERMISSION_MODE_INFO[mode].label)}
               </MenuItem>
             ))}
           </Menu>
         </div>
+
+        <fieldset className="space-y-3">
+          <legend className="text-[13px] font-semibold text-ink">{t('Pre-approved tools')}</legend>
+          <p className="text-[12px] leading-relaxed text-muted">
+            {t(
+              'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright.',
+            )}
+          </p>
+          <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+            {PREAPPROVABLE_TOOLS.map((tool) => (
+              <CheckboxField
+                key={tool}
+                checked={draft.allowedTools.includes(tool)}
+                onChange={(value) =>
+                  update(
+                    'allowedTools',
+                    value
+                      ? [...draft.allowedTools, tool]
+                      : draft.allowedTools.filter((name) => name !== tool),
+                  )
+                }
+                label={tool}
+                hint={t(TOOL_HINTS[tool])}
+              />
+            ))}
+          </div>
+        </fieldset>
 
         <MenuSeparator />
 
@@ -682,7 +743,7 @@ function WorkspaceSettingsModal({
             side="bottom"
             trigger={
               <Button variant="secondary" size="sm" className="w-full justify-between">
-                {LANGUAGE_INFO[draft.language].label}
+                {t(LANGUAGE_INFO[draft.language].label)}
               </Button>
             }
           >
@@ -692,9 +753,9 @@ function WorkspaceSettingsModal({
                 key={value}
                 selected={draft.language === value}
                 onSelect={() => update('language', value)}
-                description={LANGUAGE_INFO[value].description}
+                description={t(LANGUAGE_INFO[value].description)}
               >
-                {LANGUAGE_INFO[value].label}
+                {t(LANGUAGE_INFO[value].label)}
               </MenuItem>
             ))}
           </Menu>

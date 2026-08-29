@@ -35,7 +35,12 @@ import { formatDateTime, formatRelative } from '@/lib/utils';
 export function describeCeiling(ceiling: ApiTokenCeiling, t: TranslateFn): string {
   if (ceiling === 'plan') return t('Research and answer only — no tool ever executes.');
   if (ceiling === 'dontAsk') {
-    return t('Runs what this workspace already allows, and refuses the rest.');
+    // Names the setting, because for a long time this sentence named nothing:
+    // it promised "what this workspace already allows" while no workspace
+    // could allow anything — the field existed in the schema and had no
+    // control in the app. A run under this ceiling was refused WebSearch,
+    // Write and every mutating command, which is not what the line described.
+    return t('Runs the tools this workspace pre-approves in its settings, and refuses the rest.');
   }
   return t('Also edits files, without asking.');
 }

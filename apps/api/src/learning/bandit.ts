@@ -282,7 +282,7 @@ export class PolicyLearner {
     // used enough explicit model overrides to create five non-default arms:
     // the check then passes forever and the intended exploration frontier is
     // never created.
-    const key = (model: string, effort: string | null): string => `${model} ${effort ?? ''}`;
+    const key = (model: string, effort: string | null): string => `${model}\x00${effort ?? ''}`;
     const present = new Set(existing.map((arm) => key(String(arm.model), arm.effort)));
     const missing = DEFAULT_ARMS.filter((arm) => !present.has(key(String(arm.model), arm.effort)));
     if (missing.length === 0) return existing;

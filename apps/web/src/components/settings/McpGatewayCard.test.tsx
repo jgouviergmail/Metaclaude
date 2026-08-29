@@ -83,7 +83,7 @@ describe('the listing', () => {
     expect(await screen.findByText('n8n production')).toBeDefined();
     // The workspace by name, not by id — an id tells an operator nothing.
     expect(screen.getByText(/Metaclaude/)).toBeDefined();
-    expect(screen.getByText(/already allows/)).toBeDefined();
+    expect(screen.getByText(/pre-approves/)).toBeDefined();
     // The capability that executes things is the one flagged.
     expect(screen.getByText('can start runs')).toBeDefined();
   });
@@ -185,11 +185,26 @@ describe('tokenState', () => {
 });
 
 describe('describeCeiling', () => {
-  it('says what each ceiling permits, in terms of what executes', () => {
-    const t = ((text: string) => text) as never;
+  const t = ((text: string) => text) as never;
 
+  it('says what each ceiling permits, in terms of what executes', () => {
     expect(describeCeiling('plan', t)).toMatch(/no tool ever executes/i);
-    expect(describeCeiling('dontAsk', t)).toMatch(/already allows/i);
     expect(describeCeiling('acceptEdits', t)).toMatch(/edits files/i);
+  });
+
+  /**
+   * This line used to read "runs what this workspace already allows" — and no
+   * workspace could allow anything: the setting existed in the schema, reached
+   * the CLI, and had no control anywhere in the app. So the sentence described
+   * a configuration that did not exist, and the ceiling it describes is the
+   * form's own default. Measured at the time: a run under it was refused
+   * `WebSearch`, `Write` and every mutating shell command.
+   *
+   * It now points at the control that makes it true, which is the only reason
+   * the claim is allowed to stand.
+   */
+  it('points the dontAsk ceiling at the setting that decides what it may run', () => {
+    expect(describeCeiling('dontAsk', t)).toMatch(/pre-approve/i);
+    expect(describeCeiling('dontAsk', t)).toMatch(/refuses the rest/i);
   });
 });

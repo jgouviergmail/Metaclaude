@@ -198,11 +198,17 @@ replaced rather than recovered.
 
 The ceiling exists because nobody is watching these runs. A permission prompt
 with no one to answer it expires after ten minutes and fails, which is a worse
-answer than a refusal — so a gateway run never prompts. *Plan only* executes
-nothing at all; *Run what is already allowed* does what the workspace has
-already permitted and refuses the rest; *Run and edit files* adds file edits.
-A workspace set to less than the ceiling stays at less: the ceiling is a
-maximum, never a grant.
+answer than a refusal. *Plan only* executes nothing at all; *Run what is
+already allowed* runs the tools the workspace pre-approves (see the
+permissions chapter) and refuses everything else without waiting; *Run and
+edit files* adds file edits — and it is the one ceiling that can still stop to
+ask, so a run under it can stall on a command or a network call nobody
+answers. A workspace set to less than the ceiling stays at less: the ceiling
+is a maximum, never a grant.
+
+In practice that makes *Run what is already allowed* plus a short
+pre-approval list the setting to reach for: it never waits, and what it may do
+is written down where you can read it.
 
 Connecting is one line. In Claude Code:
 

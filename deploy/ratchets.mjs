@@ -574,6 +574,200 @@ function countHalfTranslatedTables() {
   return missing;
 }
 
+/**
+ * A copy table read at the render site without going through `t()`.
+ *
+ * The blind spot the three measures above share, stated in one of their own
+ * comments: they ask the *catalogue* whether a string is translated, never the
+ * render site whether it calls the translator. That is the right trade for
+ * them — proving a call site translates is not generally cheap — but it leaves
+ * one shape uncovered, and the shape is common enough to have shipped twice in
+ * the same file.
+ *
+ * `PERMISSION_MODE_INFO` lives in `packages/shared`, so its twelve strings are
+ * invisible to every check that scans `apps/web`; the catalogue carries all
+ * twelve, so `untranslatedSharedCopy` is satisfied. Three render sites called
+ * `t()` on them and `WorkspacePage` did not, in two places — the workspace's
+ * own mode chip and its mode picker — so the control an operator touches every
+ * run stayed English on a French screen while every number said zero.
+ * `LANGUAGE_INFO`, declared in that same file, had the identical hole.
+ *
+ * The rule is narrow enough to have no false positives, and it is the same
+ * "copy by demonstration" argument `halfTranslatedTables` rests on: a
+ * module-level table whose copy properties are *already* in the catalogue is a
+ * copy table, so every read of one of those properties must be translated.
+ * Reads of a non-copy property (`.risk`, `.icon`) are not counted, and neither
+ * is a table nothing has translated yet.
+ */
+/**
+ * `.partial()` on a schema whose fields carry defaults.
+ *
+ * It reads as "every field optional" and it is — but Zod applies a field's
+ * `.default()` *before* the optionality is consulted, so an absent key arrives
+ * carrying a value. A route that merges such a patch over a stored row resets
+ * every field the request never mentioned.
+ *
+ * It cost data on the control an operator touches most: the automations list
+ * toggles a row with `PATCH { enabled }`, and `AutomationInput.partial()`
+ * delivered `description: ''`, `continuous: false` and
+ * `maxConsecutiveFailures: 3` with it. Turning an automation off wiped its
+ * description, ended its continuous loop and reset its failure ceiling.
+ *
+ * `patchSchema` in `api-contracts.ts` is the replacement, and there is no
+ * remaining case here where `.partial()` is the right answer — so the ceiling
+ * is zero rather than a count to whittle down. Counted from the AST rather
+ * than by grep: the comments explaining this rule contain the very string a
+ * text search would report, which is the trap `rawPaletteClasses` documents.
+ */
+/**
+ * Source files carrying a control byte.
+ *
+ * Twice in this repository, a string literal held a *real* NUL where the
+ * two-character escape was meant: `grantKey`'s unparsed-command sentinel and a
+ * marketplace rejection case. Both ran correctly and both cost more than they
+ * should have. `grep` answers "Binary file matches" instead of showing the
+ * line, `file` reports `data`, git renders the diff as `Bin … bytes`, and a
+ * reviewer sees nothing at all — so the one place the byte is visible is the
+ * place nobody looks.
+ *
+ * Markdown counts too, and not only for tidiness: `docs/guide/` is bundled
+ * into the in-app Help screen, so a control byte in prose is shipped. One sat
+ * in `SECURITY.md` inside an example of a control character — written raw
+ * where the escape was meant, in the sentence explaining the attack it
+ * describes.
+ *
+ * Tabs and the two newline characters are fine; everything else below 0x20 is
+ * a byte nobody types on purpose. Read as bytes rather than as text, because
+ * the whole point is what the text layer hides.
+ */
+function countControlBytes() {
+  let found = 0;
+  const files = tracked('*.ts').concat(tracked('*.tsx'), tracked('*.mjs'), tracked('*.md'));
+  for (const file of files) {
+    let bytes;
+    try {
+      bytes = readFileSync(join(ROOT, file));
+    } catch {
+      continue;
+    }
+    for (const byte of bytes) {
+      if (byte === 9 || byte === 10 || byte === 13 || byte >= 32) continue;
+      found += 1;
+      note('byte', file, `0x${byte.toString(16).padStart(2, '0')}`);
+      break;
+    }
+  }
+  return found;
+}
+
+function countDefaultingPartials() {
+  const ts = typescript();
+  if (!ts) return null;
+
+  let found = 0;
+  for (const file of tracked('apps/api/src/*').concat(tracked('packages/shared/src/*'))) {
+    if (!file.endsWith('.ts') || file.includes('.test.')) continue;
+    const body = read(file);
+    if (!body.includes('.partial()')) continue;
+    const sf = ts.createSourceFile(file, body, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
+    const walk = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === 'partial' &&
+        node.arguments.length === 0
+      ) {
+        found += 1;
+        note('part', file, node.expression.getText(sf));
+      }
+      ts.forEachChild(node, walk);
+    };
+    ts.forEachChild(sf, walk);
+  }
+  return found;
+}
+
+function countUntranslatedTableReads() {
+  const ts = typescript();
+  if (!ts) return null;
+
+  const COPY_PROPS = new Set(['label', 'description', 'hint', 'summary', 'title']);
+
+  /** Identifiers of module-level tables whose copy the catalogue carries. */
+  const copyTables = new Set();
+  const collect = (sf) => {
+    const walk = (node) => {
+      if (ts.isObjectLiteralExpression(node)) {
+        let demonstrated = false;
+        for (const property of node.properties) {
+          if (!ts.isPropertyAssignment(property)) continue;
+          const name = property.name.getText(sf).replace(/['"]/g, '');
+          if (!COPY_PROPS.has(name)) continue;
+          const value = property.initializer;
+          if (!ts.isStringLiteral(value) && !ts.isNoSubstitutionTemplateLiteral(value)) continue;
+          if (translated(value.text.trim())) demonstrated = true;
+        }
+        if (demonstrated) {
+          // Walk out to the variable the literal belongs to, whatever the
+          // nesting: a table of tables still has one name at the top.
+          for (let p = node.parent; p; p = p.parent) {
+            if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) {
+              copyTables.add(p.name.text);
+              break;
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, walk);
+    };
+    ts.forEachChild(sf, walk);
+  };
+
+  for (const file of tracked('packages/shared/src/*')) {
+    if (!file.endsWith('.ts') || file.includes('.test.')) continue;
+    const body = read(file);
+    collect(ts.createSourceFile(file, body, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS));
+  }
+  for (const { sf } of webComponents(ts)) collect(sf);
+
+  /** The identifier a member expression is ultimately rooted at. */
+  const rootOf = (node) => {
+    let current = node;
+    for (;;) {
+      if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+        current = current.expression;
+        continue;
+      }
+      return ts.isIdentifier(current) ? current.text : null;
+    }
+  };
+
+  let missing = 0;
+  for (const { file, sf } of webComponents(ts)) {
+    const walk = (node) => {
+      if (ts.isPropertyAccessExpression(node) && COPY_PROPS.has(node.name.text)) {
+        const root = rootOf(node.expression);
+        if (root && copyTables.has(root)) {
+          const parent = node.parent;
+          const wrapped =
+            parent &&
+            ts.isCallExpression(parent) &&
+            ts.isIdentifier(parent.expression) &&
+            parent.expression.text === 't' &&
+            parent.arguments[0] === node;
+          if (!wrapped) {
+            missing += 1;
+            note('read', file, `${root}[…].${node.name.text}`);
+          }
+        }
+      }
+      ts.forEachChild(node, walk);
+    };
+    ts.forEachChild(sf, walk);
+  }
+  return missing;
+}
+
 function countUntranslatedConstants() {
   const ts = typescript();
   if (!ts) return null;
@@ -836,6 +1030,26 @@ const METRICS = [
     direction: 'down',
     label: 'API client methods no screen calls',
     measure: countUncalledClientMethods,
+    optional: true,
+  },
+  {
+    key: 'controlBytesInSource',
+    direction: 'down',
+    label: 'source files carrying a control byte',
+    measure: countControlBytes,
+  },
+  {
+    key: 'defaultingPartials',
+    direction: 'down',
+    label: 'uses of .partial() where patchSchema is meant',
+    measure: countDefaultingPartials,
+    optional: true,
+  },
+  {
+    key: 'untranslatedTableReads',
+    direction: 'down',
+    label: 'copy tables read at the render site without t()',
+    measure: countUntranslatedTableReads,
     optional: true,
   },
   {

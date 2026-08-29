@@ -268,7 +268,7 @@ describe('disk', () => {
 describe('robustness', () => {
   it('never throws, whatever the files say', async () => {
     const metrics = make({
-      readFile: async () => 'not a number at all\n ',
+      readFile: async () => 'not a number at all\n\x00',
       statfs: async () => ({ freeBytes: Number.NaN, totalBytes: -1 }),
       rss: () => Number.NaN,
     });

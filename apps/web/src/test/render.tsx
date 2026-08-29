@@ -39,6 +39,29 @@ export function createTestQueryClient(): QueryClient {
   });
 }
 
+/**
+ * Render with the French catalogue in force, deterministically.
+ *
+ * Setting `mc-lang` and rendering is not enough on its own: the provider
+ * fetches the dictionary with a dynamic `import()`, so the first assertion
+ * races a chunk load. `setup.ts` widened `asyncUtilTimeout` to five seconds for
+ * exactly this, and a heavily loaded run still lost the race — a suite where
+ * three packages compile at once spent 155 s inside `import`. Awaiting the
+ * module here puts it in the ESM cache *before* the render, which removes the
+ * timing from the question rather than giving it more room.
+ *
+ * `setup.ts` clears the key after each case, so a test that switches language
+ * cannot leak it into the next one.
+ */
+export async function renderInFrench(
+  ui: ReactElement,
+  options: RenderWithProvidersOptions = {},
+): Promise<RenderResult & { queryClient: QueryClient }> {
+  await import('@/locales/fr');
+  window.localStorage.setItem('mc-lang', 'fr');
+  return renderWithProviders(ui, options);
+}
+
 export function renderWithProviders(
   ui: ReactElement,
   { route = '/', queryClient = createTestQueryClient(), ...options }: RenderWithProvidersOptions = {},

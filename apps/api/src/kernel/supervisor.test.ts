@@ -89,6 +89,16 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
   };
 }
 
+/** A request whose workspace carries `patch` on top of the fixture's settings. */
+function withSettings(patch: Partial<Workspace['settings']>): RunRequest {
+  const request = makeRequest();
+  request.workspace = {
+    ...request.workspace,
+    settings: { ...request.workspace.settings, ...patch },
+  };
+  return request;
+}
+
 function makeCallbacks(): SupervisorCallbacks & { events: unknown[]; waiting: boolean[] } {
   const events: unknown[] = [];
   /** Every `onWaitingChange` value, in order. */
@@ -1349,6 +1359,131 @@ describe('reading the subscription quota', () => {
 /* Waiting on a human                                                          */
 /* -------------------------------------------------------------------------- */
 
+describe('a workspace can pre-approve a tool', () => {
+  /**
+   * The lever this closes: `dontAsk` is the mode every unattended caller ends
+   * up in — it is the MCP gateway's default ceiling — and the CLI answers it
+   * with "denied, nothing is pre-approved". Measured: a run in that mode was
+   * refused `WebSearch`, `Write` and every mutating shell command, while the
+   * settings screen offered no way to pre-approve anything at all. The UI and
+   * the guide both described a configuration that did not exist.
+   *
+   * The decision stays in the broker's seam rather than being handed to the
+   * CLI, so it leaves a transcript line. A grant that silently authorises tool
+   * calls is a grant nobody can audit — which was already written beside
+   * `onGrantUsed`, a hook nothing had ever wired.
+   */
+  const askFor = (
+    options: Record<string, unknown>,
+    toolName: string,
+    input: unknown = {},
+  ): Promise<unknown> =>
+    (options.canUseTool as (n: string, i: unknown, o: unknown) => Promise<unknown>)(
+      toolName,
+      input,
+      { toolUseID: `tu_${toolName}`, signal: new AbortController().signal },
+    );
+
+  /** Runs a request to the point where its options are observable. */
+  async function open(request: RunRequest) {
+    const { query, control } = fakeQuery();
+    const broker = heldBroker();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query, broker);
+    const run = supervisor.execute(request, callbacks);
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+    return {
+      control,
+      broker,
+      callbacks,
+      options: control.opened[0] as Record<string, unknown>,
+      finish: async () => {
+        control.finish();
+        await run;
+      },
+    };
+  }
+
+  it('allows it without troubling the broker, and says so in the transcript', async () => {
+    const request = withSettings({ allowedTools: ['WebSearch'] });
+    const { options, broker, callbacks, finish } = await open(request);
+
+    await expect(askFor(options, 'WebSearch', { query: 'node lts' })).resolves.toEqual({
+      behavior: 'allow',
+    });
+    expect(broker.outstanding).toBe(0);
+    // No card was raised, so the run never entered "waiting for you" either.
+    expect(callbacks.waiting).toEqual([]);
+
+    const notes = callbacks.events.filter(
+      (event) => (event as { kind: string }).kind === 'system',
+    ) as Array<{ level: string; message: string }>;
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.level).toBe('info');
+    expect(notes[0]!.message).toMatch(/WebSearch/);
+    expect(notes[0]!.message).toMatch(/pre-approv/i);
+
+    await finish();
+  });
+
+  it('still asks about everything the operator did not pre-approve', async () => {
+    const request = withSettings({ allowedTools: ['WebSearch'] });
+    const { options, broker, finish } = await open(request);
+
+    const asked = askFor(options, 'Bash', { command: 'rm -rf build' });
+    await vi.waitFor(() => expect(broker.outstanding).toBe(1));
+    broker.releaseAll();
+    await asked;
+
+    await finish();
+  });
+
+  /**
+   * Plan mode promises that no tool is ever executed. A pre-approval must not
+   * quietly become the one exception to it — so the list is not applied there
+   * at all, and the CLI's own plan gate stays the only answer.
+   */
+  it('does not pre-approve anything in plan mode', async () => {
+    const request = withSettings({ allowedTools: ['WebSearch'] });
+    request.policy = { ...request.policy, permissionMode: 'plan' };
+    const { options, broker, finish } = await open(request);
+
+    const asked = askFor(options, 'WebSearch', { query: 'node lts' });
+    await vi.waitFor(() => expect(broker.outstanding).toBe(1));
+    broker.releaseAll();
+    await asked;
+
+    await finish();
+  });
+
+  it('does not let a forbidden tool be pre-approved by the same row', async () => {
+    const request = withSettings({
+      allowedTools: ['WebSearch'],
+      disallowedTools: ['WebSearch'],
+    });
+    const { options, broker, finish } = await open(request);
+
+    const asked = askFor(options, 'WebSearch', { query: 'node lts' });
+    await vi.waitFor(() => expect(broker.outstanding).toBe(1));
+    broker.releaseAll();
+    await asked;
+
+    await finish();
+  });
+
+  it('does not reach an MCP tool that merely ends with a pre-approved name', async () => {
+    const request = withSettings({ allowedTools: ['search'] });
+    const { options, broker, finish } = await open(request);
+
+    const asked = askFor(options, 'mcp__github__search', { q: 'x' });
+    await vi.waitFor(() => expect(broker.outstanding).toBe(1));
+    broker.releaseAll();
+    await asked;
+
+    await finish();
+  });
+});
+
 describe('a run says when it is waiting for a person', () => {
   /**
    * `onWaitingChange` was declared on the callbacks, implemented by the kernel —
@@ -1544,19 +1679,123 @@ describe('buildOptions', () => {
     const bare = supervisor.buildOptions(makeRequest());
     expect(bare.allowedTools).toBeUndefined();
     expect(bare.disallowedTools).toBeUndefined();
+  });
 
-    const restricted = makeRequest();
-    restricted.workspace = {
-      ...restricted.workspace,
-      settings: {
-        ...restricted.workspace.settings,
-        allowedTools: ['Read'],
-        disallowedTools: ['Bash'],
-      },
-    };
-    const options = supervisor.buildOptions(restricted);
-    expect(options.allowedTools).toEqual(['Read']);
+  /**
+   * A forbidden tool is removed from the CLI's tool list outright, so it is
+   * sent whatever the mode. Measured: with `disallowedTools`, `WebSearch` and
+   * `WebFetch` vanish from the init message's `tools` and the model reports
+   * the capability as absent rather than refused.
+   */
+  it('always sends the forbidden tools, because that removes them from the CLI', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    for (const permissionMode of ['default', 'dontAsk', 'plan'] as const) {
+      const request = withSettings({ disallowedTools: ['Bash'] });
+      request.policy = { ...request.policy, permissionMode };
+      expect(supervisor.buildOptions(request).disallowedTools).toEqual(['Bash']);
+    }
+  });
+
+  /** The pre-approval, as the CLI is told about it in `dontAsk`. */
+  const managedAllow = (options: ReturnType<AgentSupervisor['buildOptions']>): unknown =>
+    (options.managedSettings as { permissions?: { allow?: unknown } } | undefined)?.permissions
+      ?.allow;
+
+  /**
+   * The pre-approval reaches the CLI in exactly one mode, through exactly one
+   * channel, and both halves of that were measured rather than assumed.
+   *
+   * **One mode.** A pre-approval the CLI knows about auto-approves the tool
+   * *before* `canUseTool` is consulted — the SDK warns about it by name, and a
+   * run in `default` mode with `allowedTools: ['WebFetch']` fetched a page
+   * with no approval card at all. Telling the CLI in every mode would delete
+   * the Ask mode's whole promise as a side effect of a settings checkbox.
+   * `dontAsk` is the one mode where the broker never gets the question: the
+   * CLI answers "denied, nothing pre-approved" on its own.
+   *
+   * **One channel.** `--allowedTools` looked like it, and it is not enough:
+   * under `dontAsk` it let `WebFetch` through and left `WebSearch` refused.
+   * `WebSearch` is executed upstream rather than by the CLI, and only a
+   * *permission rule* covers it. The first measurement missed this because
+   * the model, offered both, happened to reach for `WebFetch` every time — a
+   * false positive that survived until an end-to-end run asked for the search
+   * by name. A managed `permissions.allow` covers both kinds.
+   */
+  it('tells the CLI only in dontAsk, and through the rule channel that covers a server tool', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+
+    for (const permissionMode of ['default', 'acceptEdits', 'auto', 'plan'] as const) {
+      const request = withSettings({ allowedTools: ['WebSearch'] });
+      request.policy = { ...request.policy, permissionMode };
+      const options = supervisor.buildOptions(request);
+      expect(managedAllow(options)).toBeUndefined();
+      expect(options.allowedTools).toBeUndefined();
+    }
+
+    const unattended = withSettings({ allowedTools: ['WebSearch'] });
+    unattended.policy = { ...unattended.policy, permissionMode: 'dontAsk' };
+    const options = supervisor.buildOptions(unattended);
+    expect(managedAllow(options)).toEqual(['WebSearch']);
+    // The managed locks are not lost by carrying the rules: they are what
+    // makes a project's own settings.json unable to add rules of its own.
+    expect(options.managedSettings).toMatchObject({
+      allowManagedPermissionRulesOnly: true,
+      allowManagedHooksOnly: true,
+      allowManagedMcpServersOnly: true,
+    });
+  });
+
+  it('subtracts a forbidden tool from the pre-approval, whatever the row says', () => {
+    // Re-checked here, not only where the setting is saved: this is the call
+    // that actually widens what the agent may do, and a row written before the
+    // rule existed must not slip through.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const request = withSettings({
+      allowedTools: ['WebSearch', 'Bash'],
+      disallowedTools: ['Bash'],
+    });
+    request.policy = { ...request.policy, permissionMode: 'dontAsk' };
+
+    const options = supervisor.buildOptions(request);
+    expect(managedAllow(options)).toEqual(['WebSearch']);
     expect(options.disallowedTools).toEqual(['Bash']);
+  });
+
+  /**
+   * A scoped rule is refused rather than passed on, and the reason is now
+   * consistency rather than only the measurement that started it.
+   *
+   * Measured: `WebFetch(domain:example.com)` in `--allowedTools`, under the
+   * managed locks, allowed a fetch of *nodejs.org* — the opposite of what it
+   * says. And even on the rule channel, where the CLI would honour the scope,
+   * Metaclaude's own broker matches whole tool names: the same entry would
+   * mean one thing in `dontAsk` and another in every other mode. One of those
+   * is a trap and the other is a split brain, so neither ships.
+   */
+  it('drops a scoped rule instead of sending one that means two different things', () => {
+    const warnings: string[] = [];
+    const supervisor = new AgentSupervisor({
+      broker: () => ({ request: async () => ({ behavior: 'allow' }) }) as never,
+      allowBypassPermissions: false,
+      claudeBinPath: null,
+      runTimeoutMs: 60_000,
+      env: {},
+      directoryPolicy: {
+        workspacesDir: '/srv/metaclaude/workspaces',
+        dataDir: '/var/lib/metaclaude',
+      },
+      log: (level, message) => {
+        if (level === 'warn') warnings.push(message);
+      },
+      query: fakeQuery().query as never,
+    });
+
+    const request = withSettings({ allowedTools: ['WebFetch(domain:example.com)', 'WebSearch'] });
+    request.policy = { ...request.policy, permissionMode: 'dontAsk' };
+
+    expect(managedAllow(supervisor.buildOptions(request))).toEqual(['WebSearch']);
+    expect(warnings.join(' ')).toMatch(/WebFetch\(domain:example\.com\)/);
+    expect(warnings.join(' ')).toMatch(/widen/i);
   });
 
   it('honours the thinking mode, both branches of it', () => {
@@ -1890,5 +2129,83 @@ describe('buildOptions — marketplace plugins', () => {
       extraKnownMarketplaces: marketplaces,
       enabledPlugins: { 'formatter@tools': true },
     });
+  });
+});
+
+describe('a run whose tool calls were refused without a prompt', () => {
+  /**
+   * `result.permission_denials` is the CLI's authoritative record of what it
+   * refused on its own — the `dontAsk` short-circuit, the auto-mode
+   * classifier, a deny rule — and nothing read it. The only trace was whatever
+   * the model chose to say in its closing paragraph, which for an unattended
+   * run (an automation, a gateway call) nobody reads at all: the operator saw
+   * a *successful* run that had quietly done half the work.
+   *
+   * One line, at the end, naming them. It does not guess at the cause: several
+   * paths land here and the mode is on the run already.
+   */
+  const denial = (tool: string, id: string) => ({
+    tool_name: tool,
+    tool_use_id: id,
+    tool_input: {},
+  });
+
+  /** A complete `result` message; `finish` replaces the default wholesale. */
+  const resultMessage = (extra: Record<string, unknown>) => ({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    result: 'done',
+    duration_ms: 1,
+    num_turns: 1,
+    total_cost_usd: 0,
+    usage: {},
+    session_id: 'sdk-session',
+    ...extra,
+  });
+
+  async function runWith(extra: Record<string, unknown>) {
+    const { query, control } = fakeQuery();
+    const callbacks = makeCallbacks();
+    const supervisor = makeSupervisor(query);
+    const run = supervisor.execute(makeRequest(), callbacks);
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+    control.finish(resultMessage(extra));
+    await run;
+    return (callbacks.events as Array<{ kind: string; level?: string; message?: string }>).filter(
+      (event) => event.kind === 'system',
+    );
+  }
+
+  it('names them once, in one line, rather than one line each', async () => {
+    const notes = await runWith({
+      permission_denials: [
+        denial('WebSearch', 'tu_1'),
+        denial('Bash', 'tu_2'),
+        denial('WebSearch', 'tu_3'),
+      ],
+    });
+
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.level).toBe('warn');
+    expect(notes[0]!.message).toContain('WebSearch');
+    expect(notes[0]!.message).toContain('Bash');
+    // Three denials, two tools: the count is of calls, the list is of names.
+    expect(notes[0]!.message).toMatch(/\b3\b/);
+    expect(notes[0]!.message!.match(/WebSearch/g)).toHaveLength(1);
+  });
+
+  it('says nothing at all when nothing was refused', async () => {
+    expect(await runWith({})).toHaveLength(0);
+    expect(await runWith({ permission_denials: [] })).toHaveLength(0);
+  });
+
+  it('reports them on a failed run too, where they are most likely the reason', async () => {
+    const notes = await runWith({
+      subtype: 'error_max_turns',
+      permission_denials: [denial('Write', 'tu_1')],
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.message).toContain('Write');
   });
 });

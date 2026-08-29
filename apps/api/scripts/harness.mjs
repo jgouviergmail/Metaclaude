@@ -9,7 +9,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import pino from 'pino';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -75,7 +75,10 @@ export const AGENT_CHECKS_ENABLED =
  * @param {{ webDir?: string; env?: Record<string, string> }} options
  */
 export async function startServer(options = {}) {
-  const dist = join(API_ROOT, 'dist');
+  // A `file://` URL, not a path. Node's ESM loader reads `D:\...` as a URL
+  // with the scheme `d:` and refuses it, so every live check here was
+  // unrunnable on Windows — which is why they had never been run on one.
+  const dist = pathToFileURL(join(API_ROOT, 'dist')).href;
   const { loadConfig } = await import(`${dist}/config.js`);
   const { createAppContext } = await import(`${dist}/context.js`);
   const { buildServer } = await import(`${dist}/server.js`);

@@ -48,6 +48,14 @@ export interface DoctorDeps {
    * means belongs here, where it is testable.
    */
   readBackupMarker: () => Promise<string | null>;
+  /**
+   * One outbound HTTPS request, or why it failed.
+   *
+   * Injected rather than performed here for the reason every other probe is:
+   * the repository's tests must not touch the network, and the judgement about
+   * what the result *means* is what belongs in this file and is worth testing.
+   */
+  reachOut: () => Promise<{ ok: boolean; detail: string }>;
   credentialMode: () => string;
   /**
    * What retrieval is *actually* running with, versus what was configured.
@@ -111,6 +119,7 @@ export class Doctor {
     await examine('disk:data', () => this.disk('disk:data', this.deps.dataDir));
     await examine('disk:workspaces', () => this.disk('disk:workspaces', this.deps.workspacesDir));
     await examine('backup', () => this.backup());
+    await examine('network', () => this.network());
     await examine('claude-cli', () => this.claudeCli());
     await examine('retrieval', () => this.retrieval());
     await examine('runs', () => this.runs());
@@ -296,6 +305,37 @@ export class Doctor {
         ? 'The built-in hashing embedder: no download, no network — and no semantics. Retrieval matches words, not meaning.'
         : 'A sentence-transformer: retrieval bridges a question to an answer that shares no words with it.',
     };
+  }
+
+  /**
+   * Whether anything in this container can reach the internet.
+   *
+   * `fail` rather than `warn`, because with no egress nothing the product does
+   * works: the CLI cannot call the API, `git clone` cannot resolve a remote,
+   * and no HTTP MCP server connects. The stack has come up healthy in exactly
+   * that state before — the app container was left on an `internal: true`
+   * network — and every run failed with an error that pointed nowhere near it.
+   *
+   * What it does *not* claim is that web search works. `WebSearch` runs
+   * upstream and `WebFetch` runs here, so this probe speaks for the second and
+   * for the API connection both of them ultimately need; the summary says so
+   * rather than letting the check be read as a guarantee it cannot give.
+   */
+  private async network(): Promise<DoctorCheck> {
+    const { ok, detail } = await this.deps.reachOut();
+    return ok
+      ? {
+          name: 'network',
+          status: 'ok',
+          summary: 'This container can reach the internet.',
+          detail,
+        }
+      : {
+          name: 'network',
+          status: 'fail',
+          summary: 'Nothing can leave this container — no runs, no clones, no HTTP MCP server.',
+          detail,
+        };
   }
 
   private async claudeCli(): Promise<DoctorCheck> {

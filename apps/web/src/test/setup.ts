@@ -35,4 +35,13 @@ configure({ asyncUtilTimeout: 5_000 });
 
 afterEach(() => {
   cleanup();
+  // A case that switched to French must not decide the language of the next
+  // one. `renderInFrench` writes this key; clearing it here means no test has
+  // to remember a `finally`, and forgetting one cannot make a later case pass
+  // or fail for a reason it never states.
+  try {
+    window.localStorage.removeItem('mc-lang');
+  } catch {
+    /* a blocked storage never held the key in the first place */
+  }
 });

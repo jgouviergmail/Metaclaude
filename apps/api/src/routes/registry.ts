@@ -5,7 +5,7 @@
 import type { App } from '../http/types.js';
 import { AutomationTrigger, EffortLevel, LibraryCategory, McpTransport, ModelSelector, PermissionMode } from '@metaclaude/shared';
 import { z } from 'zod';
-import { InstallPluginRequest, MarketplaceInput } from '@metaclaude/shared';
+import { InstallPluginRequest, MarketplaceInput, patchSchema } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import {
   assertPermissionModeAllowed,
@@ -546,7 +546,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     description: z.string().max(2000).default(''),
     prompt: z.string().min(1).max(100_000),
     trigger: AutomationTrigger,
-    policy: AutomationPolicy.partial().optional(),
+    policy: patchSchema(AutomationPolicy).optional(),
     continuous: z.boolean().default(false),
     maxConsecutiveFailures: z.number().int().min(0).max(100).default(3),
     enabled: z.boolean().default(true),
@@ -579,7 +579,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
 
   app.patch<{ Params: { id: string } }>('/api/automations/:id', async (request, reply) => {
     const actor = requireOperator(request);
-    const parsed = AutomationInput.partial().omit({ workspaceId: true }).safeParse(request.body);
+    const parsed = patchSchema(AutomationInput).omit({ workspaceId: true }).safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
 
     assertPermissionModeAllowed(context, parsed.data.policy?.permissionMode);

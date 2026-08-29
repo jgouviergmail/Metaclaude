@@ -30,6 +30,7 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     workspacesDir: '/srv/metaclaude/workspaces',
     diskFree: async () => 50 * GB,
     cliVersion: async () => '2.1.246 (Claude Code)',
+    reachOut: async () => ({ ok: true, detail: 'HTTP 405 in 12 ms' }),
     credentialMode: () => 'oauth',
     embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512 }),
     activeRuns: () => 1,
@@ -65,6 +66,7 @@ describe('a healthy system', () => {
       'disk:data',
       'disk:workspaces',
       'backup',
+      'network',
       'claude-cli',
       'retrieval',
       'runs',
@@ -283,5 +285,62 @@ describe('the retrieval check', () => {
     expect(check.status).toBe('ok');
     expect(check.summary).toContain('384d');
     expect(check.detail).toMatch(/shares no words/i);
+  });
+});
+
+/**
+ * Whether this container can reach the internet at all.
+ *
+ * The check exists because of a question the product could not answer about
+ * itself. `WebFetch` is executed *by the CLI*, inside this container, so it
+ * needs egress; `WebSearch` runs upstream and needs only the Anthropic API.
+ * When either comes back empty the operator has three candidates — the model
+ * refused, the tool was not permitted, or nothing here can leave the box — and
+ * only the third is a deployment fault. Nothing distinguished them: the app is
+ * on a Docker network that has been misconfigured before, and the whole
+ * product failed every run while the stack reported healthy.
+ *
+ * A probe, not a promise: reachability is not "web search works", and the
+ * summary says which of the two it measured.
+ */
+describe('the network check', () => {
+  it('is ok when the probe gets out', async () => {
+    const doctor = makeDoctor({ reachOut: async () => ({ ok: true, detail: 'HTTP 405 in 42 ms' }) });
+    const report = await doctor.run();
+    const check = report.checks.find((entry) => entry.name === 'network')!;
+
+    expect(check.status).toBe('ok');
+    expect(check.detail).toBe('HTTP 405 in 42 ms');
+  });
+
+  /**
+   * A failure here is `fail`, not `warn`: with no egress the CLI cannot reach
+   * the API, `git clone` cannot resolve a remote and no HTTP MCP server
+   * connects. Nothing the product does works, so the report must not read as
+   * a healthy system with a note.
+   */
+  it('fails, rather than warns, when nothing can leave the container', async () => {
+    const doctor = makeDoctor({
+      reachOut: async () => ({ ok: false, detail: 'getaddrinfo ENOTFOUND api.anthropic.com' }),
+    });
+    const report = await doctor.run();
+    const check = report.checks.find((entry) => entry.name === 'network')!;
+
+    expect(check.status).toBe('fail');
+    expect(check.detail).toContain('ENOTFOUND');
+    expect(report.status).toBe('fail');
+  });
+
+  it('reports the probe throwing as the check failing, never as a broken report', async () => {
+    const doctor = makeDoctor({
+      reachOut: async () => {
+        throw new Error('socket hang up');
+      },
+    });
+    const report = await doctor.run();
+
+    expect(report.checks.find((entry) => entry.name === 'network')?.status).toBe('fail');
+    // Every other check still ran.
+    expect(report.checks.length).toBeGreaterThan(5);
   });
 });

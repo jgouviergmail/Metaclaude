@@ -32,6 +32,18 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 
 /**
+ * Every page here is opened in English, deliberately.
+ *
+ * The app picks its language from `navigator.language` when nothing is stored,
+ * and several assertions below name an English control — `aria-label="Send"`
+ * among them. On a French machine the button is `Envoyer` and the check failed
+ * while the composer worked perfectly: a check that answers a different
+ * question depending on the developer's locale is worse than no check. The
+ * language itself has its own coverage in the component tests.
+ */
+const LOCALE = { locale: 'en-US' };
+
+/**
  * Collect anything that should never happen: a failed request, a page error, a
  * console error. A pre-login 401 on the session probe is excluded — that is the
  * app asking "is anyone signed in?", and the answer is the 401.
@@ -64,7 +76,7 @@ async function login(page) {
 
 results.section('desktop (1440×900)');
 {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ ...LOCALE, viewport: { width: 1440, height: 900 } });
   const problems = watch(page);
 
   await page.goto(`${server.baseUrl}/`, { waitUntil: 'networkidle' });
@@ -90,7 +102,7 @@ results.section('desktop (1440×900)');
 
 results.section('every top-level route');
 {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ ...LOCALE, viewport: { width: 1440, height: 900 } });
   const problems = watch(page);
   await login(page);
 
@@ -108,6 +120,7 @@ results.section('every top-level route');
 results.section('phone (375×812)');
 {
   const page = await browser.newPage({
+    ...LOCALE,
     viewport: { width: 375, height: 812 },
     isMobile: true,
     hasTouch: true,
@@ -176,7 +189,7 @@ results.section('phone (375×812)');
 
 results.section('a real run, driven from the UI');
 {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ ...LOCALE, viewport: { width: 1440, height: 900 } });
   const problems = watch(page);
   await login(page);
 

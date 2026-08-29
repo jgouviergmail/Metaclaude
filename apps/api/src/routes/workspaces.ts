@@ -16,20 +16,22 @@ import {
   RewindRequest,
   ToolControls,
   WorkspaceSettings,
+  patchSchema,
 } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { decideApproval } from '../http/approvals.js';
 import {
+  assertAdditionalDirectoriesAllowed,
   assertPermissionModeAllowed,
   HttpError,
+  reviewToolSettings,
   requestIp,
   mustGetWorkspace as mustGetWorkspaceFrom,
   requireOperator,
   requireOwner,
 } from '../http/guards.js';
 import { spreadInt, spreadTimestamp } from '../http/query.js';
-import { reviewAdditionalDirectories } from '../security/directories.js';
 
 export function registerWorkspaceRoutes(app: App, context: AppContext): void {
   const mustGetWorkspace = (id: string) => mustGetWorkspaceFrom(context, id);
@@ -54,8 +56,15 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
     }
     assertPermissionModeAllowed(context, parsed.data.settings?.defaultPermissionMode);
+    assertAdditionalDirectoriesAllowed(context, parsed.data.settings?.additionalDirectories);
+    const toolLists = reviewToolSettings(parsed.data.settings);
 
-    const workspace = await context.workspaces.create(parsed.data);
+    const workspace = await context.workspaces.create({
+      ...parsed.data,
+      ...(parsed.data.settings
+        ? { settings: { ...parsed.data.settings, ...toolLists } }
+        : {}),
+    });
     context.audit.record({
       actor: actor.username,
       action: 'workspace.create',
@@ -83,12 +92,15 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     icon: z.string().max(48).optional(),
     archived: z.boolean().optional(),
-    settings: WorkspaceSettings.partial().optional(),
+    // `patchSchema`, not `.partial()`: the latter still fires each field's
+    // default, so a patch naming one setting arrives carrying all twenty-one
+    // and the repository merges every one of them over the stored row.
+    settings: patchSchema(WorkspaceSettings).optional(),
   });
 
   app.patch<{ Params: { id: string } }>('/api/workspaces/:id', async (request, reply) => {
     const actor = requireOperator(request);
-    mustGetWorkspace(request.params.id);
+    const current = mustGetWorkspace(request.params.id);
 
     const parsed = UpdateWorkspace.safeParse(request.body);
     if (!parsed.success) {
@@ -96,20 +108,21 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     }
 
     assertPermissionModeAllowed(context, parsed.data.settings?.defaultPermissionMode);
+    // Rejected here rather than silently dropped at run time, so the operator
+    // learns the setting did not take. Both checks now run on creation too —
+    // see `workspace-settings.test.ts` for the asymmetry that motivated it.
+    assertAdditionalDirectoriesAllowed(context, parsed.data.settings?.additionalDirectories);
+    // Against the stored settings, not against the body: a patch naming one
+    // list is merged with the other, so the contradiction is a property of the
+    // result rather than of the request.
+    const toolLists = reviewToolSettings(parsed.data.settings, current.settings);
 
-    // Reject an out-of-bounds extra directory here rather than silently
-    // dropping it at run time, so the operator learns the setting did not take.
-    const extraDirectories = parsed.data.settings?.additionalDirectories;
-    if (extraDirectories && extraDirectories.length > 0) {
-      const review = reviewAdditionalDirectories(extraDirectories, {
-        workspacesDir: context.config.workspacesDir,
-        dataDir: context.config.dataDir,
-      });
-      const first = review.rejected[0];
-      if (first) throw new HttpError(400, `"${first.path}" ${first.reason}.`);
-    }
-
-    const workspace = context.workspaceRepo.update(request.params.id, parsed.data);
+    const workspace = context.workspaceRepo.update(request.params.id, {
+      ...parsed.data,
+      ...(parsed.data.settings
+        ? { settings: { ...parsed.data.settings, ...toolLists } }
+        : {}),
+    });
     context.audit.record({
       actor: actor.username,
       action: 'workspace.update',

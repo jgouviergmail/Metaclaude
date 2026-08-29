@@ -11,6 +11,124 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-08-29
+
+### Added
+
+- **A workspace can pre-approve tools, which is what finally lets an unattended
+  run reach the web.** The setting existed in the schema, reached the CLI, and
+  had no control anywhere in the app — so "Don't ask", the mode every
+  automation and every MCP gateway call lands in, refused `WebSearch`, `Write`
+  and every mutating command with no way to widen it. The guide and the token
+  form both described a configuration nobody could make. **Workspace settings →
+  Pre-approved tools** offers exactly the tools that can raise a prompt, says
+  what ticking one removes, and the run's timeline carries a line whenever one
+  is used.
+
+  Where the decision is taken is the interesting half. A pre-approval the CLI
+  knows about skips the permission broker in *every* mode — measured: in "Ask",
+  `allowedTools: ['WebFetch']` fetched a page with no approval card at all — so
+  the CLI is told only under "Don't ask", where it answers before the broker can
+  be reached. Everywhere else the broker decides, which keeps the trace. "Plan"
+  pre-approves nothing.
+
+  And not through the field that looked right: `allowedTools` let `WebFetch`
+  through and left `WebSearch` refused, because a search executes upstream and
+  only a permission rule covers it. Four probe runs read as passes before an
+  end-to-end run asked for the search by name — the model, offered both tools,
+  had picked the other one every time.
+
+- **The doctor says whether anything can leave the container.** With no egress
+  nothing the product does works — no runs, no clones, no HTTP MCP server — and
+  the stack has come up healthy in exactly that state. It is a `fail`, not a
+  warning, and it separates "this box has no network" from "the model was
+  refused" without a guess.
+
+- **A run says what it was refused.** `permission_denials` is the CLI's own
+  record of the calls it turned down on its own, and nothing read it: the only
+  trace was whatever the agent chose to put in its closing paragraph, which for
+  an automation nobody reads. One line at the end, naming them.
+
+### Fixed
+
+- **Toggling an automation off erased its description.** `z.object({…})
+  .partial()` reads as "absent means untouched" and is not: it still fires each
+  field's `.default()`. The automations list toggles a row with
+  `PATCH { enabled }`, so the route received `description: ''`,
+  `continuous: false` and `maxConsecutiveFailures: 3` alongside it and merged
+  each one in — wiping the description, ending a continuous loop and resetting
+  a custom failure ceiling, silently, on the control an operator touches most.
+  The same trap sat on every workspace setting. `patchSchema` replaces
+  `.partial()` at all four sites, and a ratchet holds the count at zero.
+
+- **Two settings the workspace screen showed in English on a French page.** The
+  permission mode — on the workspace card *and* in its own picker — plus the
+  answer-language table declared in that same file. Their French was in the
+  catalogue all along: the three i18n measures ask whether the catalogue
+  carries a string, never whether the render site translates it. A fourth
+  measure closes that shape, and it names both sites when it is put back.
+
+- **Seven files carried a raw control byte** where the escape was meant — among
+  them the audit chain's field separator, the policy learner's cache key, and,
+  in `docs/SECURITY.md`, an example *of* a control character written as one.
+  Every one behaved correctly, and every one made its file binary: `grep`
+  answers "Binary file matches" instead of showing the line, `file` says
+  `data`, git renders the diff as `Bin … bytes`, and a reviewer sees nothing. A
+  ratchet holds the count at zero, and it covers Markdown too — `docs/guide/`
+  is bundled into the in-app Help screen, so prose ships. The URL sanitiser in
+  `markdown.ts` had raw DEL and U+009F in its character class as well; it is
+  written in escapes now, proven equivalent over the whole range it covers.
+
+- **The README's own development quick-start could not start.** It set
+  `METACLAUDE_WORKSPACES_DIR` to a directory *inside* `METACLAUDE_DATA_DIR`,
+  and `loadConfig` refuses that layout outright — it would put every workspace
+  one `..` from `master.key`. The two roots are siblings now, and both were
+  already in `.gitignore`.
+
+- **`additionalDirectories` was reviewed when a workspace was updated and not
+  when one was created**, so a workspace could be born naming a directory every
+  run then dropped in silence. Both guards are shared now and run on both
+  routes, next to the permission-mode check that was written for the same
+  asymmetry.
+
+- **The pre-approval guard compared the request against itself.** A patch
+  naming one tool list is merged with the other, so a tool could arrive
+  pre-approved on a workspace that already forbade it. Found reviewing the
+  guard rather than running it; it compares the merged state now.
+
+### Changed
+
+- **The guide said "Don't ask" means the opposite of what it does.** It read
+  "everything proceeds except what the deployment forbids"; it is "nothing
+  prompts, and nothing that would have prompted runs". An operator following
+  that sentence picked it for an automation and got an agent that could not
+  write a file. The MCP chapter's "a gateway run never prompts" was false for
+  its widest ceiling, which can still stall on a command nobody answers. Both
+  chapters now say which mode to reach for, and why.
+
+- **The guide says there is no browser, and why.** No Chromium, none of its
+  libraries, a read-only filesystem and an unprivileged user with every
+  capability dropped — so nothing can install one, and a browser downloaded
+  into the home volume would not start. Deliberate: a large network-facing
+  surface beside a process that already runs model-authored commands, on a
+  machine with 2 GB to spare. Fetching a page covers nearly every reason people
+  ask, and a hosted browser reached over MCP covers the rest.
+
+- **A tool name is split in one place now.** `/^mcp__[^_]+__/` was copied into
+  six, and it stops at the first underscore — so a server an operator named
+  `my_server` was never stripped and the risk badge, the transcript card and
+  the grant key all fell through to their default branch on every one of its
+  tools.
+
+- **The two live checks run on Windows.** `scripts/harness.mjs` imported the
+  built server by filesystem path, which Node's ESM loader reads as a URL with
+  the scheme `d:` and refuses — so `check:e2e` and `check:browser` could not
+  start at all on this platform, which is why neither had ever been run on one.
+  They pass here now: 49 and 26 assertions, no failures. The browser check also
+  pinned its pages to English: it asserts `aria-label="Send"`, the app follows
+  `navigator.language`, and on a French machine it failed while the composer
+  worked perfectly.
+
 ## [0.39.1] — 2026-08-29
 
 ### Fixed

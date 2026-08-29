@@ -349,6 +349,37 @@ restates the code is noise; one that records a decision or a trap is not.
   settle. Related: a run cancelled while *queued* never reaches the supervisor,
   so its waiter has to be settled from the cancellation path or it blocks for
   the full timeout on a run that is already dead.
+- **`z.object({…}).partial()` still fires every field's `.default()`.** It reads
+  as "absent means untouched" and it is not: a patch naming one field parses
+  into an object carrying all the others at their defaults, and a repository
+  that merges it over the stored row resets every one of them. Measured, on the
+  control an operator touches most: the automations list toggles a row with
+  `PATCH { enabled }`, `AutomationInput.partial()` delivered
+  `description: ''`, `continuous: false` and `maxConsecutiveFailures: 3` with
+  it, and turning an automation off wiped its description, ended its continuous
+  loop and reset its failure ceiling. `patchSchema` in `api-contracts.ts` strips
+  the default before making the field optional; the `defaultingPartials` ratchet
+  is an AST measure (a text search would report this bullet) and its ceiling is
+  zero, because there is no remaining case here where `.partial()` is right.
+- **A server-side tool is not covered by `--allowedTools`.** Under `dontAsk`,
+  the SDK's `allowedTools` let `WebFetch` through and left `WebSearch` refused:
+  `WebSearch` executes upstream rather than in the CLI, and only a *permission
+  rule* reaches it. Pre-approval therefore rides
+  `managedSettings.permissions.allow`, which is also the one tier
+  `allowManagedPermissionRulesOnly` still honours. Related, and the reason this
+  took two attempts: a probe that offers the model **both** web tools measures
+  whichever one it picks. It picked `WebFetch` every time, the run came back
+  green, and the conclusion was wrong for four measurements running. Name the
+  tool in the prompt, or offer only the one under test — and prefer an
+  end-to-end run through `AgentSupervisor` over a bare SDK probe, because that
+  is what caught it.
+- **A bare tool name in a pre-approval skips the broker in *every* mode.** The
+  SDK says so (`CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`) and it is measured: in `Ask`
+  mode, `allowedTools: ['WebFetch']` fetched a page with no approval card at
+  all. So the CLI is told only in `dontAsk`, where it answers before
+  `canUseTool` can be reached; every other mode goes through
+  `PermissionBroker`, which is what keeps the decision and its transcript line
+  inside Metaclaude. `plan` pre-approves nothing at all.
 - **The i18n ratchets require a capital first letter, and that is deliberate.**
   Relaxing `SENTENCE` surfaces 76 candidates here, about seventy of them
   Tailwind class strings — `flex items-start gap-2` is indistinguishable from

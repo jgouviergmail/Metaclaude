@@ -202,7 +202,7 @@ describe('TaskClassifier', () => {
   });
 
   it('never throws, whatever the prompt looks like', async () => {
-    for (const prompt of ['', '   ', ' ', 'é'.repeat(5000), '"; DROP TABLE memories; --']) {
+    for (const prompt of ['', '   ', '\x00', 'é'.repeat(5000), '"; DROP TABLE memories; --']) {
       await expect(classifier.classify(prompt, null)).resolves.toHaveProperty('category');
     }
   });

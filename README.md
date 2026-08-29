@@ -180,6 +180,15 @@ Six modes, from **Plan** (research only, nothing executes) through **Ask**,
 **Accept edits**, **Auto** and **Don't ask**, to **Bypass** — which is disabled
 at deployment level unless you explicitly enable it.
 
+**Don't ask** never waits: nothing prompts, and nothing that would have
+prompted runs. What it *may* run is a per-workspace list of **pre-approved
+tools** — exactly the tools that can raise a prompt, ticked one by one. That is
+what makes an unattended run useful at all, because an automation firing at 3am
+and a call arriving through the MCP gateway have nobody to answer a card. A
+ticked tool skips its approval card in every mode but Plan, and the run's
+timeline says so each time one is used; whatever a run *was* refused, it ends
+with one line naming it.
+
 A pending approval also reaches you: a push notification (see Settings →
 Notifications) with a ten-minute lifetime matching the approval's own, and a
 badge on the installed app's icon that clears when the last decision is made.
@@ -353,6 +362,7 @@ posture reflects that:
 | **Network** | The app publishes no host port — inbound only through the TLS proxy. Outbound egress is open, because the CLI, git and HTTP MCP servers need it |
 | **XSS** | Model output is rendered through an allow-list sanitiser with no raw HTML passthrough |
 | **Machine tokens** | Bearer-only on their own path — the session cookie is refused there, any `Origin` is rejected, and every run they start is capped, marked `api` and audited under the token's name |
+| **Tool grants** | A workspace pre-approves whole tool names and nothing else: scoped rules are refused (measured — on the flag channel they widen instead of narrowing), forbidding beats pre-approving, `Plan` grants nothing, and outside `Don't ask` the grant is applied by Metaclaude's own broker so the transcript records each use |
 
 Details and threat model: **[docs/SECURITY.md](docs/SECURITY.md)**
 
@@ -365,8 +375,11 @@ pnpm install
 pnpm --filter @metaclaude/shared build
 
 # Terminal 1 — API on :8787
-METACLAUDE_DATA_DIR=$PWD/.data \
-METACLAUDE_WORKSPACES_DIR=$PWD/.data/workspaces \
+# The two roots are siblings, not nested: `loadConfig` refuses to start when
+# either contains the other, because that would put every workspace one `..`
+# from master.key. Both are already in .gitignore.
+METACLAUDE_DATA_DIR=$PWD/data \
+METACLAUDE_WORKSPACES_DIR=$PWD/workspaces \
 METACLAUDE_INSECURE_COOKIES=1 \
 METACLAUDE_BOOTSTRAP_USER=dev \
 METACLAUDE_BOOTSTRAP_PASSWORD=dev-password-please-change \
@@ -378,18 +391,23 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 2440 unit + integration tests, ~60s
+pnpm test:run    # 2507 unit + integration tests, ~60s
 pnpm typecheck
 pnpm build
 ```
 
-Two further checks run against a real server and a real agent, so they need an
-authenticated Claude CLI and are kept out of `pnpm test`:
+Two further checks run against a real server, so they are kept out of
+`pnpm test`. Their agent-driven cases need an authenticated Claude CLI; pass
+`--no-agent` to run everything else without one.
 
 ```bash
 pnpm --filter @metaclaude/api check:e2e      # HTTP + WebSocket, incl. a live run
 pnpm build && pnpm --filter @metaclaude/api check:browser   # the PWA in Chromium
 ```
+
+On Windows the browser check needs `PLAYWRIGHT_CHROMIUM` pointed at an
+installed Chromium — `npx playwright install chromium` leaves one under
+`%LOCALAPPDATA%\ms-playwright`.
 
 **Stack:** Node 22 · Fastify 5 · SQLite (WAL) · TypeScript 5.9 · React 19 ·
 Vite 8 · Tailwind v4 · Zod 4 · `@anthropic-ai/claude-agent-sdk`

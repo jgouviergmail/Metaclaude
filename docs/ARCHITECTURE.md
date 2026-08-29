@@ -110,6 +110,22 @@ to every subscribed client. Two properties are non-negotiable:
 Decisions can be remembered for the rest of a session — except for high-risk
 calls, where "always allow" is withheld by design.
 
+A workspace's **pre-approved tools** are the standing version of that, and the
+seam they are answered at is the design decision worth recording. Telling the
+CLI about a pre-approval makes it auto-approve the tool *before* `canUseTool`
+runs at all — measured, in `Ask` mode, with no card shown — which would delete
+that mode's whole promise. So the broker answers them in every mode except one,
+which keeps the decision and its transcript line inside Metaclaude; `dontAsk` is
+the exception, because there the CLI refuses on its own before the broker can be
+reached, and it is told through `managedSettings.permissions.allow` rather than
+`allowedTools`: a search executes upstream rather than in the CLI, and only a
+permission rule reaches it. `plan` pre-approves nothing.
+
+`result.permission_denials` — the CLI's own record of what it refused without
+asking — is read at the end of every run and written to the transcript as one
+line. It used to be dropped, leaving the agent's closing paragraph as the only
+trace, which nobody reads on an unattended run.
+
 ### Recovery
 A crash leaves runs marked `running` and sessions marked busy. Both repositories
 expose `recoverOrphaned()`, called once at boot, which marks them interrupted.

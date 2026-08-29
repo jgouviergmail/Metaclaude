@@ -35,6 +35,59 @@ import {
 } from './domain.js';
 
 
+/**
+ * A field of a patch: optional, and stripped of the default it carried.
+ *
+ * The unwrapping is the whole point. `.partial()` alone leaves
+ * `ZodOptional<ZodDefault<T>>`, and Zod applies the inner default *before* the
+ * optionality is consulted, so an absent key arrives carrying a value.
+ */
+type PatchField<Field> = Field extends z.ZodDefault<infer Inner>
+  ? z.ZodOptional<Inner>
+  : z.ZodOptional<Field extends z.ZodTypeAny ? Field : never>;
+
+type PatchShape<Shape extends z.ZodRawShape> = { [K in keyof Shape]: PatchField<Shape[K]> };
+
+/**
+ * The schema for a PATCH body: every field optional, and *absent means absent*.
+ *
+ * `z.object({…}).partial()` reads as exactly this and is not. A field declared
+ * with `.default()` still fires that default when the key is missing, so a
+ * patch naming one setting parses into an object carrying every other one at
+ * its default value — and a repository that merges the patch over the stored
+ * row then resets all of them.
+ *
+ * It cost real data. The automations list toggles an automation with
+ * `PATCH { enabled }` and nothing else; `AutomationInput.partial()` handed the
+ * route `description: ''`, `continuous: false` and `maxConsecutiveFailures: 3`
+ * alongside it, and `scheduler.update` merged each one in. Flipping the switch
+ * wiped the automation's description, ended a continuous loop and reset a
+ * custom failure ceiling — on the control an operator touches most often, with
+ * nothing anywhere to say it had happened.
+ *
+ * The one cast is on `Object.fromEntries`, which cannot be typed per key from
+ * a runtime loop. The shape it produces is exactly `PatchShape`, `z.object`
+ * infers the result from it, and `domain.test.ts` pins the runtime behaviour —
+ * including a case that fails if a future Zod fixes `.partial()` itself.
+ */
+export function patchSchema<Shape extends z.ZodRawShape>(
+  object: z.ZodObject<Shape>,
+): z.ZodObject<PatchShape<Shape>> {
+  const shape = Object.fromEntries(
+    Object.entries(object.shape).map(([key, field]) => {
+      // `removeDefault()` is declared as Zod's internal `$ZodType`, which does
+      // not carry `.optional()`. The value it returns is the schema the default
+      // wrapped, so this names what it is rather than widening anything: the
+      // cast is on the upstream declaration, not on the runtime shape.
+      const inner = (
+        field instanceof z.ZodDefault ? field.removeDefault() : field
+      ) as z.ZodTypeAny;
+      return [key, inner.optional()];
+    }),
+  ) as PatchShape<Shape>;
+  return z.object(shape);
+}
+
 export const AgentDefinitionRecord = z.object({
   id: z.string(),
   workspaceId: z.string().nullable(),
@@ -201,7 +254,9 @@ export const CreateWorkspaceRequest = z.object({
   icon: z.string().max(48).default('folder'),
   /** Optional git repository to clone into the new workspace. */
   gitUrl: z.string().url().max(500).optional(),
-  settings: WorkspaceSettings.partial().optional(),
+  // Absent stays absent here too. `WorkspaceService.create` lays the defaults
+  // down itself, so this only has to say what the caller actually chose.
+  settings: patchSchema(WorkspaceSettings).optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequest>;
 
