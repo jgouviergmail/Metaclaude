@@ -25,7 +25,14 @@
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import type { ApiTokenRecord, ApiTokenScope, BoardTask, Run, Workspace } from '@metaclaude/shared';
+import type {
+  ApiTokenRecord,
+  ApiTokenScope,
+  BoardTask,
+  Run,
+  TranscriptEvent,
+  Workspace,
+} from '@metaclaude/shared';
 import type { KnowledgeSearchResult } from '../learning/knowledge.js';
 
 /**
@@ -37,6 +44,9 @@ import type { KnowledgeSearchResult } from '../learning/knowledge.js';
  * and the caller is told so.
  */
 export const ASK_TIMEOUT_MS = 10 * 60_000;
+
+/** Statuses past which no further text will arrive. */
+const FINISHED: ReadonlySet<Run['status']> = new Set(['succeeded', 'failed', 'interrupted']);
 
 /** The slice of the application the gateway is allowed to see. */
 export interface GatewayDeps {
@@ -61,6 +71,8 @@ export interface GatewayDeps {
     ): Promise<KnowledgeSearchResult[]>;
   };
   board: { list(workspaceId: string): BoardTask[] };
+  runs: { get(id: string): Run | null };
+  transcript: { byRun(runId: string): TranscriptEvent[] };
   audit: { record(input: { actor: string; action: string; target?: string; detail?: string }): void };
 }
 
@@ -164,13 +176,20 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
             settled.run.error ||
             'The run finished without a final message.',
         };
-      } catch {
+      } catch (error) {
+        // Only a *timeout* means "still working". Anything else is a failure of
+        // the wait itself — the kernel shutting down, a stash discarded — and
+        // reporting that as "still running" would send the caller polling a run
+        // that will never answer. The message is the kernel's own, matched on
+        // the phrase it raises.
+        if (!/did not finish in time/i.test((error as Error).message)) throw error;
+
         return {
           runId: started.runId,
           status: 'running',
           text:
             'This is still running — it outlived the time the gateway waits. ' +
-            'It has not been cancelled; follow it in Metaclaude by its run id.',
+            'It has not been cancelled; follow it with run_status.',
         };
       }
     },
@@ -185,6 +204,47 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
      * that workspace" — a token scoped to one project can read anything filed
      * globally, and an operator granting `read` should know that.
      */
+    /**
+     * What became of a run, and its answer once there is one.
+     *
+     * The half `start_run` was missing: without it an asynchronous call handed
+     * back an id nothing could redeem. The final text is not on the run row —
+     * it exists only in the transcript — so it is read back from there, and the
+     * *last* assistant block is the answer: everything before it is the agent
+     * thinking aloud on the way.
+     *
+     * A run id is not a capability. The run is resolved, then its workspace is
+     * put through the same `within` every other tool uses, and a run belonging
+     * elsewhere answers exactly as one that does not exist.
+     */
+    status: async (input: {
+      runId: string;
+    }): Promise<{ runId: string; status: Run['status'] | 'unknown'; text: string | null }> => {
+      requires('run', 'start runs');
+
+      const run = deps.runs.get(input.runId);
+      if (!run || !token.workspaceIds.includes(run.workspaceId)) {
+        throw new Error(`There is no run called "${input.runId}".`);
+      }
+
+      if (!FINISHED.has(run.status)) {
+        return { runId: run.id, status: run.status, text: null };
+      }
+
+      const spoken = deps.transcript
+        .byRun(run.id)
+        .filter((event): event is Extract<TranscriptEvent, { kind: 'assistant_text' }> =>
+          event.kind === 'assistant_text',
+        );
+      const last = spoken.at(-1)?.text?.trim();
+
+      return {
+        runId: run.id,
+        status: run.status,
+        text: last || run.error || 'The run finished without a final message.',
+      };
+    },
+
     searchNotes: async (input: {
       workspace: string;
       query: string;
@@ -281,6 +341,13 @@ export function buildGatewayServer(
           prompt: z.string().min(1).max(20_000),
         },
         async (args) => asText(() => handlers.start(args)),
+      ),
+      sdkTool(
+        'run_status',
+        'What became of a run started with start_run, and its answer once it has ' +
+          'finished. Poll this rather than holding a request open.',
+        { runId: z.string().describe('The id start_run returned.') },
+        async (args) => asText(() => handlers.status(args)),
       ),
       sdkTool(
         'search_notes',

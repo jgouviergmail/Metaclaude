@@ -11,6 +11,57 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-08-29
+
+### Added
+
+- **`run_status`, the half `start_run` was missing.** An asynchronous call
+  handed back a run id that no tool could redeem: a finished run's answer lives
+  in the transcript, not on the run row, and nothing read it. It reads the last
+  assistant block — everything before it is the agent thinking aloud on the way
+  — and a run id is not a capability: the run's workspace goes through the same
+  scope check as every other tool, answering identically for "not yours" and
+  "does not exist".
+
+### Fixed
+
+- **`ask_workspace` dressed every failed wait up as work in progress.** A bare
+  `catch` reported "still running" for a kernel shutting down or a discarded
+  stash as readily as for a timeout, sending the caller to poll a run that would
+  never answer. Only a timeout means still running now.
+
+- **A gateway session grew without end.** One standing session per token per
+  workspace is the point — an integration's asks build on each other — but a
+  token used every minute for a year has no natural end, and nobody watches the
+  context, or the bill. Past a bounded amount of transcript the next call opens
+  a fresh session under the same name.
+
+- **The per-token rate budget was calibrated against the wrong unit.** It counts
+  HTTP requests; one complete exchange costs **five** of them, because a client
+  negotiates the protocol before it can ask anything. The original numbers read
+  as generous while allowing six exchanges. Measured now, pinned by a test so a
+  transport upgrade that changes the figure fails loudly, and resized to a dozen
+  exchanges of burst and twelve a minute sustained.
+
+### Changed
+
+- **Two guards against shipping half a feature**, both written from the two
+  defects that reached production this week.
+
+  `api.test.ts` now checks that **every path the client calls is a route the API
+  registers** — a renamed route, a method that diverges, a typo that only shows
+  up as a 404 on the one screen nobody opened by hand. Structural rather than a
+  live round trip: importing the server into the web app's tests would couple
+  two packages that are separate on purpose.
+
+  A new ratchet counts **API client methods no screen calls**. `updateApiToken`
+  shipped that way — a route, a client method and a service test, with nothing
+  in the interface reaching it. It found eight more the day it was written:
+  `me`, `users`, `createUser`, `tasks`, `run`, `deleteFile`, `createDirectory`
+  and `previewPolicy`. They are recorded as a ceiling rather than deleted —
+  removing methods across four unrelated domains is a decision to take
+  deliberately, not in passing — so the debt is frozen and cannot grow.
+
 ## [0.38.5] — 2026-08-29
 
 ### Fixed

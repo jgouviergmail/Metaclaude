@@ -482,6 +482,43 @@ function countUntranslatedSharedCopy() {
  * be proved to call `t`.
  */
 /**
+ * Client methods no screen ever calls.
+ *
+ * Half a feature is worse than none: `updateApiToken` shipped with a route, a
+ * client method and a service test, and nothing in the interface ever called
+ * it — an untested mutation on a security-sensitive resource, reachable only by
+ * someone reading the source. The inverse of the same mistake shipped beside
+ * it: a field written to the database that no screen rendered, while the
+ * documentation promised operators would see it.
+ *
+ * This catches the first shape, which is the checkable one. A method on `api`
+ * that nothing outside `api.ts` mentions is either dead or a feature that
+ * stopped halfway.
+ */
+function countUncalledClientMethods() {
+  const client = read('apps/web/src/lib/api.ts');
+  if (!client) return null;
+
+  // The object literal's own keys: `name: (args) => …`, at one indent level.
+  const declared = [...client.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*):\s*\(/gm)].map((m) => m[1]);
+  // Finding almost nothing means the extractor broke, not that the client did.
+  if (declared.length < 20) return null;
+
+  const callers = tracked('apps/web/src/*')
+    .filter((file) => /\.tsx?$/.test(file) && !file.endsWith('lib/api.ts'))
+    .map((file) => read(file) ?? '')
+    .join('\n');
+
+  let uncalled = 0;
+  for (const name of declared) {
+    if (new RegExp(`\\bapi\\.${name}\\b`).test(callers)) continue;
+    uncalled += 1;
+    note('dead', 'apps/web/src/lib/api.ts', `api.${name}`);
+  }
+  return uncalled;
+}
+
+/**
  * Copy tables that are half translated.
  *
  * The three measures above all rest on `SENTENCE`, which requires a capital
@@ -792,6 +829,13 @@ const METRICS = [
     direction: 'down',
     label: 'module-level copy the French catalogue does not carry',
     measure: countUntranslatedConstants,
+    optional: true,
+  },
+  {
+    key: 'uncalledClientMethods',
+    direction: 'down',
+    label: 'API client methods no screen calls',
+    measure: countUncalledClientMethods,
     optional: true,
   },
   {

@@ -99,7 +99,7 @@ function fakeSupervisor() {
   return supervisor;
 }
 
-function setup(options: { maxConcurrentRuns?: number; settings?: Partial<WorkspaceSettings>; delegationTimeoutMs?: number } = {}) {
+function setup(options: { maxConcurrentRuns?: number; settings?: Partial<WorkspaceSettings>; delegationTimeoutMs?: number; mcpSessionMaxEvents?: number } = {}) {
   const db = openDatabase({ path: ':memory:' });
   migrate(db);
 
@@ -163,6 +163,9 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     maxConcurrentRuns: options.maxConcurrentRuns ?? 2,
     ...(options.delegationTimeoutMs !== undefined
       ? { delegationTimeoutMs: options.delegationTimeoutMs }
+      : {}),
+    ...(options.mcpSessionMaxEvents !== undefined
+      ? { mcpSessionMaxEvents: options.mcpSessionMaxEvents }
       : {}),
     onRunFinished: (run) => finished.push(run),
     log: () => {},
@@ -832,6 +835,66 @@ describe('delegation', () => {
 
       fx.supervisor.finish();
       await vi.waitFor(() => expect(fx.finished.length).toBeGreaterThanOrEqual(1));
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  /**
+   * A standing session is the point — an integration's asks build on each
+   * other. An unbounded one is the bill: a token used every minute for a year
+   * has no natural end, and nobody is watching. Past the ceiling the next call
+   * starts a fresh session rather than piling on.
+   */
+  it('starts a new gateway session once the standing one is full', async () => {
+    const fx = setup({ mcpSessionMaxEvents: 1 });
+    try {
+      const first = await fx.kernel.startForToken({
+        workspaceId: fx.workspace.id,
+        prompt: 'one',
+        ceiling: 'plan',
+        label: 'n8n',
+        awaited: false,
+      });
+      await vi.waitFor(() => expect(fx.finished).toHaveLength(1));
+
+      const second = await fx.kernel.startForToken({
+        workspaceId: fx.workspace.id,
+        prompt: 'two',
+        ceiling: 'plan',
+        label: 'n8n',
+        awaited: false,
+      });
+
+      expect(second.sessionId).not.toBe(first.sessionId);
+      // Same name: the history stays attributable to the token at a glance.
+      expect(fx.sessions.get(second.sessionId)?.title).toBe('MCP: n8n');
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('reuses the standing session while it still has room', async () => {
+    const fx = setup({ mcpSessionMaxEvents: 10_000 });
+    try {
+      const first = await fx.kernel.startForToken({
+        workspaceId: fx.workspace.id,
+        prompt: 'one',
+        ceiling: 'plan',
+        label: 'n8n',
+        awaited: false,
+      });
+      await vi.waitFor(() => expect(fx.finished).toHaveLength(1));
+
+      const second = await fx.kernel.startForToken({
+        workspaceId: fx.workspace.id,
+        prompt: 'two',
+        ceiling: 'plan',
+        label: 'n8n',
+        awaited: false,
+      });
+
+      expect(second.sessionId).toBe(first.sessionId);
     } finally {
       fx.db.close();
     }

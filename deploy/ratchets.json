@@ -1,6 +1,6 @@
 {
   "metrics": {
-    "tests": 2440,
+    "tests": 2450,
     "testFiles": 180,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
@@ -13,7 +13,8 @@
     "untranslatedConstants": 0,
     "misplacedHooks": 0,
     "untranslatedSharedCopy": 0,
-    "halfTranslatedTables": 0
+    "halfTranslatedTables": 0,
+    "uncalledClientMethods": 8
   },
   "updated": "2026-08-29"
 }

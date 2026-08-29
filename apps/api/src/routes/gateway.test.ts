@@ -225,6 +225,7 @@ describe('the tools', () => {
       'ask_workspace',
       'list_tasks',
       'list_workspaces',
+      'run_status',
       'search_notes',
       'start_run',
     ]);
@@ -321,6 +322,42 @@ describe('the tools', () => {
  * `operator` — the role that may change almost everything else here —
  * deliberately does not carry it.
  */
+/**
+ * What one exchange actually costs the per-token budget.
+ *
+ * The bucket is sized in *HTTP requests*, not in tool calls, and the two are
+ * not the same number: a client opens by negotiating the protocol before it
+ * can ask anything. That figure was assumed when the limiter was written. It
+ * is measured here instead, so the assumption fails loudly the day a transport
+ * upgrade changes it — a budget calibrated against the wrong unit is a
+ * limiter that throttles honest callers or lets a loop through.
+ */
+describe('what an exchange costs', () => {
+  it('takes a handful of requests to connect, list and call once', async () => {
+    const real = globalThis.fetch;
+    let requests = 0;
+    globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      if (String(input).includes('/api/gateway/mcp')) requests += 1;
+      return real(input, init);
+    }) as typeof fetch;
+
+    try {
+      const client = await connect(secret);
+      await client.listTools();
+      await client.callTool({ name: 'list_workspaces', arguments: {} });
+      await client.close();
+    } finally {
+      globalThis.fetch = real;
+    }
+
+    // Pinned as a range, not a constant: the exact count is the SDK's business
+    // and may reasonably shift by one. An order of magnitude may not — that
+    // would mean the budget below is calibrated against the wrong thing.
+    expect(requests).toBeGreaterThanOrEqual(3);
+    expect(requests).toBeLessThanOrEqual(8);
+  });
+});
+
 describe('minting', () => {
   let operatorCookies: string;
   let operatorCsrf: string;

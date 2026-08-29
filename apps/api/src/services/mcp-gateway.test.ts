@@ -181,6 +181,31 @@ describe('ask', () => {
     expect(result.text).toMatch(/still running/i);
   });
 
+  /**
+   * The other side of the timeout branch, and the reason it is not a bare
+   * `catch`. A wait that fails for any other reason — the kernel shutting down,
+   * a stash discarded — is a failure, and calling it "still running" would send
+   * the caller polling a run that will never answer.
+   */
+  it('does not dress a genuine failure up as work in progress', async () => {
+    const wired = deps({
+      kernel: {
+        startForToken: vi.fn(async () => ({
+          run: { id: 'run_x', status: 'running' },
+          sessionId: 'ses_1',
+        })),
+        awaitRun: vi.fn(async () => {
+          throw new Error('The server is shutting down.');
+        }),
+      },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    await expect(handlers.ask({ workspace: 'ws_mine', prompt: 'x' })).rejects.toThrow(
+      /shutting down/i,
+    );
+  });
+
   it('records every run it starts in the audit trail, under the token', async () => {
     const wired = deps();
     const handlers = createGatewayHandlers(wired, TOKEN);
@@ -247,6 +272,94 @@ describe('what the protocol refuses before a handler ever runs', () => {
 
     expect(wired.knowledge.search).not.toHaveBeenCalled();
     await client.close();
+  });
+});
+
+describe('run_status', () => {
+  const finished = (overrides = {}) =>
+    ({
+      id: 'run_1',
+      workspaceId: 'ws_mine',
+      status: 'succeeded',
+      error: null,
+      startedAt: 1,
+      finishedAt: 2,
+      ...overrides,
+    }) as never;
+
+  /**
+   * The half `start_run` was missing. Without this, an asynchronous call
+   * returned an id that nothing could ever redeem: the run's final text lives
+   * in the transcript, and no tool read it.
+   */
+  it('reads a finished run’s answer back out of the transcript', async () => {
+    const wired = deps({
+      runs: { get: vi.fn(() => finished()) },
+      transcript: {
+        byRun: vi.fn(() => [
+          { kind: 'assistant_text', text: 'first thought' },
+          { kind: 'tool_call', name: 'Bash' },
+          { kind: 'assistant_text', text: 'the answer' },
+        ]),
+      },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    const result = await handlers.status({ runId: 'run_1' });
+
+    expect(result.status).toBe('succeeded');
+    // The *last* assistant block, not the first: everything before it is the
+    // agent thinking aloud on the way there.
+    expect(result.text).toBe('the answer');
+  });
+
+  it('says a run is still working rather than inventing an answer', async () => {
+    const wired = deps({
+      runs: { get: vi.fn(() => finished({ status: 'running', finishedAt: null })) },
+      transcript: { byRun: vi.fn(() => []) },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    const result = await handlers.status({ runId: 'run_1' });
+
+    expect(result.status).toBe('running');
+    expect(result.text).toBeNull();
+  });
+
+  /**
+   * A run id is not a capability. Anyone holding a token could otherwise
+   * enumerate ids and read work done in a workspace they were never given —
+   * and the answer must not distinguish "not yours" from "does not exist".
+   */
+  it('refuses a run in a workspace this token cannot reach', async () => {
+    const wired = deps({
+      runs: { get: vi.fn(() => finished({ workspaceId: 'ws_theirs' })) },
+      transcript: { byRun: vi.fn(() => []) },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    await expect(handlers.status({ runId: 'run_1' })).rejects.toThrow(/no run/i);
+    await expect(handlers.status({ runId: 'run_1' })).rejects.not.toThrow(/permission|scope|allowed/i);
+  });
+
+  it('answers the same way for a run that does not exist at all', async () => {
+    const wired = deps({
+      runs: { get: vi.fn(() => null) },
+      transcript: { byRun: vi.fn(() => []) },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    await expect(handlers.status({ runId: 'run_nope' })).rejects.toThrow(/no run/i);
+  });
+
+  it('needs the run capability, since it reads what a run produced', async () => {
+    const wired = deps({
+      runs: { get: vi.fn(() => finished()) },
+      transcript: { byRun: vi.fn(() => []) },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, { ...TOKEN, scopes: ['read'] });
+
+    await expect(handlers.status({ runId: 'run_1' })).rejects.toThrow(/not allowed to start runs/i);
   });
 });
 

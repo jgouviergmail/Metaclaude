@@ -212,8 +212,20 @@ claude mcp add --transport http metaclaude https://your-site/api/gateway/mcp --h
 
 The tools it offers: `list_workspaces`, `ask_workspace` (the main one — it runs
 in that workspace with its memory, skills and conventions, and waits for the
-answer), `start_run` for work too long to hold a request open, `search_notes`,
-and `list_tasks`.
+answer), `start_run` and `run_status` for work too long to hold a request open,
+`search_notes`, and `list_tasks`.
+
+`ask_workspace` waits ten minutes. Past that it returns the run id and says the
+work is still going — it has not been cancelled — and `run_status` is how you
+collect the answer afterwards. For anything you expect to be slow, prefer
+`start_run` and poll: holding an HTTP request open for half an hour is a bet on
+every proxy between you and the deployment.
+
+One more thing worth knowing about a token used all day: each one gets a
+standing session per workspace, so its asks build on each other. That session is
+bounded — past roughly a dozen runs' worth of transcript the next call starts a
+fresh one, under the same name. Context that grows without end is a bill that
+grows without end.
 
 One detail worth knowing before granting the reading capability:
 `search_notes` returns that workspace's knowledge **and anything filed

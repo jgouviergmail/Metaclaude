@@ -124,6 +124,8 @@ export interface KernelDeps {
   maxConcurrentRuns: number;
   /** How long a delegation waits for its run. Injectable so tests need not. */
   delegationTimeoutMs?: number;
+  /** Overridable so a test can reach the boundary without writing 400 events. */
+  mcpSessionMaxEvents?: number;
   /**
    * Called once per run, after it reaches a terminal state and its usage has
    * been recorded. A direct hook rather than an event-bus subscription: run
@@ -156,6 +158,18 @@ class RunCancelled extends Error {
 
 /** Outlasts the run timeout, so the timeout's own report arrives first. */
 const DELEGATION_TIMEOUT_MS = 50 * 60_000;
+
+/**
+ * How much transcript one gateway session may accumulate before the next call
+ * starts a fresh one.
+ *
+ * Counted in events rather than runs because events are what the context
+ * window actually carries. A standing session is the point — an integration's
+ * asks build on each other, exactly as a delegation's do — but a token used
+ * every minute for a year has no natural end, and nobody is watching the bill.
+ * Roughly a dozen ordinary runs.
+ */
+const MCP_SESSION_MAX_EVENTS = 400;
 
 
 
@@ -440,9 +454,17 @@ export class Kernel {
     if (!workspace) throw new Error(`Unknown workspace: ${input.workspaceId}`);
 
     const title = `MCP: ${input.label}`;
+    const ceiling = this.deps.mcpSessionMaxEvents ?? MCP_SESSION_MAX_EVENTS;
     const sessions = this.deps.sessions.list(workspace.id, { includeArchived: false });
+    // Busy *or* full opens a parallel session rather than refusing or piling
+    // on. One standing session per token is what makes an integration's
+    // history readable; an unbounded one is what makes its context — and its
+    // cost — grow every day it is used, with nobody watching either.
     let session = sessions.find(
-      (candidate) => candidate.title === title && !this.hasActiveRunForSession(candidate.id),
+      (candidate) =>
+        candidate.title === title &&
+        !this.hasActiveRunForSession(candidate.id) &&
+        this.deps.transcript.countBySession(candidate.id) < ceiling,
     );
     session ??= this.deps.sessions.create({
       workspaceId: workspace.id,

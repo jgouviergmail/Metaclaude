@@ -30,12 +30,23 @@ import { buildGatewayServer } from '../services/mcp-gateway.js';
  *
  * The global limiter counts by IP, and every call from one integration shares
  * one address: a busy automation would either exhaust the budget the interface
- * needs or be throttled by traffic that has nothing to do with it. Sized for
- * an integration that polls, not for one that streams — a run costs minutes of
- * an agent's time, so a token asking faster than this is a loop, not a user.
+ * needs or be throttled by traffic that has nothing to do with it.
+ *
+ * Sized against a *measured* figure, not an assumed one. One complete exchange
+ * — connect, negotiate, list the tools, call one, disconnect — costs **five
+ * HTTP requests**, because a client has to establish the protocol before it can
+ * ask anything (`gateway.test.ts` pins that measurement, so a transport upgrade
+ * that changes it fails loudly rather than silently miscalibrating this).
+ *
+ * The first version of these numbers was written before that was known and read
+ * as generous while allowing six exchanges: the budget was counting the wrong
+ * unit. At 60 and 1/s a token may burst a dozen exchanges and sustain twelve a
+ * minute — far above any honest integration, since a run costs minutes of an
+ * agent's time, and far below a loop.
  */
-const GATEWAY_CAPACITY = 30;
-const GATEWAY_REFILL_PER_SECOND = 0.5;
+const REQUESTS_PER_EXCHANGE = 5;
+const GATEWAY_CAPACITY = 12 * REQUESTS_PER_EXCHANGE;
+const GATEWAY_REFILL_PER_SECOND = 1;
 
 export function registerGatewayRoutes(app: App, context: AppContext): void {
   const budget = new TokenBucket(GATEWAY_CAPACITY, GATEWAY_REFILL_PER_SECOND);
@@ -45,6 +56,8 @@ export function registerGatewayRoutes(app: App, context: AppContext): void {
     kernel: context.kernel,
     knowledge: context.knowledge,
     board: context.board,
+    runs: context.runRepo,
+    transcript: context.transcriptRepo,
     audit: context.audit,
   };
 

@@ -173,6 +173,14 @@ Three properties are specific to a caller nobody is watching:
   workspaces by design, which would put the whole scope one prompt away.
 - **The endpoint is stateless.** A fresh MCP server and transport per request,
   so there is no session table to grow and nothing carries between two tokens.
+- **The standing session is bounded.** One session per token per workspace, so
+  an integration's asks build on each other — but past `MCP_SESSION_MAX_EVENTS`
+  of transcript the next call opens a fresh one. A token used every minute for
+  a year has no natural end, and nobody is watching the context grow.
+- **The rate budget is per token and measured.** The global limiter counts by
+  IP, which one integration shares with the interface. One complete exchange
+  costs five HTTP requests — the protocol negotiation before anything is asked
+  — and the bucket is sized from that figure, which a test pins.
 
 Authentication is its own credential and its own guard: the path sits in
 `BEARER_PATHS` rather than `PUBLIC_PATHS` — authenticated *differently*, not
