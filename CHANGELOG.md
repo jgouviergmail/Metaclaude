@@ -11,6 +11,37 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.38.3] — 2026-08-29
+
+### Changed
+
+- **The Google connection folds away.** It was a tall card carrying a four-line
+  explanation and a three-step setup, sitting open forever for something you
+  configure once. It now shows one line — its name and whether it is connected
+  — and opens on a click. New `CollapsibleCard`, built on `<details>` rather
+  than on conditional rendering for a reason that is the whole design: a folded
+  body stays **mounted**, so the effect that reads the OAuth outcome out of the
+  query string and raises the toast still runs. A fold that unmounted it would
+  have swallowed the result of a consent the operator had just given.
+
+  It opens itself when you come back from Google's consent screen — driven by
+  that effect rather than by a check at mount, because a mount-time read races
+  the same effect's clearing of the query string and loses it outright under
+  `StrictMode`, whose deliberate remount reads a query that is already gone.
+  That was written the wrong way first and caught before it shipped.
+
+### Fixed
+
+- **A test that had been passing for the wrong reason.** One case replaces
+  `window.location` to intercept the navigation to Google — jsdom cannot
+  navigate — and never put it back, so every case after it ran against a frozen
+  object whose `search` was permanently `''`. The callback test asserts that the
+  query string gets *cleared*; on a stub that starts cleared, it passed without
+  the effect ever running. The location is restored in `afterEach` now, and the
+  test establishes that the query exists before asserting it goes away. Same
+  trap as the uninstall rehearsal in CLAUDE.md: a check that cannot tell "the
+  guard held" from "the code never ran" proves nothing.
+
 ## [0.38.2] — 2026-08-29
 
 ### Fixed

@@ -29,8 +29,9 @@ import { GOOGLE_GRANTS, type GoogleGrant } from '@metaclaude/shared';
 
 import { CheckboxField } from '@/components/ui/controls';
 import { ConfirmDialog } from '@/components/ui/Modal';
+import { CollapsibleCard } from '@/components/ui/CollapsibleCard';
 import { CopyableCode } from '@/components/ui/CopyableCode';
-import { Badge, Button, Card, CardHeader, Input, Label } from '@/components/ui/primitives';
+import { Badge, Button, Input, Label } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { formatRelative } from '@/lib/utils';
@@ -66,12 +67,26 @@ export function GoogleConnectionCard() {
 
   const state = useQuery({ queryKey: ['google-connection'], queryFn: () => api.google.get() });
 
+  /**
+   * Folded by default — once Google works, nobody comes back to this card.
+   *
+   * Opened by the effect below rather than by a check at mount, because the
+   * only render that must be open is the one *after* a consent, and that fact
+   * arrives with the effect that also clears the query string carrying it. A
+   * mount-time read races its own cleanup, and under `StrictMode` the
+   * deliberate remount reads a query that is already gone.
+   */
+  const [open, setOpen] = useState(false);
+
   // The callback redirects back here with the outcome in the query string —
   // it is a top-level navigation, so there is nothing else to carry it.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const outcome = params.get('google');
     if (!outcome) return;
+
+    // They just acted, and a folded card would look like nothing happened.
+    setOpen(true);
     if (outcome === 'connected') {
       toast.success(t('Google connected.'), {
         description: t(
@@ -128,18 +143,32 @@ export function GoogleConnectionCard() {
     );
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Google')}
-        description={t(
-          'Gmail, Calendar and Drive, through an OAuth application you own. Your connectors on claude.ai cannot be imported — a run has no browser to give consent in — so the consent happens here once, and the refresh token it returns is what lets runs work unattended.',
-        )}
-      />
+    <CollapsibleCard
+      title={t('Google')}
+      // Folded, this card is one line — so the line has to answer the question
+      // the card exists for. Connected to which account, or not connected at
+      // all: anything less and the fold has hidden the only thing worth
+      // knowing without being opened.
+      status={
+        state.isLoading ? null : connection?.connected ? (
+          <Badge tone="success">{t('Connected')}</Badge>
+        ) : (
+          <Badge tone="neutral">{t('Not connected')}</Badge>
+        )
+      }
+      open={open}
+      onOpenChange={setOpen}
+      description={t(
+        'Gmail, Calendar and Drive, through an OAuth application you own. Your connectors on claude.ai cannot be imported — a run has no browser to give consent in — so the consent happens here once, and the refresh token it returns is what lets runs work unattended.',
+      )}
+    >
 
       {connection?.connected ? (
         <div className="space-y-4 p-4 pt-0">
+          {/* The badge lives on the summary, where it answers "is this
+              connected?" without opening anything. What belongs here is the
+              part that needs the room: which account, and since when. */}
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="success">{t('Connected')}</Badge>
             <span className="text-[13px] font-medium text-ink">
               {connection.accountEmail ?? t('account unknown')}
             </span>
@@ -294,6 +323,6 @@ export function GoogleConnectionCard() {
           setConfirmDisconnect(false);
         }}
       />
-    </Card>
+    </CollapsibleCard>
   );
 }

@@ -5,7 +5,7 @@
  */
 
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
@@ -48,6 +48,23 @@ const CONNECTED = {
   redirectUri: 'https://metaclaude.example/api/integrations/google/callback',
   restrictedGrants: ['gmail.read', 'drive.read'],
 };
+
+/**
+ * The real `window.location`, captured before any test can replace it.
+ *
+ * One test swaps it for a stub to intercept `assign` — jsdom cannot navigate —
+ * and it used not to put it back. Everything after it then ran against a frozen
+ * object whose `search` was permanently `''`, which is worse than it sounds:
+ * the callback test below asserts that the query string gets *cleared*, and on
+ * a stub that starts cleared it passed without the effect ever running. The
+ * trap CLAUDE.md names about the uninstall rehearsal — a check that cannot tell
+ * "the guard held" from "the code never ran" proves nothing.
+ */
+const REAL_LOCATION = Object.getOwnPropertyDescriptor(window, 'location')!;
+
+afterEach(() => {
+  Object.defineProperty(window, 'location', REAL_LOCATION);
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -171,10 +188,60 @@ describe('once connected', () => {
 describe('coming back from Google', () => {
   it('reports the outcome the callback put in the query, then clears it', async () => {
     window.history.replaceState({}, '', '/settings?google=connected');
+    // Establish that the state under test actually exists before asserting it
+    // goes away: on a stubbed location whose search was already '', this test
+    // passed for years without the effect ever running.
+    expect(window.location.search).toBe('?google=connected');
+
     renderWithProviders(<GoogleConnectionCard />);
 
     // Cleared so a reload does not repeat the toast for an event that already
     // happened.
     await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  /**
+   * The card is folded by default, and the outcome of a consent the operator
+   * just gave must survive that. It does because the fold is a `<details>`,
+   * which keeps its children mounted — the effect that reads the query string
+   * and raises the toast runs either way. A fold built on conditional
+   * rendering would have swallowed it silently.
+   */
+  it('opens itself when the operator has just come back', async () => {
+    window.history.replaceState({}, '', '/settings?google=connected');
+    const { container } = renderWithProviders(<GoogleConnectionCard />);
+
+    // Opened by the effect, not by a check at mount: `waitFor`, because the
+    // fact arrives with the effect rather than with the first render. That is
+    // the whole point — a mount-time read races the same effect's clearing of
+    // the query string, and loses it under StrictMode's remount.
+    await waitFor(() => expect(container.querySelector('details')?.open).toBe(true));
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+});
+
+describe('the fold', () => {
+  /**
+   * Asserted on the element's own `open`, never on visibility: jsdom does not
+   * implement `<details>` hiding, so every child is findable whether the
+   * section is open or shut. A test written against `toBeVisible` would pass
+   * on a card that never folds.
+   */
+  it('is folded on an ordinary visit', async () => {
+    window.history.replaceState({}, '', '/settings');
+    apiMock.google.get.mockResolvedValue(CONNECTED);
+    const { container } = renderWithProviders(<GoogleConnectionCard />);
+
+    // Folded, it still answers the question the card exists for.
+    expect(await screen.findByText('Connected')).toBeDefined();
+    expect(container.querySelector('details')?.open).toBe(false);
+  });
+
+  it('says "not connected" on the folded line when it is not', async () => {
+    window.history.replaceState({}, '', '/settings');
+    apiMock.google.get.mockResolvedValue(DISCONNECTED);
+    renderWithProviders(<GoogleConnectionCard />);
+
+    expect(await screen.findByText('Not connected')).toBeDefined();
   });
 });

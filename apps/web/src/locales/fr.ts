@@ -1822,4 +1822,5 @@ export const fr: Record<string, string> = {
   'account details': 'le compte',
   'plugin': 'plugin',
   'Ops': 'Ops',
+  'Not connected': 'Non connecté',
 };
