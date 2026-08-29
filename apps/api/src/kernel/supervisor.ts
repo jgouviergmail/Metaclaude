@@ -1071,9 +1071,9 @@ export class AgentSupervisor {
         // "stopped for going quiet" send an operator to different places.
         error =
           stoppedBy === 'limit'
-            ? `The run exceeded its ${minutes(runTimeoutMs)} time limit and was stopped.`
+            ? `The run exceeded its time limit of ${duration(runTimeoutMs)} and was stopped.`
             : stoppedBy === 'idle'
-              ? `The run reported nothing for ${minutes(idleTimeoutMs)} and was stopped. Working takes messages; silence that long means the agent had stopped.`
+              ? `The run reported nothing for ${duration(idleTimeoutMs)} and was stopped. Working takes messages; silence that long means the agent had stopped.`
               : 'The run was interrupted.';
       } else {
         status = 'failed';
@@ -2024,10 +2024,27 @@ export class StreamState {
   }
 }
 
-/** `600000` → `10 minutes`, `60000` → `1 minute`. Ceilings are operator-set. */
-function minutes(ms: number): string {
-  const value = Math.round(ms / 60_000);
-  return `${value} ${value === 1 ? 'minute' : 'minutes'}`;
+/**
+ * A ceiling in the units it was probably chosen in: `4 hours`, `45 minutes`,
+ * `1 minute`.
+ *
+ * Whole hours become hours because an operator who typed four hours should not
+ * have to read "240 minutes" back. Anything else stays in minutes rather than
+ * inventing "1 hour 30", which reads worse than "90 minutes" in a sentence.
+ *
+ * The sentences that use it name the amount *after* the noun — "its time limit
+ * of 45 minutes", not "its 45 minutes time limit". English wants the singular
+ * in front of a noun, so a helper that correctly writes "for 10 minutes" writes
+ * nonsense the moment the figure is moved; 0.41.0 shipped exactly that.
+ */
+function duration(ms: number): string {
+  const inMinutes = Math.round(ms / 60_000);
+  if (inMinutes >= 120 && inMinutes % 60 === 0) {
+    const hours = inMinutes / 60;
+    return `${hours} hours`;
+  }
+  if (inMinutes === 60) return '1 hour';
+  return `${inMinutes} ${inMinutes === 1 ? 'minute' : 'minutes'}`;
 }
 
 function describeResultError(message: Extract<SDKMessage, { type: 'result' }>): string {

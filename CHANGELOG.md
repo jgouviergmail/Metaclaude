@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.41.1] — 2026-08-29
+
+### Fixed
+
+- **"The run exceeded its 45 minutes time limit" is not a sentence.** English
+  wants the singular in front of a noun — *a 45-minute limit* — so the helper
+  that correctly writes "reported nothing for 10 minutes" wrote nonsense the
+  moment the figure moved ahead of it. 0.41.0 shipped that, having replaced a
+  version that was right by accident. The amount now comes *after* the noun,
+  which dodges the inflection entirely and lets a ceiling name itself in the
+  unit it was chosen in: "its time limit of 4 hours", not "of 240 minutes".
+
+- **A backspace character had got into a test file**, from an escape mangled on
+  the way in. Caught by the control-byte ratchet added in 0.40.0, on its first
+  real occasion — which is the only kind of evidence a guard like that can
+  offer for itself.
+
 ## [0.41.0] — 2026-08-29
 
 ### Added

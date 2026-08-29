@@ -2305,8 +2305,12 @@ describe('the two ceilings on a run', () => {
     const result = await outcome;
 
     expect(result.status).toBe('interrupted');
-    expect(result.error).toMatch(/60 minute/);
-    expect(result.error).toMatch(/time limit/);
+    // "1 hour", not "60 minutes" — and never "its 60 minutes time limit",
+    // which is what the first version of this message said. An attributive
+    // number wants the singular in English, so the sentence puts the figure
+    // after the noun instead of trying to inflect it into the phrase.
+    expect(result.error).toMatch(/time limit of 1 hour and was stopped/);
+    expect(result.error).not.toMatch(/minutes time limit/);
   });
 
   /**
@@ -2328,5 +2332,46 @@ describe('the two ceilings on a run', () => {
 
     expect(result.status).toBe('succeeded');
     expect(result.error).toBeNull();
+  });
+});
+
+/**
+ * The sentence a stopped run leaves behind, in words that parse.
+ *
+ * "The run exceeded its 45 minutes time limit" shipped in 0.41.0. English wants
+ * the singular in an attributive position — "a 45-minute limit" — so a helper
+ * that correctly writes "reported nothing for 10 minutes" writes nonsense the
+ * moment the figure is moved in front of the noun. Naming the amount after the
+ * noun avoids the inflection entirely, and lets hours be hours.
+ */
+describe('how a ceiling names itself', () => {
+  const stoppedAt = async (runTimeoutMs: number) => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query, undefined, { runTimeoutMs, idleTimeoutMs: 0 });
+    const outcome = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+    await vi.advanceTimersByTimeAsync(runTimeoutMs + 1000);
+    return (await outcome).error ?? '';
+  };
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('says hours when the ceiling is hours', async () => {
+    expect(await stoppedAt(4 * 60 * 60_000)).toContain('time limit of 4 hours');
+  });
+
+  it('says one hour, not 60 minutes', async () => {
+    expect(await stoppedAt(60 * 60_000)).toContain('time limit of 1 hour');
+  });
+
+  it('keeps minutes when hours would not be whole', async () => {
+    expect(await stoppedAt(45 * 60_000)).toContain('time limit of 45 minutes');
+  });
+
+  it('never leaves a plural in front of the noun', async () => {
+    for (const ms of [45 * 60_000, 4 * 60 * 60_000, 90 * 60_000]) {
+      expect(await stoppedAt(ms)).not.toMatch(/(minutes|hours) time limit/);
+    }
   });
 });
