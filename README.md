@@ -283,6 +283,24 @@ app itself creates), and the callback authenticates by single-use state
 because the session cookie deliberately does not survive a cross-site
 redirect.
 
+### Metaclaude as an MCP server
+The registry above is Metaclaude *consuming* other people's servers. It also
+exposes one of its own, so your other software can ask this agent to work:
+one endpoint, and tools for running a prompt in a workspace and waiting for
+the answer, starting one without waiting, searching a workspace's notes and
+reading its board. A line of `claude mcp add --transport http` connects it;
+so does anything else that speaks MCP.
+
+The credential is minted under **Settings → Connections**, owner-only, and it
+is a capability rather than a second account: an expiry that is never null, a
+list of workspaces that is never a wildcard, and a **ceiling** on what a run it
+starts may do unattended — because nobody is watching, and a permission prompt
+with no one to answer it is a worse outcome than a refusal. The gateway
+authenticates by bearer token and *ignores the session cookie entirely*, which
+is the confused-deputy defence: it carries no CSRF token, so honouring ambient
+cookie authority would hand any page on the internet a tool call in a signed-in
+operator's name.
+
 ### Where the usage went
 Analytics ranks every workspace against each other over the period — tokens,
 runs, cost where one was reported, and each one's share of the whole. The
@@ -334,6 +352,7 @@ posture reflects that:
 | **Audit** | Hash-chained log — any edit invalidates every entry after it, verifiable from the UI |
 | **Network** | The app publishes no host port — inbound only through the TLS proxy. Outbound egress is open, because the CLI, git and HTTP MCP servers need it |
 | **XSS** | Model output is rendered through an allow-list sanitiser with no raw HTML passthrough |
+| **Machine tokens** | Bearer-only on their own path — the session cookie is refused there, any `Origin` is rejected, and every run they start is capped, marked `api` and audited under the token's name |
 
 Details and threat model: **[docs/SECURITY.md](docs/SECURITY.md)**
 
@@ -359,7 +378,7 @@ pnpm --filter @metaclaude/web dev
 ```
 
 ```bash
-pnpm test:run    # 1733 unit + integration tests, ~30s
+pnpm test:run    # 2440 unit + integration tests, ~60s
 pnpm typecheck
 pnpm build
 ```

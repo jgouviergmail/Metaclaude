@@ -63,6 +63,27 @@ limit (fix the underlying failure, then re-enable) or an overlap — firings
 are skipped while the previous run is still going, so a too-tight interval
 around a slow prompt fires less often than its schedule says.
 
+## "My MCP token is refused"
+
+Every refusal answers the same way — 401, with no detail — because saying
+*which* reason applies would tell an unauthenticated caller that a token id
+exists. Check these in order: the token has not been revoked or expired (the
+listing under Settings → Connections, which shows both and tells them
+apart), the
+value is sent as an `Authorization: Bearer` header rather than in the URL, and
+the address ends in `/api/gateway/mcp`.
+
+Two failures that look like a bad token and are not. A **403** means the request
+carried an `Origin` header: something is calling from a browser, and the gateway
+refuses that on purpose. And a client reporting a broken server while every call
+works is usually reaching the endpoint over the wrong URL entirely — a proxy
+that rewrites the path, or `http` where the deployment is `https`.
+
+If a tool answers "there is no workspace called…" for one you can see, the
+token was not given that workspace. That is the same answer it gives for a
+workspace that does not exist, deliberately; edit is not offered, so mint a new
+token with the right reach and revoke the old one.
+
 ## "A certificate warning appeared"
 
 By IP, the deployment uses its own certificate authority — install its root

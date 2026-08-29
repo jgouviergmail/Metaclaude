@@ -64,6 +64,13 @@ The changelog carries the detail; this is the map.
   itself, enabled per workspace. *(0.2.0)*
 - **What Claude offers, asked rather than assumed** — models, commands,
   subagents and live MCP connection status, read from the CLI. *(0.2.0)*
+- **Metaclaude as an MCP server**: one bearer-authenticated endpoint other
+  applications connect to, offering a run in a named workspace and a read of
+  its notes and board. The token is a capability, not a second account — a
+  non-null expiry, an explicit workspace list, and a ceiling on what a run it
+  starts may do unattended. *(0.38.0)*
+- **OAuth for MCP servers we consume**, discovery through dynamic client
+  registration, with the tokens sealed in the vault. *(0.36.0)*
 - **Session convergence**: adopt a CLI session started in a terminal;
   optionally mirror sessions to claude.ai. *(0.2.0, 0.13.0)*
 - **A built-in library** of eight subagents and twelve skills, curated and
@@ -126,15 +133,15 @@ Deliberately short. Each item names the surface it would stand on.
   the composer's deeper controls, the workspace settings drawer and the
   secondary pages still answer in English, as does anything the server or the
   CLI produces.
-- **A wider docs-drift guard.** Two thirds of this exists: `check.sh` fails
-  when a documented log line vanishes from the code (0.2.0), and — since
-  0.26.1 — when the guide sends a reader to a Settings screen that is not
-  there. Both were written after a real drift: the second after an audit
-  found *two* chapters naming screens that had moved or never existed. What
-  remains is the rest of the family — every documented environment variable
-  existing in `.env.example`, every screen name in the guide resolving to a
-  route — so prose and code cannot disagree quietly anywhere, not just where
-  someone has already been bitten.
+- **A wider docs-drift guard.** Three of these now exist: `check.sh` fails
+  when a documented log line vanishes from the code (0.2.0), when the guide
+  sends a reader to a Settings screen that is not there (0.26.1), and when it
+  names an environment variable absent from `.env.example` and `compose.yml`.
+  Each was written after a real drift. What remains is the harder half — every
+  screen name in the guide resolving to an actual route, and a claim in the
+  docs about *behaviour* being checkable at all: "a run started by a token is
+  marked in the history" was true of the database and false of the screen for
+  a release, and no guard could have said so.
 - **Metaclaude as a resident workspace.** *Ask Metaclaude about itself*
   answers from the guide. The fuller version — this repository as a workspace
   with the doctor's read-only surface as context, so the system can cite its

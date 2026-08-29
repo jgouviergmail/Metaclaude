@@ -149,6 +149,36 @@ collapsing repeats by name and reporting the *worst* status of each group: seven
 of eight succeeding is not a success, and taking the last one would report
 whichever happened to finish last.
 
+### The MCP gateway — work asked for from outside
+
+Delegation is one workspace's agent asking another's. The gateway is the same
+primitive with the caller outside the process: `POST /api/gateway/mcp` speaks
+Streamable HTTP, and `ask_workspace` starts a run in a named workspace and
+waits for its answer over the mechanism delegation already used. That reuse is
+the design — the final text of a run exists nowhere but memory when it settles,
+so both callers stash it the same way, and both declare at submission that they
+intend to wait (`SubmitOptions.awaited`; a `start_run` that walks away keeps
+nothing).
+
+Three properties are specific to a caller nobody is watching:
+
+- **The permission mode is capped, never prompted.** `capPermissionMode`
+  replaces every interactive mode and `bypassPermissions` with the token's
+  ceiling, and never widens a workspace that is already narrower. A prompt with
+  no one to answer it expires after ten minutes and fails, which is a worse
+  answer than a refusal.
+- **Scope is enforced on one path and answers identically for "not yours" and
+  "does not exist".** Confirming the difference leaks the deployment's map.
+  Delegation is withheld from these runs outright: it reaches *other*
+  workspaces by design, which would put the whole scope one prompt away.
+- **The endpoint is stateless.** A fresh MCP server and transport per request,
+  so there is no session table to grow and nothing carries between two tokens.
+
+Authentication is its own credential and its own guard: the path sits in
+`BEARER_PATHS` rather than `PUBLIC_PATHS` — authenticated *differently*, not
+less — and the session cookie is refused there even when valid, because the
+route carries no CSRF token. See `docs/SECURITY.md`.
+
 ### What Claude offers, asked rather than assumed
 Metaclaude used to describe Claude's capabilities from lists written when the
 pages were built: three model names and their prices in the composer, and no way
@@ -351,6 +381,7 @@ workspaces ──< sessions ──< runs ──< transcript_events
 workspaces ──< memories, policy_arms, task_exemplars, insights,
                skills, agents, mcp_servers, automations
 secrets (AES-256-GCM)      audit_log (hash-chained)      kv
+api_tokens (SHA-256 of the value only)
 ```
 
 **Transcript events are the source of truth.** A run is rendered purely from its

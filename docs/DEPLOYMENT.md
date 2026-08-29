@@ -280,10 +280,14 @@ value either way if it begins with `'` or `"`, or compose rejects the whole file
 and every other setting goes with it. `bootstrap.sh` does this for you; hand
 edits are on you.
 
-**`METACLAUDE_PUBLIC_URL` is needed only to authorise an MCP server over
-OAuth**, and only then. It is the address a browser reaches you on, scheme
-included — `https://metaclaude.example.com` — because an authorization server
-has to be able to send that browser back to `/api/mcp/oauth/callback` here. It
+**`METACLAUDE_PUBLIC_URL` is the address a browser reaches you on**, scheme
+included — `https://metaclaude.example.com`. Two things need it, and nothing
+else does. Authorising an MCP server over OAuth: an authorization server has to
+be able to send that browser back to `/api/mcp/oauth/callback` here. And the
+MCP gateway screen, which shows the endpoint to paste into another application
+— an address it cannot otherwise know, and a wrong one produces a connection
+error that reads exactly like a bad token. The gateway itself works without it;
+only the screen goes quiet, and says so rather than guessing. It
 cannot be derived from the request: a `Host` header is set by whoever is
 calling, and a redirect URI is the one value in OAuth that must never come from
 the client. Leave it unset and everything else runs exactly as before; the

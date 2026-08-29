@@ -10,7 +10,7 @@ pnpm install
 pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
-pnpm test:run                            # 1733 tests, ~30s
+pnpm test:run                            # 2440 tests, ~60s
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -312,6 +312,52 @@ restates the code is noise; one that records a decision or a trap is not.
   whether it sat in `attr="x"` (needs braces) or inside `attr={…}` (already has
   them). The parser reports the resulting error lines away from the edit, in a
   file that looks structurally broken.
+- **`request()` in `apps/web/src/lib/api.ts` serialises the body itself.** A
+  caller passing `body: JSON.stringify(x)` encodes it twice, the API parses a
+  JSON *string* where its schema wants an object, and the error reads
+  "expected object, received string" — from the edge, about a field that looks
+  fine. It shipped in the token screen and made the whole feature unusable
+  while fourteen end-to-end tests stayed green, because they all call `fetch`
+  directly and never touch this file. `api.test.ts` now reads the source for a
+  second `JSON.stringify` and drives one call to parse what reaches the wire.
+- **A test that replaces `window.location` must put it back.** One case swaps
+  it for a stub to intercept `assign` — jsdom cannot navigate — and without an
+  `afterEach` restore, every case after it runs against a frozen object. Worse
+  than flaky: the callback test asserting the query string gets *cleared*
+  passed on a stub whose `search` was already `''`, so it proved nothing for
+  releases. Capture the descriptor at module level and restore it; and make a
+  test establish the state exists before asserting it goes away.
+- **jsdom does not implement `<details>` hiding.** Children of a *closed*
+  `<details>` are findable, visible and clickable in a test, so `toBeVisible()`
+  passes just as happily on a card that never folds. Assert the element's own
+  `open`. Same family as the `env()` trap below: assert what the DOM actually
+  carries.
+- **A Streamable HTTP client treats `405` as normal and everything else as an
+  error.** It opens a `GET` looking for a server-initiated stream; the spec
+  lets a server answer `405` to say it has none, and the reference client
+  returns quietly on exactly that status — a `404` from an unregistered method
+  becomes a thrown `StreamableHTTPError`, so a conforming client reports a
+  broken server while every request works. Register the method and answer
+  `405`; a comment claiming it is not the same thing, and was wrong here for a
+  release.
+- **The kernel keeps a finished run's final text only for a caller that said it
+  would wait.** The text exists nowhere but memory when a run settles, so it is
+  stashed — and the predicate used to be the run's *kind*, which broke the day
+  `start_run` began starting runs and walking away. Nobody consumed the stash,
+  and an automation polling every minute grew the map all day. `SubmitOptions.awaited`
+  is declared by the caller, synchronously in `submit`, before anything can
+  settle. Related: a run cancelled while *queued* never reaches the supervisor,
+  so its waiter has to be settled from the cancellation path or it blocks for
+  the full timeout on a run that is already dead.
+- **The i18n ratchets require a capital first letter, and that is deliberate.**
+  Relaxing `SENTENCE` surfaces 76 candidates here, about seventy of them
+  Tailwind class strings — `flex items-start gap-2` is indistinguishable from
+  prose by any cheap rule. So lowercase copy escapes all three measures, and it
+  is real copy: `QUESTION_NAMES` interpolated "models, slash commands" into a
+  French sentence for releases. The `halfTranslatedTables` measure closes the
+  case that regresses, with no false positives: a module-level table whose
+  string values are *already* in the catalogue is copy by demonstration, and
+  every one of its values must be.
 
 ## Testing
 

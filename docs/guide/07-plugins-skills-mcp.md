@@ -207,13 +207,19 @@ maximum, never a grant.
 Connecting is one line. In Claude Code:
 
 ```bash
-claude mcp add --transport http metaclaude https://your-site/api/gateway/mcp   --header "Authorization: Bearer mck_…"
+claude mcp add --transport http metaclaude https://your-site/api/gateway/mcp --header "Authorization: Bearer mck_…"
 ```
 
 The tools it offers: `list_workspaces`, `ask_workspace` (the main one — it runs
 in that workspace with its memory, skills and conventions, and waits for the
 answer), `start_run` for work too long to hold a request open, `search_notes`,
 and `list_tasks`.
+
+One detail worth knowing before granting the reading capability:
+`search_notes` returns that workspace's knowledge **and anything filed
+globally** — exactly the shelf a run there would read, which is the point, but
+it means a token scoped to one project can reach the notes you keep for all of
+them.
 
 **Treat a token as a password with a blast radius.** Anything holding one can
 ask this agent to work in the workspaces you named, and the agent runs shell

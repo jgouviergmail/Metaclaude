@@ -11,6 +11,43 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.38.4] — 2026-08-29
+
+### Changed
+
+- **Documentation caught up with three days of code.** The MCP gateway had
+  shipped, been reviewed adversarially and been fixed twice without the README
+  mentioning that Metaclaude exposes an MCP server at all — the one document
+  most people read first. It now carries the feature and a row in the security
+  table; `docs/ARCHITECTURE.md` gains the gateway beside delegation (it is the
+  same primitive with the caller outside the process) and `api_tokens` in the
+  data model; the roadmap records 0.36.0 and 0.38.0 as shipped; the guide's
+  settings chapter describes minting a token and the troubleshooting chapter
+  answers "my MCP token is refused" — including the two failures that look like
+  a bad token and are not, a `403` from an `Origin` header and a client
+  reporting a broken server over the wrong URL.
+
+- **Three claims that had gone stale.** `CLAUDE.md` and the README both
+  advertised "1733 tests, ~30s" for a suite that is now 2440 and takes about a
+  minute. `.env.example` and `docs/DEPLOYMENT.md` said `METACLAUDE_PUBLIC_URL`
+  was "needed by exactly one thing" — true until the gateway screen started
+  using it to show the endpoint. And the roadmap still listed a docs-drift
+  guard as unbuilt that `check.sh` has been running for a while: every
+  environment variable the guide names must exist in `.env.example` or
+  `compose.yml`.
+
+  What remains there was rewritten honestly rather than deleted: the guards
+  check *references*, not *claims*. "A run started by a token is marked in the
+  history" was true of the database and false of the screen for a release, and
+  no check in this repository could have said so.
+
+- **Six traps added to `CLAUDE.md`**, each one paid for this week: `request()`
+  serialising the body itself, a test that replaces `window.location` without
+  restoring it (and so passes for the wrong reason), jsdom not implementing
+  `<details>` hiding, a Streamable HTTP client treating every status but `405`
+  as an error, the kernel stashing a final text nobody will collect, and why
+  the i18n ratchets require a capital first letter.
+
 ## [0.38.3] — 2026-08-29
 
 ### Changed

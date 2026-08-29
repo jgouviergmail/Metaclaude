@@ -126,6 +126,21 @@ the refresh token expires after seven days, so publish the app as Internal
 local** — it erases what Metaclaude stored, but Google keeps listing the
 grant until you revoke it yourself at myaccount.google.com/permissions.
 
+### Letting other applications in
+
+The same tab holds the other direction: **MCP access**, where you mint the
+token another application uses to reach this agent. The extensions chapter has
+the walkthrough; what belongs here is the shape of the decision. A token is not
+a second account — it names the workspaces it can reach (there is no "all
+workspaces", deliberately), what it may do, and a **ceiling** on what a run it
+starts may do on its own. It expires on a date you choose, it is shown once,
+and revoking it stops everything using it immediately.
+
+Treat one like a password with a blast radius: anything holding it can ask this
+agent to work, and the agent runs commands. The listing shows when each token
+was last used, which is how an integration you have forgotten becomes visible
+again.
+
 ## What protects you (the short version)
 
 - **TLS is mandatory** — the app refuses to be less than a secure context.
