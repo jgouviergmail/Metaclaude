@@ -49,6 +49,15 @@ see the sessions chapter. The card reports it, says when runs are using it,
 and warns when a paired token is overriding it, because removing a token is
 sometimes the upgrade.
 
+**It also says when that sign-in ends**, and the difference between the two
+sources is worth knowing before you choose one. An account sign-in is held in
+the container's home volume and lapses on a fixed date a few weeks out —
+measured on a real deployment, the date did not move across a day of use, so
+activity does not extend it. A paired token lives a year, sits in the sealed
+vault, and therefore rides along in the nightly backup: losing the home volume
+costs you a sign-in but not a paired token. Session sync is the one thing only
+the account sign-in can do.
+
 ## Notifications
 
 The System tab's **Notifications** card makes the phone part of the loop:
@@ -117,8 +126,8 @@ the Claude CLI's state. For the owner, two more cards:
 **Doctor** runs every self-check the system knows in one pass — database
 integrity, the audit chain, the secrets vault, disk space on both volumes,
 the age of the last completed backup, whether anything can reach the internet
-from this container, the CLI and its credential, and any automation the
-failure guard switched off. Each check answers with a verdict and its
+from this container, the CLI and how long its credential has left, and any
+automation the failure guard switched off. Each check answers with a verdict and its
 evidence, and nothing is changed by running it. The backup check reads the
 marker the host's nightly backup writes after each completed archive; a
 warning there means backups have quietly stopped — or never started — which
@@ -130,6 +139,13 @@ clone` cannot resolve a remote, and no HTTP MCP server connects. It is the
 first thing to look at when runs fail for no visible reason — it separates
 "this server has no network" from "the model was refused", which otherwise
 look identical from a transcript.
+
+A credential the server can date gets counted down: two weeks before a CLI
+account sign-in ends, the check turns to a warning naming the days left, and to
+a failure once it has passed. That matters because the end is a wall rather
+than a rolling window — using the deployment does not push it back — and
+because everything works perfectly right up to the moment it does not. A pasted
+token carries no date this server can read, so nothing is claimed about one.
 
 **Updates** compares this version against the latest published release
 (`METACLAUDE_UPDATE_REPO`; set it empty to disable the check) — and, on a

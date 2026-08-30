@@ -46,6 +46,7 @@ describe('readCliLogin', () => {
       scopes: FULL.claudeAiOauth.scopes,
       subscriptionType: 'max',
       expiresAt: 1_900_000_000_000,
+      signInEndsAt: null,
     });
   });
 
@@ -88,5 +89,52 @@ describe('readCliLogin', () => {
     expect(
       readCliLogin(store(JSON.stringify({ claudeAiOauth: { accessToken: '', refreshToken: 'r' } }))),
     ).toBeNull();
+  });
+});
+
+/**
+ * When the sign-in itself ends — which is not `expiresAt`.
+ *
+ * Measured on a live deployment: `expiresAt` is the *access* token's, about
+ * eight hours out, and the CLI rotates it on its own. Two backups a day apart
+ * showed it move from 06:02 to 07:07 the next day while
+ * `refreshTokenExpiresAt` stayed at exactly the same instant — so the refresh
+ * token is fixed-term, not rolling, and no amount of activity extends it.
+ *
+ * That makes it the only date worth watching: when it passes, every run fails
+ * to authenticate at once, and nothing else in the product knows it is coming.
+ */
+describe('the end of the sign-in', () => {
+  it('reads the refresh token’s expiry, which is the one that matters', () => {
+    const login = readCliLogin(
+      store(
+        JSON.stringify({
+          claudeAiOauth: {
+            ...FULL.claudeAiOauth,
+            expiresAt: 1_788_000_000_000,
+            refreshTokenExpiresAt: 1_790_000_000_000,
+          },
+        }),
+      ),
+    );
+    expect(login?.expiresAt).toBe(1_788_000_000_000);
+    expect(login?.signInEndsAt).toBe(1_790_000_000_000);
+  });
+
+  it('answers null when the store does not carry one', () => {
+    // A setup token's store has no such field, and an older CLI may not write
+    // it. Absent is "unknown", never "expired".
+    expect(readCliLogin(store(JSON.stringify(FULL)))?.signInEndsAt).toBeNull();
+  });
+
+  it('ignores a value that is not a number', () => {
+    const login = readCliLogin(
+      store(
+        JSON.stringify({
+          claudeAiOauth: { ...FULL.claudeAiOauth, refreshTokenExpiresAt: 'soon' },
+        }),
+      ),
+    );
+    expect(login?.signInEndsAt).toBeNull();
   });
 });

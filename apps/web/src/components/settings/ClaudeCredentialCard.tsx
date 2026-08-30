@@ -20,6 +20,7 @@ import { CopyableCode } from '@/components/ui/CopyableCode';
 import { Button, Card, CardHeader, Input, Label } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { Trans, useT } from '@/lib/i18n';
+import { cn, formatRelative } from '@/lib/utils';
 
 export function ClaudeCredentialCard() {
   const t = useT();
@@ -147,6 +148,19 @@ export function ClaudeCredentialCard() {
             )}
           </p>
         ) : null}
+
+        {/*
+            When the sign-in stops working, said where somebody can act on it.
+
+            The date is the *refresh* token's, not the access token's: measured
+            on a live deployment, the access token rotated across a day while
+            this one did not move at all, so it is a wall rather than a rolling
+            window and no amount of use pushes it back. Absent means unknown —
+            a pasted setup token carries no such field — and unknown is not
+            worth a line. It turns urgent only near the end, because a
+            permanent warning is furniture.
+        */}
+        <SignInEnds endsAt={status.data?.cliLogin?.signInEndsAt ?? null} />
 
         {/* ------------------------- Guided pairing ------------------------- */}
         <div className="space-y-3">
@@ -315,5 +329,35 @@ export function ClaudeCredentialCard() {
         onConfirm={() => clear.mutate()}
       />
     </Card>
+  );
+}
+
+/**
+ * How long the CLI's account sign-in has left, when that is known.
+ *
+ * Fourteen days is the same threshold the doctor's credential check uses, and
+ * the two are meant to agree: whichever screen an operator happens to be on,
+ * the answer about a credential that is about to lapse is the same one.
+ */
+function SignInEnds({ endsAt }: { endsAt: number | null }) {
+  const t = useT();
+  if (endsAt === null) return null;
+
+  const days = Math.ceil((endsAt - Date.now()) / 86_400_000);
+  const urgent = days <= 14;
+
+  return (
+    <p
+      className={cn(
+        'rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed',
+        urgent ? 'bg-danger-soft text-danger' : 'text-muted',
+      )}
+    >
+      {days > 0
+        ? t('This sign-in ends {when} — renew it before then, or pair a token below.', {
+            when: formatRelative(endsAt),
+          })
+        : t('This sign-in has ended. Runs cannot authenticate until you renew it.')}
+    </p>
   );
 }

@@ -22,18 +22,9 @@ async function main(): Promise<void> {
       env: config.env,
       dataDir: config.dataDir,
       workspacesDir: config.workspacesDir,
-      authMode: config.claude.authMode,
     },
     'Metaclaude starting',
   );
-
-  if (config.claude.authMode === 'none') {
-    log.warn(
-      'No Claude credentials found. Set CLAUDE_CODE_OAUTH_TOKEN (run `claude setup-token` on a machine ' +
-        'where you are signed in) to use your subscription, or ANTHROPIC_API_KEY for pay-as-you-go. ' +
-        'Agent runs will fail until one is present.',
-    );
-  }
 
   const context = await createAppContext(config, log);
 
@@ -48,6 +39,36 @@ async function main(): Promise<void> {
     },
     'run ceilings in force',
   );
+
+  /*
+   * The credential, as *resolved* rather than as configured.
+   *
+   * `config.claude.authMode` only knows the two environment variables, so a
+   * deployment paired from the interface or signed in with `claude auth login`
+   * was logged as `authMode: "none"` on every boot while it worked perfectly.
+   * Read alongside the entrypoint's warning, that was two lines agreeing on
+   * something false — which is how a real one comes to be ignored.
+   */
+  const credential = context.claudeCredentials.status();
+  log.info(
+    {
+      mode: credential.mode,
+      source: credential.source,
+      signInEndsAt: credential.cliLogin?.signInEndsAt ?? null,
+    },
+    'Claude credential in force',
+  );
+  // The warning this replaces fired on `config.claude.authMode`, which reads
+  // only the two environment variables — so it fired on every boot of a
+  // deployment paired from the interface. Now it fires when the resolution
+  // that runs actually found nothing, which is when it is true.
+  if (credential.mode === 'none') {
+    log.warn(
+      'No Claude credential resolved — not in the vault, the environment, or the CLI’s own ' +
+        'store. Pair one from Settings → System, or run `claude setup-token` on a machine where ' +
+        'you are signed in. Agent runs will fail to authenticate until one exists.',
+    );
+  }
 
   /* ------------------------- First-run bootstrap ------------------------- */
 

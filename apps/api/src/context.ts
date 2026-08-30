@@ -652,7 +652,10 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
         return { ok: false, detail: error instanceof Error ? error.message : String(error) };
       }
     },
-    credentialMode: () => claudeCredentials.status().mode,
+    credential: () => {
+      const status = claudeCredentials.status();
+      return { mode: status.mode, signInEndsAt: status.cliLogin?.signInEndsAt ?? null };
+    },
     embeddings: () => ({
       requested: config.embeddings.provider,
       active: embedder.id,

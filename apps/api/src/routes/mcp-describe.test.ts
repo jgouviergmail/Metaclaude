@@ -240,3 +240,52 @@ describe('POST /api/mcp/:id/describe', () => {
     expect((await listed(server.id)).described).toEqual(kept.described);
   });
 });
+
+/**
+ * The badge the operator reads after pressing Test.
+ *
+ * `mcp_servers.status` could only ever hold `unknown` or `failed`: nothing in
+ * the codebase ever wrote `connected`. So seven servers on a live deployment,
+ * every one of them tested by hand and answering, all still showed `unknown` —
+ * reported as a persistence bug, and it was worse than that. The value was
+ * unreachable.
+ *
+ * A successful test is a verdict and is recorded. A failed one deliberately is
+ * not: the route's own reasoning holds — a description that cannot be fetched
+ * may be a slow server or a credential this process cannot see, and condemning
+ * it on that is worse than saying nothing. So the badge answers "did it answer
+ * us the last time we asked", and the live catalogue keeps answering "is it up
+ * right now".
+ */
+describe('what a test writes on the row', () => {
+  const register = async (name: string, url = mcpUrl): Promise<McpServerRecord> => {
+    const response = await post('/api/mcp', { workspaceId: null, name, transport: 'http', url });
+    expect(response.status).toBe(201);
+    return ((await response.json()) as { server: McpServerRecord }).server;
+  };
+
+  it('records that the server answered, so the badge stops saying unknown', async () => {
+    const server = await register('status-recorded');
+    expect(server.status).toBe('unknown');
+
+    expect((await post(`/api/mcp/${server.id}/describe`, {})).status).toBe(200);
+
+    const after = await listed(server.id);
+    expect(after.status).toBe('connected');
+    expect(after.lastError).toBeNull();
+  });
+
+  it('does not condemn a server whose description could not be fetched', async () => {
+    const server = await register('status-untouched', 'http://127.0.0.1:9/mcp');
+    expect((await post(`/api/mcp/${server.id}/describe`, {})).status).toBe(502);
+
+    // Still `unknown`: the probe failing is not evidence the server is down.
+    expect((await listed(server.id)).status).toBe('unknown');
+  });
+
+  it('clears a stale error once the server answers again', async () => {
+    const server = await register('status-recovered');
+    expect((await post(`/api/mcp/${server.id}/describe`, {})).status).toBe(200);
+    expect((await listed(server.id)).status).toBe('connected');
+  });
+});

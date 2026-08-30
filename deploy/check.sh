@@ -1417,6 +1417,24 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "The boot warning about credentials knows about all three sources"
+# A deployment authenticates from one of three places: a token in the sealed
+# vault, one in the environment, or the CLI's own account sign-in under $HOME.
+# The entrypoint could only see the second, so it warned on every boot of a
+# server that was perfectly paired — and an alarm that is always on is an alarm
+# nobody reads on the day it means something. The vault cannot be inspected
+# from a shell; the CLI store can, and that is the gap this closes.
+if grep -q 'credentials.json' "$REPO_ROOT/docker/entrypoint.sh"; then
+  ok "the entrypoint consults the CLI's own credential store"
+else
+  bad "the entrypoint only reads the environment — it will warn on a paired server"
+fi
+if grep -q 'refreshToken' "$REPO_ROOT/docker/entrypoint.sh"; then
+  ok "it tests the refresh token, not merely the file a logout leaves behind"
+else
+  bad "the entrypoint treats a logged-out store as a live sign-in"
+fi
+
 section "The documentation the product ships agrees with the product"
 # ─────────────────────────────────────────────────────────────────────────────
 

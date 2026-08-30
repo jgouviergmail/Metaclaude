@@ -163,6 +163,7 @@ describe('the CLI’s own sign-in', () => {
     scopes: ['user:profile', 'user:inference', 'user:sessions:claude_code'],
     subscriptionType: 'max' as string | null,
     expiresAt: 1_900_000_000_000 as number | null,
+    signInEndsAt: 1_990_000_000_000 as number | null,
   };
 
   /** Like build(), plus a CLI store holding a sign-in. */

@@ -1,11 +1,11 @@
 {
   "metrics": {
-    "tests": 2568,
+    "tests": 2582,
     "testFiles": 185,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
     "initialJsGzipKb": 187,
-    "deployChecks": 162,
+    "deployChecks": 166,
     "untranslatedStrings": 0,
     "untestedComponents": 0,
     "hardcodedUiText": 0,
@@ -19,5 +19,5 @@
     "untranslatedTableReads": 0,
     "controlBytesInSource": 0
   },
-  "updated": "2026-08-29"
+  "updated": "2026-08-30"
 }

@@ -11,6 +11,56 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.42.0] — 2026-08-30
+
+### Added
+
+- **The doctor counts the days a credential has left.** Found by looking at a
+  live server rather than at the code: no token in the vault, none in the
+  environment, every run working — because the CLI's own account sign-in sat in
+  the home volume. A supported mode, correctly reported as `ok`, and twenty-four
+  days from a fixed expiry that nothing anywhere counted down.
+
+  The date that matters is the refresh token's, not the access token's, and
+  that distinction was measured rather than assumed: two nightly backups a day
+  apart showed the access token's expiry move from 06:02 to 07:07 while the
+  refresh token's stayed at exactly the same instant. It is a wall, not a
+  rolling window — using the deployment does not push it back. The check now
+  warns fourteen days out naming the days left, fails once it has passed, and
+  says nothing at all when the end is unknown, because a pasted setup token
+  carries no such field and inventing a warning for "unknown" is how alarms
+  become furniture. The Claude card carries the same date, urgent on the same
+  threshold, where somebody can act on it.
+
+### Fixed
+
+- **An MCP server that answered every test still showed `unknown`, for ever.**
+  Reported from a deployment with seven of them, all tested by hand, all still
+  unknown — and it was worse than a persistence bug: **nothing in the codebase
+  ever wrote `connected`**. The value was unreachable, so the column could only
+  hold `unknown` or `failed`. A successful test records the verdict now. A
+  failed one still does not, and that asymmetry is deliberate — the route's own
+  reasoning holds, that a description which cannot be fetched may be a slow
+  server or a credential this process cannot see. So the badge answers "did it
+  answer us the last time we asked", and the live catalogue goes on answering
+  "is it up right now".
+
+- **The boot warning about credentials had been crying wolf for weeks.** It read
+  the two environment variables and nothing else, so a deployment paired from
+  the interface (token in the vault) or signed in with `claude auth login`
+  (token in the CLI's own store) was told at every single boot that it had no
+  credentials — while the doctor, correctly, reported `auth: subscription`. The
+  boot log agreed with it, printing `authMode: "none"` on a server that worked.
+
+  Two lines agreeing on something false is how a true one comes to be ignored,
+  which is exactly the warning you want working on the day a credential really
+  is missing. The entrypoint now consults the CLI's own store as well — testing
+  the refresh token rather than the file, because a logout blanks the value and
+  leaves the file — and says the vault may hold one it cannot see, rather than
+  claiming there is none. The boot log reports the credential as *resolved*,
+  after the context exists, alongside the run ceilings it already reported that
+  way. Two assertions in `check.sh` keep the entrypoint honest.
+
 ## [0.41.1] — 2026-08-29
 
 ### Fixed

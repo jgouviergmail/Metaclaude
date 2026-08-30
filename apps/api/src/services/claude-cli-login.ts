@@ -27,6 +27,7 @@ interface CredentialsFile {
     accessToken?: unknown;
     refreshToken?: unknown;
     expiresAt?: unknown;
+    refreshTokenExpiresAt?: unknown;
     scopes?: unknown;
     subscriptionType?: unknown;
   };
@@ -65,5 +66,8 @@ export function readCliLogin(configDir: string): ClaudeCliLoginInfo | null {
     scopes: oauth.scopes,
     subscriptionType: typeof oauth.subscriptionType === 'string' ? oauth.subscriptionType : null,
     expiresAt: typeof oauth.expiresAt === 'number' ? oauth.expiresAt : null,
+    // The one that matters. See `ClaudeCliLoginInfo.signInEndsAt`.
+    signInEndsAt:
+      typeof oauth.refreshTokenExpiresAt === 'number' ? oauth.refreshTokenExpiresAt : null,
   };
 }

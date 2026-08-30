@@ -200,6 +200,10 @@ export const fr: Record<string, string> = {
   'by {who}, {when}': 'par {who}, {when}',
   'the environment says {value}': 'l’environnement dit {value}',
   'Use the environment’s value': 'Utiliser la valeur de l’environnement',
+  'This sign-in ends {when} — renew it before then, or pair a token below.':
+    'Cette connexion prend fin {when} — renouvelez-la avant, ou appairez un jeton ci-dessous.',
+  'This sign-in has ended. Runs cannot authenticate until you renew it.':
+    'Cette connexion a pris fin. Les runs ne peuvent plus s’authentifier tant qu’elle n’est pas renouvelée.',
   '{n} unsaved change': '{n} modification non enregistrée',
   '{n} unsaved changes': '{n} modifications non enregistrées',
   'Stop a run that goes quiet after': 'Arrêter un run devenu silencieux après',

@@ -30,12 +30,33 @@ done
 # ── Claude credentials ───────────────────────────────────────────────────────
 # Not fatal: the operator may want the UI up in order to read this warning, and
 # everything except starting a run works without credentials.
-if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  log "WARNING: no Claude credentials found."
-  log "  For a Pro or Max subscription, run 'claude setup-token' on a machine"
-  log "  where you are signed in, then set CLAUDE_CODE_OAUTH_TOKEN in .env."
-  log "  For pay-as-you-go, set ANTHROPIC_API_KEY instead."
-  log "  Agent runs will fail until one of these is present."
+#
+# Three sources, and this used to know about only two. A deployment paired from
+# the interface keeps its token in the sealed vault, which nothing here can
+# read; one signed in with `claude auth login` keeps it in the CLI's own store
+# under $HOME. Both work, and both got this warning on every single boot — so
+# the one line that could tell a *genuinely* unpaired operator why nothing runs
+# had been crying wolf for weeks, on a server where the doctor correctly
+# reported `auth: subscription`. An alarm that is always on is an alarm nobody
+# reads, which is the whole reason it is worth fixing rather than deleting.
+#
+# The vault cannot be inspected from a shell, so absence there is not proven —
+# the wording says "may be" rather than claiming there is none. The CLI store
+# can be: the file survives a logout with its refresh token blanked, so the
+# test is for a non-empty value rather than for the file.
+cli_store="${HOME:-/home/metaclaude}/.claude/.credentials.json"
+cli_signed_in=false
+if [ -s "$cli_store" ] && grep -q '"refreshToken"[[:space:]]*:[[:space:]]*"[^"]' "$cli_store"; then
+  cli_signed_in=true
+fi
+
+if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] &&
+   [ "$cli_signed_in" = false ]; then
+  log "WARNING: no Claude credential in the environment or the CLI's own store."
+  log "  If you paired one from Settings it is in the vault and this is fine."
+  log "  Otherwise: pair from Settings > System, or run 'claude setup-token' on"
+  log "  a machine where you are signed in and set CLAUDE_CODE_OAUTH_TOKEN."
+  log "  Agent runs will fail to authenticate until one of these exists."
 fi
 
 # ── Master key ───────────────────────────────────────────────────────────────

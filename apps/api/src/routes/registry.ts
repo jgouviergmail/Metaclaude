@@ -379,6 +379,21 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
         instructions: described.instructions,
         tools: described.tools,
       });
+      /*
+       * And the verdict, which nothing used to write.
+       *
+       * `status` could only ever hold `unknown` or `failed`: no code path
+       * anywhere set `connected`, so a server tested by hand and answering
+       * stayed `unknown` for ever. Seven of them did on a live deployment,
+       * reported as a persistence bug — the value was simply unreachable.
+       *
+       * Only the success is recorded. The failure branch below deliberately
+       * leaves the row alone, for the reason it already gives: a description
+       * that cannot be fetched is not proof of an outage. So this column
+       * answers "did it answer us the last time we asked", and the live
+       * catalogue goes on answering "is it up right now".
+       */
+      context.registry.setMcpStatus(server.id, 'connected', null);
       return reply.send({ description: described });
     } catch (error) {
       // A description that cannot be fetched is not an outage: the server may

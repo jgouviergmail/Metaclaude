@@ -184,3 +184,54 @@ describe('the manual fallback', () => {
     );
   });
 });
+
+/**
+ * When the sign-in that runs everything stops working.
+ *
+ * A live deployment ran entirely on the CLI's account sign-in — no token in the
+ * vault, none in the environment — and this card said so correctly while saying
+ * nothing at all about the fact that the sign-in ends on a fixed date. Measured
+ * on that server: the refresh token's expiry did not move across a day and a
+ * refresh, so it is a wall rather than a rolling window, and the only warning
+ * before it is the one the product chooses to give.
+ *
+ * The card is where somebody stands when they can act on it, so it is where the
+ * date belongs — and it becomes an urgent line only when the end is close,
+ * because a permanent one is furniture.
+ */
+describe('the end of a CLI sign-in', () => {
+  const DAY = 86_400_000;
+
+  const signedIn = (signInEndsAt: number | null) => ({
+    mode: 'subscription' as const,
+    source: 'cli-login' as const,
+    hint: null,
+    cliLogin: {
+      full: true,
+      scopes: ['user:profile', 'user:sessions:claude_code'],
+      subscriptionType: 'max',
+      expiresAt: Date.now() + 3 * 3_600_000,
+      signInEndsAt,
+    },
+  });
+
+  it('says when the sign-in ends, so the date is somewhere at all', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue(signedIn(Date.now() + 60 * DAY));
+    renderWithProviders(<ClaudeCredentialCard />);
+    expect(await screen.findByText(/sign-in ends/i)).toBeDefined();
+  });
+
+  it('makes it urgent only when it is close', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue(signedIn(Date.now() + 5 * DAY));
+    renderWithProviders(<ClaudeCredentialCard />);
+    const line = await screen.findByText(/sign-in ends/i);
+    expect(line.className).toMatch(/danger|warning/);
+  });
+
+  it('says nothing when the end is unknown, rather than guessing', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue(signedIn(null));
+    renderWithProviders(<ClaudeCredentialCard />);
+    await screen.findByText(/signed in with a Claude account/i);
+    expect(screen.queryByText(/sign-in ends/i)).toBeNull();
+  });
+});

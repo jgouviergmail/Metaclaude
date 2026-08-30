@@ -31,7 +31,7 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     diskFree: async () => 50 * GB,
     cliVersion: async () => '2.1.246 (Claude Code)',
     reachOut: async () => ({ ok: true, detail: 'HTTP 405 in 12 ms' }),
-    credentialMode: () => 'oauth',
+    credential: () => ({ mode: 'oauth', signInEndsAt: null }),
     embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512 }),
     activeRuns: () => 1,
     queuedRuns: () => 0,
@@ -115,7 +115,7 @@ describe('escalations', () => {
     const gone = await makeDoctor({ cliVersion: async () => null }).run();
     expect(gone.checks.find((entry) => entry.name === 'claude-cli')?.status).toBe('fail');
 
-    const unauth = await makeDoctor({ credentialMode: () => 'none' }).run();
+    const unauth = await makeDoctor({ credential: () => ({ mode: 'none', signInEndsAt: null }) }).run();
     expect(unauth.checks.find((entry) => entry.name === 'claude-cli')?.status).toBe('warn');
   });
 
@@ -342,5 +342,63 @@ describe('the network check', () => {
     expect(report.checks.find((entry) => entry.name === 'network')?.status).toBe('fail');
     // Every other check still ran.
     expect(report.checks.length).toBeGreaterThan(5);
+  });
+});
+
+/**
+ * The credential the deployment actually runs on, and when it stops.
+ *
+ * Found on a live server: no token in the vault, `CLAUDE_CODE_OAUTH_TOKEN`
+ * empty, and every run working — because the CLI's own account sign-in sits in
+ * the home volume. That is a supported mode, and the doctor rightly called it
+ * `ok`. What nothing said was that the sign-in ends on a fixed date twenty-four
+ * days out: the refresh token is fixed-term, proven by two backups a day apart
+ * where the access token's expiry moved and this one did not.
+ *
+ * So `ok` was true and useless. A credential with a known end date deserves the
+ * same treatment as a backup that has quietly stopped: say it before it bites,
+ * not after.
+ */
+describe('the credential check counts the days', () => {
+  const DAY = 86_400_000;
+
+  const withCredential = (over: Partial<{ mode: string; signInEndsAt: number | null }>) =>
+    makeDoctor({ credential: () => ({ mode: 'subscription', signInEndsAt: null, ...over }) });
+
+  const check = async (doctor: ReturnType<typeof makeDoctor>) =>
+    (await doctor.run()).checks.find((entry) => entry.name === 'claude-cli')!;
+
+  it('stays ok when the sign-in has months left', async () => {
+    const entry = await check(withCredential({ signInEndsAt: NOW + 60 * DAY }));
+    expect(entry.status).toBe('ok');
+    expect(entry.detail).toMatch(/subscription/);
+  });
+
+  it('warns once the end is close, and says how long is left', async () => {
+    const entry = await check(withCredential({ signInEndsAt: NOW + 9 * DAY }));
+    expect(entry.status).toBe('warn');
+    expect(entry.summary).toMatch(/9 days/);
+    expect(entry.summary).toMatch(/sign(-| )in/i);
+  });
+
+  it('fails once it has passed, because every run will', async () => {
+    const entry = await check(withCredential({ signInEndsAt: NOW - DAY }));
+    expect(entry.status).toBe('fail');
+  });
+
+  /**
+   * A pasted setup token has no end date this process can read, and an older
+   * CLI writes none. Unknown is not "expiring", and inventing a warning for it
+   * would be the boot warning's mistake — an alarm that is always on.
+   */
+  it('says nothing about a credential whose end it cannot know', async () => {
+    const entry = await check(withCredential({ signInEndsAt: null }));
+    expect(entry.status).toBe('ok');
+  });
+
+  it('still warns when there is no credential at all', async () => {
+    const entry = await check(withCredential({ mode: 'none' }));
+    expect(entry.status).toBe('warn');
+    expect(entry.summary).toMatch(/no credential/i);
   });
 });

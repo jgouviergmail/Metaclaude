@@ -29,6 +29,15 @@ const HOUR = 3_600_000;
  */
 const BACKUP_STALE_MS = 26 * HOUR;
 
+/**
+ * How long before a Claude sign-in ends the doctor starts saying so.
+ *
+ * Two weeks: long enough to notice on a screen somebody opens weekly, short
+ * enough that the warning still means "do this soon" rather than becoming
+ * furniture.
+ */
+const CREDENTIAL_WARN_DAYS = 14;
+
 export interface DoctorDeps {
   db: Db;
   audit: {
@@ -56,7 +65,14 @@ export interface DoctorDeps {
    * what the result *means* is what belongs in this file and is worth testing.
    */
   reachOut: () => Promise<{ ok: boolean; detail: string }>;
-  credentialMode: () => string;
+  /**
+   * What the deployment authenticates with, and when that stops being true.
+   *
+   * The mode alone was not enough. A server running on the CLI's own sign-in
+   * reported `ok` and `auth: subscription` — both correct — while the sign-in
+   * itself was twenty-four days from a fixed expiry that nothing counted down.
+   */
+  credential: () => { mode: string; signInEndsAt: number | null };
   /**
    * What retrieval is *actually* running with, versus what was configured.
    *
@@ -348,7 +364,7 @@ export class Doctor {
         detail: null,
       };
     }
-    const mode = this.deps.credentialMode();
+    const { mode, signInEndsAt } = this.deps.credential();
     if (mode === 'none') {
       return {
         name: 'claude-cli',
@@ -356,6 +372,36 @@ export class Doctor {
         summary: 'The CLI is present but no credential is paired — runs will fail to authenticate.',
         detail: version,
       };
+    }
+
+    /*
+     * A credential with a known end date is worth saying out loud before it
+     * bites, exactly like a backup that has quietly stopped.
+     *
+     * Only when the end is *known*: a pasted setup token carries no expiry
+     * this process can read, and neither does an older CLI's store. Inventing
+     * a warning for "unknown" would repeat the boot warning's mistake — an
+     * alarm that is always on is an alarm nobody reads.
+     */
+    if (signInEndsAt !== null) {
+      const left = signInEndsAt - (this.deps.now?.() ?? Date.now());
+      if (left <= 0) {
+        return {
+          name: 'claude-cli',
+          status: 'fail',
+          summary: 'The Claude sign-in has expired — every run will fail to authenticate.',
+          detail: `${version} · auth: ${mode}`,
+        };
+      }
+      const days = Math.ceil(left / 86_400_000);
+      if (days <= CREDENTIAL_WARN_DAYS) {
+        return {
+          name: 'claude-cli',
+          status: 'warn',
+          summary: `The Claude sign-in ends in ${days} ${days === 1 ? 'day' : 'days'}; renew it before runs start failing.`,
+          detail: `${version} · auth: ${mode}`,
+        };
+      }
     }
     return { name: 'claude-cli', status: 'ok', summary: version, detail: `auth: ${mode}` };
   }

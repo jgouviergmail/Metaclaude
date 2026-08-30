@@ -898,7 +898,24 @@ export const ClaudeCliLoginInfo = z.object({
   full: z.boolean(),
   scopes: z.array(z.string()),
   subscriptionType: z.string().nullable(),
+  /**
+   * When the *access* token expires — hours away, and rotated by the CLI on
+   * its own. Almost never the number anybody wants.
+   */
   expiresAt: z.number().nullable(),
+  /**
+   * When the sign-in itself ends, and nothing can extend it.
+   *
+   * The refresh token's expiry, and the only date worth watching: measured on
+   * a live deployment, two backups a day apart showed `expiresAt` move while
+   * this stayed at exactly the same instant. It is fixed-term, not rolling, so
+   * activity does not push it back — and when it passes, every run fails to
+   * authenticate at once.
+   *
+   * Null when the store does not carry one, which means *unknown* rather than
+   * expired: a setup token has no such field, and neither does an older CLI.
+   */
+  signInEndsAt: z.number().nullable().default(null),
 });
 export type ClaudeCliLoginInfo = z.infer<typeof ClaudeCliLoginInfo>;
 
