@@ -513,8 +513,9 @@ export function MemoryPage() {
   const workspaces = workspacesQuery.data?.workspaces ?? [];
   // Retired rows come with the list so they can be folded below it; the
   // tiers only ever show what recall can still reach.
-  const liveAll = memories.filter((memory) => memory.retiredAt === null);
-  const live = liveAll.filter((memory) => shelf === 'all' || memory.shelf === shelf);
+  const live = memories.filter(
+    (memory) => memory.retiredAt === null && (shelf === 'all' || memory.shelf === shelf),
+  );
   const retired = memories.filter((memory) => memory.retiredAt !== null);
   const tiers = tiersOf(live, workspaces, t);
   const insights = insightsQuery.data?.insights ?? [];
@@ -829,10 +830,12 @@ export function MemoryPage() {
                 {t('Stored memories')}
               </h2>
               <p className="text-xs tabular-nums text-muted">
-                {/* Counted over the live rows: `total` excludes the retired
-                    ones, and so does every card below — the fold has its own
-                    count. */}
-                {memoryQuery.data && memoryQuery.data.total > liveAll.length
+                {/* Counted over the cards actually rendered: `total` excludes
+                    the retired ones, and so does every card below — the fold
+                    has its own count. The denominator appears whenever fewer
+                    are shown than exist, which is a shelf filter as much as a
+                    page of a longer list. */}
+                {memoryQuery.data && memoryQuery.data.total > live.length
                   ? t('{shown} shown of {total}', { shown: live.length, total: memoryQuery.data.total })
                   : t('{shown} shown', { shown: live.length })}
               </p>

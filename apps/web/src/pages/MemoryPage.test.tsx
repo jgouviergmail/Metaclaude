@@ -579,6 +579,9 @@ describe('shelves and retirement', () => {
         memory('mem_plain', 'Plain lesson', { shelf: 'durable' }),
         memory('mem_old', 'Form offers three triggers', { shelf: 'volatile', retiredAt: 1, supersededBy: 'mem_fact' }),
       ],
+      // The API's total counts the live rows only, which is what the count
+      // beside the heading is a fraction of.
+      total: 3,
       sources: {},
     });
     apiMock.updateMemory.mockResolvedValue({ memory: memory('mem_old', 'Form offers three triggers') });
@@ -597,6 +600,11 @@ describe('shelves and retirement', () => {
     // Not on a card: a retired memory has left recall — and is not counted as shown.
     expect(screen.getAllByText('Form offers three triggers')).toHaveLength(1);
     expect(screen.getByText('3 shown')).toBeTruthy();
+
+    // A shelf filter hides live rows, so the denominator appears — and the
+    // retired one is in neither number.
+    fireEvent.click(screen.getByRole('button', { name: 'Volatile' }));
+    expect(screen.getByText('1 shown of 3')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Restore Form offers three triggers' }));
     await waitFor(() => expect(apiMock.updateMemory).toHaveBeenCalledWith('mem_old', { retired: false }));

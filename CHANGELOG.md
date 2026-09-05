@@ -11,6 +11,22 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.51.4] — 2026-09-05
+
+### Fixed
+
+- **The memory count says how many of how many under a shelf filter.** It
+  compared the total against the unfiltered live rows, so filtering to one
+  shelf showed "2 shown" with no denominator — the number that says what is
+  being hidden. It compares against the cards actually rendered now.
+
+### Changed
+
+- **CLAUDE.md records the trap 0.51.2 fell into**: vitest strips types and
+  never checks them, so a suite can be green here while `tsc` and the build
+  are red on CI — and the release is then tagged by nothing. Same family as
+  the `check.sh` entry beside it.
+
 ## [0.51.3] — 2026-09-05
 
 ### Fixed

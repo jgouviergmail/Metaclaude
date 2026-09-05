@@ -416,6 +416,17 @@ restates the code is noise; one that records a decision or a trap is not.
   `canUseTool` can be reached; every other mode goes through
   `PermissionBroker`, which is what keeps the decision and its transcript line
   inside Metaclaude. `plan` pre-approves nothing at all.
+- **A green vitest run is not a green typecheck.** Vitest strips types; it
+  never checks them. A test fixture typed
+  `Partial<TranscriptEvent & { kind: 'result' }>['usage']` — which is the
+  *whole* usage type, `Partial` having been applied to the event, not to the
+  field — ran perfectly and failed `tsc`, so the suite was green here and CI
+  was red on both the typecheck and the build. The version it belonged to was
+  therefore tagged by nothing and never shipped. `pnpm typecheck` is what
+  covers the tests (see the tsconfig split); run it after touching any
+  TypeScript, tests included. Same family as the `check.sh` entry above: the
+  local run was answering a smaller question than the one that gates a push.
+
 - **The i18n ratchets require a capital first letter, and that is deliberate.**
   Relaxing `SENTENCE` surfaces 76 candidates here, about seventy of them
   Tailwind class strings — `flex items-start gap-2` is indistinguishable from
