@@ -117,6 +117,39 @@ describe('create', () => {
     expect(scheduler.get(automation.id)).toEqual(automation);
   });
 
+  /**
+   * The column holds whatever was written the day it was written. Rows made
+   * before `notify` existed do not carry the key, and the API used to hand
+   * them back as they were — an object missing a field its own type declares.
+   * Measured in production the day the flag was fixed: the only automation
+   * there had no `notify` in its stored JSON at all.
+   */
+  it('fills a stored policy written before a field existed', () => {
+    const automation = make({});
+    db.prepare('UPDATE automations SET policy = ? WHERE id = ?').run(
+      JSON.stringify({ model: 'opus', effort: null, permissionMode: 'plan', agentName: null, maxTurns: null }),
+      automation.id,
+    );
+
+    const read = scheduler.get(automation.id) as Automation;
+    expect(read.policy.notify).toBe(false);
+    expect(read.policy.model).toBe('opus');
+    expect(read.policy.permissionMode).toBe('plan');
+  });
+
+  /** A policy the schema refuses keeps what an operator chose; only the gaps are filled. */
+  it('does not reset a policy it cannot parse', () => {
+    const automation = make({ policy: { model: 'opus' } });
+    db.prepare('UPDATE automations SET policy = ? WHERE id = ?').run(
+      JSON.stringify({ model: 'opus', permissionMode: 'not-a-mode' }),
+      automation.id,
+    );
+
+    const read = scheduler.get(automation.id) as Automation;
+    expect(read.policy.model).toBe('opus');
+    expect(read.policy.notify).toBe(false);
+  });
+
   it('merges the supplied policy over the defaults', () => {
     const automation = make({ policy: { model: 'sonnet', effort: 'high' } });
     expect(automation.policy).toEqual({

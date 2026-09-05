@@ -65,6 +65,24 @@ interface AutomationRow {
  */
 const DEFAULT_POLICY: Automation['policy'] = AutomationPolicy.parse({});
 
+/**
+ * The stored policy, with every declared field present.
+ *
+ * A cast is not a parse: the column holds whatever was written the day it was
+ * written, and the rows created before `notify` existed simply do not carry
+ * the key — so `policy.notify` was `undefined` on them, which is falsy and
+ * therefore *worked*, while the object the API returned did not match the
+ * type it claims. Parsing fills each missing field with its declared default.
+ * A policy the schema refuses keeps its values over the defaults rather than
+ * being reset: it is already unusable, and losing what an operator chose
+ * would be a second failure on top of the first.
+ */
+function readPolicy(raw: string): Automation['policy'] {
+  const stored = parseJson<Record<string, unknown>>(raw, {});
+  const parsed = AutomationPolicy.safeParse(stored);
+  return parsed.success ? parsed.data : { ...DEFAULT_POLICY, ...stored };
+}
+
 function toAutomation(row: AutomationRow): Automation {
   return {
     id: row.id,
@@ -73,7 +91,7 @@ function toAutomation(row: AutomationRow): Automation {
     description: row.description,
     prompt: row.prompt,
     trigger: parseJson<AutomationTrigger>(row.trigger, { type: 'manual' }),
-    policy: parseJson<Automation['policy']>(row.policy, DEFAULT_POLICY),
+    policy: readPolicy(row.policy),
     continuous: toBool(row.continuous),
     sessionId: row.session_id,
     maxConsecutiveFailures: row.max_consecutive_failures,

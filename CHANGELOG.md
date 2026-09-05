@@ -11,6 +11,22 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.53.2] — 2026-09-05
+
+### Fixed
+
+- **A stored policy is parsed, not cast.** Verifying 0.53.1 in production
+  showed the other half of the same bug: the one automation there had no
+  `notify` key in its stored JSON at all, because the column holds whatever
+  was written the day it was written. The API handed that object back as it
+  was — an `Automation` whose policy was missing a field its own type
+  declares, saved from breaking anything only by `undefined` being falsy.
+  Every stored policy is now read through `AutomationPolicy`, so the fields
+  that did not exist when a row was written come back at their declared
+  defaults. A policy the schema refuses keeps the values an operator chose
+  and gains only the missing ones: it is already unusable, and resetting it
+  would be a second failure on top of the first.
+
 ## [0.53.1] — 2026-09-05
 
 ### Fixed
