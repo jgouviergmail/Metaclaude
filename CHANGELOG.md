@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.48.2] — 2026-09-05
+
+### Added
+
+- **A schema-derived test over every in-process tool.** The `pinned` defect
+  of 0.48.1 was a field a tool accepted and never forwarded, and a per-tool
+  test cannot prevent the next one: the field that is dropped is the field
+  nobody thought to assert. `kernel/tool-forwarding.test.ts` now reads each
+  tool's input schema, drives the tool with every field filled and then with
+  each optional field removed in turn, against a facade that records what it
+  is asked, and requires every value to arrive — across the system, board,
+  proposal and gateway servers, 50 tools. Deliberate drops are listed with a
+  reason and fail if they stop happening. Audited the same day: no other tool
+  dropped a field; a heuristic pass over the 59 request-body schemas the REST
+  routes parse found none either.
+
+
 ## [0.48.1] — 2026-09-05
 
 ### Fixed

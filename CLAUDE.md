@@ -518,7 +518,13 @@ restates the code is noise; one that records a decision or a trap is not.
   forwarded a hand-picked subset — so a memory asked for as pinned at 1 came
   back unpinned at 0.7 with no error, and only the steward noticed. Same
   family as the edge-schema trap: when a schema names a field, one test has
-  to follow that field to the row.
+  to follow that field to the row. `kernel/tool-forwarding.test.ts` now
+  derives that test from the schemas: every in-process tool is driven with
+  every field filled, then with each optional field removed in turn, against
+  a recording facade, and every value must arrive. The "each optional
+  removed" family is not optional — filling everything drives `id`-or-create
+  tools down their edit branch only, and the first version of that test
+  passed on the very bug it was written for.
 - **A class declared beside `vi.mock` is in its temporal dead zone when the
   factory runs.** The factories are hoisted above every top-level statement,
   so `ApiError` defined at module level and referenced from the factory
