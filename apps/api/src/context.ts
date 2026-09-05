@@ -28,7 +28,9 @@ import {
   WorkspaceRepo,
 } from './kernel/repositories.js';
 import { AgentSupervisor } from './kernel/supervisor.js';
-import { SYSTEM_TOOLS, systemToolNames } from './kernel/system-tools.js';
+import { ADVISOR_SERVER_NAME, ADVISOR_TOOL_CATALOGUE, advisorToolNames } from './kernel/advisor-tools.js';
+import { BOARD_SERVER_NAME, BOARD_TOOL_CATALOGUE, boardToolNames } from './kernel/board-tools.js';
+import { SYSTEM_SERVER_NAME, SYSTEM_TOOLS, systemToolNames } from './kernel/system-tools.js';
 import { decideApproval } from './http/approvals.js';
 import { PolicyLearner } from './learning/bandit.js';
 import { TaskClassifier } from './learning/classifier.js';
@@ -209,10 +211,18 @@ function findDocsDir(): string | null {
   return null;
 }
 
-/** Same idea for the compiled API: `apps/api/dist` under the image's root, `dist` in a built checkout. */
-function findCodeDir(): string | null {
-  for (const candidate of [resolve(process.cwd(), 'apps/api/dist'), resolve(process.cwd(), 'dist')]) {
-    if (existsSync(join(candidate, 'index.js'))) return candidate;
+/**
+ * Same idea for the sources: `source/` under the image's root (the Dockerfile
+ * ships the trees `SOURCE_TREES` names there), the repository root in a
+ * checkout — whether the server runs from it or from `apps/api`.
+ */
+function findSourceRoot(): string | null {
+  for (const candidate of [
+    resolve(process.cwd(), 'source'),
+    process.cwd(),
+    resolve(process.cwd(), '../..'),
+  ]) {
+    if (existsSync(join(candidate, 'apps/api/src/index.ts'))) return candidate;
   }
   return null;
 }
@@ -466,16 +476,29 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     workspaces: workspaceRepo,
     workspacesRoot: config.workspacesDir,
     docsDir: findDocsDir(),
-    codeDir: findCodeDir(),
+    sourceRoot: findSourceRoot(),
     version: APP_VERSION,
     language: () => contentLanguage(systemWorkspace.id()),
-    preapproved: () => systemToolNames(),
-    tools: () =>
-      SYSTEM_TOOLS.map((entry) => ({
-        name: `mcp__metaclaude_system__${entry.name}`,
+    // The whole reversible surface, by exact name: its own tools, the board
+    // and the proposals. Pre-approving less than the supervisor mounts left
+    // the steward unable to file a card without a person watching, and
+    // refused outright when its review ran on the schedule under `dontAsk`.
+    preapproved: () => [...systemToolNames(), ...boardToolNames(), ...advisorToolNames()],
+    tools: () => [
+      ...SYSTEM_TOOLS.map((entry) => ({
+        name: `mcp__${SYSTEM_SERVER_NAME}__${entry.name}`,
         ring: entry.ring,
         description: entry.description,
       })),
+      ...BOARD_TOOL_CATALOGUE.map((entry) => ({
+        ...entry,
+        name: `mcp__${BOARD_SERVER_NAME}__${entry.name}`,
+      })),
+      ...ADVISOR_TOOL_CATALOGUE.map((entry) => ({
+        ...entry,
+        name: `mcp__${ADVISOR_SERVER_NAME}__${entry.name}`,
+      })),
+    ],
     log: (level, message, data) => log[level](data ?? {}, message),
   });
   try {

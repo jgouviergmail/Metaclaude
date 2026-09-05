@@ -25,6 +25,7 @@ let db: Db;
 let repo: WorkspaceRepo;
 let root: string;
 let docs: string;
+let sources: string;
 let logged: string[];
 
 function make(overrides: Partial<ConstructorParameters<typeof SystemWorkspace>[0]> = {}) {
@@ -33,6 +34,7 @@ function make(overrides: Partial<ConstructorParameters<typeof SystemWorkspace>[0
     workspaces: repo,
     workspacesRoot: root,
     docsDir: docs,
+    sourceRoot: sources,
     version: '9.9.9',
     language: () => 'fr',
     preapproved: () => ['mcp__metaclaude_system__system_overview'],
@@ -50,6 +52,17 @@ beforeEach(() => {
   writeFileSync(join(docs, 'ARCHITECTURE.md'), '# Architecture\n', 'utf8');
   mkdirSync(join(docs, 'guide'));
   writeFileSync(join(docs, 'guide', '01-getting-started.md'), '# Start\n', 'utf8');
+  // A repository root the way `findSourceRoot` finds one: two of the trees
+  // and the developers' CLAUDE.md; the web tree deliberately absent.
+  sources = mkdtempSync(join(tmpdir(), 'mc-src-'));
+  mkdirSync(join(sources, 'apps', 'api', 'src', 'kernel'), { recursive: true });
+  writeFileSync(join(sources, 'apps', 'api', 'src', 'index.ts'), 'export {};\n', 'utf8');
+  writeFileSync(join(sources, 'apps', 'api', 'src', 'kernel', 'kernel.ts'), '// the kernel\n', 'utf8');
+  mkdirSync(join(sources, 'packages', 'shared', 'src'), { recursive: true });
+  writeFileSync(join(sources, 'packages', 'shared', 'src', 'domain.ts'), '// contracts\n', 'utf8');
+  writeFileSync(join(sources, 'CLAUDE.md'), '# Repo\n\nEvery push to main bumps the version.\n', 'utf8');
+  mkdirSync(join(sources, 'node_modules', 'left-pad'), { recursive: true });
+  writeFileSync(join(sources, 'node_modules', 'left-pad', 'index.js'), '', 'utf8');
   logged = [];
 });
 
@@ -57,6 +70,7 @@ afterEach(() => {
   db.close();
   rmSync(root, { recursive: true, force: true });
   rmSync(docs, { recursive: true, force: true });
+  rmSync(sources, { recursive: true, force: true });
 });
 
 describe('ensure', () => {
@@ -220,21 +234,103 @@ describe('what it writes into the workspace', () => {
     expect(readFileSync(join(workspace.path, 'SYSTEM-MAP.md'), 'utf8')).toContain('2 (1 read, 1 reversible)');
   });
 
-  it('copes with no documentation shipped, as in a bare dev checkout', async () => {
-    const workspace = await make({ docsDir: null, codeDir: null }).ensure();
+  /**
+   * The catalogue is not one server's: the board and proposal tools are
+   * pre-approved beside the system ones, and the instructions must say so in
+   * the same list — a tool the agent believes opens a card is a tool it
+   * asks the operator about instead of using.
+   */
+  it('lists tools from several servers in the same rings, and tells the agent what still asks', async () => {
+    const workspace = await make({
+      preapproved: () => [
+        'mcp__metaclaude_system__system_overview',
+        'mcp__metaclaude_board__board_list',
+        'mcp__metaclaude_board__board_create',
+        'mcp__metaclaude_advisor__advisor_propose_skill',
+      ],
+      tools: () => [
+        { name: 'mcp__metaclaude_system__system_overview', ring: 1, description: 'Where things stand.' },
+        { name: 'mcp__metaclaude_board__board_list', ring: 1, description: 'The cards.' },
+        { name: 'mcp__metaclaude_board__board_create', ring: 2, description: 'Add a card.' },
+        { name: 'mcp__metaclaude_advisor__advisor_propose_skill', ring: 2, description: 'Propose a skill.' },
+      ],
+    }).ensure();
+
+    const claude = readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8');
+    const ring1 = claude.indexOf('### Ring 1');
+    const ring2 = claude.indexOf('### Ring 2');
+    expect(claude.indexOf('board_list` — The cards.')).toBeGreaterThan(ring1);
+    expect(claude.indexOf('board_list` — The cards.')).toBeLessThan(ring2);
+    expect(claude.indexOf('board_create` — Add a card.')).toBeGreaterThan(ring2);
+    expect(claude.indexOf('advisor_propose_skill` — Propose a skill.')).toBeGreaterThan(ring2);
+    expect(claude).toContain('`WebFetch`');
+    expect(claude).toContain('filing, moving, annotating or breaking down a card');
+    expect(readFileSync(join(workspace.path, 'SYSTEM-MAP.md'), 'utf8')).toContain('4 (2 read, 2 reversible)');
+  });
+
+  it('copes with no documentation and no sources shipped, as in a bare image', async () => {
+    const workspace = await make({ docsDir: null, sourceRoot: null }).ensure();
 
     expect(existsSync(join(workspace.path, 'docs'))).toBe(false);
+    expect(existsSync(join(workspace.path, 'code'))).toBe(false);
     expect(existsSync(join(workspace.path, 'CLAUDE.md'))).toBe(true);
     const claude = readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8');
     expect(claude).not.toContain('docs/ARCHITECTURE.md');
     // No invented path either: a pointer to code that is not there is worse than none.
-    expect(claude).not.toMatch(/the running code/);
+    expect(claude).not.toContain('`code/`');
   });
 
-  it('points at the running code where the deployment actually has it', async () => {
-    const workspace = await make({ codeDir: '/opt/metaclaude/apps/api/dist' }).ensure();
+  /**
+   * The steward cannot be granted an extra directory — its reach is bounded
+   * to the workspaces root like everyone's — so the code it runs is copied
+   * *into* its workspace, the trees `SOURCE_TREES` names and nothing around
+   * them. The repository's CLAUDE.md comes along renamed: under its own name
+   * the CLI would load it as instructions.
+   */
+  it('copies the source trees into code/, renames the developers’ CLAUDE.md, and skips what is not there', async () => {
+    const workspace = await make().ensure();
 
-    expect(readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8')).toContain('`/opt/metaclaude/apps/api/dist` — the running code');
+    const code = join(workspace.path, 'code');
+    expect(readFileSync(join(code, 'apps', 'api', 'src', 'kernel', 'kernel.ts'), 'utf8')).toBe('// the kernel\n');
+    expect(existsSync(join(code, 'packages', 'shared', 'src', 'domain.ts'))).toBe(true);
+    expect(existsSync(join(code, 'apps', 'web'))).toBe(false);
+    expect(existsSync(join(code, 'node_modules'))).toBe(false);
+    expect(existsSync(join(code, 'CLAUDE.md'))).toBe(false);
+    expect(readFileSync(join(code, 'REPOSITORY-CLAUDE.md'), 'utf8')).toContain('bumps the version');
+
+    const claude = readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8');
+    expect(claude).toContain('`code/` — the TypeScript sources');
+    expect(claude).toContain('REPOSITORY-CLAUDE.md');
+  });
+
+  it('replaces code/ whole at every boot, so a file a release removed is gone', async () => {
+    const first = await make().ensure();
+    const stale = join(first.path, 'code', 'apps', 'api', 'src', 'removed.ts');
+    writeFileSync(stale, 'gone next release', 'utf8');
+
+    await make().ensure();
+
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(join(first.path, 'code', 'apps', 'api', 'src', 'index.ts'))).toBe(true);
+  });
+
+  it('writes nothing under code/ when the root holds none of the trees, and removes a previous copy', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'mc-nosrc-'));
+    try {
+      const first = await make().ensure();
+      expect(existsSync(join(first.path, 'code', 'apps', 'api', 'src', 'index.ts'))).toBe(true);
+
+      const workspace = await make({ sourceRoot: empty }).ensure();
+
+      // Last release's code is not this release's code: gone, not left to be read as current.
+      expect(existsSync(join(workspace.path, 'code'))).toBe(false);
+      expect(readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8')).not.toContain('`code/`');
+
+      await make({ sourceRoot: null }).ensure();
+      expect(existsSync(join(workspace.path, 'code'))).toBe(false);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 
   it('says nothing about language when neither setting has an opinion', async () => {

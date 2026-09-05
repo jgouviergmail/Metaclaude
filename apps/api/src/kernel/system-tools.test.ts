@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { StewardError } from '../services/steward.js';
+import { registeredToolNames } from '../test/mcp.js';
 import {
   SYSTEM_SERVER_NAME,
   SYSTEM_TOOLS,
@@ -147,5 +148,8 @@ describe('the binding', () => {
 
     expect(server.name).toBe(SYSTEM_SERVER_NAME);
     expect(server.type).toBe('sdk');
+    // The table and the server are one module; this is the check that they
+    // stayed so, in the same terms the board and advisor servers are held to.
+    expect(registeredToolNames(server).sort()).toEqual(SYSTEM_TOOLS.map((entry) => entry.name).sort());
   });
 });

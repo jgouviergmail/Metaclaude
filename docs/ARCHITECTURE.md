@@ -474,9 +474,16 @@ with a 409. The guard compares *values*, not presence: the settings dialog
 sends the whole object back, so a guard on presence would have refused the
 operator's language change because the fixed lists rode along with it.
 The same boot writes the workspace's knowledge — `CLAUDE.md` generated from
-the running version, `SYSTEM-MAP.md`, a copy of `docs/` — through the path
-jail, and never touches `NOTES.md`, which `CLAUDE.md` imports and which is
-the operator's. The runtime image carries `docs/` for exactly this.
+the running version, `SYSTEM-MAP.md`, a copy of `docs/`, and under `code/`
+the TypeScript sources of the running version (`SOURCE_TREES`: the API,
+the shared contracts, the web app, tests beside them, and the repository's
+own CLAUDE.md renamed `REPOSITORY-CLAUDE.md` so the CLI does not load it as
+instructions) — through the path jail, and never touches `NOTES.md`, which
+`CLAUDE.md` imports and which is the operator's. Copied rather than granted:
+an extra directory is bounded to the workspaces root for every workspace,
+the steward included, and the compiled output it used to be pointed at cost
+an approval card per file. The runtime image carries `docs/` and `source/`
+for exactly this, and `check.sh` holds the Dockerfile's list to the code's.
 
 `services/steward.ts` is the facade behind the tools, and the only place
 the rings are decided. Ring 1 reads, through compact projections that name
@@ -495,9 +502,16 @@ one decision an absent operator would want to have made themselves.
 `kernel/system-tools.ts` is one table — name, ring, description, schema,
 handler — from which three things derive so they cannot drift: the MCP
 server `metaclaude_system` the supervisor mounts, the exact names the
-system workspace pre-approves in `allowedTools` (so no ring-1 or ring-2
-call ever opens an approval card, while `WebFetch` still does), and the
-tool list `CLAUDE.md` shows the agent, grouped by ring. The supervisor
+system workspace pre-approves in `allowedTools`, and the tool list
+`CLAUDE.md` shows the agent, grouped by ring. The board and proposal
+servers carry a catalogue of the same shape (`BOARD_TOOL_CATALOGUE`,
+`ADVISOR_TOOL_CATALOGUE`), a test holds each against what its server
+actually registers, and the system workspace pre-approves all three — the
+whole reversible surface the supervisor mounts for its runs, so no ring-1
+or ring-2 call ever opens an approval card while `WebFetch` still does.
+Pre-approving less than is mounted was the defect: a mounted tool off the
+list is a card in `default` mode and a refusal under `dontAsk`, which is how
+the steward could not file a ticket on its own board. The supervisor
 mounts the server for runs whose workspace *is* the system workspace and
 only those a person or the schedule started there: an `api` run is
 withheld because a token's scope is not a suggestion, a `delegation` run

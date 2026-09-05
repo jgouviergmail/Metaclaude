@@ -11,6 +11,43 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.47.0] — 2026-09-05
+
+### Fixed
+
+- **Metaclaude can now act on its own board and file proposals without an
+  approval card.** Its workspace pre-approved the `system_*` tools and
+  nothing else, while every run of it was also given the board and proposal
+  servers — so creating, moving or annotating a card asked the operator in
+  the conversation, and was refused outright when the Morning review ran on
+  the schedule under *Don't ask*. The pre-approved list is now the whole
+  reversible surface by exact name: its own table, the seven board tools and
+  the five proposal tools. Each server exports a catalogue with its rings, a
+  test holds it to what the server actually registers, and the standing
+  instructions list all of them together and say which tools (`WebFetch`,
+  `WebSearch`) still ask. The permission mode stays fixed at *Ask*: nothing
+  in it needed to change, and it is what keeps everything else behind a card.
+
+- **The steward's memory, insight and automation tools now carry their
+  provenance.** `sourceRunId` and `createdAt` on a memory, `runId` on an
+  insight, `sessionId` on an automation were in the rows, on the Dashboard,
+  and dropped by the projections the steward reads through — its first real
+  investigation in production reconstructed them from ULID timestamps.
+  Reported by Metaclaude itself.
+
+### Added
+
+- **Metaclaude reads the source code of the version it runs.** The image
+  ships `apps/api/src`, `packages/shared/src` and `apps/web/src` under
+  `source/`, and the system workspace copies them into its own `code/` at
+  every boot, tests included, beside the documentation — with the
+  repository's CLAUDE.md renamed `REPOSITORY-CLAUDE.md` so the CLI does not
+  load it as instructions. Copied, not granted: an extra directory is bounded
+  to the workspaces root for every workspace, the steward included, and the
+  compiled output it used to be pointed at cost an approval card per file.
+  `check.sh` holds the Dockerfile's list to the code's.
+
+
 ## [0.46.1] — 2026-09-05
 
 ### Fixed

@@ -15,7 +15,14 @@ import { migrate, openDatabase, type Db } from '../db/index.js';
 import { BoardGateway } from '../services/board-gateway.js';
 import { BoardService } from '../services/board.js';
 import { EventBus } from './bus.js';
-import { buildBoardServer, createBoardHandlers } from './board-tools.js';
+import { registeredToolNames } from '../test/mcp.js';
+import {
+  BOARD_SERVER_NAME,
+  BOARD_TOOL_CATALOGUE,
+  boardToolNames,
+  buildBoardServer,
+  createBoardHandlers,
+} from './board-tools.js';
 
 let db: Db;
 let gateway: BoardGateway;
@@ -152,7 +159,28 @@ describe('acting as the agent', () => {
 describe('the server wrapper', () => {
   it('names the server metaclaude_board', () => {
     const server = buildBoardServer(gateway, { workspaceId: WS, runId: RUN });
-    expect(server.name).toBe('metaclaude_board');
+    expect(server.name).toBe(BOARD_SERVER_NAME);
     expect(server.type).toBe('sdk');
+  });
+
+  /**
+   * The catalogue is what the system workspace pre-approves; the server is
+   * what the run can call. A tool in one and not the other is either a
+   * pre-approval of nothing or a card the steward was promised it would not
+   * see — so the two are held equal, and the full names are the CLI's.
+   */
+  it('registers exactly the catalogue, under the names the pre-approvals use', () => {
+    const server = buildBoardServer(gateway, { workspaceId: WS, runId: RUN });
+
+    expect(registeredToolNames(server).sort()).toEqual(
+      BOARD_TOOL_CATALOGUE.map((entry) => entry.name).sort(),
+    );
+    expect(boardToolNames()).toEqual(
+      BOARD_TOOL_CATALOGUE.map((entry) => `mcp__metaclaude_board__${entry.name}`),
+    );
+    expect(BOARD_TOOL_CATALOGUE.filter((entry) => entry.ring === 1).map((entry) => entry.name)).toEqual([
+      'board_list',
+      'board_get',
+    ]);
   });
 });

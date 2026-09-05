@@ -383,6 +383,25 @@ jobs:
           printf '%s' "$body" | jq '.retrieval' || true
           exit 1
 
+      # The steward reads the code it runs from a copy the boot makes into its
+      # workspace, from `source/` in the image. A checkout always has the
+      # sources, so only the image can prove the Dockerfile ships them — and
+      # that the repository's CLAUDE.md arrived under its other name, where
+      # the CLI will not load it as instructions.
+      - name: The steward's workspace holds the sources the image ships
+        run: |
+          set -euo pipefail
+          ws=/srv/metaclaude/workspaces/metaclaude
+          docker compose exec -T app sh -c "
+            test -f $ws/code/apps/api/src/kernel/kernel.ts &&
+            test -f $ws/code/packages/shared/src/domain.ts &&
+            test -f $ws/code/apps/web/src/main.tsx &&
+            test -f $ws/code/REPOSITORY-CLAUDE.md &&
+            ! test -e $ws/code/CLAUDE.md &&
+            grep -q '\`code/\`' $ws/CLAUDE.md &&
+            grep -q 'mcp__metaclaude_board__board_create' $ws/CLAUDE.md
+          " || { echo "::error::the system workspace is missing the sources or the pre-approved board tools"; docker compose exec -T app ls -la "$ws" "$ws/code" || true; exit 1; }
+
       - name: Logs
         if: failure()
         run: docker compose logs --tail 200

@@ -1001,6 +1001,32 @@ STUB
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "The sources the steward reads are the ones the image ships"
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The system workspace copies the trees `SOURCE_TREES` names into itself at
+# boot, from `source/` under the image root. A tree named in the code and
+# not COPY'd into the image copies nothing — silently, because a missing
+# tree is also what a bare checkout looks like — and the steward is back to
+# reading compiled output through an approval card per file. So the two
+# lists are read from their files and held equal here.
+src_trees="$(grep -oE "\{ from: '[^']+'" "$REPO_ROOT/apps/api/src/services/system-workspace.ts" | grep -oE "'[^']+'" | tr -d "'" || true)"
+if [ -z "$src_trees" ]; then
+  bad "reading SOURCE_TREES out of services/system-workspace.ts" "the table moved or changed shape"
+else
+  missing_src=""
+  for tree in $src_trees; do
+    grep -qE "^COPY .*[ /]${tree} \./source/${tree}$" "$REPO_ROOT/docker/Dockerfile" || missing_src="$missing_src $tree"
+  done
+  if [ -z "$missing_src" ]; then
+    ok "every tree in SOURCE_TREES is copied into the image under source/"
+  else
+    bad "trees the steward expects and the image does not ship:$missing_src" \
+        "the system workspace would silently copy nothing for them"
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "The agent's workspaces are not inside the data directory"
 # ─────────────────────────────────────────────────────────────────────────────
 

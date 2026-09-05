@@ -418,8 +418,11 @@ re-asserts those four settings at every boot and answers 409 to any route
 that would change them, archive the workspace or delete it — whoever asks,
 the operator included, because the interface is exactly what a persuasive
 agent would talk an operator into using. The pre-approved list is the
-steward's own tool table by exact name and nothing else, so every other
-tool still opens a card. Inside the container the run is still uid 10001
+reversible surface by exact name and nothing else — its own tool table,
+the board tools and the proposal tools, each held to what its server
+registers by a test — so every other tool still opens a card, and the code
+it reads is *copied* into its workspace rather than granted as an extra
+directory. Inside the container the run is still uid 10001
 with no shell: the master key is environment-only and allow-listed out of
 the CLI's environment, and the data and workspace directories are refused
 as extra directories like they are for every workspace.

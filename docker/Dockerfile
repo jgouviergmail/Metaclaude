@@ -137,6 +137,16 @@ COPY --from=build --chown=metaclaude:metaclaude /app/apps/web/dist ./web
 # agent can read how the thing it stewards works. Until now `docs/` was only
 # reached by the web build, one stage up, and the runtime never had it.
 COPY --from=build --chown=metaclaude:metaclaude /app/docs ./docs
+# The sources too, for the same reader: the steward copies them into its
+# workspace at boot and reads the TypeScript it runs — with the tests beside
+# it — rather than the compiled output outside its reach. The trees are the
+# ones `SOURCE_TREES` in services/system-workspace.ts names; check.sh holds
+# the two lists together. The repository's CLAUDE.md is renamed on the way
+# in, because under its own name the CLI would load it as instructions.
+COPY --from=build --chown=metaclaude:metaclaude /app/apps/api/src ./source/apps/api/src
+COPY --from=build --chown=metaclaude:metaclaude /app/packages/shared/src ./source/packages/shared/src
+COPY --from=build --chown=metaclaude:metaclaude /app/apps/web/src ./source/apps/web/src
+COPY --chown=metaclaude:metaclaude CLAUDE.md ./source/CLAUDE.md
 # The sentence-transformer retrieval runs on, loaded offline from here.
 COPY --from=model --chown=metaclaude:metaclaude /models ./models
 

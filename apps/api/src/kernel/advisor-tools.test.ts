@@ -16,7 +16,14 @@ import { Vault } from '../security/vault.js';
 import { EventBus } from './bus.js';
 import type { Kernel } from './kernel.js';
 import { defaultWorkspaceSettings, RunRepo, SessionRepo, WorkspaceRepo } from './repositories.js';
-import { buildAdvisorServer, createAdvisorHandlers } from './advisor-tools.js';
+import { registeredToolNames } from '../test/mcp.js';
+import {
+  ADVISOR_SERVER_NAME,
+  ADVISOR_TOOL_CATALOGUE,
+  advisorToolNames,
+  buildAdvisorServer,
+  createAdvisorHandlers,
+} from './advisor-tools.js';
 
 let db: Db;
 let advisor: AdvisorService;
@@ -123,7 +130,21 @@ describe('the handlers', () => {
 describe('the server wrapper', () => {
   it('names the server metaclaude_advisor', () => {
     const server = buildAdvisorServer(advisor, { workspaceId: workspace.id, runId: 'run_1' });
-    expect(server.name).toBe('metaclaude_advisor');
+    expect(server.name).toBe(ADVISOR_SERVER_NAME);
     expect(server.type).toBe('sdk');
+  });
+
+  /** Same contract as the board's: the catalogue the steward pre-approves is what the server registers. */
+  it('registers exactly the catalogue, under the names the pre-approvals use', () => {
+    const server = buildAdvisorServer(advisor, { workspaceId: workspace.id, runId: 'run_1' });
+
+    expect(registeredToolNames(server).sort()).toEqual(
+      ADVISOR_TOOL_CATALOGUE.map((entry) => entry.name).sort(),
+    );
+    expect(advisorToolNames()).toEqual(
+      ADVISOR_TOOL_CATALOGUE.map((entry) => `mcp__metaclaude_advisor__${entry.name}`),
+    );
+    // Every proposal is inert until a person acts on it: nothing here reads, nothing is ring 3.
+    expect(ADVISOR_TOOL_CATALOGUE.every((entry) => entry.ring === 2)).toBe(true);
   });
 });

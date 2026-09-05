@@ -35,7 +35,7 @@
 
 import { existsSync } from 'node:fs';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { Workspace, WorkspaceSettings } from '@metaclaude/shared';
 import { WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
 import { kvGet, kvSet, type Db } from '../db/index.js';
@@ -63,6 +63,21 @@ export const SYSTEM_WORKSPACE_SAFETY = {
   additionalDirectories: [] as string[],
 } as const satisfies Partial<WorkspaceSettings>;
 
+/**
+ * What of the repository the steward gets to read, relative to the source
+ * root, and where it lands under the workspace's `code/`. The developers'
+ * CLAUDE.md rides along under another name: as `CLAUDE.md` the CLI would
+ * load it as *instructions* the moment a file beside it is read, and
+ * "every push to main bumps the version" is not a standing order the steward
+ * should receive.
+ */
+export const SOURCE_TREES: ReadonlyArray<{ from: string; to: string }> = [
+  { from: 'apps/api/src', to: 'apps/api/src' },
+  { from: 'packages/shared/src', to: 'packages/shared/src' },
+  { from: 'apps/web/src', to: 'apps/web/src' },
+  { from: 'CLAUDE.md', to: 'REPOSITORY-CLAUDE.md' },
+];
+
 /** The settings the interface may not change on this workspace, by name. */
 const GUARDED_SETTINGS = [
   'defaultPermissionMode',
@@ -87,8 +102,15 @@ export interface SystemWorkspaceDeps {
   workspacesRoot: string;
   /** The shipped documentation, or null when this image carries none. */
   docsDir: string | null;
-  /** The running server's compiled code, when it can be found; null in a checkout that has not built. */
-  codeDir?: string | null;
+  /**
+   * A directory holding the TypeScript sources of the running version under
+   * `SOURCE_TREES` — the repository root in a checkout, `source/` in the
+   * image — or null when neither is there. Copied into the workspace like
+   * the documentation, because the one thing the steward may not have is an
+   * extra directory: its reach is bounded to the workspaces root, and the
+   * compiled output it used to be pointed at cost an approval card per file.
+   */
+  sourceRoot?: string | null;
   version: string;
   /** The language generated text is written in, resolved for this workspace. */
   language: () => ContentLanguage | null;
@@ -262,11 +284,13 @@ export class SystemWorkspace {
     let notes: string;
     let map: string;
     let docsTarget: string;
+    let codeTarget: string;
     try {
       claudeMd = resolveInside(workspace.path, 'CLAUDE.md');
       notes = resolveInside(workspace.path, 'NOTES.md');
       map = resolveInside(workspace.path, 'SYSTEM-MAP.md');
       docsTarget = resolveInside(workspace.path, 'docs');
+      codeTarget = resolveInside(workspace.path, 'code');
     } catch (error) {
       if (!(error instanceof PathEscapeError)) throw error;
       this.deps.log('error', 'refusing to furnish the system workspace through a symlinked path', {
@@ -276,12 +300,13 @@ export class SystemWorkspace {
     }
 
     const docsCopied = await this.copyDocs(docsTarget);
+    const codeCopied = await this.copySources(codeTarget);
 
     // The operator's file: created empty once, never written again.
     if (!existsSync(notes)) {
       await writeFile(notes, NOTES_TEMPLATE, 'utf8');
     }
-    await writeFile(claudeMd, this.renderClaudeMd({ docsCopied }), 'utf8');
+    await writeFile(claudeMd, this.renderClaudeMd({ docsCopied, codeCopied }), 'utf8');
     await writeFile(map, this.renderSystemMap(workspace), 'utf8');
   }
 
@@ -294,11 +319,34 @@ export class SystemWorkspace {
   }
 
   /**
+   * The sources, tree by tree, replaced whole at every boot so a file deleted
+   * in a release is gone here too. A root that holds none of the trees copies
+   * nothing and CLAUDE.md does not mention `code/`: a pointer to code that is
+   * not there is worse than none.
+   */
+  private async copySources(target: string): Promise<boolean> {
+    // Removed before anything is decided: an image that stopped shipping the
+    // sources must not leave last release's copy where the agent would read
+    // it as the code it runs.
+    await rm(target, { recursive: true, force: true });
+    const root = this.deps.sourceRoot;
+    if (!root) return false;
+    const present = SOURCE_TREES.filter((tree) => existsSync(join(root, tree.from)));
+    if (present.length === 0) return false;
+    for (const tree of present) {
+      const destination = join(target, tree.to);
+      await mkdir(dirname(destination), { recursive: true });
+      await cp(join(root, tree.from), destination, { recursive: true, dereference: false });
+    }
+    return true;
+  }
+
+  /**
    * The standing instructions, in English like every prompt in this
    * repository; the language the agent must *answer and write in* is stated
    * inside it rather than by translating it.
    */
-  renderClaudeMd(context: { docsCopied: boolean }): string {
+  renderClaudeMd(context: { docsCopied: boolean; codeCopied: boolean }): string {
     const language = this.deps.language();
     const tools = this.deps.preapproved();
     const languageLine = language
@@ -338,7 +386,10 @@ export class SystemWorkspace {
       'or medium risk — denying any, allowing none that is high; moving an',
       'operational setting; renaming or re-describing a workspace and its',
       'ordinary settings; asking or starting a run in another workspace;',
-      'interrupting a run. Say what you did, and name the tool.',
+      'interrupting a run; filing, moving, annotating or breaking down a card on',
+      'your own board; proposing an automation, a skill, an agent, an MCP server',
+      'or a plugin — a proposal is inert until the operator accepts it. Say what',
+      'you did, and name the tool.',
       '',
       '**Irreversible changes are never yours to make.** Deleting or purging',
       'anything, archiving or deleting a workspace, applying an update or rolling',
@@ -374,10 +425,15 @@ export class SystemWorkspace {
             '  built and why. Read the relevant one before reasoning about a subsystem.',
           ]
         : []),
-      ...(this.deps.codeDir
+      ...(context.codeCopied
         ? [
-            `- \`${this.deps.codeDir}\` — the running code, readable and commented, when a`,
-            '  question goes deeper than the documentation.',
+            '- `code/` — the TypeScript sources of the version you are running',
+            '  (`apps/api/src`, `packages/shared/src`, `apps/web/src`, tests beside the',
+            '  code) and `REPOSITORY-CLAUDE.md`, the developers\' own notes on what has',
+            '  bitten before. Read here when a question goes deeper than the',
+            '  documentation, and cite `path:line` from here when you report a defect;',
+            '  the compiled output outside this workspace is the same code and costs',
+            '  an approval card per file.',
           ]
         : []),
       '',
@@ -416,9 +472,11 @@ export class SystemWorkspace {
         .filter((entry) => entry.ring === ring)
         .map((entry) => `- \`${entry.name}\` — ${entry.description}`);
     return [
-      'All under the `metaclaude_system` server, pre-approved: none of them opens',
-      'an approval card. Ring 1 reads; ring 2 changes something reversible and is',
-      'audited in your name.',
+      'All pre-approved: none of them opens an approval card, and they are the',
+      'only tools a scheduled run of yours may use. Ring 1 reads; ring 2 changes',
+      'something reversible — `system_*` calls are audited in your name, a board',
+      'or proposal tool signs as this run. Anything else you can see (`WebFetch`,',
+      '`WebSearch`) asks the operator first, and is refused when nobody is there.',
       '',
       '### Ring 1 — read freely',
       '',

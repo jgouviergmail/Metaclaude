@@ -23,9 +23,10 @@ failures and cost), every workspace and its settings, sessions and runs with
 their transcripts, memories in both tiers, insights and proposals, automations,
 the operational settings and where each value comes from, the doctor's report,
 the analytics, the audit log, whether an update exists. It also has the
-documentation you are reading, copied into its workspace at every start, and
-the running code — so a question that goes deeper than the guide still has an
-answer grounded in what is actually deployed.
+documentation you are reading and the source code of the version that is
+running, both copied into its workspace at every start — so a question that
+goes deeper than the guide still has an answer grounded in what is actually
+deployed, cited by file and line.
 
 Its standing instructions are regenerated at every start from the running
 version, so it is never a release behind. A file called `NOTES.md` in its
@@ -47,9 +48,13 @@ The boundary is drawn by **reversibility**, not by subject.
   renaming a workspace or changing its ordinary settings; deciding an approval
   card of low or medium risk on your behalf; asking another workspace's agent
   a question and waiting, or starting a run there and coming back;
-  interrupting a run. Every one of these is written to the audit log under its
-  own name — `metaclaude:<run>`, never yours — so you can always see what it
-  did while you were away.
+  interrupting a run; filing, moving and annotating cards on its own board;
+  proposing an automation, a skill, an agent, an MCP server or a plugin, which
+  land disabled or in your inbox until you accept them. None of these opens
+  an approval card — not in the conversation, and not when it runs on a
+  schedule with nobody there to answer one. Every one of them is written to
+  the audit log under its own name — `metaclaude:<run>`, never yours — or
+  signed by the run, so you can always see what it did while you were away.
 - **Irreversible changes are not its to make.** Deleting or purging anything,
   archiving or deleting a workspace, applying an update or rolling one back,
   backups, tokens and credentials, allowing a high-risk approval, and changing

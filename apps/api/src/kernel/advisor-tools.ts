@@ -172,6 +172,28 @@ export function createAdvisorHandlers(advisor: AdvisorFacade, scope: AdvisorTool
   };
 }
 
+export const ADVISOR_SERVER_NAME = 'metaclaude_advisor';
+
+/**
+ * The tools by name and ring, for the workspace that pre-approves them. All
+ * ring 2: a proposal is inert by construction — an automation lands disabled,
+ * everything else lands in the inbox — so the steward may make one without
+ * a card. The server below must register exactly these names; see the note
+ * on `BOARD_TOOL_CATALOGUE` for why a test holds the two together.
+ */
+export const ADVISOR_TOOL_CATALOGUE: ReadonlyArray<{ name: string; ring: 1 | 2; description: string }> = [
+  { name: 'advisor_propose_automation', ring: 2, description: 'Propose a scheduled automation; it is created disabled.' },
+  { name: 'advisor_propose_skill', ring: 2, description: 'Propose a skill for the operator’s inbox.' },
+  { name: 'advisor_propose_agent', ring: 2, description: 'Propose a subagent for the operator’s inbox.' },
+  { name: 'advisor_propose_mcp', ring: 2, description: 'Propose an MCP server from a recognised publisher.' },
+  { name: 'advisor_propose_plugin', ring: 2, description: 'Propose a plugin, naming a verifiable source.' },
+];
+
+/** The names as the CLI and the broker see them. */
+export function advisorToolNames(): string[] {
+  return ADVISOR_TOOL_CATALOGUE.map((entry) => `mcp__${ADVISOR_SERVER_NAME}__${entry.name}`);
+}
+
 export function buildAdvisorServer(
   advisor: AdvisorFacade,
   scope: AdvisorToolScope,
@@ -179,7 +201,7 @@ export function buildAdvisorServer(
   const handlers = createAdvisorHandlers(advisor, scope);
 
   return createSdkMcpServer({
-    name: 'metaclaude_advisor',
+    name: ADVISOR_SERVER_NAME,
     version: '1.0.0',
     tools: [
       sdkTool(

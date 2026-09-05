@@ -163,6 +163,34 @@ const TITLE = z.string().min(1).max(300);
 const DESCRIPTION = z.string().max(20_000);
 const TASK_ID = z.string().describe('The task id, as returned by the other board tools.');
 
+export const BOARD_SERVER_NAME = 'metaclaude_board';
+
+/**
+ * The tools by name and ring, for the workspace that pre-approves them.
+ *
+ * The system workspace pre-approves its reversible surface by exact name so
+ * the steward can file and move cards without an approval card in `default`
+ * mode — and without being refused outright under `dontAsk`, where its
+ * scheduled reviews run. The rings follow the steward's rule: a card is
+ * created, moved or annotated, never deleted, so nothing here is ring 3. The
+ * server below must register exactly these names; a test holds the two
+ * together, because a name that drifts is a tool that silently opens a card.
+ */
+export const BOARD_TOOL_CATALOGUE: ReadonlyArray<{ name: string; ring: 1 | 2; description: string }> = [
+  { name: 'board_list', ring: 1, description: 'Every active card of this board, with column and priority.' },
+  { name: 'board_get', ring: 1, description: 'One card in full: description, comments, sub-tasks.' },
+  { name: 'board_create', ring: 2, description: 'Add a card, optionally under a parent.' },
+  { name: 'board_update', ring: 2, description: 'Edit a card’s title, description, priority or blocked reason.' },
+  { name: 'board_move', ring: 2, description: 'Move a card to another column (done is the operator’s).' },
+  { name: 'board_comment', ring: 2, description: 'Leave a note on a card.' },
+  { name: 'board_decompose', ring: 2, description: 'Break a card into sub-tasks.' },
+];
+
+/** The names as the CLI and the broker see them. */
+export function boardToolNames(): string[] {
+  return BOARD_TOOL_CATALOGUE.map((entry) => `mcp__${BOARD_SERVER_NAME}__${entry.name}`);
+}
+
 export function buildBoardServer(
   board: BoardFacade,
   scope: BoardToolScope,
@@ -170,7 +198,7 @@ export function buildBoardServer(
   const handlers = createBoardHandlers(board, scope);
 
   return createSdkMcpServer({
-    name: 'metaclaude_board',
+    name: BOARD_SERVER_NAME,
     version: '1.0.0',
     tools: [
       sdkTool(

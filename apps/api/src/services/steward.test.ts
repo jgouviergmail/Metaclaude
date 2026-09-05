@@ -383,6 +383,32 @@ describe('reading', () => {
   });
 
   /**
+   * The joins the steward needs to say *who wrote what*: a memory names the
+   * run the reflexion pass distilled it from, an insight names its run, an
+   * automation names the session its firings run in. The first projection
+   * dropped all three, and the steward's first real investigation in
+   * production was spent decoding ULID timestamps to recover what the rows
+   * already carried.
+   */
+  it('keeps the provenance fields a memory, an insight and an automation carry', async () => {
+    const session = sessions.create({ workspaceId: projectId, model: 'default', effort: null, permissionMode: 'default' });
+    const source = seedRun({ workspaceId: projectId, sessionId: session.id, status: 'succeeded' });
+    await memory.remember({
+      workspaceId: projectId, kind: 'episodic', title: 'Distilled', content: 'From a run.', sourceRunId: source.id,
+    });
+    db.prepare(
+      `INSERT INTO insights (id, workspace_id, run_id, kind, title, body, confidence, status, payload, created_at)
+       VALUES ('ins_src', ?, ?, 'lesson', 'Lesson', 'body', 0.8, 'new', NULL, ?)`,
+    ).run(projectId, source.id, NOW);
+
+    const [distilled] = steward.memories({ workspace: 'project' });
+    expect(distilled).toMatchObject({ sourceRunId: source.id });
+    expect(typeof distilled?.createdAt).toBe('number');
+    expect(steward.insights({ workspace: 'project' })[0]).toMatchObject({ id: 'ins_src', runId: source.id });
+    expect(steward.automations('project').find((entry) => entry.id === 'auto_a')).toHaveProperty('sessionId');
+  });
+
+  /**
    * The projection names its fields; it never spreads a row. A record that
    * grows a value field one day must not start leaking through the tool.
    */

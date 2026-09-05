@@ -494,6 +494,18 @@ restates the code is noise; one that records a decision or a trap is not.
   room — not by recency alone. And a rotation test whose newest session is
   also the first in list order proves nothing about the ceiling; make both
   standing sessions unavailable so a third is the only right answer.
+- **A tool that is mounted and not pre-approved is a card in `default` mode
+  and a refusal under `dontAsk`.** The system workspace pre-approved its own
+  `system_*` table and nothing else, while the supervisor mounted the board
+  and proposal servers for its runs too — so the steward could not file a
+  ticket on its own board without a person watching, and its scheduled
+  review was refused the same tools outright. Whatever a workspace's runs
+  are given, its pre-approval list has to name in full; each tool server now
+  exports a catalogue, a test holds it to what the server registers, and
+  `context.ts` pre-approves the union. Related: the steward's extra
+  directories are bounded to the workspaces root like everyone's, so the
+  code it reads is *copied* into its workspace (`SOURCE_TREES`), never
+  granted — pointing it at `apps/api/dist` cost a card per file.
 - **A class declared beside `vi.mock` is in its temporal dead zone when the
   factory runs.** The factories are hoisted above every top-level statement,
   so `ApiError` defined at module level and referenced from the factory

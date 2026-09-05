@@ -10,6 +10,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SystemHealth, Workspace } from '@metaclaude/shared';
+import { advisorToolNames } from '../kernel/advisor-tools.js';
+import { boardToolNames } from '../kernel/board-tools.js';
 import { systemToolNames } from '../kernel/system-tools.js';
 import { SYSTEM_WORKSPACE_SAFETY } from '../services/system-workspace.js';
 import { bootTestServer, type ServerHarness } from '../test/server-harness.js';
@@ -40,8 +42,18 @@ describe('finding it', () => {
     const workspace = body.workspaces.find((entry) => entry.id === systemId);
     expect(workspace?.name).toBe('Metaclaude');
     expect(workspace?.settings.disallowedTools).toEqual(SYSTEM_WORKSPACE_SAFETY.disallowedTools);
-    // Pre-approved by exact name, the whole table and nothing else.
-    expect(workspace?.settings.allowedTools).toEqual(systemToolNames());
+    // Pre-approved by exact name: its own table, the board and the proposals —
+    // every tool the supervisor mounts for its runs — and nothing else. A
+    // mounted tool left off this list is a card in `default` mode and a
+    // refusal under `dontAsk`, which is how the steward could not file a
+    // ticket for two releases.
+    expect(workspace?.settings.allowedTools).toEqual([
+      ...systemToolNames(),
+      ...boardToolNames(),
+      ...advisorToolNames(),
+    ]);
+    expect(workspace?.settings.allowedTools).toContain('mcp__metaclaude_board__board_create');
+    expect(workspace?.settings.allowedTools).not.toContain('WebFetch');
   });
 
   it('says so on its own detail, which is what locks the settings dialog', async () => {

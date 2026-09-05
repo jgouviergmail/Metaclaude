@@ -215,12 +215,19 @@ const compactMemory = (memory: Memory) => ({
   confidence: memory.confidence,
   pinned: memory.pinned,
   useCount: memory.useCount,
+  // Who wrote it. A memory the reflexion pass distilled names the run it
+  // read; one the operator or the steward wrote names none. Dropped from the
+  // first projection, and the steward's first real investigation in
+  // production was spent reconstructing this from ULID timestamps.
+  sourceRunId: memory.sourceRunId,
+  createdAt: memory.createdAt,
   updatedAt: memory.updatedAt,
 });
 
 const compactInsight = (insight: Insight) => ({
   id: insight.id,
   workspaceId: insight.workspaceId,
+  runId: insight.runId,
   kind: insight.kind,
   title: insight.title,
   body: excerpt(insight.body, CONTENT_EXCERPT),
@@ -238,6 +245,10 @@ const compactAutomation = (automation: Automation) => ({
   enabled: automation.enabled,
   continuous: automation.continuous,
   prompt: excerpt(automation.prompt, PROMPT_EXCERPT),
+  // The session its firings run in — the join from a run back to the
+  // automation that produced it, since a run records who fired it (`user`
+  // for a hand-fired one, the steward included) rather than which.
+  sessionId: automation.sessionId,
   lastRunAt: automation.lastRunAt,
   lastStatus: automation.lastStatus,
   nextRunAt: automation.nextRunAt,
