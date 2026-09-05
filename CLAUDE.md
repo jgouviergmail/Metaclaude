@@ -373,7 +373,13 @@ restates the code is noise; one that records a decision or a trap is not.
   during a tool call that ran for 100 seconds it emitted `tool_progress` every
   30 seconds, plus `task_started` and a rate-limit event. That is what makes an
   *idle* ceiling usable where a wall-clock one is not, and why nothing has to
-  special-case a tool being in flight.
+  special-case a tool being in flight. **Except a tool waiting on a person**:
+  while an approval card is pending the CLI is blocked inside `canUseTool` and
+  emits nothing, so the idle ceiling stopped a production run "for reporting
+  nothing for 10 minutes" with its card still on the Dashboard — and
+  `APPROVAL_TIMEOUT_MS` is the same ten minutes, so the card's own denial lost
+  the race by two seconds. `canUseTool` holds the idle clock (`LiveRun.holdIdle`)
+  until the broker answers.
 - **`MenuItem` with `selected` renders `menuitemcheckbox`, not `menuitem`** —
   deliberately, so a chosen entry is announced as chosen. A test querying
   `getByRole('menuitem')` on a picker finds nothing and reads as a menu that

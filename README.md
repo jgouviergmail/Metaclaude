@@ -200,7 +200,9 @@ with one line naming it.
 ask different questions: one stops a run that has reported *nothing* for ten
 minutes — the agent speaks every half minute while a tool runs, so silence that
 long means it stopped — and a second, measured in hours, backstops the case
-silence cannot see. Elapsed time is deliberately not a limit on how long work
+silence cannot see. A run waiting on one of *your* approval cards is not
+silent: that clock is held until the card is answered or expires. Elapsed
+time is deliberately not a limit on how long work
 may take; a loop or an overnight refactor is normal, and what bounds the *work*
 is the workspace's own turn and cost ceilings.
 

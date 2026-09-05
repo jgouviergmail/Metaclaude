@@ -2338,6 +2338,51 @@ describe('the two ceilings on a run', () => {
     expect(result.error).toBeNull();
   });
 
+  /**
+   * Found in production: a run asked for a `Glob` outside its workspace, the
+   * card sat on the Dashboard with nobody there, and ten minutes later the
+   * run was stopped "for reporting nothing" — the CLI is blocked inside
+   * `canUseTool` while a card waits, so the silence was the operator's. The
+   * card's own timeout is the same ten minutes and lost the race. A pending
+   * approval holds the idle clock; an answered one hands it back.
+   */
+  it('does not count a pending approval card as silence, and resumes the clock once it is answered', async () => {
+    let answer: ((outcome: unknown) => void) | null = null;
+    const broker = {
+      request: () =>
+        new Promise<unknown>((resolve) => {
+          answer = resolve;
+        }),
+    };
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query, broker, { idleTimeoutMs: 10 * 60_000, runTimeoutMs: 0 });
+    const outcome = supervisor.execute(makeRequest(), makeCallbacks());
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(control.opened).toHaveLength(1));
+    const options = control.opened[0] as Record<string, unknown>;
+
+    const asked = (options.canUseTool as (n: string, i: unknown, o: unknown) => Promise<unknown>)(
+      'Glob',
+      { pattern: '/opt/metaclaude/apps/api/dist/**' },
+      { toolUseID: 'tu_glob', signal: new AbortController().signal },
+    );
+    // Twenty-five minutes with the card open and nobody answering.
+    for (let minute = 0; minute < 25; minute += 1) await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+
+    answer!({ behavior: 'allow' });
+    await asked;
+    // Now the agent really says nothing: that is silence, and the clock runs again from here.
+    for (let minute = 0; minute < 12; minute += 1) await vi.advanceTimersByTimeAsync(60_000);
+    const result = await outcome;
+
+    expect(result.status).toBe('interrupted');
+    expect(result.error).toMatch(/10 minutes/);
+  });
+
   it('still stops a chatty run at the absolute ceiling', async () => {
     const { outcome } = await runFor(70 * 60_000, {
       idleTimeoutMs: 10 * 60_000,

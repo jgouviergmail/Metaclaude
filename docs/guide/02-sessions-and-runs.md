@@ -68,8 +68,10 @@ ask different questions. The one that normally applies asks whether the run is
 still *alive*: if it reports nothing at all for ten minutes it is stopped, and
 the transcript says so in those words. The agent speaks every half minute while
 a tool is running, so silence that long means it stopped rather than that it is
-busy. The second is a backstop measured in hours, for the one case silence
-cannot see — a tool that never returns.
+busy. A run waiting on one of your approval cards is not silent, though: the
+clock is held while the card waits and starts again once you answer it or it
+expires. The second ceiling is a backstop measured in hours, for the one case
+silence cannot see — a tool that never returns.
 
 That is deliberately not a limit on how long work may take. A loop, an overnight
 refactor and an automation that runs for two hours are all normal; a ceiling on

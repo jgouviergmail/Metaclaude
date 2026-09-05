@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.47.1] — 2026-09-05
+
+### Fixed
+
+- **A run waiting on one of your approval cards is no longer stopped for
+  "reporting nothing".** While a card waits for a person the CLI is blocked
+  inside the permission callback and emits no message, so the ten-minute idle
+  ceiling read the operator's absence as the agent's silence. Found in
+  production on the steward's board runs: a `Glob` outside its workspace and a
+  `board_get` that 0.46.1 had not pre-approved each opened a card, nobody was
+  there, and both runs were killed at ten minutes with the card still on the
+  Dashboard — the card's own ten-minute timeout lost the race by two seconds.
+  The supervisor now holds the idle clock for as long as a card of the run is
+  pending and re-arms it once the card is answered or expires. The absolute
+  ceiling is unchanged.
+
+
 ## [0.47.0] — 2026-09-05
 
 ### Fixed

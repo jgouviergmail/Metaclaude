@@ -216,6 +216,11 @@ interface LiveRun {
    * that the model and effort it chose were bad.
    */
   interruptRequested: boolean;
+  /**
+   * Suspend the idle ceiling while an approval card of this run waits for a
+   * person; the returned function releases it (idempotent). See `execute`.
+   */
+  holdIdle: () => () => void;
 }
 
 /**
@@ -785,18 +790,27 @@ export class AgentSupervisor {
     if (permissionMode === 'bypassPermissions') {
       options.allowDangerouslySkipPermissions = true;
     } else {
-      options.canUseTool = async (toolName, input, opts) =>
-        this.deps.broker().request({
-          runId: request.runId,
-          sessionId: request.sessionId,
-          workspaceId: workspace.id,
-          toolUseId: opts.toolUseID,
-          toolName,
-          toolInput: input,
-          ...(opts.title ? { title: opts.title } : {}),
-          ...(opts.decisionReason ? { decisionReason: opts.decisionReason } : {}),
-          signal: opts.signal,
-        });
+      options.canUseTool = async (toolName, input, opts) => {
+        // A card waiting for a person is not the agent going quiet: hold the
+        // idle ceiling for as long as the broker has not answered. Looked up
+        // at call time — the live entry exists by the time the CLI can ask.
+        const release = this.live.get(request.runId)?.holdIdle();
+        try {
+          return await this.deps.broker().request({
+            runId: request.runId,
+            sessionId: request.sessionId,
+            workspaceId: workspace.id,
+            toolUseId: opts.toolUseID,
+            toolName,
+            toolInput: input,
+            ...(opts.title ? { title: opts.title } : {}),
+            ...(opts.decisionReason ? { decisionReason: opts.decisionReason } : {}),
+            signal: opts.signal,
+          });
+        } finally {
+          release?.();
+        }
+      };
     }
 
     return options;
@@ -931,12 +945,35 @@ export class AgentSupervisor {
     limit?.unref?.();
 
     let idle: ReturnType<typeof setTimeout> | null = null;
+    /**
+     * Approval cards of this run still waiting for a person. While one is
+     * pending the CLI is blocked inside `canUseTool` and says nothing — and
+     * that silence is the operator's, not the agent's. Measured in
+     * production: a run that asked for a `Glob` outside its workspace was
+     * stopped "for reporting nothing for 10 minutes" while its card sat on
+     * the Dashboard, and the card's own ten-minute timeout lost the race by
+     * two seconds. The liveness clock is held while the count is above zero.
+     */
+    let awaitingApproval = 0;
     /** Re-arm the liveness clock. Called for every message the CLI sends. */
     const touch = (): void => {
       if (idleTimeoutMs <= 0) return;
       if (idle) clearTimeout(idle);
+      idle = null;
+      if (awaitingApproval > 0) return;
       idle = setTimeout(stopWith('idle'), idleTimeoutMs);
       idle.unref?.();
+    };
+    const holdIdle = (): (() => void) => {
+      awaitingApproval += 1;
+      touch();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        awaitingApproval -= 1;
+        touch();
+      };
     };
     touch();
 
@@ -1043,6 +1080,7 @@ export class AgentSupervisor {
       send: (text) => stream.push(text),
       close: () => stream.close(),
       interruptRequested: false,
+      holdIdle,
     };
     this.live.set(request.runId, entry);
 

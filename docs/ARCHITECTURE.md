@@ -135,8 +135,15 @@ for N minutes — re-armed on every message the stream carries. That silence is 
 usable signal because it was measured: during a tool call that ran for 100
 seconds the CLI emitted `tool_progress` every 30 seconds, so ten minutes of
 nothing carries a factor of twenty over the heartbeat and needs no special case
-for a tool being in flight. The absolute ceiling remains as the backstop for
-what silence cannot see — a tool that never returns — and is measured in hours.
+for a tool being in flight. It needs exactly one special case, and it was found
+in production: while an approval card waits for a person the CLI is blocked
+inside `canUseTool` and emits nothing, so a run whose `Glob` needed a card was
+stopped "for reporting nothing" with the card still on the Dashboard — the
+card's own timeout is the same ten minutes and lost the race by two seconds.
+`canUseTool` therefore holds the idle clock through `LiveRun.holdIdle` for as
+long as the broker has not answered. The absolute ceiling remains as the
+backstop for what silence cannot see — a tool that never returns — and is
+measured in hours.
 
 Zero means *no timer*, never a timer of zero: a zero-delay abort fires before
 `query()` is called, an already-aborted signal reaches no listener, and the run
