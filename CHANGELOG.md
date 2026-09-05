@@ -11,6 +11,18 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.2] — 2026-09-05
+
+### Fixed
+
+- **Choosing a workspace for a token cannot be done from a stale list.** The
+  picker is drawn from the workspace list the page loaded with, and a
+  workspace deleted since produced `That workspace does not exist` on a name
+  the operator had just clicked — a refusal about an id that was never on
+  screen. The list is re-asked when the dialog opens, which is the only moment
+  it decides anything, and the refusal now names the id and says the list is
+  out of date rather than denying what the screen shows.
+
 ## [0.56.1] — 2026-09-05
 
 ### Fixed

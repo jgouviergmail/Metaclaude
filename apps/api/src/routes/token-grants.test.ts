@@ -85,6 +85,9 @@ describe('a token’s grants over HTTP', () => {
       workspaceIds: ['ws_ghost'],
     });
     expect(ghost.status).toBe(400);
+    // The id, because it was never on screen: the operator picked a name from
+    // a list, and this refusal is only reachable when that list is out of date.
+    expect(((await ghost.json()) as { error: string }).error).toMatch(/ws_ghost/);
 
     const empty = await server.send('PATCH', `/api/tokens/${token.id}`, { workspaceIds: [] });
     expect(empty.status).toBe(400);

@@ -138,7 +138,18 @@ export function McpGatewayCard() {
           'Connect another application to this agent. A token can reach only the workspaces you name, and never more than the ceiling you set.',
         )}
         actions={
-          <Button variant="primary" size="sm" onClick={() => setDrafting(true)}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              // The list this dialog is chosen from decides what the server is
+              // asked for, and a workspace deleted since the page loaded is a
+              // 400 the operator cannot read: the id was never on screen.
+              // Re-asked on opening, which is the only moment it matters.
+              void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+              setDrafting(true);
+            }}
+          >
             <KeyRound className="size-4" aria-hidden />
             {t('New token')}
           </Button>

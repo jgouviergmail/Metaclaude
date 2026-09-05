@@ -40,7 +40,14 @@ export function registerTokenRoutes(app: App, context: AppContext): void {
     // granted.
     for (const workspaceId of parsed.data.workspaceIds) {
       if (!context.workspaceRepo.get(workspaceId)) {
-        throw new HttpError(400, 'That workspace does not exist.');
+        // Named, because the id was never on screen: the operator picked a
+        // *name* from a list, and the only way that list offers something the
+        // server refuses is that it was drawn before the workspace was
+        // deleted. The message has to say which of the two happened.
+        throw new HttpError(
+          400,
+          `No workspace has the id ${workspaceId}. It was deleted after this list was drawn — reload the page and choose again.`,
+        );
       }
     }
 
@@ -79,7 +86,10 @@ export function registerTokenRoutes(app: App, context: AppContext): void {
 
     for (const workspaceId of parsed.data.workspaceIds ?? []) {
       if (!context.workspaceRepo.get(workspaceId)) {
-        throw new HttpError(400, 'That workspace does not exist.');
+        throw new HttpError(
+          400,
+          `No workspace has the id ${workspaceId}. It was deleted after this list was drawn — reload the page and choose again.`,
+        );
       }
     }
 
