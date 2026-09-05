@@ -28,7 +28,7 @@ import { toast } from 'sonner';
 import { isSessionUnread, type Session, type SessionStatus } from '@metaclaude/shared';
 import { Menu, MenuItem, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
-import { Button, EmptyState, Input, Label } from '@/components/ui/primitives';
+import { Button, EmptyState, Input, Label, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
 import { usePlural, useT, type TranslateFn } from '@/lib/i18n';
@@ -229,14 +229,31 @@ export function SessionList({
                     >
                       {sessionTitle(archivedSession, t)}
                     </Link>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => unarchive.mutate(archivedSession.id)}
-                      aria-label={t('Restore {title}', { title: sessionTitle(archivedSession, t) })}
-                    >
-                      <ArchiveRestore className="size-3.5" />
-                    </Button>
+                    {/* The two ways out of the fold, and nothing else: put it
+                        back in the list, or end it. Deleting goes through the
+                        same confirmation as the live rows — it takes the
+                        transcript with it. */}
+                    <Tooltip content={t('Restore')} side="left">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => unarchive.mutate(archivedSession.id)}
+                        aria-label={t('Restore {title}', { title: sessionTitle(archivedSession, t) })}
+                      >
+                        <ArchiveRestore className="size-3.5" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content={t('Delete permanently')} side="left">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-subtle hover:text-danger"
+                        onClick={() => setPendingDelete(archivedSession)}
+                        aria-label={t('Delete {title}', { title: sessionTitle(archivedSession, t) })}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </Tooltip>
                   </li>
                 ))}
               </ul>

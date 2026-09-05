@@ -11,6 +11,16 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.54.0] — 2026-09-05
+
+### Added
+
+- **An archived session can be ended, not only put back.** The fold offered
+  one way out — restore — which made it a drawer that only ever fills. Each
+  row now carries both: restore it to the list, or delete it permanently
+  through the same confirmation a live row gets, because it takes the
+  transcript with it. Archiving still deletes nothing.
+
 ## [0.53.2] — 2026-09-05
 
 ### Fixed

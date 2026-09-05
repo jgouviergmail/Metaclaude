@@ -118,9 +118,10 @@ are visible without opening any of them. Archiving a session clears its dot for
 good: hiding it is a way of being done with it.
 
 **Archived sessions** are folded at the bottom of the sidebar, under a line
-saying how many there are. Open it and they load: click one to read it, or
-restore it to put it back in the list. Nothing is deleted by archiving — that
-is what **Delete** is for, and it says so.
+saying how many there are. Open it and they load. Click one to read it, and
+each row offers the only two ways out: **restore** it to the list, or **delete
+it permanently** — the same confirmation as a live row, because it takes the
+transcript with it. Archiving itself deletes nothing.
 
 ## Sessions from the CLI
 

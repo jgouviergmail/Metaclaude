@@ -321,5 +321,33 @@ describe('archived sessions', () => {
       expect(apiMock.updateSession).toHaveBeenCalledWith('ses_9', { archived: false }),
     );
   });
+
+  /**
+   * The other way out. An archived session is one you are done with; the fold
+   * would be a drawer that only fills if the only thing it offered were to
+   * undo the archiving. Deletion goes through the same confirmation as a live
+   * row, because it takes the transcript with it.
+   */
+  it('deletes one for good, after the same confirmation as a live row', async () => {
+    apiMock.workspaceSessions.mockResolvedValue({
+      sessions: [session('ses_9', 'Old lease', { archived: true })],
+    });
+    list([session('ses_1', 'Bail')], 'ses_1', 1);
+
+    const fold = screen.getByTestId('archived-sessions') as HTMLDetailsElement;
+    fold.open = true;
+    fireEvent(fold, new Event('toggle', { bubbles: false }));
+    expect(await within(fold).findByText('Old lease')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Old lease' }));
+
+    // Nothing is deleted by pressing the icon: the dialog names what goes.
+    expect(apiMock.deleteSession).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/Old lease/)).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete session' }));
+    await waitFor(() => expect(apiMock.deleteSession).toHaveBeenCalledWith('ses_9'));
+  });
 });
 

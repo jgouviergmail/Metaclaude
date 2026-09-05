@@ -1852,6 +1852,8 @@ export const fr: Record<string, string> = {
   'Cache: {read} read, {written} written': 'Cache : {read} lus, {written} écrits',
   'Session renamed': 'Session renommée',
   'Session restored': 'Session restaurée',
+  'Delete permanently': 'Supprimer définitivement',
+  'Delete {title}': 'Supprimer {title}',
   'Could not restore the session.': 'Impossible de restaurer la session.',
   'Archived session ({n})': 'Session archivée ({n})',
   'Archived sessions ({n})': 'Sessions archivées ({n})',
