@@ -366,6 +366,35 @@ describe('what deserves a buzz', () => {
     expect(notify).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * The one exception: an automation whose policy asked. A brief nobody
+   * hears about is a brief read ten hours late — the steward said so of its
+   * own morning review. Announced under the automation's name, and only for
+   * the session its firings run in.
+   */
+  it('pushes the end of an automation firing that asked to notify, under its name', () => {
+    const notify = vi.fn<
+      (
+        payload: { title: string; body: string; url: string; tag: string },
+        options?: object,
+      ) => Promise<{ devices: number; sent: number; pruned: number; lastError: string | null }>
+    >(async () => ({ devices: 1, sent: 1, pruned: 0, lastError: null }));
+    const built = buildPushEventHandlers({
+      push: { notify },
+      sessions: { get: () => ({ title: 'Conversation' }) },
+      workspaces: { get: () => ({ name: 'Metaclaude' }) },
+      automations: { notifying: (sessionId) => (sessionId === 'ses_brief' ? 'Morning review' : null) },
+      log: () => {},
+    });
+
+    built.onRunFinished({ ...run({ status: 'succeeded' }), triggeredBy: 'automation', sessionId: 'ses_brief' });
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect((notify.mock.calls[0]?.[0] as { title: string }).title).toBe('Morning review finished');
+
+    built.onRunFinished({ ...run({}), triggeredBy: 'automation', sessionId: 'ses_quiet' });
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps bodies short whatever the summary drags in', () => {
     const { notify, onSystemFrame } = handlers();
     onSystemFrame({

@@ -849,6 +849,9 @@ function SystemCard() {
       <div className="grid grid-cols-2 gap-3">
         <Stat label={t('Version')} value={data.version} />
         <Stat label={t('Uptime')} value={formatDuration(data.uptimeMs)} />
+        {/* The clock every cron expression is read in. A schedule typed for
+            eight on a UTC host fired at ten in Paris, and nothing said which. */}
+        <Stat label={t('Server timezone')} value={data.timezone} hint={t('Cron schedules are read in it.')} />
       </div>
       {/* The same three meters the dashboard shows, from the same payload.
           Two separate renderings of "how full is the disk" would eventually

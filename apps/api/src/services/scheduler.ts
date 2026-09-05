@@ -17,8 +17,8 @@
  *  - A missed window (server was down) fires once, never once per missed slot.
  */
 
-import type { Automation, AutomationTrigger, RunStatus } from '@metaclaude/shared';
-import { newId, workspaceTopic } from '@metaclaude/shared';
+import type { Automation, AutomationTrigger, Run, RunStatus } from '@metaclaude/shared';
+import { EMITTED_AUTOMATION_EVENTS, newId, workspaceTopic } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { parseJson, toBool, toInt } from '../db/index.js';
 import type { EventBus } from '../kernel/bus.js';
@@ -63,6 +63,7 @@ const DEFAULT_POLICY: Automation['policy'] = {
   permissionMode: 'default',
   agentName: null,
   maxTurns: null,
+  notify: false,
 };
 
 function toAutomation(row: AutomationRow): Automation {
@@ -243,6 +244,16 @@ export class Scheduler {
     if (trigger.type === 'interval' && trigger.everyMs < 60_000) {
       throw new SchedulerError('The shortest interval is one minute.');
     }
+    // The schema has named four events since the first release and only two
+    // have an emitter. An automation on the other two showed as enabled and
+    // stayed silent forever — indistinguishable from a deployment where
+    // nothing happened, which the steward pointed out. Refused here, where
+    // the person creating it is still listening.
+    if (trigger.type === 'event' && !(EMITTED_AUTOMATION_EVENTS as readonly string[]).includes(trigger.event)) {
+      throw new SchedulerError(
+        `Nothing emits "${trigger.event}" yet; an event trigger can watch ${EMITTED_AUTOMATION_EVENTS.join(' or ')}.`,
+      );
+    }
   }
 
   private computeNextRun(trigger: AutomationTrigger, from: number): number | null {
@@ -266,7 +277,14 @@ export class Scheduler {
   /* ---------------------------------------------------------------------- */
 
   /** Fire an automation now, regardless of its schedule. */
-  async fire(id: string, triggeredBy: 'automation' | 'loop' | 'user' = 'automation'): Promise<string> {
+  async fire(
+    id: string,
+    triggeredBy: 'automation' | 'loop' | 'user' = 'automation',
+    options: {
+      /** Prepended to the prompt: what an event-triggered firing is reacting to. */
+      context?: string;
+    } = {},
+  ): Promise<string> {
     const automation = this.get(id);
     if (!automation) throw new SchedulerError('Unknown automation.', 404);
 
@@ -290,7 +308,7 @@ export class Scheduler {
 
     const run = await this.deps.kernel.submit({
       sessionId,
-      prompt: automation.prompt,
+      prompt: options.context ? `${options.context}\n\n${automation.prompt}` : automation.prompt,
       triggeredBy: automation.continuous ? 'loop' : triggeredBy,
       // Only what the operator actually pinned.
       //
@@ -360,6 +378,65 @@ export class Scheduler {
    * unattended failure counts toward the auto-disable guard. Someone actively
    * debugging an automation should not have it switched off underneath them.
    */
+  /**
+   * The emitter behind `event` triggers. Called by the kernel for every
+   * finished run; fires the enabled event automations of that run's workspace
+   * whose event matches its outcome.
+   *
+   * Only runs a person, a token or a delegation started. A run another
+   * automation produced is excluded whole — not merely the watcher's own —
+   * because two watchers of failures whose firings can fail would otherwise
+   * feed each other forever, and the guard against that is not worth the
+   * case it would allow. A watcher whose previous firing is still in flight
+   * is skipped with a log line, as a due schedule would be.
+   */
+  async onRunFinished(run: Pick<Run, 'id' | 'workspaceId' | 'sessionId' | 'status' | 'triggeredBy' | 'category' | 'prompt' | 'error'>): Promise<number> {
+    if (run.triggeredBy === 'automation' || run.triggeredBy === 'loop') return 0;
+    const event = run.status === 'failed' ? 'run_failed' : run.status === 'succeeded' ? 'run_succeeded' : null;
+    if (!event) return 0;
+
+    const watchers = this.list(run.workspaceId).filter(
+      (automation) =>
+        automation.enabled &&
+        automation.trigger.type === 'event' &&
+        automation.trigger.event === event &&
+        automation.sessionId !== run.sessionId &&
+        matchesFilter(automation.trigger.filter, run),
+    );
+    let fired = 0;
+    for (const watcher of watchers) {
+      const context =
+        `Triggered by run ${run.id} in this workspace, which ${run.status}` +
+        (run.error ? ` — ${run.error.slice(0, 300)}` : '') +
+        `. Its prompt began: "${run.prompt.slice(0, 200).replace(/\s+/g, ' ')}".`;
+      try {
+        await this.fire(watcher.id, 'automation', { context });
+        fired += 1;
+      } catch (error) {
+        this.deps.log('warn', 'event automation skipped', {
+          id: watcher.id,
+          name: watcher.name,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return fired;
+  }
+
+  /**
+   * The name of the automation whose session this is, when it asked to be
+   * notified of its firings; null otherwise. What lets the push handler
+   * make one exception to "only runs a human started".
+   */
+  notifying(sessionId: string): string | null {
+    const row = this.deps.db
+      .prepare<[string], AutomationRow>('SELECT * FROM automations WHERE session_id = ?')
+      .get(sessionId);
+    if (!row) return null;
+    const automation = toAutomation(row);
+    return automation.policy.notify ? automation.name : null;
+  }
+
   recordOutcome(sessionId: string, status: RunStatus, attended = false): void {
     const row = this.deps.db
       .prepare<[string], AutomationRow>('SELECT * FROM automations WHERE session_id = ?')
@@ -501,4 +578,13 @@ export class Scheduler {
     const topic = workspaceTopic(automation.workspaceId);
     this.deps.bus.publish(topic, { type: 'automation', topic, automation });
   }
+}
+
+/** An event trigger's `filter`: a word that must appear in the run's category or prompt. */
+function matchesFilter(filter: string | undefined, run: Pick<Run, 'category' | 'prompt'>): boolean {
+  const needle = filter?.trim().toLowerCase();
+  if (!needle) return true;
+  return (
+    (run.category ?? '').toLowerCase().includes(needle) || run.prompt.toLowerCase().includes(needle)
+  );
 }

@@ -125,6 +125,7 @@ describe('create', () => {
       permissionMode: 'default',
       agentName: null,
       maxTurns: null,
+      notify: false,
     });
   });
 
@@ -831,5 +832,119 @@ describe('rescheduleAll', () => {
     scheduler.start();
     expect(scheduler.get(automation.id)!.nextRunAt).toBe(at(2024, 0, 15, 9, 0));
     scheduler.stop();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Event triggers                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The schema named four events since the first release and nothing emitted
+ * any of them: an automation on `run_failed` showed as enabled and stayed
+ * silent forever, indistinguishable from a deployment where nothing failed.
+ * The steward found it while looking for an alternative to cron. Two events
+ * now have an emitter — the kernel's finish hook — and the other two are
+ * refused where the person is still listening.
+ */
+describe('event triggers', () => {
+  const finished = (over: Partial<Parameters<Scheduler['onRunFinished']>[0]> = {}) => ({
+    id: 'run_src',
+    workspaceId: workspace.id,
+    sessionId: 'ses_src',
+    status: 'failed' as const,
+    triggeredBy: 'user' as const,
+    category: 'debugging',
+    prompt: 'Fix the parser that breaks on trailing commas',
+    error: 'exit 1',
+    ...over,
+  });
+
+  it('fires a watcher on the matching outcome, with the run named in the prompt', async () => {
+    const watcher = make({ name: 'On failure', trigger: { type: 'event', event: 'run_failed' } });
+    make({ name: 'On success', trigger: { type: 'event', event: 'run_succeeded' } });
+
+    expect(await scheduler.onRunFinished(finished())).toBe(1);
+
+    expect(kernel.submit).toHaveBeenCalledTimes(1);
+    const submitted = kernel.submit.mock.calls[0]![0] as { prompt: string; triggeredBy: string };
+    expect(submitted.triggeredBy).toBe('automation');
+    expect(submitted.prompt).toContain('Triggered by run run_src');
+    expect(submitted.prompt).toContain('failed — exit 1');
+    expect(submitted.prompt).toContain('Fix the parser');
+    expect(submitted.prompt.endsWith('Summarise what changed today.')).toBe(true);
+    expect(scheduler.get(watcher.id)!.runCount).toBe(1);
+
+    kernel.submit.mockClear();
+    expect(await scheduler.onRunFinished(finished({ status: 'succeeded', error: null }))).toBe(1);
+    expect((kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt).toContain('which succeeded.');
+  });
+
+  it('ignores a disabled watcher, an interrupted run and the other workspace', async () => {
+    make({ trigger: { type: 'event', event: 'run_failed' }, enabled: false });
+    const watcher = make({ trigger: { type: 'event', event: 'run_failed' } });
+
+    expect(await scheduler.onRunFinished(finished({ status: 'interrupted' }))).toBe(0);
+    expect(await scheduler.onRunFinished(finished({ workspaceId: 'ws_elsewhere' }))).toBe(0);
+    expect(await scheduler.onRunFinished(finished())).toBe(1);
+    expect(kernel.submit).toHaveBeenCalledTimes(1);
+    expect(scheduler.get(watcher.id)!.runCount).toBe(1);
+  });
+
+  /**
+   * Two watchers of failures whose firings can fail would feed each other
+   * forever. Runs another automation produced are excluded whole, and so is
+   * the watcher's own session — the loop guard is the point, not a corner.
+   */
+  it('never reacts to a run an automation produced, its own included', async () => {
+    const watcher = make({ trigger: { type: 'event', event: 'run_failed' }, continuous: true });
+    await scheduler.fire(watcher.id);
+    const own = scheduler.get(watcher.id)!.sessionId!;
+    kernel.submit.mockClear();
+
+    expect(await scheduler.onRunFinished(finished({ triggeredBy: 'automation' }))).toBe(0);
+    expect(await scheduler.onRunFinished(finished({ triggeredBy: 'loop' }))).toBe(0);
+    expect(await scheduler.onRunFinished(finished({ sessionId: own }))).toBe(0);
+    expect(kernel.submit).not.toHaveBeenCalled();
+  });
+
+  it('applies the filter to the category or the prompt, case-insensitively', async () => {
+    make({ trigger: { type: 'event', event: 'run_failed', filter: 'Parser' } });
+    make({ trigger: { type: 'event', event: 'run_failed', filter: 'deploy' } });
+
+    expect(await scheduler.onRunFinished(finished())).toBe(1);
+    expect(await scheduler.onRunFinished(finished({ category: 'deployment', prompt: 'ship it' }))).toBe(1);
+    expect(await scheduler.onRunFinished(finished({ category: null, prompt: 'unrelated' }))).toBe(0);
+  });
+
+  it('skips a watcher whose previous firing is still in flight, and says so', async () => {
+    const watcher = make({ trigger: { type: 'event', event: 'run_failed' }, continuous: true });
+    await scheduler.fire(watcher.id);
+    kernel.submit.mockClear();
+    kernel.hasActiveRunForSession.mockReturnValue(true);
+
+    expect(await scheduler.onRunFinished(finished())).toBe(0);
+    expect(kernel.submit).not.toHaveBeenCalled();
+    expect(logged.some((entry) => entry.level === 'warn' && entry.message === 'event automation skipped')).toBe(true);
+  });
+
+  it('refuses the two events nothing emits, naming the ones something does', () => {
+    for (const event of ['session_idle', 'file_changed'] as const) {
+      expect(() => make({ trigger: { type: 'event', event } })).toThrow(/Nothing emits "[a-z_]+" yet; .*run_failed or run_succeeded/);
+    }
+    expect(() => make({ trigger: { type: 'event', event: 'run_failed' } })).not.toThrow();
+  });
+});
+
+describe('notifying', () => {
+  it('names an automation that asked to be notified, for the session its firings use', async () => {
+    const quiet = make({ trigger: { type: 'manual' } });
+    const loud = make({ name: 'Morning review', trigger: { type: 'manual' }, policy: { notify: true } });
+    await scheduler.fire(quiet.id);
+    await scheduler.fire(loud.id);
+
+    expect(scheduler.notifying(scheduler.get(loud.id)!.sessionId!)).toBe('Morning review');
+    expect(scheduler.notifying(scheduler.get(quiet.id)!.sessionId!)).toBeNull();
+    expect(scheduler.notifying('ses_nobody')).toBeNull();
   });
 });

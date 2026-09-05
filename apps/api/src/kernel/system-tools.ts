@@ -13,7 +13,7 @@
  */
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
-import { AutomationTrigger, MemoryKind, RunStatus, RuntimeSettingKey } from '@metaclaude/shared';
+import { AutomationTrigger, MemoryKind, PermissionMode, RunStatus, RuntimeSettingKey } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { Steward, StewardActor } from '../services/steward.js';
 import { StewardError } from '../services/steward.js';
@@ -315,7 +315,10 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
     name: 'system_automation_create',
     ring: 2,
     description:
-      'Create an automation in a workspace. Disabled unless enabled is true — say so to the operator either way.',
+      'Create an automation in a workspace. Disabled unless enabled is true — say so to the operator either way. ' +
+      'Triggers: cron (read in the server timezone, see system_overview), interval, manual, or event — ' +
+      'run_failed / run_succeeded fire on the outcome of a run a person, a token or a delegation started in ' +
+      'that workspace, never another automation; session_idle and file_changed have no emitter and are refused.',
     schema: {
       workspace: WORKSPACE,
       name: z.string().min(1).max(120),
@@ -323,6 +326,10 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
       prompt: z.string().min(1).max(100_000),
       trigger: AutomationTrigger,
       enabled: z.boolean().optional(),
+      notify: z.boolean().optional().describe('Push the operator when a firing ends. Default false.'),
+      permissionMode: PermissionMode.optional().describe(
+        'How the firing may act unattended; dontAsk uses only pre-approved tools and never waits. Default: default.',
+      ),
     },
     handle: (facade, scope, args) => facade.automationCreate(scope, args),
   }),

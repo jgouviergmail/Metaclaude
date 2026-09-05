@@ -23,6 +23,7 @@ const { apiMock } = vi.hoisted(() => ({
     fireAutomation: vi.fn(),
     deleteAutomation: vi.fn(),
     createAutomation: vi.fn(),
+    system: vi.fn(),
   },
 }));
 
@@ -56,6 +57,8 @@ beforeEach(() => {
   apiMock.updateAutomation.mockResolvedValue({});
   apiMock.fireAutomation.mockResolvedValue({});
   apiMock.deleteAutomation.mockResolvedValue({ ok: true });
+  apiMock.system.mockResolvedValue({ timezone: 'Europe/Paris' });
+  apiMock.createAutomation.mockResolvedValue({});
 });
 
 describe('the list', () => {
@@ -157,5 +160,40 @@ describe('acting on one', () => {
     // reader hears which one is about to run rather than "run now" twice.
     fireEvent.click(screen.getByRole('button', { name: 'Run Revue du matin now' }));
     await waitFor(() => expect(apiMock.fireAutomation).toHaveBeenCalledWith('aut_1'));
+  });
+});
+
+describe('the form', () => {
+  /**
+   * The event trigger and the notify flag both existed in the schema before
+   * the form offered either: an event automation could only be created
+   * through the steward or the API, and nothing on screen said which clock a
+   * cron was read in. The form now posts exactly what the scheduler acts on.
+   */
+  it('offers an event trigger, a notify flag and names the server timezone, and posts them', async () => {
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+    const open = screen.getByRole('button', { name: 'New automation' }) as HTMLButtonElement;
+    await waitFor(() => expect(open.disabled).toBe(false));
+    fireEvent.click(open);
+    await screen.findByRole('dialog');
+
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Watch failures' } });
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Diagnose the failed run.' } });
+    expect((await screen.findByText(/Europe\/Paris/)).textContent).toMatch(/server's timezone/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Event' }));
+    fireEvent.click(screen.getByRole('button', { name: 'On a succeeded run' }));
+    fireEvent.change(screen.getByLabelText('Filter (optional)'), { target: { value: 'deploy' } });
+    fireEvent.click(screen.getByLabelText(/Notify me when a firing ends/));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(apiMock.createAutomation).toHaveBeenCalledTimes(1));
+    expect(apiMock.createAutomation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: { type: 'event', event: 'run_succeeded', filter: 'deploy' },
+        policy: { permissionMode: 'default', notify: true },
+      }),
+    );
   });
 });

@@ -486,6 +486,12 @@ describe('writing, under its own name', () => {
     expect(quiet.enabled).toBe(false);
     expect(live.enabled).toBe(true);
     expect((asked.created[0] as { workspaceId: string }).workspaceId).toBe(projectId);
+    // The two policy fields the tool accepts reach the scheduler; absent, no policy key is invented.
+    expect((asked.created[0] as { policy: unknown }).policy).toEqual({});
+    steward.automationCreate(ACTOR, {
+      workspace: 'project', name: 'Loud', prompt: 'brief', trigger: { type: 'manual' }, notify: true, permissionMode: 'dontAsk',
+    });
+    expect((asked.created[2] as { policy: unknown }).policy).toEqual({ notify: true, permissionMode: 'dontAsk' });
 
     expect(await steward.automationFire(ACTOR, 'auto_a')).toEqual({ id: 'auto_a', sessionId: 'ses_fired' });
     expect(audit.list({ action: 'steward.automation.fire' })).toHaveLength(1);

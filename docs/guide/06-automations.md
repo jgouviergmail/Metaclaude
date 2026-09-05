@@ -5,16 +5,34 @@ and a trigger.
 
 ## Triggers
 
-- **Cron** — a standard five-field expression, for schedules.
+- **Cron** — a standard five-field expression, for schedules. It is read in
+  the **server's timezone**, which the form names beside the field and
+  **Settings → System** shows. On a host left at UTC, `0 8 * * *` is ten
+  o'clock in Paris all summer. Set `TZ` in the server's `.env` (an IANA name such as
+  `Europe/Paris`) and every schedule follows that clock, daylight saving
+  included.
 - **Interval** — every N minutes, for polling-shaped work.
 - **Manual** — a button, for runbooks you invoke on demand.
-- **Event** — fire on another run's outcome: a failed run, a succeeded run,
-  an idle session, a changed file.
+- **Event** — fire on another run's outcome in the same workspace: **a
+  failed run** or **a succeeded run**. Only runs you, a token or a delegation
+  started count — never one another automation produced, which would let two
+  watchers feed each other forever. An optional filter is a word that must
+  appear in the run's category or prompt, and the firing's prompt opens with
+  which run it is reacting to and why. Two further events, an idle session
+  and a changed file, have been named in the schema since the first release
+  and nothing emits them; the server refuses them at creation rather than
+  accept a trigger that never fires.
 
 Each automation carries its own policy — model, effort, permission mode, a
 turn ceiling — independent of the workspace defaults. Leave the model unset
 and the learner picks per firing, which makes automations exactly the
 repeated workload the learner is best at.
+
+**Notify me when a firing ends.** Automations are silent by default: the
+machinery works while you sleep, and a channel that wakes you for it gets
+disabled within a week. Tick it for the ones whose whole point is to be read —
+a morning brief computed at eight and read at six has ten hours — and the
+phone hears about each firing under the automation's name.
 
 ## Continuous mode
 

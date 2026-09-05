@@ -11,6 +11,43 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.49.0] — 2026-09-05
+
+Three observations Metaclaude made of its own scheduling, all verified, all
+addressed: event triggers that never fired, a cron read on a clock nobody
+named, and a brief nobody was told about.
+
+### Fixed
+
+- **Event triggers fire.** The schema has offered `run_failed`,
+  `run_succeeded`, `session_idle` and `file_changed` since the first release
+  and nothing emitted any of them: an automation on `run_failed` showed
+  *enabled* and stayed silent forever, indistinguishable from a deployment
+  where nothing failed. The kernel's finish hook now drives the scheduler:
+  an enabled watcher of the same workspace fires when a run a person, a
+  token or a delegation started ends that way — never one another
+  automation produced, which would let two watchers feed each other — with
+  the run, its outcome and the start of its prompt prepended to the firing.
+  An optional filter matches a word in the run's category or prompt. The
+  two events nothing emits are refused at creation, naming the two that
+  work. The Automations form offers the trigger; it never had.
+
+### Added
+
+- **The server's timezone, wherever a schedule is typed.** Cron is read in
+  the process's clock — `TZ` in the container, UTC unless set — and a
+  schedule typed for eight fired at ten in Paris all summer with nothing on
+  screen saying which clock. `/api/system` reports the zone; the cron field,
+  Settings → System, the steward's overview and its SYSTEM-MAP name it;
+  `.env.example` says what `TZ` does.
+
+- **Notify me when a firing ends.** Automations stay silent by default, but a
+  brief nobody hears about is a brief read ten hours late. Each automation
+  can opt in; the push is announced under its name. The shipped *Morning
+  review* opts in, and `system_automation_create` takes `notify` and
+  `permissionMode`.
+
+
 ## [0.48.3] — 2026-09-05
 
 ### Changed

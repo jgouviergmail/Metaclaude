@@ -83,12 +83,12 @@ describe('seedSystemAutomation', () => {
    */
   it('seeds the review under dontAsk, and aligns an earlier never-fired seed once', () => {
     seedSystemAutomation({ db, workspaceId: 'ws_sys', automations });
-    expect(created[0]).toMatchObject({ policy: { permissionMode: 'dontAsk' } });
+    expect(created[0]).toMatchObject({ policy: { permissionMode: 'dontAsk', notify: true } });
 
     // An older deployment: seeded under the shipped default and never fired.
     rows.set('auto_1', { ...rows.get('auto_1')!, policy: { permissionMode: 'default' } } as Automation);
     seedSystemAutomation({ db, workspaceId: 'ws_sys', automations });
-    expect(updates).toEqual([{ id: 'auto_1', patch: { policy: { permissionMode: 'dontAsk' } } }]);
+    expect(updates).toEqual([{ id: 'auto_1', patch: { policy: { permissionMode: 'dontAsk', notify: true } } }]);
 
     // Moved by the operator, or already fired: left alone.
     rows.set('auto_1', { ...rows.get('auto_1')!, policy: { permissionMode: 'default' }, runCount: 3 } as Automation);

@@ -253,6 +253,16 @@ function matchesDate(schedule: CronSchedule, date: Date): boolean {
 }
 
 /** Validate an expression without keeping the result. */
+/**
+ * The zone every expression above is read in: the process's own, which is
+ * `TZ` in the container and UTC when nothing set it. Exposed so the interface
+ * can say so beside the field — a cron typed for eight o'clock on a UTC host
+ * fired at ten in Paris all summer, and nothing on screen said which clock.
+ */
+export function serverTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 export function isValidCron(expression: string): boolean {
   try {
     parseCron(expression);

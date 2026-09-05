@@ -63,7 +63,9 @@ export function seedSystemAutomation(deps: {
     // on what it may and is refused the rest instead of leaving a card that
     // expires unanswered. Shipped as `default` for three releases, which made
     // the scheduled review wait ten minutes on its first `board_get`.
-    policy: { permissionMode: 'dontAsk' },
+    // And it notifies: a brief nobody hears about is a brief read ten hours
+    // late — the steward's own observation about its morning review.
+    policy: { permissionMode: 'dontAsk', notify: true },
   });
   kvSet(deps.db, SYSTEM_AUTOMATION_KEY, automation.id);
   return automation;
@@ -77,5 +79,5 @@ export function seedSystemAutomation(deps: {
 function alignNeverFired(automations: Pick<Scheduler, 'get' | 'update'>, id: string): void {
   const current = automations.get(id);
   if (!current || current.runCount > 0 || current.policy.permissionMode !== 'default') return;
-  automations.update(id, { policy: { permissionMode: 'dontAsk' } });
+  automations.update(id, { policy: { permissionMode: 'dontAsk', notify: true } });
 }

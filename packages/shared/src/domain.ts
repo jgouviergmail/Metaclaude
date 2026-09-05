@@ -618,12 +618,24 @@ export const AutomationTrigger = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cron'), expression: z.string().min(1).max(200) }),
   z.object({ type: z.literal('interval'), everyMs: z.number().int().min(60_000) }),
   z.object({ type: z.literal('manual') }),
+  /**
+   * Fired by the outcome of another run in the same workspace — one a person,
+   * a token or a delegation started, never another automation, which would
+   * chain. `run_failed` and `run_succeeded` have an emitter; `session_idle`
+   * and `file_changed` are named here since the first schema and have none,
+   * so the scheduler refuses them at creation rather than accept a trigger
+   * that never fires. `filter` is a word that must appear in the run's
+   * category or prompt.
+   */
   z.object({
     type: z.literal('event'),
     event: z.enum(['run_failed', 'run_succeeded', 'session_idle', 'file_changed']),
     filter: z.string().max(300).optional(),
   }),
 ]);
+
+/** The event triggers something actually emits. The other two are declared and refused. */
+export const EMITTED_AUTOMATION_EVENTS = ['run_failed', 'run_succeeded'] as const;
 export type AutomationTrigger = z.infer<typeof AutomationTrigger>;
 
 export const Automation = z.object({
@@ -640,6 +652,14 @@ export const Automation = z.object({
       permissionMode: PermissionMode.default('default'),
       agentName: z.string().nullable().default(null),
       maxTurns: z.number().int().min(1).max(500).nullable().default(null),
+      /**
+       * Push the operator when a firing ends. Off by default: the machinery
+       * works while they sleep, and a channel that wakes them for it gets
+       * disabled within a week — but a brief nobody hears about is a brief
+       * read ten hours late, so the automations whose whole point is to be
+       * read opt in.
+       */
+      notify: z.boolean().default(false),
     })
     .default({
       model: 'default',
@@ -647,6 +667,7 @@ export const Automation = z.object({
       permissionMode: 'default',
       agentName: null,
       maxTurns: null,
+      notify: false,
     }),
   /**
    * When set, each firing continues the same Claude session instead of starting

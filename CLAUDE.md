@@ -525,6 +525,16 @@ restates the code is noise; one that records a decision or a trap is not.
   removed" family is not optional — filling everything drives `id`-or-create
   tools down their edit branch only, and the first version of that test
   passed on the very bug it was written for.
+- **A trigger the schema accepts and nothing emits is a promise on screen and
+  silence underneath.** `AutomationTrigger` named four events since the
+  first release; `computeNextRun` returned null for them and no code path
+  ever fired one, so an automation on `run_failed` showed *enabled* and stayed
+  mute — indistinguishable from a deployment where nothing failed. Same
+  family as the unforwarded field: an enum member is a claim, and one test has
+  to make the thing happen and watch it fire. `run_failed`/`run_succeeded`
+  now have an emitter in `Scheduler.onRunFinished`; the other two are refused
+  at creation, and `EMITTED_AUTOMATION_EVENTS` is the list a new emitter
+  extends.
 - **A class declared beside `vi.mock` is in its temporal dead zone when the
   factory runs.** The factories are hoisted above every top-level statement,
   so `ApiError` defined at module level and referenced from the factory

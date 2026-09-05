@@ -22,6 +22,7 @@ import {
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOperator, requireOwner } from '../http/guards.js';
+import { serverTimezone } from '../services/cron.js';
 import { RuntimeSettingsError } from '../services/runtime-settings.js';
 import { queryIntOr, spreadInt, spreadTimestamp } from '../http/query.js';
 
@@ -109,6 +110,7 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       embeddingProvider: context.embedder.id,
       retrieval: context.retrieval(),
       systemWorkspaceId: context.systemWorkspace.id(),
+      timezone: serverTimezone(),
       resources,
     };
     return reply.send(health);

@@ -52,6 +52,7 @@ import type { MemoryStore } from '../learning/memory.js';
 import type { AuditLog } from '../security/audit.js';
 import type { AdvisorService } from './advisor.js';
 import type { AnalyticsService } from './analytics.js';
+import { serverTimezone } from './cron.js';
 import type { Registry } from './registry.js';
 import type { RuntimeSettings } from './runtime-settings.js';
 import type { Scheduler } from './scheduler.js';
@@ -333,6 +334,9 @@ export class Steward {
       },
       memories: this.deps.memory.count(),
       retrieval: this.retrievalNote(),
+      // What every cron expression is read in. A schedule typed for eight on
+      // a UTC host fired at ten in Paris, and nothing said which clock.
+      timezone: serverTimezone(),
       newInsights: this.deps.insights.list({ status: 'new', limit: 500 }).length,
       pendingProposals: this.deps.proposals.list(undefined, 'pending').length,
       automations: this.deps.automations.list().filter((automation) => automation.enabled).length,
@@ -594,6 +598,8 @@ export class Steward {
       prompt: string;
       trigger: AutomationTrigger;
       enabled?: boolean;
+      notify?: boolean;
+      permissionMode?: Automation['policy']['permissionMode'];
     },
   ) {
     const workspace = this.findWorkspace(input.workspace);
@@ -606,6 +612,10 @@ export class Steward {
       prompt: input.prompt,
       trigger: input.trigger,
       enabled: input.enabled ?? false,
+      policy: {
+        ...(input.notify !== undefined ? { notify: input.notify } : {}),
+        ...(input.permissionMode !== undefined ? { permissionMode: input.permissionMode } : {}),
+      },
     });
     this.record(actor, 'steward.automation.create', automation.id, `${automation.name} in ${workspace.slug}`);
     return compactAutomation(automation);

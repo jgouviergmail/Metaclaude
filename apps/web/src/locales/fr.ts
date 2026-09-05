@@ -1331,8 +1331,8 @@ export const fr: Record<string, string> = {
   '0 disables the guard.': '0 désactive le garde-fou.',
   'In "Ask" mode an unattended run will stall on the first prompt and be declined after ten minutes. For a schedule, prefer "Plan", "Accept edits" or "Auto".':
     'En mode « Demander », un run sans surveillance se bloquera à la première question et sera refusé au bout de dix minutes. Pour une planification, préférez « Plan », « Accepter les modifications » ou « Auto ».',
-  "Standard 5-field cron, in the server's timezone.":
-    'Cron standard à 5 champs, dans le fuseau horaire du serveur.',
+  "Standard 5-field cron, read in the server's timezone: {zone}.":
+    'Cron standard à 5 champs, lu dans le fuseau horaire du serveur : {zone}.',
 
   /* ── Aide ───────────────────────────────────────────────────────────── */
   'Opens a plan-mode session in a workspace seeded with this guide — the assistant answers from these pages, with citations, and can execute nothing.':
@@ -1818,6 +1818,20 @@ export const fr: Record<string, string> = {
   'This is Metaclaude’s own workspace. Its tool lists are fixed: it uses its own tools and never gets a shell. The permission mode is yours — under "Don’t ask" it acts on its pre-approved tools without waiting for you; Bypass is never offered here.':
     'Ceci est le workspace de Metaclaude lui-même. Ses listes d’outils sont fixées : il utilise ses propres outils et n’obtient jamais de shell. Le mode de permission est le vôtre — en « Ne pas demander » il agit avec ses outils pré-approuvés sans vous attendre ; le contournement n’est jamais proposé ici.',
   'Actions for {name}': 'Actions pour {name}',
+  Schedule: 'Planning',
+  Interval: 'Intervalle',
+  Manual: 'Manuel',
+  Event: 'Événement',
+  'On a failed run': 'Quand un run échoue',
+  'On a succeeded run': 'Quand un run réussit',
+  'Filter (optional)': 'Filtre (facultatif)',
+  'Fires when a run you, a token or a delegation started in this workspace ends that way — never one another automation produced, which would chain. The filter is a word that must appear in the run’s category or prompt.':
+    'Se déclenche quand un run lancé par vous, un jeton ou une délégation dans ce workspace se termine ainsi — jamais un run produit par une autre automation, ce qui ferait une chaîne. Le filtre est un mot qui doit apparaître dans la catégorie ou le prompt du run.',
+  'Notify me when a firing ends': 'Me prévenir à la fin de chaque déclenchement',
+  'Automations are silent by default so the machinery never wakes you. Tick this for the ones whose whole point is to be read — a morning brief computed at eight and read at six has ten hours.':
+    'Les automations sont silencieuses par défaut, pour que la mécanique ne vous réveille jamais. Cochez pour celles qui n’existent que pour être lues — un brief du matin calculé à huit heures et lu à dix-huit a dix heures.',
+  'Server timezone': 'Fuseau horaire du serveur',
+  'Cron schedules are read in it.': 'Les plannings cron y sont lus.',
   'Workspace created': 'Espace de travail créé',
   'Use colour {swatch}': 'Utiliser la couleur {swatch}',
   'Delete workspace and files': "Supprimer l’espace de travail et les fichiers",

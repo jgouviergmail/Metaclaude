@@ -24,6 +24,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
+  EMITTED_AUTOMATION_EVENTS,
   PERMISSION_MODE_INFO,
   type Automation,
   type AutomationTrigger,
@@ -56,6 +57,19 @@ const PRESETS: Array<{ label: string; expression: string }> = [
   { label: 'Weekly, Monday 09:00', expression: '0 9 * * 1' },
   { label: 'Monthly, 1st at 09:00', expression: '0 9 1 * *' },
 ];
+
+/** Copy for the trigger picker, translated at the render site. */
+const TRIGGER_LABELS: Record<AutomationTrigger['type'], string> = {
+  cron: 'Schedule',
+  interval: 'Interval',
+  manual: 'Manual',
+  event: 'Event',
+};
+
+const EVENT_LABELS: Record<(typeof EMITTED_AUTOMATION_EVENTS)[number], string> = {
+  run_failed: 'On a failed run',
+  run_succeeded: 'On a succeeded run',
+};
 
 export function AutomationsPage() {
   const plural = usePlural();
@@ -361,15 +375,32 @@ function AutomationEditor({
   const [everyMinutes, setEveryMinutes] = useState(
     automation?.trigger.type === 'interval' ? Math.round(automation.trigger.everyMs / 60_000) : 60,
   );
+  const [eventName, setEventName] = useState<(typeof EMITTED_AUTOMATION_EVENTS)[number]>(
+    automation?.trigger.type === 'event' &&
+      (EMITTED_AUTOMATION_EVENTS as readonly string[]).includes(automation.trigger.event)
+      ? (automation.trigger.event as (typeof EMITTED_AUTOMATION_EVENTS)[number])
+      : 'run_failed',
+  );
+  const [eventFilter, setEventFilter] = useState(
+    automation?.trigger.type === 'event' ? (automation.trigger.filter ?? '') : '',
+  );
   const [continuous, setContinuous] = useState(automation?.continuous ?? false);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(
     automation?.policy.permissionMode ?? 'default',
   );
+  const [notify, setNotify] = useState(automation?.policy.notify ?? false);
   const [maxFailures, setMaxFailures] = useState(automation?.maxConsecutiveFailures ?? 3);
+  // The zone the server reads every cron expression in, shown beside the
+  // field: eight o'clock on a UTC host is ten in Paris all summer.
+  const { data: system } = useQuery({ queryKey: ['system'], queryFn: () => api.system(), staleTime: 60_000 });
 
   const buildTrigger = (): AutomationTrigger => {
     if (triggerType === 'interval') return { type: 'interval', everyMs: everyMinutes * 60_000 };
     if (triggerType === 'manual') return { type: 'manual' };
+    if (triggerType === 'event') {
+      const filter = eventFilter.trim();
+      return { type: 'event', event: eventName, ...(filter ? { filter } : {}) };
+    }
     return { type: 'cron', expression };
   };
 
@@ -382,7 +413,7 @@ function AutomationEditor({
         trigger: buildTrigger(),
         continuous,
         maxConsecutiveFailures: maxFailures,
-        policy: { permissionMode },
+        policy: { permissionMode, notify },
       };
       return automation
         ? api.updateAutomation(automation.id, body)
@@ -479,7 +510,7 @@ function AutomationEditor({
         <div>
           <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('Trigger')}</span>
           <div className="flex gap-1.5">
-            {(['cron', 'interval', 'manual'] as const).map((type) => (
+            {(['cron', 'interval', 'manual', 'event'] as const).map((type) => (
               <button
                 key={type}
                 type="button"
@@ -492,7 +523,7 @@ function AutomationEditor({
                     : 'border-line text-muted hover:bg-raised',
                 )}
               >
-                {type === 'cron' ? 'Schedule' : type === 'interval' ? 'Interval' : 'Manual'}
+                {t(TRIGGER_LABELS[type])}
               </button>
             ))}
           </div>
@@ -524,7 +555,41 @@ function AutomationEditor({
                 ))}
               </div>
               <p className="text-[11.5px] text-subtle">
-                {t("Standard 5-field cron, in the server's timezone.")}
+                {t("Standard 5-field cron, read in the server's timezone: {zone}.", {
+                  zone: system?.timezone ?? '…',
+                })}
+              </p>
+            </div>
+          ) : triggerType === 'event' ? (
+            <div className="mt-2.5 space-y-2">
+              <div className="flex gap-1.5" role="group" aria-label={t('Event')}>
+                {EMITTED_AUTOMATION_EVENTS.map((event) => (
+                  <button
+                    key={event}
+                    type="button"
+                    onClick={() => setEventName(event)}
+                    aria-pressed={eventName === event}
+                    className={cn(
+                      'flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-medium transition-colors',
+                      eventName === event
+                        ? 'border-accent bg-accent-soft text-accent'
+                        : 'border-line text-muted hover:bg-raised',
+                    )}
+                  >
+                    {t(EVENT_LABELS[event])}
+                  </button>
+                ))}
+              </div>
+              <Input
+                value={eventFilter}
+                onChange={(event) => setEventFilter(event.target.value)}
+                placeholder={t('Filter (optional)')}
+                aria-label={t('Filter (optional)')}
+              />
+              <p className="text-[11.5px] text-subtle">
+                {t(
+                  'Fires when a run you, a token or a delegation started in this workspace ends that way — never one another automation produced, which would chain. The filter is a word that must appear in the run’s category or prompt.',
+                )}
               </p>
             </div>
           ) : triggerType === 'interval' ? (
@@ -559,6 +624,23 @@ function AutomationEditor({
             <span className="block text-[12px] leading-relaxed text-muted">
               {t(
                 'Continue the same session on every firing instead of starting fresh. The agent keeps everything it has already learned in this loop, which is what makes long-running, self-directed work possible — and what makes its context grow over time.',
+              )}
+            </span>
+          </span>
+        </label>
+
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line p-3">
+          <input
+            type="checkbox"
+            checked={notify}
+            onChange={(event) => setNotify(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)]"
+          />
+          <span className="min-w-0">
+            <span className="block text-[13px] font-medium text-ink">{t('Notify me when a firing ends')}</span>
+            <span className="block text-[12px] leading-relaxed text-muted">
+              {t(
+                'Automations are silent by default so the machinery never wakes you. Tick this for the ones whose whole point is to be read — a morning brief computed at eight and read at six has ten hours.',
               )}
             </span>
           </span>

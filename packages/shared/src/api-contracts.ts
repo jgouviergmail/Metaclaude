@@ -934,6 +934,13 @@ export type RetrievalStatus = z.infer<typeof RetrievalStatus>;
 export const SystemHealth = z.object({
   version: z.string(),
   uptimeMs: z.number().int().nonnegative(),
+  /**
+   * The IANA zone the server's clock runs in — `TZ` in the container — and
+   * therefore the zone every cron expression is read in. Shown wherever a
+   * schedule is typed, because "0 8 * * *" on a UTC host is ten o'clock in
+   * Paris all summer and nothing else in the interface said so.
+   */
+  timezone: z.string(),
   claudeCli: z.object({
     available: z.boolean(),
     version: z.string().nullable(),

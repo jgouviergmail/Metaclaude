@@ -44,6 +44,7 @@ import { kvGet, kvSet, type Db } from '../db/index.js';
 import { defaultWorkspaceSettings, type WorkspaceRepo } from '../kernel/repositories.js';
 import type { ContentLanguage } from '../learning/language.js';
 import { isInside, PathEscapeError, resolveInside, safeRealpath } from '../security/paths.js';
+import { serverTimezone } from './cron.js';
 import { uniqueSlug } from './workspaces.js';
 
 /** Where the workspace's id is remembered. The `kv` table exists for this. */
@@ -532,6 +533,10 @@ export class SystemWorkspace {
           ? ` (${this.deps.tools().filter((entry) => entry.ring === 1).length} read, ${this.deps.tools().filter((entry) => entry.ring === 2).length} reversible)`
           : ''),
       '- additional directories: none',
+      '',
+      '## Clock',
+      '',
+      `- server timezone: \`${serverTimezone()}\` — every cron expression is read in it`,
       '',
       '## Live state',
       '',

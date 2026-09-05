@@ -274,6 +274,12 @@ export interface PushEventDeps {
   push: Pick<PushService, 'notify'>;
   sessions: { get(id: string): { title: string } | null };
   workspaces: { get(id: string): { name: string } | null };
+  /**
+   * The one exception to "only runs a human started": an automation whose
+   * policy asked to notify. Answers with its name for the session its
+   * firings run in, null for every other session.
+   */
+  automations?: { notifying(sessionId: string): string | null };
   log: (level: 'info' | 'warn', message: string, data?: unknown) => void;
 }
 
@@ -318,16 +324,19 @@ export function buildPushEventHandlers(deps: PushEventDeps): {
       // Only runs a human started. The machinery — automations, loops,
       // delegations, system runs — works while the owner sleeps, and a
       // channel that wakes them for it gets disabled within a week.
-      if (run.triggeredBy !== 'user') return;
+      //
+      // One exception, opted into per automation: a brief nobody hears
+      // about is a brief read ten hours late, which the steward pointed out
+      // of its own morning review. Such a run is announced under the
+      // automation's name rather than the session's.
+      const automation = run.triggeredBy === 'user' ? null : deps.automations?.notifying(run.sessionId) ?? null;
+      if (run.triggeredBy !== 'user' && !automation) return;
 
       const workspace = deps.workspaces.get(run.workspaceId);
       const session = deps.sessions.get(run.sessionId);
-      const title =
-        run.status === 'succeeded'
-          ? 'Run finished'
-          : run.status === 'failed'
-            ? 'Run failed'
-            : 'Run interrupted';
+      const outcome =
+        run.status === 'succeeded' ? 'finished' : run.status === 'failed' ? 'failed' : 'interrupted';
+      const title = automation ? `${automation} ${outcome}` : `Run ${outcome}`;
       dispatch(
         {
           title,

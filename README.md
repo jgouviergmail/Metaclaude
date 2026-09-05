@@ -302,11 +302,14 @@ encodes a datum the system genuinely holds; everything holds still under
 `prefers-reduced-motion`.
 
 ### Automations
-Cron or interval triggers, with a **continuous** mode that keeps one session
-alive across every firing so context accumulates. Guard rails included:
-consecutive-failure limits that disable a runaway loop, skipped rather than
-queued firings when the previous run is still going, and no burst of catch-up
-runs after downtime.
+Cron, interval, manual or **event** triggers — a watcher fires on a failed or
+succeeded run in its workspace, never on another automation's — with a
+**continuous** mode that keeps one session alive across every firing so
+context accumulates, and an opt-in push when a firing ends for the ones whose
+point is to be read. Cron is read in the server's timezone, named beside the
+field. Guard rails included: consecutive-failure limits that disable a runaway
+loop, skipped rather than queued firings when the previous run is still going,
+and no burst of catch-up runs after downtime.
 
 ### Workspaces
 A directory, plus the agent policy that applies inside it. Optional git clone on

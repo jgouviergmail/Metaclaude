@@ -444,6 +444,9 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     push,
     sessions: sessionRepo,
     workspaces: workspaceRepo,
+    // The scheduler is built after the kernel, which is built after this;
+    // the reference is read when a run finishes, long after both exist.
+    automations: { notifying: (sessionId) => schedulerRef?.notifying(sessionId) ?? null },
     log: (level, message, data) => log[level](data ?? {}, message),
   });
   // Approvals reach the bus, not onRunFinished — subscribe where they are
@@ -753,6 +756,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       pushEvents.onRunFinished(run);
       // The autopilot's chain: an opted-in board pulls its next card.
       void autopilotRef?.onRunFinished(run);
+      // Event triggers: the automations watching this outcome in this workspace.
+      void schedulerRef?.onRunFinished(run);
     },
     log: kernelLog,
   });

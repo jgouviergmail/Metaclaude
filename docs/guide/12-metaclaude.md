@@ -80,8 +80,11 @@ one mode never offered here.
 
 ## Scheduling it
 
-An automation called **Morning review** ships in its workspace, **disabled**
-and set to *Don't ask*, since nobody is there at eight to answer a card.
+An automation called **Morning review** ships in its workspace, **disabled**,
+set to *Don't ask* since nobody is there at eight to answer a card, and set
+to **notify** you when it has run, since a brief nobody hears about is read
+ten hours late. Eight o'clock is the server's: check the timezone the form
+names, and set `TZ` on the server if it is not yours.
 Enable it on the Automations page and every morning at eight Metaclaude reads
 the last twenty-four hours — failures, waiting approvals, new insights,
 health — acts on what is reversible and clearly right, and leaves you a short
