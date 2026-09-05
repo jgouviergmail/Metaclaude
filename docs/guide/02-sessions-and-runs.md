@@ -166,6 +166,14 @@ Each run shows its tokens and, where the CLI reports one, its cost. Analytics
 aggregates them per workspace and ranks workspaces against each other — the
 view that tells you which project is spending the ceiling.
 
+Under the period's cost, Analytics splits the prompt cache: tokens **read**
+from it and tokens **written** to it. A turn that arrives while the cache
+still holds the conversation reads it at a tenth of the price; one that
+arrives after it has expired writes the whole context again, at a quarter
+more. On a conversation of short questions that write is most of the bill,
+which is why a two-word greeting can cost more than a three-tool
+investigation — the cost follows the context re-sent, not the work done.
+
 Analytics also shows the **subscription quota** itself, as the CLI reports it:
 the five-hour session window, the weekly windows, and any per-model buckets,
 each with its utilisation and when it resets. Under them, the CLI's own

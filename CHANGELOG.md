@@ -11,6 +11,15 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.51.1] — 2026-09-05
+
+### Changed
+
+- **The guide says what 0.51.0 shipped.** The sessions guide explains the
+  cache split under the period's cost — why a two-word turn can cost more
+  than an investigation — and the Metaclaude guide lists editing among the
+  automation gestures the steward makes on its own.
+
 ## [0.51.0] — 2026-09-05
 
 Two things the steward asked for after a day of using its own tools, and it

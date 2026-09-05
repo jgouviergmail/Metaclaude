@@ -42,8 +42,9 @@ The boundary is drawn by **reversibility**, not by subject.
   tool it read something from.
 - **Reversible changes** it makes at once, then tells you. Writing or editing
   a memory and moving it between the global and workspace tiers; accepting or
-  rejecting an insight or a proposal; enabling, pausing, creating or firing an
-  automation (a new one is created disabled unless you say otherwise);
+  rejecting an insight or a proposal; enabling, pausing, creating, editing or
+  firing an automation (a new one is created disabled unless you say
+  otherwise; an edit changes only the fields it names);
   renaming, pinning or archiving a session; moving an operational setting;
   renaming a workspace or changing its ordinary settings; deciding an approval
   card of low or medium risk on your behalf; asking another workspace's agent
