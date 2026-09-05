@@ -15,7 +15,7 @@
  * the event trail saying who moved what.
  */
 
-import type { BoardTask, TaskActivity, TaskComment, TaskPriority, TaskStatus } from '@metaclaude/shared';
+import type { BoardTask, TaskActivity, TaskComment, TaskKind, TaskPriority, TaskStatus } from '@metaclaude/shared';
 import { newId, TaskStatus as TaskStatusSchema } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 
@@ -74,6 +74,7 @@ interface TaskRow {
   title: string;
   description: string;
   status: string;
+  kind: string;
   priority: string;
   assignee: string | null;
   run_id: string | null;
@@ -94,6 +95,7 @@ function toTask(row: TaskRow): BoardTask {
     title: row.title,
     description: row.description,
     status: row.status as TaskStatus,
+    kind: row.kind as TaskKind,
     priority: row.priority as TaskPriority,
     assignee: row.assignee as BoardTask['assignee'],
     runId: row.run_id,
@@ -114,6 +116,7 @@ export interface CreateTaskInput {
   title: string;
   description?: string;
   status?: TaskStatus;
+  kind?: TaskKind;
   priority?: TaskPriority;
   parentId?: string | null;
   assignee?: BoardTask['assignee'];
@@ -124,6 +127,7 @@ export interface CreateTaskInput {
 export interface UpdateTaskInput {
   title?: string;
   description?: string;
+  kind?: TaskKind;
   priority?: TaskPriority;
   assignee?: BoardTask['assignee'];
   dueAt?: number | null;
@@ -257,6 +261,7 @@ export class BoardService {
       title: input.title,
       description: input.description ?? '',
       status,
+      kind: input.kind ?? 'task',
       priority: input.priority ?? 'normal',
       assignee: input.assignee ?? null,
       runId: null,
@@ -272,9 +277,9 @@ export class BoardService {
 
     this.db
       .prepare(
-        `INSERT INTO tasks (id, workspace_id, parent_id, title, description, status, priority, assignee,
+        `INSERT INTO tasks (id, workspace_id, parent_id, title, description, status, kind, priority, assignee,
                             run_id, due_at, order_key, blocked_reason, created_by, created_at, updated_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         task.id,
@@ -283,6 +288,7 @@ export class BoardService {
         task.title,
         task.description,
         task.status,
+        task.kind,
         task.priority,
         task.assignee,
         task.runId,
@@ -304,6 +310,7 @@ export class BoardService {
     const changes: string[] = [];
     if (patch.title !== undefined && patch.title !== task.title) changes.push('title');
     if (patch.description !== undefined && patch.description !== task.description) changes.push('description');
+    if (patch.kind !== undefined && patch.kind !== task.kind) changes.push(`kind → ${patch.kind}`);
     if (patch.priority !== undefined && patch.priority !== task.priority) changes.push(`priority → ${patch.priority}`);
     if (patch.dueAt !== undefined && patch.dueAt !== task.dueAt) changes.push('due date');
     if (patch.blockedReason !== undefined && patch.blockedReason !== task.blockedReason) {
@@ -316,6 +323,7 @@ export class BoardService {
         `UPDATE tasks SET
            title = COALESCE(?, title),
            description = COALESCE(?, description),
+           kind = COALESCE(?, kind),
            priority = COALESCE(?, priority),
            assignee = CASE WHEN ? THEN ? ELSE assignee END,
            due_at = CASE WHEN ? THEN ? ELSE due_at END,
@@ -326,6 +334,7 @@ export class BoardService {
       .run(
         patch.title ?? null,
         patch.description ?? null,
+        patch.kind ?? null,
         patch.priority ?? null,
         assigneeChanged ? 1 : 0,
         patch.assignee ?? null,

@@ -55,4 +55,48 @@ describe('BoardPage', () => {
     fireEvent.click(button);
     await waitFor(() => expect(apiMock.workBoard).toHaveBeenCalledWith('ws_1'));
   });
+
+  /**
+   * The what-filter, beside the who-filter. A board mixes three things that
+   * read differently — something broken, something to do, something wished
+   * for — and scanning for one of them should not mean reading every title.
+   */
+  it('narrows the board to one kind, and back', async () => {
+    const card = (id: string, title: string, kind: 'bug' | 'task' | 'improvement') =>
+      ({
+        id,
+        workspaceId: 'ws_1',
+        parentId: null,
+        title,
+        kind,
+        description: '',
+        status: 'todo',
+        priority: 'normal',
+        assignee: null,
+        runId: null,
+        dueAt: null,
+        orderKey: `i${id}`,
+        blockedReason: null,
+        createdBy: 'user:jules',
+        createdAt: 0,
+        updatedAt: 0,
+        archivedAt: null,
+      }) as never;
+
+    apiMock.workspaces.mockResolvedValue({ workspaces: [{ id: 'ws_1', name: 'Metaclaude' } as never] });
+    apiMock.board.mockResolvedValue({
+      tasks: [card('tsk_1', 'The light stays red', 'bug'), card('tsk_2', 'Renew the lease', 'task')],
+    });
+    renderWithProviders(<BoardPage />);
+
+    expect(await screen.findByText('The light stays red')).toBeTruthy();
+    expect(screen.getByText('Renew the lease')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bug' }));
+    expect(screen.getByText('The light stays red')).toBeTruthy();
+    expect(screen.queryByText('Renew the lease')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All kinds' }));
+    expect(screen.getByText('Renew the lease')).toBeTruthy();
+  });
 });

@@ -5,7 +5,7 @@
  * gains a label in one view and not another.
  */
 
-import type { BoardTask, TaskStatus } from '@metaclaude/shared';
+import type { BoardTask, TaskKind, TaskStatus } from '@metaclaude/shared';
 
 export const TASK_COLUMNS: Array<{ status: TaskStatus; label: string; hint: string }> = [
   { status: 'backlog', label: 'Backlog', hint: 'Captured, not committed' },
@@ -14,6 +14,50 @@ export const TASK_COLUMNS: Array<{ status: TaskStatus; label: string; hint: stri
   { status: 'review', label: 'Review', hint: 'Done, awaiting your eyes' },
   { status: 'done', label: 'Done', hint: 'Finished and verified' },
 ];
+
+/**
+ * What each kind is called and how it reads, in one exhaustive table.
+ *
+ * A `Record` keyed by the enum rather than a ternary chain or a lookup with a
+ * fallback: adding a fourth kind then fails the build here instead of giving
+ * it another kind's colour in silence — the mistake `INSIGHT_TONE` was written
+ * to prevent on the Memory page.
+ */
+export const TASK_KINDS: Array<{ kind: TaskKind; label: string; hint: string }> = [
+  { kind: 'bug', label: 'Bug', hint: 'Something is broken' },
+  { kind: 'task', label: 'Task', hint: 'Something must be done' },
+  { kind: 'improvement', label: 'Improvement', hint: 'Something could be better' },
+];
+
+export const TASK_KIND_LABEL: Record<TaskKind, string> = {
+  bug: 'Bug',
+  task: 'Task',
+  improvement: 'Improvement',
+};
+
+/** The card's left edge, and the badge behind the icon. */
+export const TASK_KIND_TONE: Record<TaskKind, string> = {
+  bug: 'text-danger',
+  task: 'text-subtle',
+  improvement: 'text-accent',
+};
+
+export type KindFilter = 'all' | TaskKind;
+
+/**
+ * The what-filter's entries, module-level like the columns so the copy is
+ * translated at the render site rather than written into the markup — the
+ * shape the i18n measures know how to read.
+ */
+export const KIND_FILTERS: Array<{ kind: KindFilter; label: string }> = [
+  { kind: 'all', label: 'All kinds' },
+  ...TASK_KINDS.map((entry) => ({ kind: entry.kind as KindFilter, label: entry.label })),
+];
+
+/** The board's what-filter, beside the who-filter. 'all' is the identity. */
+export function filterByKind(tasks: BoardTask[], kind: KindFilter): BoardTask[] {
+  return kind === 'all' ? tasks : tasks.filter((task) => task.kind === kind);
+}
 
 export function columnLabel(status: TaskStatus): string {
   return TASK_COLUMNS.find((column) => column.status === status)?.label ?? status;

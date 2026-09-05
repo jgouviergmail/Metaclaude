@@ -88,6 +88,27 @@ describe('create', () => {
     expect(board.activity(first.id).map((event) => event.kind)).toEqual(['created']);
   });
 
+  /**
+   * The kind is what a card *is* — separate from priority, which says how
+   * soon, and from status, which says where. Everything written before kinds
+   * existed is a task, which is what the default and the migration's backfill
+   * both say.
+   */
+  it('defaults a card to a task, takes the kind it is given, and records a change of it', () => {
+    expect(make('a plain one').kind).toBe('task');
+
+    const bug = make('the light stays red', { kind: 'bug' });
+    expect(bug.kind).toBe('bug');
+    expect(board.board(WS).find((task) => task.id === bug.id)?.kind).toBe('bug');
+
+    const changed = board.update(bug.id, { kind: 'improvement' }, 'user:jules');
+    expect(changed.kind).toBe('improvement');
+    expect(board.activity(bug.id).map((event) => event.detail).join(' ')).toMatch(/kind → improvement/);
+
+    // A patch that does not name it leaves it alone — COALESCE, not a reset.
+    expect(board.update(bug.id, { title: 'renamed' }, 'user:jules').kind).toBe('improvement');
+  });
+
   it('refuses an unknown workspace, a foreign parent, and over-deep nesting', () => {
     expect(() =>
       board.create({ workspaceId: 'ws_ghost', title: 'x', createdBy: 'user:jules' }, 'user:jules'),

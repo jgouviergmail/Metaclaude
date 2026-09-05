@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.55.0] — 2026-09-05
+
+### Added
+
+- **Cards have a kind: bug, task or improvement.** A board mixed three things
+  that are read very differently — something is broken, something must be
+  done, something could be better — and told them apart only by their titles.
+  The kind is what a card *is*, separate from priority (how soon) and status
+  (where): it shows as an icon on the card, changes from the drawer, filters
+  the board above the columns, and is offered when a card is created. The
+  agent has it too — `board_create` and `board_update` take it, `board_list`
+  reports it. Everything written before this is a task, which is what
+  migration 24 backfills.
+
+  The schema-derived forwarding test earned its keep on the day: `board_create`
+  declared `kind` before the handler passed it on, and
+  `kernel/tool-forwarding.test.ts` failed with exactly that sentence.
+
 ## [0.54.0] — 2026-09-05
 
 ### Added

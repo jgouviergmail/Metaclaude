@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Play, SquareKanban } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { workspaceTopic, type BoardTask, type TaskPriority, type TaskStatus } from '@metaclaude/shared';
+import { workspaceTopic, type BoardTask, type TaskKind, type TaskPriority, type TaskStatus } from '@metaclaude/shared';
 import { toast } from 'sonner';
 import { BoardColumn } from '@/components/board/BoardColumn';
 import { TaskDrawer } from '@/components/board/TaskDrawer';
@@ -26,10 +26,14 @@ import { usePlural, useT } from '@/lib/i18n';
 import {
   boardCounts,
   filterByAssignee,
+  filterByKind,
   groupByColumn,
+  KIND_FILTERS,
   TASK_COLUMNS,
+  TASK_KINDS,
   upsertTask,
   type AssigneeFilter,
+  type KindFilter,
 } from '@/lib/board';
 import { socket } from '@/lib/socket';
 import { useBoardTouchDrag } from '@/lib/touch-drag';
@@ -117,6 +121,7 @@ export function BoardPage() {
   const [creating, setCreating] = useState<TaskStatus | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [newKind, setNewKind] = useState<TaskKind>('task');
   const [newPriority, setNewPriority] = useState<TaskPriority>('normal');
 
   const create = useMutation({
@@ -125,6 +130,7 @@ export function BoardPage() {
         title: newTitle.trim(),
         description: newDescription.trim() || undefined,
         status: creating ?? 'todo',
+        kind: newKind,
         priority: newPriority,
       }),
     onSuccess: () => {
@@ -137,9 +143,15 @@ export function BoardPage() {
   });
 
   const [who, setWho] = useState<AssigneeFilter>('all');
+  const [kind, setKind] = useState<KindFilter>('all');
   const tasks = boardQuery.data?.tasks ?? [];
   const counts = useMemo(() => boardCounts(tasks), [tasks]);
-  const columns = useMemo(() => groupByColumn(filterByAssignee(tasks, who)), [tasks, who]);
+  // Both filters, in one pass over the same list: they narrow, they never
+  // reorder, and the columns keep the server's order within each.
+  const columns = useMemo(
+    () => groupByColumn(filterByKind(filterByAssignee(tasks, who), kind)),
+    [tasks, who, kind],
+  );
 
   // The phone's drag path. A drop on a card lands after it in that card's
   // column; a drop on a column's open space appends, exactly like the native
@@ -233,6 +245,26 @@ export function BoardPage() {
                 </button>
               ))}
             </div>
+
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('Filter by kind')}>
+              {KIND_FILTERS.map((entry) => (
+                <button
+                  key={entry.kind}
+                  type="button"
+                  aria-pressed={kind === entry.kind}
+                  onClick={() => setKind(entry.kind)}
+                  className={cn(
+                    'rounded-lg px-2.5 py-1 text-[12.5px]',
+                    kind === entry.kind
+                      ? 'bg-accent-soft font-medium text-accent'
+                      : 'border border-line text-muted hover:text-ink',
+                  )}
+                >
+                  {t(entry.label)}
+                </button>
+              ))}
+            </div>
+
             <p className="ml-auto text-[12px] text-muted">
               {plural(counts.total, '{n} card', '{n} cards')}
               {counts.working > 0 ? (
@@ -339,6 +371,27 @@ export function BoardPage() {
               onChange={(event) => setNewDescription(event.target.value)}
               placeholder={t('What done looks like, constraints, links…')}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>{t('Kind')}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {TASK_KINDS.map((entry) => (
+                <button
+                  key={entry.kind}
+                  type="button"
+                  aria-pressed={newKind === entry.kind}
+                  title={t(entry.hint)}
+                  onClick={() => setNewKind(entry.kind)}
+                  className={
+                    newKind === entry.kind
+                      ? 'rounded-lg bg-accent-soft px-2.5 py-1 text-[12.5px] font-medium text-accent'
+                      : 'rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-muted hover:text-ink'
+                  }
+                >
+                  {t(entry.label)}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-2">
             <Label>{t('Priority')}</Label>

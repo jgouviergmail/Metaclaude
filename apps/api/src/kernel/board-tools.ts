@@ -10,7 +10,7 @@
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
 import type { BoardTask, TaskComment } from '@metaclaude/shared';
-import { TaskPriority, TaskStatus } from '@metaclaude/shared';
+import { TaskKind, TaskPriority, TaskStatus } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { CreateTaskInput, UpdateTaskInput } from '../services/board.js';
 
@@ -39,6 +39,7 @@ const compact = (task: BoardTask) => ({
   id: task.id,
   title: task.title,
   status: task.status,
+  kind: task.kind,
   priority: task.priority,
   assignee: task.assignee,
   parentId: task.parentId,
@@ -79,6 +80,7 @@ export function createBoardHandlers(board: BoardFacade, scope: BoardToolScope) {
       title: string;
       description?: string;
       status?: TaskStatus;
+      kind?: TaskKind;
       priority?: TaskPriority;
       parentId?: string;
       assignee?: 'user' | 'agent';
@@ -92,6 +94,7 @@ export function createBoardHandlers(board: BoardFacade, scope: BoardToolScope) {
             createdBy: actor,
             ...(args.description !== undefined ? { description: args.description } : {}),
             status: args.status ?? 'todo',
+            ...(args.kind !== undefined ? { kind: args.kind } : {}),
             ...(args.priority !== undefined ? { priority: args.priority } : {}),
             ...(args.parentId !== undefined ? { parentId: args.parentId } : {}),
             ...(args.assignee !== undefined ? { assignee: args.assignee } : {}),
@@ -105,6 +108,7 @@ export function createBoardHandlers(board: BoardFacade, scope: BoardToolScope) {
       taskId: string;
       title?: string;
       description?: string;
+      kind?: TaskKind;
       priority?: TaskPriority;
       blockedReason?: string | null;
     }) {
@@ -177,10 +181,10 @@ export const BOARD_SERVER_NAME = 'metaclaude_board';
  * together, because a name that drifts is a tool that silently opens a card.
  */
 export const BOARD_TOOL_CATALOGUE: ReadonlyArray<{ name: string; ring: 1 | 2; description: string }> = [
-  { name: 'board_list', ring: 1, description: 'Every active card of this board, with column and priority.' },
+  { name: 'board_list', ring: 1, description: 'Every active card of this board, with column, kind and priority.' },
   { name: 'board_get', ring: 1, description: 'One card in full: description, comments, sub-tasks.' },
   { name: 'board_create', ring: 2, description: 'Add a card, optionally under a parent.' },
-  { name: 'board_update', ring: 2, description: 'Edit a card’s title, description, priority or blocked reason.' },
+  { name: 'board_update', ring: 2, description: 'Edit a card’s title, description, kind, priority or blocked reason.' },
   { name: 'board_move', ring: 2, description: 'Move a card to another column (done is the operator’s).' },
   { name: 'board_comment', ring: 2, description: 'Leave a note on a card.' },
   { name: 'board_decompose', ring: 2, description: 'Break a card into sub-tasks.' },
@@ -203,7 +207,7 @@ export function buildBoardServer(
     tools: [
       sdkTool(
         'board_list',
-        "This workspace's kanban board: every active card with its id, column and priority. " +
+        "This workspace's kanban board: every active card with its id, column, kind and priority. " +
           'Start here before touching any card.',
         {},
         async () => asToolResult(() => handlers.list()),
@@ -221,6 +225,9 @@ export function buildBoardServer(
           title: TITLE,
           description: DESCRIPTION.optional(),
           status: TaskStatus.optional().describe('Column; defaults to todo.'),
+          kind: TaskKind.optional().describe(
+            'bug = something is broken, task = something must be done, improvement = something could be better. Defaults to task.',
+          ),
           priority: TaskPriority.optional(),
           parentId: TASK_ID.optional(),
           assignee: z.enum(['user', 'agent']).optional(),
@@ -229,12 +236,13 @@ export function buildBoardServer(
       ),
       sdkTool(
         'board_update',
-        'Edit a card: title, description, priority, or set/clear its blocked reason ' +
+        'Edit a card: title, description, kind, priority, or set/clear its blocked reason ' +
           '(null clears it). Prefer a comment for progress notes.',
         {
           taskId: TASK_ID,
           title: TITLE.optional(),
           description: DESCRIPTION.optional(),
+          kind: TaskKind.optional(),
           priority: TaskPriority.optional(),
           blockedReason: z.string().max(500).nullable().optional(),
         },

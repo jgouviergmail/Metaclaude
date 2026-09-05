@@ -975,4 +975,19 @@ export const MIGRATIONS: readonly Migration[] = [
       UPDATE sessions SET last_read_at = last_activity_at;
     `,
   },
+  {
+    version: 24,
+    name: 'task_kind',
+    sql: /* sql */ `
+      -- What a card is: 'bug' (something is broken), 'task' (something must
+      -- be done) or 'improvement' (something could be better). Separate from
+      -- priority, which says how soon, and from status, which says where.
+      --
+      -- Everything written before this is a task, which is what the default
+      -- says and what the column is backfilled to by it. No index: a board is
+      -- read whole by workspace and the filter is applied on what is already
+      -- in hand.
+      ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
+    `,
+  },
 ];

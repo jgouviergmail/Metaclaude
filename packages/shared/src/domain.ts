@@ -907,6 +907,19 @@ export const TaskPriority = z.enum(['low', 'normal', 'high', 'urgent']);
 export type TaskPriority = z.infer<typeof TaskPriority>;
 
 /**
+ * What a card *is*, which is not what it costs or when it is due.
+ *
+ * Three, because a fourth is a taxonomy nobody maintains: something is
+ * broken (`bug`), something must be done (`task`), or something could be
+ * better than it is (`improvement`). The distinction earns its place by
+ * changing how a card is read — a bug in Review means "check the fix", an
+ * improvement in Backlog is a candidate rather than a debt — and by letting a
+ * board be scanned for one kind without reading every title.
+ */
+export const TaskKind = z.enum(['bug', 'task', 'improvement']);
+export type TaskKind = z.infer<typeof TaskKind>;
+
+/**
  * One card. A real schema, not a type: board updates ride the socket, so
  * `parseWireFrame` genuinely reaches this at runtime.
  *
@@ -925,6 +938,8 @@ export const BoardTask = z.object({
   title: z.string().min(1).max(300),
   description: z.string().max(20_000).default(''),
   status: TaskStatus,
+  /** Defaulted: every card written before kinds existed is a task. */
+  kind: TaskKind.default('task'),
   priority: TaskPriority.default('normal'),
   assignee: z.enum(['user', 'agent']).nullable().default(null),
   /** The run currently (or last) working this card. */

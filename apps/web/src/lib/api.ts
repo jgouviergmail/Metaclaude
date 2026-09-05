@@ -35,6 +35,7 @@ import {
   type BoardTask,
   type TaskActivity,
   type TaskComment,
+  type TaskKind,
   type TaskPriority,
   type TaskStatus,
   type CreateMemoryRequest,
@@ -409,6 +410,7 @@ export const api = {
       title: string;
       description?: string;
       status?: TaskStatus;
+      kind?: TaskKind;
       priority?: TaskPriority;
       parentId?: string | null;
       assignee?: 'user' | 'agent' | null;
@@ -421,6 +423,7 @@ export const api = {
     body: {
       title?: string;
       description?: string;
+      kind?: TaskKind;
       priority?: TaskPriority;
       assignee?: 'user' | 'agent' | null;
       dueAt?: number | null;

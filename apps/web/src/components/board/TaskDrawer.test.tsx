@@ -35,6 +35,7 @@ const task = (over: Partial<BoardTask> = {}): BoardTask => ({
   workspaceId: 'ws_1',
   parentId: null,
   title: 'A task',
+  kind: 'task',
   description: '',
   status: 'todo',
   priority: 'normal',
@@ -120,3 +121,30 @@ describe('TaskDrawer — the agent affordance', () => {
     expect(screen.queryByRole('button', { name: /send.*agent/i })).toBeNull();
   });
 });
+
+/**
+ * Changing what a card is.
+ *
+ * A card is often filed before anyone knows which it is — a "task" that turns
+ * out to be a bug, a bug that turns out to be a wish. The drawer changes it
+ * in place, beside the priority, rather than asking for a new card.
+ */
+describe('TaskDrawer — the kind', () => {
+  it('names the current kind and saves another', async () => {
+    apiMock.task.mockResolvedValue(detail({ task: task({ kind: 'task' }) }));
+    apiMock.updateTask.mockResolvedValue({ task: task({ kind: 'bug' }) });
+    renderWithProviders(<TaskDrawer taskId="tsk_1" onClose={() => {}} />);
+
+    const trigger = await screen.findByRole('button', { name: /Kind: Task/ });
+    // Radix opens on pointerdown, never on click alone.
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.click(trigger);
+
+    // Every entry of a picker carries `selected`, so each is announced as a
+    // checkbox — `getByRole('menuitem')` finds nothing and reads as a menu
+    // that never opened. The trap is in CLAUDE.md; this is what it looks like.
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Bug/ }));
+    await waitFor(() => expect(apiMock.updateTask).toHaveBeenCalledWith('tsk_1', { kind: 'bug' }));
+  });
+});
+

@@ -9,7 +9,7 @@
  */
 
 import type { App } from '../http/types.js';
-import { TaskPriority, TaskStatus } from '@metaclaude/shared';
+import { TaskKind, TaskPriority, TaskStatus } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, mustGetWorkspace, requestIp, requireOperator } from '../http/guards.js';
@@ -71,6 +71,7 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
     title: z.string().min(1).max(300),
     description: z.string().max(20_000).optional(),
     status: TaskStatus.optional(),
+    kind: TaskKind.optional(),
     priority: TaskPriority.optional(),
     parentId: z.string().nullable().optional(),
     assignee: Assignee.optional(),
@@ -102,6 +103,7 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
   const UpdateTask = z.object({
     title: z.string().min(1).max(300).optional(),
     description: z.string().max(20_000).optional(),
+    kind: TaskKind.optional(),
     priority: TaskPriority.optional(),
     assignee: Assignee.optional(),
     dueAt: z.number().int().nullable().optional(),

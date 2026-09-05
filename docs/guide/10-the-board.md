@@ -12,11 +12,18 @@ cards.
 
 ## Cards
 
-A card carries a title, a description, a priority (the coloured dot), an
-assignee (you, or the workspace's agent), an optional due date — overdue
-shows red — and, when something is stuck, a **blocked** marker whose reason
-you can read on hover. Moving a card clears its block: the reason described
-the place it was stuck.
+A card carries a title, a description, a **kind**, a priority (the coloured
+dot), an assignee (you, or the workspace's agent), an optional due date —
+overdue shows red — and, when something is stuck, a **blocked** marker whose
+reason you can read on hover. Moving a card clears its block: the reason
+described the place it was stuck.
+
+The kind says what the card *is*, which is neither how urgent it is nor where
+it sits: **Bug** (something is broken), **Task** (something must be done) or
+**Improvement** (something could be better). It shows as an icon on the card,
+changes from the card's drawer, and the filter above the columns narrows the
+board to one kind — a bug and a wish sit in the same column and are read very
+differently. Cards written before kinds existed are tasks.
 
 Drag cards between columns with the mouse on a desktop. On a phone, **press
 and hold** a card for a beat — it lifts under your finger, columns light up

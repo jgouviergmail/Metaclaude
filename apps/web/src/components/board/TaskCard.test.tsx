@@ -24,6 +24,7 @@ const TASK: BoardTask = {
   workspaceId: 'ws_a',
   parentId: null,
   title: 'Renouveler l’assurance habitation',
+  kind: 'task',
   description: '',
   status: 'todo',
   priority: 'high',
@@ -134,3 +135,28 @@ describe('what the card shows without opening it', () => {
     expect(document.querySelector('.text-danger')).toBeNull();
   });
 });
+
+/**
+ * The kind, on the card.
+ *
+ * A bug and a wish sit in the same column and read differently; the icon says
+ * which without costing the card a line. Labelled, because a colour and a
+ * glyph are not a name.
+ */
+describe('the kind', () => {
+  it('names what the card is', () => {
+    render({ kind: 'bug' });
+    expect(screen.getByRole('img', { name: 'Bug' })).toBeTruthy();
+  });
+
+  it('says task for a plain one', () => {
+    render({ kind: 'task' });
+    expect(screen.getByRole('img', { name: 'Task' })).toBeTruthy();
+  });
+
+  it('says improvement for a wish', () => {
+    render({ kind: 'improvement' });
+    expect(screen.getByRole('img', { name: 'Improvement' })).toBeTruthy();
+  });
+});
+

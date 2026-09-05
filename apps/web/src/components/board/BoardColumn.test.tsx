@@ -18,6 +18,7 @@ const task = (over: Partial<BoardTask>): BoardTask => ({
   workspaceId: 'ws_1',
   parentId: null,
   title: 'A task',
+  kind: 'task',
   description: '',
   status: 'todo',
   priority: 'normal',

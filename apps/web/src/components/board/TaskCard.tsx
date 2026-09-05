@@ -8,14 +8,21 @@
  * drawer anyway.
  */
 
-import { Bot, CircleAlert, GripVertical, MoreVertical, User as UserIcon } from 'lucide-react';
+import { Bot, Bug, CircleAlert, GripVertical, ListTodo, MoreVertical, Sparkles, User as UserIcon } from 'lucide-react';
 import { memo, type HTMLAttributes } from 'react';
 import type { BoardTask, TaskStatus } from '@metaclaude/shared';
-import { isWorkedByAgent, TASK_COLUMNS } from '@/lib/board';
+import { isWorkedByAgent, TASK_COLUMNS, TASK_KIND_LABEL, TASK_KIND_TONE } from '@/lib/board';
 import { Menu, MenuItem, MenuLabel } from '@/components/ui/Menu';
 import { Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
+
+/** Exhaustive on purpose: a fourth kind fails the build rather than a card. */
+const KIND_ICON: Record<BoardTask['kind'], typeof Bug> = {
+  bug: Bug,
+  task: ListTodo,
+  improvement: Sparkles,
+};
 
 const PRIORITY_TONE: Record<BoardTask['priority'], string> = {
   urgent: 'bg-danger',
@@ -103,6 +110,17 @@ export const TaskCard = memo(function TaskCard({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 pl-5 text-[11.5px] text-muted">
+        {/* What the card is, before how urgent it is: a bug and a wish read
+            differently in the same column, and the icon says which without
+            costing a line. */}
+        <Tooltip content={t(TASK_KIND_LABEL[task.kind])}>
+          <span className="inline-flex" aria-label={t(TASK_KIND_LABEL[task.kind])} role="img">
+            {(() => {
+              const Icon = KIND_ICON[task.kind];
+              return <Icon className={cn('size-3.5', TASK_KIND_TONE[task.kind])} aria-hidden />;
+            })()}
+          </span>
+        </Tooltip>
         <Tooltip content={t('Priority: {p}', { p: t(task.priority) })}>
           <span className={cn('inline-block size-2 rounded-full', PRIORITY_TONE[task.priority])} aria-label={t(
             'Priority: {p}',

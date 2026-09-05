@@ -15,7 +15,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { BoardTask, TaskPriority } from '@metaclaude/shared';
 import { api, ApiError } from '@/lib/api';
-import { columnLabel } from '@/lib/board';
+import { columnLabel, TASK_KIND_LABEL, TASK_KINDS } from '@/lib/board';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, Button, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
@@ -195,6 +195,25 @@ export function TaskDrawer({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Menu
+              trigger={
+                <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
+                  {t('Kind')}: <span className="font-medium text-ink">{t(TASK_KIND_LABEL[task.kind])}</span>
+                </button>
+              }
+            >
+              {TASK_KINDS.map((entry) => (
+                <MenuItem
+                  key={entry.kind}
+                  selected={entry.kind === task.kind}
+                  description={t(entry.hint)}
+                  onSelect={() => save.mutate({ kind: entry.kind })}
+                >
+                  {t(entry.label)}
+                </MenuItem>
+              ))}
+            </Menu>
+
             <Menu
               trigger={
                 <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
