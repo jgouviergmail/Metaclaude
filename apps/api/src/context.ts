@@ -31,6 +31,15 @@ import { PolicyLearner } from './learning/bandit.js';
 import { TaskClassifier } from './learning/classifier.js';
 import { createEmbeddingProvider, type EmbeddingProvider } from './learning/embeddings.js';
 import { MemoryStore } from './learning/memory.js';
+import {
+  CONSOLIDATION_SCHEMA,
+  CONSOLIDATION_SYSTEM_PROMPT,
+  Consolidator,
+  buildConsolidationPrompt,
+  readConsolidationOutput,
+  type ConsolidationOutput,
+} from './learning/consolidation.js';
+import { reindexStale } from './learning/reindex.js';
 import { KnowledgeStore } from './learning/knowledge.js';
 import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
@@ -111,6 +120,7 @@ export interface AppContext {
   classifier: TaskClassifier;
   policy: PolicyLearner;
   reflexion: ReflexionEngine;
+  consolidator: Consolidator;
 
   registry: Registry;
   mcpOAuth: McpOAuth;
@@ -265,6 +275,20 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const classifier = new TaskClassifier(db, embedder);
   const policy = new PolicyLearner(db);
 
+  // A vector is only comparable to one from the same provider, so a change of
+  // embedder — including `local` falling back to `hash` because the optional
+  // package is absent — silently turns off dense retrieval *and* duplicate
+  // detection until someone presses Re-index. Not awaited: the rebuild must
+  // not hold up the health endpoint the deploy gate waits on, and retrieval is
+  // already degraded in exactly this way while it runs.
+  void reindexStale({
+    db,
+    memory,
+    knowledge,
+    embedderId: embedder.id,
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+
   const claudeEnv = buildClaudeEnv(config);
 
   // Owns the credential from here on. Constructing it rewrites `claudeEnv` in
@@ -317,6 +341,29 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     // The reflector runs in a scratch directory, never a workspace: it has no
     // tools, and pointing it at project files would be a needless risk.
     cwd: config.dataDir,
+    log: kernelLog,
+  });
+
+  // The consolidation pass. Same tool-less, scratch-directory call as the
+  // reflector, for the same reason: it reads memories and answers with JSON,
+  // and giving it a workspace or a tool would be a risk it has no use for.
+  const consolidator = new Consolidator({
+    db,
+    memory,
+    embedderId: embedder.id,
+    call: async (groups) => {
+      const { prompt, numbering } = buildConsolidationPrompt(groups);
+      const output = await structuredCall<ConsolidationOutput>(
+        { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
+        {
+          prompt,
+          systemPrompt: CONSOLIDATION_SYSTEM_PROMPT,
+          schema: CONSOLIDATION_SCHEMA as unknown as Record<string, unknown>,
+          accept: (parsed) => Array.isArray((parsed as ConsolidationOutput).groups),
+        },
+      );
+      return readConsolidationOutput(output, groups, numbering);
+    },
     log: kernelLog,
   });
 
@@ -473,6 +520,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     classifier,
     policy,
     reflexion,
+    consolidator,
     // The registry resolves per-workspace context; the marketplace sources are
     // global and composed in here rather than taught to the registry.
     contextProvider: {
@@ -755,6 +803,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     classifier,
     policy,
     reflexion,
+    consolidator,
     registry,
     library,
     advisor,

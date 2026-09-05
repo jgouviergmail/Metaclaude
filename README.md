@@ -222,6 +222,18 @@ rank, then weighted by confidence and recency. Memories that get retrieved into
 runs that succeed gain confidence; the rest decay on a forgetting curve until
 the janitor collects them.
 
+Two tiers, and the list is grouped by them: a memory belongs to one workspace,
+or to all of them. A run is given both. What the agent learns is always scoped
+to the project it learned it in — deciding a lesson travels is yours, with one
+press, and one press back.
+
+Left alone a corpus repeats itself, so **Consolidate** shortlists memories that
+sit close together, asks one cheap model call whether they genuinely say the
+same thing, and files what it finds for you to decide on. It never merges
+anything by itself — and it reports contradictions too, which matter more: two
+memories that disagree were until now both handed to every run that matched
+either.
+
 Embeddings run **locally**. The default needs no model download at all.
 
 ### Learning

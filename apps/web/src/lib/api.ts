@@ -597,9 +597,13 @@ export const api = {
       scope?: 'global';
     } = {},
   ) =>
-    request<{ memories: Memory[]; stats: Record<MemoryKind, number>; total: number }>(
-      `/api/memory${qs(params)}`,
-    ),
+    request<{
+      memories: Memory[];
+      stats: Record<MemoryKind, number>;
+      total: number;
+      /** Where each memory was learned, by run id — the run's own session. */
+      sources: Record<string, { sessionId: string; workspaceId: string }>;
+    }>(`/api/memory${qs(params)}`),
 
   searchMemory: (q: string, workspaceId?: string, limit = 10) =>
     request<{ results: MemorySearchResult[] }>(`/api/memory/search${qs({ q, workspaceId, limit })}`),
@@ -612,8 +616,31 @@ export const api = {
 
   deleteMemory: (id: string) => request<{ ok: boolean }>(`/api/memory/${id}`, { method: 'DELETE' }),
 
-  memoryMaintenance: (action: 'decay' | 'collect' | 'reindex') =>
-    request<{ affected: number }>('/api/memory/maintenance', { method: 'POST', body: { action } }),
+  /**
+   * Move a memory between tiers: `null` promotes it to global, an id confines
+   * it to that workspace. Separate from `updateMemory` because it is not a
+   * property of the memory — it decides which projects the agent recalls it in.
+   */
+  setMemoryScope: (id: string, workspaceId: string | null) =>
+    request<{ memory: Memory; moved: boolean }>(`/api/memory/${id}/scope`, {
+      method: 'POST',
+      body: { workspaceId },
+    }),
+
+  memoryMaintenance: (action: 'decay' | 'collect' | 'reindex' | 'consolidate') =>
+    request<{
+      affected: number;
+      consolidation?: {
+        groups: number;
+        proposed: number;
+        remaining: number;
+        seeds: number;
+        corpus: number;
+      };
+    }>(
+      '/api/memory/maintenance',
+      { method: 'POST', body: { action } },
+    ),
 
   /* ----------------------------- Insights ----------------------------- */
   insights: (params: { workspaceId?: string; status?: string; limit?: number } = {}) =>
@@ -624,6 +651,17 @@ export const api = {
 
   installSkillFromInsight: (id: string) =>
     request<{ skill: SkillDefinition }>(`/api/insights/${id}/install-skill`, { method: 'POST' }),
+
+  /**
+   * Apply a consolidation proposal: fold its members into one memory, and
+   * optionally promote the survivor. Answers 409 when a member has changed
+   * since the proposal was drawn up, rather than merging over the edit.
+   */
+  applyConsolidation: (id: string, promote: boolean) =>
+    request<{ memory: Memory; absorbed: string[]; moved: boolean }>(
+      `/api/insights/${id}/consolidate`,
+      { method: 'POST', body: { promote } },
+    ),
 
   /**
    * Distil a workspace's accumulated procedures into a proposed skill.

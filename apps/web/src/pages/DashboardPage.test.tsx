@@ -175,3 +175,69 @@ describe('what is happening now', () => {
     expect(await screen.findByText('Alpha')).toBeDefined();
   });
 });
+
+/**
+ * "Recently learned" is a five-row digest of the review queue, and a
+ * consolidation proposal shares that queue without being anything the system
+ * learned: it is a request to delete rows. Left in, a single sweep's worth of
+ * them fills the panel and the lessons it exists for fall off the end.
+ */
+describe('the recently-learned digest', () => {
+  const insight = (id: string, kind: string, title: string) => ({
+    id,
+    workspaceId: null,
+    runId: null,
+    kind,
+    title,
+    body: 'b',
+    confidence: 0.7,
+    status: 'new',
+    payload: null,
+    createdAt: 1_700_000_000_000,
+  });
+
+  it('shows lessons and hides consolidation proposals', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [
+        insight('ins_1', 'consolidation', '2 memories say the same thing'),
+        insight('ins_2', 'lesson', 'Les tests tournent avec pnpm test:run'),
+      ],
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByText('Les tests tournent avec pnpm test:run')).toBeDefined();
+    expect(screen.queryByText('2 memories say the same thing')).toBeNull();
+  });
+
+  it('reads the panel as empty when only proposals are waiting', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [insight('ins_1', 'consolidation', '2 memories say the same thing')],
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByText('Nothing new')).toBeDefined();
+  });
+
+  /**
+   * The server is asked for more than the five shown for exactly this reason:
+   * taking five and then filtering would let a sweep's proposals empty a panel
+   * that has lessons behind them.
+   */
+  it('still fills the panel when proposals arrive first', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [
+        ...Array.from({ length: 6 }, (_, i) => insight(`ins_c${i}`, 'consolidation', `dup ${i}`)),
+        insight('ins_l', 'lesson', 'Une vraie leçon'),
+      ],
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByText('Une vraie leçon')).toBeDefined();
+    await waitFor(() =>
+      expect(apiMock.insights).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 })),
+    );
+  });
+});

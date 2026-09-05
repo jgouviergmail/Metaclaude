@@ -83,6 +83,61 @@ export interface RetrievalOptions {
 /** Near-duplicate threshold. Above this cosine, two memories say the same thing. */
 export const DUPLICATE_THRESHOLD = 0.92;
 
+/**
+ * How many rows a duplicate check compares against, newest first.
+ *
+ * A ceiling rather than a full scan because every candidate costs a cosine on
+ * the write path. Reaching it is not an error but it *is* silent — beyond this
+ * many memories in one scope, deduplication quietly stops seeing the oldest —
+ * so `remember` reports it once the ceiling actually bites.
+ */
+export const DUPLICATE_SCAN_LIMIT = 2000;
+
+/**
+ * Raised when a reconciliation is refused. Carries the status the route should
+ * answer with, so the rules live here rather than being restated per caller.
+ */
+export class MemoryReconcileError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode = 400,
+  ) {
+    super(message);
+    this.name = 'MemoryReconcileError';
+  }
+}
+
+export interface ReconcileInput {
+  /** The row that survives, and whose kind the result keeps. */
+  winnerId: string;
+  /** Rows folded into it and then deleted. */
+  loserIds?: readonly string[];
+  /**
+   * `undefined` leaves the tier alone, `null` promotes to global, an id
+   * confines to that workspace. Absent and null mean different things here,
+   * which is why this is not simply `string | null`.
+   */
+  scope?: string | null;
+  /** Rewrites the surviving text — the consolidation pass supplies both. */
+  title?: string;
+  content?: string;
+  /** Replaces the union of the participants' tags when given. */
+  tags?: readonly string[];
+  /**
+   * Overrides the highest confidence among the participants. `remember` uses
+   * it to apply the repeat-observation bump; consolidation leaves it alone.
+   */
+  confidence?: number;
+}
+
+export interface ReconcileResult {
+  memory: Memory;
+  /** Ids that no longer exist. */
+  absorbed: string[];
+  /** Whether the tier actually changed — false for a no-op promote. */
+  moved: boolean;
+}
+
 // The relevance gates and the fts query builder moved to retrieval.ts when the
 // knowledge store arrived — the constants are measurements of this exact
 // configuration, and two stores must share one set of measurements. Re-exported
@@ -129,44 +184,22 @@ export class MemoryStore {
   }): Promise<{ memory: Memory; merged: boolean }> {
     const embedding = await this.embedder.embed(`${input.title}\n\n${input.content}`);
 
-    const duplicate = this.findNearDuplicate(embedding, input.workspaceId, input.kind);
+    const duplicate = this.findNearDuplicate(embedding, input.workspaceId);
     if (duplicate) {
-      // A repeated observation is evidence, so raise confidence — but keep it
-      // strictly below 1 so nothing ever becomes unfalsifiable.
-      const confidence = Math.min(0.99, duplicate.confidence + 0.08);
-      const mergedTags = normaliseTags([...duplicate.tags, ...(input.tags ?? [])]);
-
-      // Keep the longer body: it is usually the more specific of the two.
-      const content =
-        input.content.length > duplicate.content.length ? input.content : duplicate.content;
-
-      // Re-embed when the stored text actually changes, or the vector would go
-      // on indexing text the row no longer contains.
-      const merged =
-        content === duplicate.content
-          ? null
-          : await this.embedder.embed(`${duplicate.title}\n\n${content}`);
-
-      this.db
-        .prepare(
-          `UPDATE memories SET
-             content = ?, tags = ?, confidence = ?, updated_at = ?,
-             embedding = COALESCE(?, embedding),
-             embedding_dim = COALESCE(?, embedding_dim),
-             embedding_model = COALESCE(?, embedding_model)
-           WHERE id = ?`,
-        )
-        .run(
-          content,
-          JSON.stringify(mergedTags),
-          confidence,
-          Date.now(),
-          merged ? packEmbedding(merged) : null,
-          merged ? merged.length : null,
-          merged ? this.embedder.id : null,
-          duplicate.id,
-        );
-      return { memory: this.get(duplicate.id) as Memory, merged: true };
+      // One write path, not two. `reconcile` already knows how to rewrite a
+      // surviving row and re-embed only when the text actually moved; doing it
+      // again here is how the two drifted apart before it existed.
+      const { memory } = await this.reconcile({
+        winnerId: duplicate.id,
+        // Keep the longer body: it is usually the more specific of the two.
+        content:
+          input.content.length > duplicate.content.length ? input.content : duplicate.content,
+        tags: [...duplicate.tags, ...(input.tags ?? [])],
+        // A repeated observation is evidence, so raise confidence — but keep it
+        // strictly below 1 so nothing ever becomes unfalsifiable.
+        confidence: Math.min(0.99, duplicate.confidence + 0.08),
+      });
+      return { memory, merged: true };
     }
 
     const id = newId('memory');
@@ -242,6 +275,175 @@ export class MemoryStore {
 
   delete(id: string): boolean {
     return this.db.prepare('DELETE FROM memories WHERE id = ?').run(id).changes > 0;
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Reconciliation                                                          */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Fold memories together, move one between tiers, or both at once.
+   *
+   * Three operator-visible gestures — promote, confine, merge — are one
+   * operation underneath, because doing them separately means writing the
+   * hard part twice. The hard part is that a memory is not just its text: it
+   * carries the runs that used it, the reinforcement those runs earned it, and
+   * an operator's pin. Anything that ends a row has to say what becomes of all
+   * of that, and "nothing" is the wrong answer.
+   *
+   * The whole call is one transaction. A caller that names five losers and
+   * gets one wrong changes nothing at all, rather than folding four and
+   * failing on the fifth.
+   */
+  async reconcile(input: ReconcileInput): Promise<ReconcileResult> {
+    const loserIds = [...new Set(input.loserIds ?? [])];
+    if (loserIds.includes(input.winnerId)) {
+      throw new MemoryReconcileError('A memory cannot absorb itself.');
+    }
+
+    const winner = this.get(input.winnerId);
+    if (!winner) throw new MemoryReconcileError('That memory no longer exists.', 404);
+
+    const losers = loserIds.map((id) => {
+      const memory = this.get(id);
+      if (!memory) throw new MemoryReconcileError('That memory no longer exists.', 404);
+      return memory;
+    });
+
+    // The one rule that cannot be relaxed. Two workspaces are two projects,
+    // and folding one's memory into the other's would carry knowledge across
+    // the boundary every scope clause in this file exists to enforce. The
+    // global tier is exempt in both directions — that is what a tier is for.
+    const projects = new Set(
+      [winner, ...losers].map((memory) => memory.workspaceId).filter((id): id is string => id !== null),
+    );
+    if (projects.size > 1) {
+      throw new MemoryReconcileError(
+        'Memories can only be folded together within the same workspace, or with the global tier.',
+      );
+    }
+
+    if (input.scope !== undefined && input.scope !== null) {
+      // Checked here rather than left to the foreign key: the constraint fires
+      // inside the transaction with a message about `memories.workspace_id`,
+      // which tells an operator nothing about the workspace they picked.
+      const exists = this.db
+        .prepare<[string], { one: number }>('SELECT 1 AS one FROM workspaces WHERE id = ?')
+        .get(input.scope);
+      if (!exists) throw new MemoryReconcileError('No such workspace.', 404);
+    }
+
+    const scope = input.scope === undefined ? winner.workspaceId : input.scope;
+    const moved = scope !== winner.workspaceId;
+    const title = (input.title ?? winner.title).slice(0, 300);
+    const content = input.content ?? winner.content;
+    const rewritten = title !== winner.title || content !== winner.content;
+
+    // Asked for nothing, so nothing happens — including to `updated_at`.
+    // Promoting what is already global is the common way to land here, and it
+    // is a no-op rather than an error: the caller's intent is already true.
+    if (
+      losers.length === 0 &&
+      !moved &&
+      !rewritten &&
+      input.tags === undefined &&
+      input.confidence === undefined
+    ) {
+      return { memory: winner, absorbed: [], moved: false };
+    }
+
+    // Embedding is awaited, and better-sqlite3 is synchronous — so this is the
+    // one point where another request gets served, and everything read above
+    // becomes a snapshot rather than a fact.
+    const embedding = rewritten ? await this.embedder.embed(`${title}\n\n${content}`) : null;
+
+    tx(this.db, () => {
+      // Re-read, and refuse on any drift. The alternative is the read-then-
+      // decide-then-write shape that has bitten this codebase before: a memory
+      // deleted on that await would have had its use counts folded into the
+      // winner from a row that no longer exists, and one *edited* on it would
+      // have had the edit overwritten by the copy read beforehand — including
+      // when the caller only meant to rename it. Nothing here can repair
+      // either case (the embedding is already computed from the old text), so
+      // the honest answer is to fail and let the caller ask again.
+      const fresh = this.get(winner.id);
+      if (!fresh) throw new MemoryReconcileError('That memory no longer exists.', 404);
+      if (fresh.title !== winner.title || fresh.content !== winner.content) {
+        throw new MemoryReconcileError('That memory changed while this was being prepared.', 409);
+      }
+
+      const all = [fresh];
+      for (const loser of losers) {
+        const current = this.get(loser.id);
+        if (!current) throw new MemoryReconcileError('That memory no longer exists.', 404);
+        all.push(current);
+      }
+
+      const repoint = this.db.prepare(
+        `INSERT INTO memory_usages (run_id, memory_id, score)
+         SELECT run_id, ?, score FROM memory_usages WHERE memory_id = ?
+         ON CONFLICT(run_id, memory_id) DO UPDATE SET score = max(score, excluded.score)`,
+      );
+      // Every repoint before any delete: a run that saw two of the losers must
+      // not have its second row cascade away while the first is being moved.
+      for (const loser of losers) repoint.run(fresh.id, loser.id);
+
+      this.db
+        .prepare(
+          `UPDATE memories SET
+             workspace_id = ?, title = ?, content = ?, tags = ?,
+             confidence = ?, pinned = ?, use_count = ?, success_count = ?,
+             source_run_id = ?, created_at = ?, last_used_at = ?, updated_at = ?,
+             embedding = COALESCE(?, embedding),
+             embedding_dim = COALESCE(?, embedding_dim),
+             embedding_model = COALESCE(?, embedding_model)
+           WHERE id = ?`,
+        )
+        .run(
+          scope,
+          title,
+          content,
+          // An explicit list is the consolidation pass having decided; absent,
+          // the union of what the participants carried — which is what folding
+          // two memories together means.
+          JSON.stringify(normaliseTags(input.tags ?? all.flatMap((memory) => memory.tags))),
+          // The corpus's best estimate of the fact, not an average: a duplicate
+          // that was written once and never retrieved must not drag down one
+          // that fifty runs have earned.
+          clamp01(input.confidence ?? Math.max(...all.map((memory) => memory.confidence))),
+          // A pin is an operator's instruction. It survives whichever row it
+          // was set on, or a merge would quietly re-enable decay.
+          toInt(all.some((memory) => memory.pinned)),
+          sum(all.map((memory) => memory.useCount)),
+          sum(all.map((memory) => memory.successCount)),
+          // Provenance is worth keeping when the winner has none of its own —
+          // a consolidated memory still came from somewhere.
+          all.map((memory) => memory.sourceRunId).find(Boolean) ?? null,
+          Math.min(...all.map((memory) => memory.createdAt)),
+          latest(all.map((memory) => memory.lastUsedAt)),
+          Date.now(),
+          embedding ? packEmbedding(embedding) : null,
+          embedding ? embedding.length : null,
+          embedding ? this.embedder.id : null,
+          fresh.id,
+        );
+
+      // Only now. Whatever the cascade takes has already been carried over.
+      const drop = this.db.prepare('DELETE FROM memories WHERE id = ?');
+      for (const loser of losers) drop.run(loser.id);
+    });
+
+    return { memory: this.get(winner.id) as Memory, absorbed: loserIds, moved };
+  }
+
+  /** Move a memory to the global tier, where every workspace retrieves it. */
+  promote(id: string): Promise<ReconcileResult> {
+    return this.reconcile({ winnerId: id, scope: null });
+  }
+
+  /** Take a global memory back down to one workspace. */
+  confine(id: string, workspaceId: string): Promise<ReconcileResult> {
+    return this.reconcile({ winnerId: id, scope: workspaceId });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -374,18 +576,40 @@ export class MemoryStore {
     }
   }
 
-  private findNearDuplicate(
-    embedding: Float32Array,
-    workspaceId: string | null,
-    kind: MemoryKind,
-  ): Memory | null {
-    const rows = this.db
-      .prepare<[string | null, string], MemoryRow>(
-        `SELECT * FROM memories
-         WHERE workspace_id IS ? AND kind = ?
-         ORDER BY updated_at DESC LIMIT 2000`,
-      )
-      .all(workspaceId, kind);
+  /**
+   * The stored memory this text would duplicate, or null.
+   *
+   * Two filters this deliberately does *not* apply, both of which it used to.
+   *
+   * **Kind.** The classification is a guess the reflector makes from a single
+   * run and it is not stable — production held the same observation about the
+   * workspace's language as `semantic` on one row and `procedural` on another,
+   * so filtering by kind let one fact live once per kind. Duplication is a
+   * property of meaning; the winner keeps its own kind.
+   *
+   * **Tier, in one direction.** A workspace write is compared against the
+   * global tier as well, because a fact the global tier already carries is
+   * already reachable from here: writing a local copy creates a duplicate that
+   * spans two tiers, which `workspace_id IS ?` could never see. The reverse is
+   * refused — a global write only ever matches another global — or a fact that
+   * belongs everywhere would be quietly demoted into whichever workspace
+   * happened to observe it first.
+   */
+  private findNearDuplicate(embedding: Float32Array, workspaceId: string | null): Memory | null {
+    const rows =
+      workspaceId === null
+        ? this.db
+            .prepare<[], MemoryRow>(
+              `SELECT * FROM memories WHERE workspace_id IS NULL
+               ORDER BY updated_at DESC LIMIT ${DUPLICATE_SCAN_LIMIT}`,
+            )
+            .all()
+        : this.db
+            .prepare<[string], MemoryRow>(
+              `SELECT * FROM memories WHERE workspace_id = ? OR workspace_id IS NULL
+               ORDER BY updated_at DESC LIMIT ${DUPLICATE_SCAN_LIMIT}`,
+            )
+            .all(workspaceId);
 
     let best: { row: MemoryRow; score: number } | null = null;
     for (const row of rows) {
@@ -735,5 +959,19 @@ export class MemoryStore {
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+const sum = (values: readonly number[]): number => values.reduce((total, n) => total + n, 0);
+
+/**
+ * The most recent of several timestamps, or null when none was ever set.
+ *
+ * `Math.max` over nullables answers 0 for "never used", and 0 is a real epoch
+ * millisecond as far as `decay` is concerned — it would read as used in 1970
+ * and start decaying immediately.
+ */
+function latest(values: readonly (number | null)[]): number | null {
+  const known = values.filter((value): value is number => value !== null);
+  return known.length > 0 ? Math.max(...known) : null;
 }
 

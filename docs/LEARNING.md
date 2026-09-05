@@ -22,12 +22,25 @@ something important before inserting anything: it looks for a near-duplicate.
 cosine(new, existing) ≥ 0.92  ⟹  merge, don't insert
 ```
 
-This matters more than it sounds. The reflexion pass produces overlapping
-lessons run after run — "tests run with `pnpm test:run`" will be rediscovered a
-dozen times. Without consolidation those duplicates crowd out everything else in
-retrieval, and the corpus degenerates into one idea repeated. On a merge, the
-existing memory's confidence rises (repetition is evidence) but is capped below
-1.0, so nothing ever becomes unfalsifiable.
+On a merge, the existing memory's confidence rises (repetition is evidence) but
+is capped below 1.0, so nothing ever becomes unfalsifiable.
+
+**This catches the same text written twice, and only that.** The threshold is
+deliberately high, and on the hashing embedder that ships by default it is
+essentially unreachable by paraphrase: measured on a real deployment, the
+*highest* cosine between any two of its twenty-two memories was **0.51** —
+while four of them said the workspace worked in French and five described the
+same quota behaviour. A third of the corpus was redundant and nothing here
+could see it. Semantic repetition is caught by a different mechanism, below.
+
+The candidate set is the writer's own scope **plus the global tier**, and it
+ignores the memory's kind. Both matter: the same observation had been recorded
+as `semantic` on one row and `procedural` on another, so filtering by kind let
+one fact live once per kind; and a fact the global tier already carries is
+already reachable from the workspace, so writing a local copy of it creates a
+duplicate spanning two tiers. The reverse is refused — a global write only ever
+matches another global — or a fact that belongs everywhere would be quietly
+demoted into whichever workspace observed it first.
 
 Three kinds, following the standard cognitive-architecture split:
 
@@ -36,6 +49,83 @@ Three kinds, following the standard cognitive-architecture split:
 | `semantic` | durable facts | "This project uses pnpm workspaces, not npm." |
 | `procedural` | repeatable methods | "To add a migration: append to MIGRATIONS, never edit a shipped one." |
 | `episodic` | what happened in a run | "The 2026-04 auth refactor broke session resume." |
+
+### Two tiers, and moving between them
+
+`memories.workspace_id` is nullable, and the null is the global tier. Retrieval
+unions them — a workspace run is given its own memories *and* every global one
+— which is the whole reason a standing note reaches every project.
+
+The reflexion pass always writes scoped, because one run is not evidence that a
+lesson travels. Promotion is therefore an operator decision, and it is its own
+verb (`POST /api/memory/:id/scope`) rather than a field on the patch route:
+every other field there is what the memory *says*, while this one decides which
+projects recall it at all. It carries its own audit line, and the interface
+confirms it, because promoting changes what every other workspace's runs are
+given and that consequence is invisible from the screen it is pressed on.
+
+One consequence has nothing to do with retrieval: `workspace_id` cascades on
+workspace delete, so the tier a memory sits on decides whether it survives its
+project.
+
+`MemoryStore.reconcile()` is the primitive underneath all of it — promote,
+confine and merge are one operation, because the hard part is shared. A memory
+is not just its text: it carries the runs that used it (`memory_usages`, which
+`recalledFor` reads to show a run's genesis), the reinforcement those runs
+earned it, and an operator's pin. Anything that ends a row has to say what
+becomes of all of that, and "nothing" is the wrong answer — the usage rows are
+repointed before any delete, with the primary-key collision (a run that saw
+both) resolved by keeping the larger score.
+
+### Consolidation — semantic repetition, judged rather than thresholded
+
+The duplicate check above cannot see paraphrase, and no threshold fixes that.
+Swept over the same production corpus: catching every genuine duplicate pair
+needs a floor of **0.15**, which also admits **fifty-eight unrelated pairs out
+of seventy-seven**. The cosine cannot be the decision. It can only be the
+shortlist — at 0.25 it proposes nineteen pairs, fifteen of them real, which is
+a small enough question to put to a model.
+
+So `learning/consolidation.ts`:
+
+1. **A star per memory** — the memory plus its nearest neighbours above 0.25,
+   capped at four. *Not* a connected component: union-find over the same
+   neighbour graph swallowed eight unrelated memories into one group at that
+   floor and fifteen of twenty-two at 0.20, because "somewhat similar" is
+   transitive and meaning is not.
+2. **One group per cluster** — a group is dropped when it shares more than half
+   its members with one already kept. Without that, a cluster of four produced
+   four overlapping stars: four model calls for one question, and four
+   competing proposals of which applying any one leaves the other three stale.
+   On the production corpus this turns fourteen groups into seven.
+3. **One tool-less `haiku` call** judges each batch, answering `duplicate`,
+   `contradictory` or `complementary` — the last being the common and correct
+   answer.
+4. **Nothing is applied.** Every verdict becomes a row in the operator's
+   existing review queue.
+
+`contradictory` is the verdict that pays for the pass. Two memories close
+enough to be retrieved together that tell the agent opposite things are far
+more dangerous than two that repeat, and before this nothing anywhere noticed:
+both were injected side by side.
+
+Three properties are load-bearing and each is pinned by a test:
+
+- **A group never spans two workspaces.** `reconcile` refuses it too, but a
+  group that cannot be formed is a proposal that cannot be made.
+- **A memory the arbiter cannot be shown whole is never grouped.** Its answer
+  *becomes* the surviving text, so judging a longer memory on a prefix would
+  fold its tail away into a note derived from that prefix — approved by an
+  operator shown the same prefix.
+- **Every proposal carries a fingerprint** of the exact text it was drawn
+  against, taken from the snapshot the arbiter saw rather than from a fresh
+  read. Applying one whose members have moved since is refused, not merged
+  over.
+
+The pass runs incrementally at the end of the reflexion pass, seeded only with
+what was just written — the one place a fresh duplicate can have appeared — and
+in full from **Memory → Maintenance → Consolidate**. A run that learned
+something with no close neighbour costs no model call at all.
 
 ### Retrieval
 
@@ -363,16 +453,30 @@ Two providers, both **local**. No text ever leaves the machine for embedding.
 **`hash` (default)** — feature hashing over word unigrams, bigrams and character
 4-grams, projected into 512 dimensions with signed buckets so collisions cancel
 rather than accumulate, sub-linearly weighted and L2-normalised. No download, no
-native dependency, no network. Genuinely adequate for near-duplicate detection
-and topical recall over a personal corpus.
+native dependency, no network. Adequate for topical recall over a personal
+corpus, and for catching the same text written twice.
+
+It is **not** adequate for detecting paraphrase, and this document used to say
+it was. Measured on a real deployment: the highest cosine between any two of
+its twenty-two memories was 0.51, its median 0.12, while a third of the corpus
+was semantically redundant. The gap between "same subject" and "same claim"
+simply is not in the signal, which is why consolidation asks a model instead of
+lowering a threshold.
 
 **`local`** — a sentence-transformer via `@huggingface/transformers`. Better
 semantic recall, at a ~90 MB one-time download. Imported dynamically and falls
 back to `hash` if unavailable, so enabling it can never break a running
 deployment.
 
-The two produce unrelated vector spaces, so switching requires a re-index —
-available from Memory → Maintenance.
+The two produce unrelated vector spaces, so switching requires a re-index. It
+now happens by itself: a vector is only comparable to one from the same
+provider, so `search` and the duplicate check both skip a row whose
+`embedding_model` is not the live one — which meant a change of provider, or
+`local` falling back to `hash` because the optional package is absent, silently
+turned off dense retrieval *and* duplicate detection until somebody pressed the
+button. `learning/reindex.ts` counts the stale rows at boot with one query and
+rebuilds them in the background, so the health endpoint the deploy gate waits
+on is never held up. The manual action remains under Memory → Maintenance.
 
 ---
 

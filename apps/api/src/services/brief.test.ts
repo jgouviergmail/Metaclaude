@@ -122,6 +122,28 @@ describe('composition', () => {
     const brief = await makeService().generate();
     expect(brief.newInsights).toBe(1);
   });
+
+  /**
+   * "New insights" is a number an operator reads as "things waiting for me".
+   * One already triaged is not, and the consolidation pass files its "these
+   * are distinct" answers pre-rejected — bookkeeping that stops it paying to
+   * ask the same question on every sweep, and that no screen ever shows. A
+   * plain `COUNT(*)` had the brief announce a dozen new insights after a sweep
+   * that produced nothing to read.
+   */
+  it('counts only what is still waiting on a person', async () => {
+    const insert = db.prepare(
+      `INSERT INTO insights (id, workspace_id, kind, title, body, status, created_at)
+       VALUES (?, 'ws_1', ?, 't', 'b', ?, ?)`,
+    );
+    insert.run('ins_new', 'lesson', 'new', NOW - HOUR);
+    insert.run('ins_marker', 'consolidation', 'rejected', NOW - HOUR);
+    insert.run('ins_done', 'skill_proposal', 'applied', NOW - HOUR);
+    insert.run('ins_seen', 'lesson', 'accepted', NOW - HOUR);
+
+    const brief = await makeService().generate();
+    expect(brief.newInsights).toBe(1);
+  });
 });
 
 describe('the board section', () => {

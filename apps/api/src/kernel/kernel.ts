@@ -29,6 +29,7 @@ import type { Db } from '../db/index.js';
 import type { PolicyLearner } from '../learning/bandit.js';
 import { computeReward } from '../learning/bandit.js';
 import type { TaskCategory, TaskClassifier } from '../learning/classifier.js';
+import type { Consolidator } from '../learning/consolidation.js';
 import type { MemoryStore } from '../learning/memory.js';
 import type { KnowledgeStore } from '../learning/knowledge.js';
 import type { ReflexionEngine } from '../learning/reflexion.js';
@@ -118,6 +119,12 @@ export interface KernelDeps {
   classifier: TaskClassifier;
   policy: PolicyLearner;
   reflexion: ReflexionEngine;
+  /**
+   * Optional, and that is not laziness: the kernel's own fixture is half real
+   * on purpose, and a collaborator that only ever proposes something for a
+   * person to read has no bearing on any behaviour tested there.
+   */
+  consolidator?: Pick<Consolidator, 'sweep'>;
   contextProvider: ContextProvider;
   supervisor: AgentSupervisor;
   attachments: AttachmentService;
@@ -978,15 +985,24 @@ export class Kernel {
       if (workspace.settings.reflexionEnabled) {
         const events = this.deps.transcript.byRun(run.id);
         const written = await this.deps.reflexion.reflect(run, events);
-        if (written > 0) {
+        if (written.length > 0) {
           this.deps.bus.publish(SYSTEM_TOPIC, {
             type: 'notification',
             topic: SYSTEM_TOPIC,
             level: 'info',
             title: 'Learned something new',
-            message: `Recorded ${written} new memor${written === 1 ? 'y' : 'ies'} from the last run.`,
+            message: `Recorded ${written.length} new memor${written.length === 1 ? 'y' : 'ies'} from the last run.`,
             href: `/memory?workspace=${workspace.id}`,
           });
+
+          // Consolidate around what was just learned, and only that: the one
+          // place a fresh duplicate can have appeared is the neighbourhood of
+          // a new memory, so the pass costs at most one cheap model call per
+          // run that learned anything — and none at all when nothing it wrote
+          // has a near neighbour, which is the common case. It proposes; it
+          // never merges. A failure is maintenance not happening, so it is
+          // logged and dropped like every other step of this loop.
+          await this.deps.consolidator?.sweep({ seedIds: written });
         }
       }
     } catch (error) {

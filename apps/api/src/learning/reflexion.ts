@@ -123,10 +123,17 @@ export class ReflexionEngine {
   /**
    * Reflect on a run and persist what it learned.
    *
-   * Returns the number of memories written. Never throws.
+   * Returns the memories it wrote, by id — not merely how many. The
+   * consolidation pass runs on exactly this set: the only place a fresh
+   * duplicate can have appeared is around what was just learned, so seeding it
+   * with these ids keeps that pass bounded by the run rather than by the
+   * corpus. An id here may name a memory that already existed, when `remember`
+   * folded the lesson into a near-identical one; that is the right seed too.
+   *
+   * Never throws.
    */
-  async reflect(run: Run, events: TranscriptEvent[]): Promise<number> {
-    if (!this.isWorthReflecting(run, events)) return 0;
+  async reflect(run: Run, events: TranscriptEvent[]): Promise<string[]> {
+    if (!this.isWorthReflecting(run, events)) return [];
 
     let output: ReflexionOutput | null = null;
     try {
@@ -135,11 +142,11 @@ export class ReflexionEngine {
       this.deps.log('warn', `reflexion failed for run ${run.id}`, {
         message: (error as Error).message,
       });
-      return 0;
+      return [];
     }
-    if (!output) return 0;
+    if (!output) return [];
 
-    let written = 0;
+    const written: string[] = [];
 
     for (const lesson of output.lessons ?? []) {
       // Drop low-confidence noise before it ever enters the corpus.
@@ -150,7 +157,7 @@ export class ReflexionEngine {
       const tags = [...(lesson.tags ?? []), lesson.kind === 'failure' ? 'failure-mode' : 'lesson'];
 
       try {
-        await this.deps.memory.remember({
+        const { memory } = await this.deps.memory.remember({
           workspaceId: run.workspaceId,
           kind,
           title: lesson.title.trim(),
@@ -161,7 +168,7 @@ export class ReflexionEngine {
           confidence: Math.min(0.75, lesson.confidence * 0.85),
           sourceRunId: run.id,
         });
-        written += 1;
+        written.push(memory.id);
       } catch (error) {
         this.deps.log('warn', 'failed to store a reflexion lesson', {
           message: (error as Error).message,

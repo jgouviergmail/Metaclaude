@@ -12,6 +12,98 @@
  */
 
 export const fr: Record<string, string> = {
+  /* Mémoire : portée, consolidation */
+  '{seeds} of {corpus} memories examined — run it again to continue.':
+    '{seeds} mémoires examinées sur {corpus} — relancez pour continuer.',
+  /* Mémoire : portée, consolidation */
+  'Repetition':
+    'Répétition',
+  'Contradiction':
+    'Contradiction',
+  'kept':
+    'conservée',
+  'folded in':
+    'fusionnée',
+  'What would be kept':
+    'Ce qui serait conservé',
+  'Merge':
+    'Fusionner',
+  'Merge and make global':
+    'Fusionner et rendre globale',
+  'Keep them separate':
+    'Les garder distinctes',
+  'This does not name anything specific to one project, so it can be made global — every workspace would then recall it.':
+    'Rien ici n’est propre à un projet en particulier : cette mémoire peut devenir globale, et tous les workspaces la rappelleront alors.',
+  '{n} memory says this':
+    '{n} mémoire dit ceci',
+  '{n} memories say the same thing':
+    '{n} mémoires disent la même chose',
+  '{n} memory disagrees':
+    '{n} mémoire est en désaccord',
+  '{n} memories disagree with each other':
+    '{n} mémoires se contredisent',
+  'Consolidate':
+    'Consolider',
+  'Look for memories that repeat one another, or that contradict one another, and file what is found below for review. Nothing is merged without you.':
+    'Cherche les mémoires qui se répètent ou qui se contredisent, et dépose ci-dessous ce qu’elle trouve, pour revue. Rien n’est fusionné sans vous.',
+  'Nothing to consolidate':
+    'Rien à consolider',
+  'No memory in this corpus repeats or contradicts another.':
+    'Aucune mémoire de ce corpus n’en répète ni n’en contredit une autre.',
+  'They are listed below. Nothing is merged until you say so.':
+    'Elles sont listées ci-dessous. Rien n’est fusionné tant que vous ne l’avez pas dit.',
+  '{action} complete':
+    '{action} : terminé',
+  '{n} memory affected.':
+    '{n} mémoire concernée.',
+  '{n} memories affected.':
+    '{n} mémoires concernées.',
+  '{n} group to review':
+    '{n} groupe à examiner',
+  '{n} groups to review':
+    '{n} groupes à examiner',
+  '{n} memory folded in':
+    '{n} mémoire fusionnée',
+  '{n} memories folded in':
+    '{n} mémoires fusionnées',
+  'The survivor is now global — every workspace recalls it.':
+    'La mémoire conservée est désormais globale : tous les workspaces la rappellent.',
+  'The survivor keeps the history of all of them.':
+    'La mémoire conservée hérite de l’historique de toutes.',
+  'That consolidation could not be applied.':
+    'Cette consolidation n’a pas pu être appliquée.',
+  'Recalled in every workspace':
+    'Rappelées dans tous les workspaces',
+  'Recalled only here':
+    'Rappelées ici seulement',
+  'Make this global?':
+    'Rendre cette mémoire globale ?',
+  'Confine this memory?':
+    'Cantonner cette mémoire ?',
+  '“{title}” would be recalled by every workspace, not just this one. You can confine it again at any time.':
+    '« {title} » serait rappelée par tous les workspaces, pas seulement celui-ci. Vous pourrez la cantonner de nouveau à tout moment.',
+  '“{title}” would only be recalled in {name}. Other workspaces stop seeing it.':
+    '« {title} » ne serait plus rappelée que dans {name}. Les autres workspaces cessent de la voir.',
+  'Make global':
+    'Rendre globale',
+  'Confine':
+    'Cantonner',
+  'Confine to {name}':
+    'Cantonner à {name}',
+  'Every workspace would recall it':
+    'Tous les workspaces la rappelleraient',
+  'Made global':
+    'Rendue globale',
+  'Confined to this workspace':
+    'Cantonnée à ce workspace',
+  'Every workspace will now recall it.':
+    'Tous les workspaces la rappelleront désormais.',
+  'Only this workspace will recall it.':
+    'Seul ce workspace la rappellera.',
+  'Could not move that memory.':
+    'Cette mémoire n’a pas pu être déplacée.',
+  'where this came from':
+    'sa provenance',
   /* Navigation */
   Dashboard: 'Accueil',
   Workspaces: 'Espaces',

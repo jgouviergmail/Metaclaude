@@ -81,9 +81,17 @@ export class BriefService {
       )
       .get(now);
 
+    // Only what is still waiting on a person. An insight already triaged is
+    // not news, and the consolidation pass files its "these are distinct"
+    // answers pre-rejected — bookkeeping that stops it paying to ask the same
+    // question twice, and that nothing anywhere shows. Counting those would
+    // have the brief announce a dozen new insights after a sweep that produced
+    // nothing to read.
     const newInsights =
       this.deps.db
-        .prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM insights WHERE created_at >= ?')
+        .prepare<[number], { n: number }>(
+          "SELECT COUNT(*) AS n FROM insights WHERE status = 'new' AND created_at >= ?",
+        )
         .get(since)?.n ?? 0;
 
     // The board's pulse: what waits on the operator, what is stuck, what is

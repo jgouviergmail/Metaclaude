@@ -535,6 +535,32 @@ function countUncalledClientMethods() {
  * be. Adding a sixth entry to a translated table of five is the mistake; a
  * brand-new table is caught the moment its first value is translated.
  */
+/**
+ * The string values in a set of object literals, optionally from one property.
+ *
+ * `property` is null for a `Record`, where every value is judged together
+ * because the identifiers are all in the keys; it names one property for an
+ * array of rows, where they are not.
+ */
+function valuesOf(ts, objects, property) {
+  const values = [];
+  for (const object of objects) {
+    for (const assignment of object.properties) {
+      if (!ts.isPropertyAssignment(assignment)) continue;
+      if (property !== null && assignment.name?.getText(object.getSourceFile()) !== property) {
+        continue;
+      }
+      const value = assignment.initializer;
+      if (!ts.isStringLiteral(value) && !ts.isNoSubstitutionTemplateLiteral(value)) continue;
+      // An empty string is never copy. `EMPTY_DRAFT` in MemoryPage is a form's
+      // initial state whose `kind: 'semantic'` happens to be a catalogue key,
+      // which would otherwise indict three blank fields.
+      if (value.text.trim()) values.push(value.text.trim());
+    }
+  }
+  return values;
+}
+
 function countHalfTranslatedTables() {
   const ts = typescript();
   if (!ts) return null;
@@ -544,29 +570,64 @@ function countHalfTranslatedTables() {
     for (const statement of sf.statements) {
       if (!ts.isVariableStatement(statement)) continue;
       for (const decl of statement.declarationList.declarations) {
-        if (!decl.initializer || !ts.isObjectLiteralExpression(decl.initializer)) continue;
+        if (!decl.initializer) continue;
 
-        const values = [];
-        for (const property of decl.initializer.properties) {
-          if (!ts.isPropertyAssignment(property)) continue;
-          const value = property.initializer;
-          if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
-            // An empty string is never copy. `EMPTY_DRAFT` in MemoryPage is a
-            // form's initial state whose `kind: 'semantic'` happens to be a
-            // catalogue key, which would otherwise indict three blank fields.
-            if (value.text.trim()) values.push(value.text.trim());
+        // A table is written two ways and this saw only one of them: an
+        // array of rows — `MAINTENANCE` in MemoryPage, `SECTIONS` in GitPanel,
+        // the navigation in AppShell — was not scanned at all, so adding an
+        // untranslated row to a translated table of four was invisible to
+        // every i18n measure. That is the shape this whole check exists for,
+        // in the shape a list happens to need.
+        //
+        // Judged one property at a time, because the two shapes differ in
+        // where the identifiers live. A `Record` puts them in the keys, so its
+        // values can be taken as one set; an array puts them in values beside
+        // the copy — `{ action: 'decay', label: 'Decay', explanation: '…' }`
+        // — and treating those together indicts every route path, cron
+        // expression and enum key in the app. Per property, `label` is
+        // demonstrated copy the moment one label is in the catalogue, while
+        // `action` never is.
+        const sets = [];
+        if (ts.isObjectLiteralExpression(decl.initializer)) {
+          sets.push(valuesOf(ts, [decl.initializer], null));
+        } else if (ts.isArrayLiteralExpression(decl.initializer)) {
+          const rows = decl.initializer.elements.filter((element) =>
+            ts.isObjectLiteralExpression(element),
+          );
+          if (rows.length === 0) continue;
+          const names = new Set();
+          for (const row of rows) {
+            for (const property of row.properties) {
+              if (ts.isPropertyAssignment(property) && property.name) {
+                names.add(property.name.getText(sf));
+              }
+            }
           }
+          // A capital first letter, the same rule `SENTENCE` rests on and for
+          // the same reason: without it an identifier that happens to collide
+          // with a catalogue key demonstrates its whole property as copy, and
+          // indicts every sibling. `SECTIONS` in GitPanel is the case —
+          // `key: 'staged'` is a catalogue entry, so 'modified', 'untracked'
+          // and 'conflicted' were reported as untranslated enum values.
+          for (const name of names) {
+            sets.push(valuesOf(ts, rows, name).filter((text) => /^[A-Z]/.test(text)));
+          }
+        } else {
+          continue;
         }
-        if (values.length < 2) continue;
 
-        const known = values.filter((text) => translated(text));
-        // Demonstrated to be copy, and only then held to the whole set.
-        if (known.length === 0) continue;
+        for (const values of sets) {
+          if (values.length < 2) continue;
 
-        for (const text of values) {
-          if (translated(text)) continue;
-          missing += 1;
-          note('half', file, text);
+          const known = values.filter((text) => translated(text));
+          // Demonstrated to be copy, and only then held to the whole set.
+          if (known.length === 0) continue;
+
+          for (const text of values) {
+            if (translated(text)) continue;
+            missing += 1;
+            note('half', file, text);
+          }
         }
       }
     }

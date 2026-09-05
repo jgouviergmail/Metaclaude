@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest';
 import {
   MEMORY_CONTEXT_BUDGET,
   buildMemoryContext,
-  composeSystemAppend,
-  selectMemoryContext, selectKnowledgeContext, KNOWLEDGE_CONTEXT_BUDGET } from './context.js';
+  selectMemoryContext,
+  selectKnowledgeContext,
+  KNOWLEDGE_CONTEXT_BUDGET,
+} from './context.js';
 
 function memory(overrides: Partial<Memory> = {}): Memory {
   return {
@@ -166,44 +168,6 @@ describe('buildMemoryContext', () => {
       result({ id: 'b', title: 'Second', content: 'two' }, 1),
     ]);
     expect(block).toContain('one\n\n- **Second**');
-  });
-});
-
-describe('composeSystemAppend', () => {
-  it('joins both parts with a horizontal rule, conventions first', () => {
-    const composed = composeSystemAppend({
-      workspaceInstructions: 'Always use pnpm.',
-      memoryBlock: '## Recalled context\n\n- **X** something',
-    });
-    expect(composed).toBe('Always use pnpm.\n\n---\n\n## Recalled context\n\n- **X** something');
-    expect(composed.indexOf('Always use pnpm.')).toBeLessThan(composed.indexOf('Recalled context'));
-  });
-
-  it('omits an empty part along with its separator', () => {
-    expect(
-      composeSystemAppend({ workspaceInstructions: 'Only this.', memoryBlock: '' }),
-    ).toBe('Only this.');
-    expect(
-      composeSystemAppend({ workspaceInstructions: '', memoryBlock: 'Only memory.' }),
-    ).toBe('Only memory.');
-    expect(composeSystemAppend({ workspaceInstructions: '   ', memoryBlock: '\n\n' })).toBe('');
-    expect(composeSystemAppend({ workspaceInstructions: '', memoryBlock: '' })).toBe('');
-  });
-
-  it('trims each part before joining', () => {
-    expect(
-      composeSystemAppend({ workspaceInstructions: '  a  \n', memoryBlock: '\n  b  ' }),
-    ).toBe('a\n\n---\n\nb');
-  });
-
-  it('composes cleanly with a real memory block', () => {
-    const memoryBlock = buildMemoryContext([result({ title: 'Runner', content: 'vitest' }, 1)]);
-    const composed = composeSystemAppend({
-      workspaceInstructions: 'Prefer TypeScript.',
-      memoryBlock,
-    });
-    expect(composed.startsWith('Prefer TypeScript.\n\n---\n\n## Recalled context')).toBe(true);
-    expect(composed).toContain('**Runner**');
   });
 });
 

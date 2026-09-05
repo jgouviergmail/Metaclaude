@@ -69,10 +69,92 @@ describe('a healthy system', () => {
       'network',
       'claude-cli',
       'retrieval',
+      'memory',
       'runs',
       'automations',
     ]);
     expect(report.checks.every((check) => check.status === 'ok')).toBe(true);
+  });
+});
+
+/**
+ * The deduplication scan compares a write against the newest
+ * `DUPLICATE_SCAN_LIMIT` rows in its scope. Past that the oldest stop being
+ * compared and duplicates accumulate again — silently, because nothing fails.
+ * The doctor is where a silent ceiling becomes visible: an operator reads this
+ * screen, and nobody reads a log line.
+ */
+describe('the memory check', () => {
+  function fill(workspaceId: string | null, count: number, from = 0): void {
+    const insert = db.prepare(
+      `INSERT INTO memories (id, workspace_id, kind, title, content, confidence, created_at, updated_at)
+       VALUES (?, ?, 'semantic', ?, ?, 0.7, ?, ?)`,
+    );
+    for (let i = from; i < from + count; i += 1) {
+      insert.run(`mem_${workspaceId ?? 'g'}_${i}`, workspaceId, `t${i}`, `c${i}`, NOW, NOW);
+    }
+  }
+
+  it('counts the corpus by tier', async () => {
+    db.prepare(
+      `INSERT INTO workspaces (id, name, slug, path, created_at, updated_at)
+       VALUES ('ws_a', 'A', 'a', '/tmp/a', ?, ?)`,
+    ).run(NOW, NOW);
+    fill(null, 3);
+    fill('ws_a', 5);
+
+    const check = (await makeDoctor().run()).checks.find((c) => c.name === 'memory')!;
+
+    expect(check.status).toBe('ok');
+    expect(check.summary).toContain('8');
+    expect(check.summary).toContain('3 global');
+  });
+
+  it('is content with an empty corpus', async () => {
+    const check = (await makeDoctor().run()).checks.find((c) => c.name === 'memory')!;
+
+    expect(check.status).toBe('ok');
+    expect(check.summary).toContain('No memories');
+  });
+
+  it('warns once a scope approaches the deduplication ceiling', async () => {
+    fill(null, 1900);
+
+    const check = (await makeDoctor().run()).checks.find((c) => c.name === 'memory')!;
+
+    expect(check.status).toBe('warn');
+    expect(check.detail).toContain('2000');
+  });
+
+  it('names the workspace whose scope is the crowded one', async () => {
+    db.prepare(
+      `INSERT INTO workspaces (id, name, slug, path, created_at, updated_at)
+       VALUES ('ws_a', 'Crowded', 'crowded', '/tmp/a', ?, ?)`,
+    ).run(NOW, NOW);
+    fill('ws_a', 1900);
+
+    const check = (await makeDoctor().run()).checks.find((c) => c.name === 'memory')!;
+
+    expect(check.status).toBe('warn');
+    expect(check.summary).toContain('Crowded');
+  });
+
+  /**
+   * A workspace's scan is its own rows *plus* the global tier, because that is
+   * what `findNearDuplicate` compares against. Counting the workspace alone
+   * would report headroom that does not exist.
+   */
+  it('counts the global tier against a workspace’s own ceiling', async () => {
+    db.prepare(
+      `INSERT INTO workspaces (id, name, slug, path, created_at, updated_at)
+       VALUES ('ws_a', 'A', 'a', '/tmp/a', ?, ?)`,
+    ).run(NOW, NOW);
+    fill(null, 1000);
+    fill('ws_a', 900);
+
+    const check = (await makeDoctor().run()).checks.find((c) => c.name === 'memory')!;
+
+    expect(check.status).toBe('warn');
   });
 });
 

@@ -414,6 +414,35 @@ labelled corpus, guarded by `retrieval-quality.test.ts` and re-runnable with
 `scripts/eval-retrieval.mjs`. Those measurements are why there is no
 reranking stage — see docs/LEARNING.md.
 
+## Keeping memory from repeating itself
+
+`memories.workspace_id` is nullable and the null is a *tier*: retrieval unions
+a workspace's own rows with every global one, which is how a standing note
+reaches every project. `MemoryStore.reconcile()` is the single primitive under
+the three gestures that act on that — promote, confine and merge — because the
+hard part is shared and doing it twice is how two copies drift. A memory is not
+just its text; it carries the runs that used it, the reinforcement they earned
+it and an operator's pin, so anything that ends a row has to say what becomes
+of all of it. The usage rows are repointed before any delete, or a finished
+run silently loses a memory it was demonstrably given.
+
+`learning/consolidation.ts` is the semantic half, and it exists because a
+cosine cannot do the job: on the shipped hashing embedder the highest
+similarity between any two memories of a real corpus was 0.51 against a merge
+threshold of 0.92, while a third of that corpus was redundant. The shape is
+prefilter → arbitrate → propose: a *star* per memory (never a connected
+component — transitivity swallows unrelated clusters), one group per cluster
+(a group overlapping a kept one by more than half is dropped), one tool-less
+`haiku` call per batch, and every verdict filed in the operator's existing
+review queue. Nothing is merged without a press. The third verdict,
+`contradictory`, is the one that pays for the pass: two memories that disagree
+were until now both injected, side by side, with nothing noticing.
+
+It runs seeded by the reflexion pass with only what that run just wrote, and in
+full on demand. A proposal carries a fingerprint of the exact text it was drawn
+against, so applying one whose members have moved since is refused rather than
+merged over — the same discipline as crediting only what was injected.
+
 ## The advisor
 
 `services/advisor.ts` is the part of the system that studies the system. It
@@ -450,7 +479,17 @@ ordered event list, so reload, replay and live streaming share one code path.
 There is no separate "message" table that could drift.
 
 `memories` carries its embedding as a `BLOB` of little-endian `Float32` and is
-mirrored into an FTS5 index by triggers. Retrieval reads both.
+mirrored into an FTS5 index by triggers. Retrieval reads both. `workspace_id`
+is nullable and the null is the global tier, unioned into every workspace's
+retrieval — and it cascades on workspace delete, so which tier a memory sits on
+decides whether it outlives its project.
+
+`insights` carries the review queue, and a consolidation proposal is an
+ordinary row in it: the `kind` column is plain text, so the pass needed no
+migration, and the `status` the table already had does the work of remembering
+what the operator answered. A "these are distinct" verdict is filed
+pre-rejected — never shown, and the only thing stopping the pass paying to ask
+the same question on every sweep.
 
 `memory_usages` is written before a run executes and read back by
 `GET /api/runs/:id/genesis`, which is the one endpoint that crosses all three

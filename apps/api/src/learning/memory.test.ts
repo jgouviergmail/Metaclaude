@@ -1,4 +1,4 @@
-import type { MemorySearchResult } from '@metaclaude/shared';
+import type { Memory, MemorySearchResult } from '@metaclaude/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
@@ -6,6 +6,30 @@ import { HashingEmbedder } from './embeddings.js';
 import { DUPLICATE_THRESHOLD, FORGET_THRESHOLD, MemoryStore, toFtsQuery } from './memory.js';
 
 const DAY = 86_400_000;
+
+/**
+ * An embedder that runs `during` on the await every caller pays to embed.
+ *
+ * The only honest way to test what happens between a read and the write that
+ * depends on it: the await is real, it is where a concurrent request would be
+ * served, and nothing about the code under test has to know it is a test.
+ */
+function interposed(during: () => void): HashingEmbedder {
+  const inner = new HashingEmbedder();
+  let fired = false;
+  return {
+    id: inner.id,
+    dimension: inner.dimension,
+    async embed(text: string) {
+      if (!fired) {
+        fired = true;
+        during();
+      }
+      return inner.embed(text);
+    },
+    embedBatch: (texts: string[]) => inner.embedBatch(texts),
+  } as HashingEmbedder;
+}
 
 let db: Db;
 let store: MemoryStore;
@@ -244,19 +268,73 @@ describe('remember / get', () => {
     expect(store.count()).toBe(1);
   });
 
-  it('does not merge across workspaces or kinds', async () => {
+  it('does not merge across two workspaces', async () => {
     const input = {
       kind: 'semantic' as const,
       title: 'API port',
       content: 'The API server runs on port 8080',
     };
-    expect((await store.remember({ ...input, workspaceId: null })).merged).toBe(false);
     expect((await store.remember({ ...input, workspaceId: wsA })).merged).toBe(false);
     expect((await store.remember({ ...input, workspaceId: wsB })).merged).toBe(false);
-    expect((await store.remember({ ...input, workspaceId: null, kind: 'procedural' })).merged).toBe(
-      false,
-    );
-    expect(store.count()).toBe(4);
+    expect(store.count()).toBe(2);
+  });
+
+  /**
+   * The classification is a guess the reflector makes from one run, and it is
+   * not stable: the production corpus held "Workspace uses French as primary
+   * language" as `semantic` beside "User speaks French; session communication
+   * in French" as `procedural`. Filtering duplicates by kind meant the same
+   * observation could live once per kind, and did.
+   */
+  it('merges a duplicate that was classified differently, keeping the stored kind', async () => {
+    const input = {
+      workspaceId: null,
+      title: 'API port',
+      content: 'The API server runs on port 8080',
+    };
+    const first = await store.remember({ ...input, kind: 'semantic' });
+    const second = await store.remember({ ...input, kind: 'procedural' });
+
+    expect(second.merged).toBe(true);
+    expect(second.memory.id).toBe(first.memory.id);
+    expect(second.memory.kind).toBe('semantic');
+    expect(store.count()).toBe(1);
+  });
+
+  /**
+   * Inheritance has a direction. A fact the global tier already carries is
+   * reachable from this workspace already, so writing a workspace copy of it
+   * creates a duplicate that spans two tiers — which `findNearDuplicate` used
+   * to be unable to see at all, having scoped itself with `workspace_id IS ?`.
+   */
+  it('folds a workspace write into the global memory that already says it', async () => {
+    const input = {
+      kind: 'semantic' as const,
+      title: 'API port',
+      content: 'The API server runs on port 8080',
+    };
+    const global = await store.remember({ ...input, workspaceId: null });
+    const local = await store.remember({ ...input, workspaceId: wsA });
+
+    expect(local.merged).toBe(true);
+    expect(local.memory.id).toBe(global.memory.id);
+    expect(local.memory.workspaceId).toBeNull();
+    expect(store.count()).toBe(1);
+  });
+
+  /** And never the other way: a global fact must not be quietly demoted. */
+  it('does not fold a global write into a workspace memory', async () => {
+    const input = {
+      kind: 'semantic' as const,
+      title: 'API port',
+      content: 'The API server runs on port 8080',
+    };
+    await store.remember({ ...input, workspaceId: wsA });
+    const global = await store.remember({ ...input, workspaceId: null });
+
+    expect(global.merged).toBe(false);
+    expect(global.memory.workspaceId).toBeNull();
+    expect(store.count()).toBe(2);
   });
 
   it('does not merge two genuinely different memories', async () => {
@@ -1102,5 +1180,442 @@ describe('toFtsQuery', () => {
           .all(expression),
       ).not.toThrow();
     }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Reconciliation: merging, promoting, confining                               */
+/* -------------------------------------------------------------------------- */
+
+describe('reconcile', () => {
+  /** A second run, so a merge has usage history on more than one run to carry. */
+  function anotherRun(): void {
+    db.prepare(
+      `INSERT INTO runs (id, session_id, workspace_id, prompt, status, started_at)
+       VALUES (?, ?, ?, ?, 'succeeded', ?)`,
+    ).run('run_2', 'ses_1', wsA, 'another prompt', Date.now());
+  }
+
+  const usagesOf = (run: string) =>
+    db
+      .prepare<[string], { memory_id: string; score: number }>(
+        'SELECT memory_id, score FROM memory_usages WHERE run_id = ? ORDER BY memory_id',
+      )
+      .all(run);
+
+  async function pair(): Promise<[Memory, Memory]> {
+    const a = await store.remember({
+      workspaceId: wsA,
+      kind: 'semantic',
+      title: 'Winner',
+      content: 'The surviving body of text.',
+      tags: ['alpha'],
+    });
+    const b = await store.remember({
+      workspaceId: wsA,
+      kind: 'procedural',
+      title: 'Loser',
+      content: 'A different body entirely.',
+      tags: ['beta'],
+    });
+    return [a.memory, b.memory];
+  }
+
+  it('folds one memory into another and deletes the absorbed row', async () => {
+    const [winner, loser] = await pair();
+
+    const result = await store.reconcile({ winnerId: winner.id, loserIds: [loser.id] });
+
+    expect(result.absorbed).toEqual([loser.id]);
+    expect(result.memory.id).toBe(winner.id);
+    expect(store.get(loser.id)).toBeNull();
+    expect(store.count()).toBe(1);
+  });
+
+  /**
+   * The usage rows are what `recalledFor` reads to show a run's genesis, and
+   * `memory_usages.memory_id` cascades on delete. Folding without repointing
+   * them rewrites history: a finished run silently loses a memory it was
+   * demonstrably given. The counter-proof below is the same scenario with a
+   * plain delete, and it is what makes this test worth having.
+   */
+  it('carries the absorbed memory’s usage history onto the winner', async () => {
+    anotherRun();
+    const [winner, loser] = await pair();
+    db.prepare('INSERT INTO memory_usages VALUES (?, ?, ?)').run('run_2', loser.id, 0.7);
+
+    await store.reconcile({ winnerId: winner.id, loserIds: [loser.id] });
+
+    expect(usagesOf('run_2')).toEqual([{ memory_id: winner.id, score: 0.7 }]);
+    expect(store.recalledFor('run_2').map((entry) => entry.title)).toEqual(['Winner']);
+  });
+
+  it('a plain delete would have lost that history — the counter-proof', async () => {
+    anotherRun();
+    const [, loser] = await pair();
+    db.prepare('INSERT INTO memory_usages VALUES (?, ?, ?)').run('run_2', loser.id, 0.7);
+
+    store.delete(loser.id);
+
+    expect(usagesOf('run_2')).toEqual([]);
+  });
+
+  it('keeps the better score when one run had seen both', async () => {
+    const [winner, loser] = await pair();
+    const link = db.prepare('INSERT INTO memory_usages VALUES (?, ?, ?)');
+    link.run(runId, winner.id, 0.4);
+    link.run(runId, loser.id, 0.9);
+
+    await store.reconcile({ winnerId: winner.id, loserIds: [loser.id] });
+
+    // (run_id, memory_id) is the primary key, so the two rows collide. Taking
+    // the larger score keeps the attribution `reinforce` derives from it.
+    expect(usagesOf(runId)).toEqual([{ memory_id: winner.id, score: 0.9 }]);
+  });
+
+  it('sums the evidence and unions the protections', async () => {
+    const [winner, loser] = await pair();
+    db.prepare(
+      `UPDATE memories SET use_count=3, success_count=2, confidence=0.5,
+         last_used_at=5000, created_at=200 WHERE id=?`,
+    ).run(winner.id);
+    db.prepare(
+      `UPDATE memories SET use_count=4, success_count=1, confidence=0.8, pinned=1,
+         last_used_at=9000, created_at=100 WHERE id=?`,
+    ).run(loser.id);
+
+    const { memory } = await store.reconcile({ winnerId: winner.id, loserIds: [loser.id] });
+
+    expect(memory.useCount).toBe(7);
+    expect(memory.successCount).toBe(3);
+    expect(memory.confidence).toBe(0.8);
+    expect(memory.pinned).toBe(true);
+    expect(memory.tags).toEqual(['alpha', 'beta']);
+    expect(memory.lastUsedAt).toBe(9000);
+    expect(memory.createdAt).toBe(100);
+  });
+
+  it('keeps the winner’s kind and title when the caller rewrites neither', async () => {
+    const [winner, loser] = await pair();
+
+    const { memory } = await store.reconcile({ winnerId: winner.id, loserIds: [loser.id] });
+
+    expect(memory.kind).toBe('semantic');
+    expect(memory.title).toBe('Winner');
+    expect(memory.content).toBe('The surviving body of text.');
+  });
+
+  /**
+   * Folding two never-used memories must leave `last_used_at` null, not 0.
+   *
+   * `Math.max` over nullables answers 0 for "never", and `decay` reads that
+   * column as an epoch millisecond: a 0 means used in 1970, so the memory is
+   * three hundred half-lives idle and the very first sweep takes its
+   * confidence to nothing. The row would then be below the retrieval floor,
+   * never retrievable again, and `collect()` would delete it permanently — a
+   * merge that silently destroys what it was asked to preserve. Written after
+   * a deliberate sabotage of `latest()` failed to turn any test red.
+   */
+  it('a merge of never-used memories stays never-used, and does not fall off the 1970 cliff', async () => {
+    const [winner, loser] = await pair();
+    db.prepare('UPDATE memories SET created_at = ?, last_used_at = NULL').run(Date.now() - 30 * DAY);
+
+    const { memory } = await store.reconcile({ winnerId: winner.id, loserIds: [loser.id] });
+
+    expect(memory.lastUsedAt).toBeNull();
+
+    // Decay measures idleness from `last_used_at ?? created_at`. Thirty days
+    // past the grace period is a third of a half-life, so 0.7 lands near 0.56.
+    // Written as a 0 instead of a null it would be a third of a *century*, and
+    // this single sweep would take the memory below the retrieval floor — from
+    // which nothing can retrieve it again and `collect()` deletes it for good.
+    store.decay();
+    const after = store.get(winner.id)!.confidence;
+    expect(after).toBeGreaterThan(0.5);
+    expect(after).toBeLessThan(0.7);
+  });
+
+  it('inherits a provenance the winner does not have', async () => {
+    const [winner, loser] = await pair();
+    db.prepare('UPDATE memories SET source_run_id = ? WHERE id = ?').run(runId, loser.id);
+
+    const { memory } = await store.reconcile({ winnerId: winner.id, loserIds: [loser.id] });
+
+    expect(memory.sourceRunId).toBe(runId);
+  });
+
+  /**
+   * The rows are read to build the embedding text, and embedding is awaited —
+   * so anything that runs on that await sees a half-decided reconciliation.
+   * A concurrent delete used to leave the winner carrying the use counts of a
+   * row that no longer existed, and a concurrent edit used to have its text
+   * silently overwritten by the copy read before the await. The decision is
+   * re-taken inside the transaction, where nothing else can interleave.
+   *
+   * Driven through the embedder because that is where the await genuinely is:
+   * a test that only asserted the guard exists would pass against a guard
+   * placed anywhere at all.
+   */
+  it('refuses rather than folding a memory deleted while it was being prepared', async () => {
+    const [winner, loser] = await pair();
+    const racing = new MemoryStore(
+      db,
+      interposed(() => {
+        db.prepare('DELETE FROM memories WHERE id = ?').run(loser.id);
+      }),
+    );
+
+    await expect(
+      racing.reconcile({ winnerId: winner.id, loserIds: [loser.id], content: 'rewritten' }),
+    ).rejects.toThrow(/no longer exists|changed/i);
+
+    expect(store.get(winner.id)?.useCount).toBe(0);
+    expect(store.get(winner.id)?.content).toBe('The surviving body of text.');
+  });
+
+  it('refuses rather than overwriting an edit made while it was being prepared', async () => {
+    const [winner, loser] = await pair();
+    const racing = new MemoryStore(
+      db,
+      interposed(() => {
+        db.prepare('UPDATE memories SET content = ? WHERE id = ?').run('edited elsewhere', winner.id);
+      }),
+    );
+
+    // The caller rewrote only the title, so the body would come from the copy
+    // read before the await — the operator's edit, gone without a trace.
+    await expect(
+      racing.reconcile({ winnerId: winner.id, loserIds: [loser.id], title: 'Renamed' }),
+    ).rejects.toThrow(/changed/i);
+
+    expect(store.get(winner.id)?.content).toBe('edited elsewhere');
+    expect(store.get(loser.id)).not.toBeNull();
+  });
+
+  it('re-embeds when the caller rewrites the surviving text', async () => {
+    const [winner, loser] = await pair();
+
+    await store.reconcile({
+      winnerId: winner.id,
+      loserIds: [loser.id],
+      title: 'Consolidated',
+      content: 'A single sentence about zzyzx, the distinctive marker.',
+    });
+
+    const found = await store.search('zzyzx', { workspaceId: wsA });
+    expect(found.map((entry) => entry.memory.title)).toEqual(['Consolidated']);
+    // And the absorbed row leaves nothing behind in the lexical index either.
+    expect(await store.search('different body entirely', { workspaceId: wsA })).toHaveLength(0);
+  });
+
+  /**
+   * The one rule that cannot be relaxed. Two workspaces are two projects, and
+   * folding one's memory into the other's would carry knowledge across the
+   * boundary every scope clause in this file exists to enforce.
+   */
+  it('refuses to fold a memory belonging to another workspace', async () => {
+    const [winner] = await pair();
+    const { memory: elsewhere } = await store.remember({
+      workspaceId: wsB,
+      kind: 'semantic',
+      title: 'Belongs to beta',
+      content: 'Another project entirely.',
+    });
+
+    await expect(store.reconcile({ winnerId: winner.id, loserIds: [elsewhere.id] })).rejects.toThrow(
+      /same workspace/i,
+    );
+
+    expect(store.get(elsewhere.id)).not.toBeNull();
+    expect(store.count()).toBe(3);
+  });
+
+  it('allows a global memory and a workspace one to be folded together', async () => {
+    const [winner] = await pair();
+    const { memory: global } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Everywhere',
+      content: 'Applies to every workspace.',
+    });
+
+    const result = await store.reconcile({ winnerId: winner.id, loserIds: [global.id] });
+
+    expect(result.absorbed).toEqual([global.id]);
+    expect(result.memory.workspaceId).toBe(wsA);
+  });
+
+  it('refuses a winner listed among its own losers, and unknown ids', async () => {
+    const [winner, loser] = await pair();
+
+    await expect(store.reconcile({ winnerId: winner.id, loserIds: [winner.id] })).rejects.toThrow(
+      /itself/i,
+    );
+    await expect(store.reconcile({ winnerId: 'mem_nope', loserIds: [loser.id] })).rejects.toThrow(
+      /no longer exists/i,
+    );
+    await expect(store.reconcile({ winnerId: winner.id, loserIds: ['mem_nope'] })).rejects.toThrow(
+      /no longer exists/i,
+    );
+
+    expect(store.count()).toBe(2);
+  });
+
+  it('leaves nothing half-done when a later loser is invalid', async () => {
+    const [winner, loser] = await pair();
+    db.prepare('UPDATE memories SET use_count = 5 WHERE id = ?').run(loser.id);
+
+    await expect(
+      store.reconcile({ winnerId: winner.id, loserIds: [loser.id, 'mem_nope'] }),
+    ).rejects.toThrow();
+
+    // One transaction for the whole call: the valid loser survives untouched
+    // rather than being folded in on the way to the failure.
+    expect(store.get(loser.id)).not.toBeNull();
+    expect(store.get(winner.id)?.useCount).toBe(0);
+  });
+
+  it('folds several memories at once', async () => {
+    const [winner, first] = await pair();
+    const { memory: second } = await store.remember({
+      workspaceId: wsA,
+      kind: 'semantic',
+      title: 'Third',
+      content: 'Yet another body.',
+      tags: ['gamma'],
+    });
+    db.prepare('UPDATE memories SET use_count = 2 WHERE id IN (?, ?)').run(first.id, second.id);
+
+    const result = await store.reconcile({
+      winnerId: winner.id,
+      loserIds: [first.id, second.id],
+    });
+
+    expect(result.absorbed.sort()).toEqual([first.id, second.id].sort());
+    expect(result.memory.useCount).toBe(4);
+    expect(result.memory.tags).toEqual(['alpha', 'beta', 'gamma']);
+    expect(store.count()).toBe(1);
+  });
+});
+
+describe('promote / confine', () => {
+  it('promotion makes a memory reachable from every other workspace', async () => {
+    const { memory } = await store.remember({
+      workspaceId: wsA,
+      kind: 'semantic',
+      title: 'Test command',
+      content: 'The tests run with pnpm test:run from the repository root.',
+    });
+
+    expect(await store.search('pnpm test', { workspaceId: wsB })).toHaveLength(0);
+
+    const result = await store.promote(memory.id);
+
+    expect(result.moved).toBe(true);
+    expect(result.memory.workspaceId).toBeNull();
+    expect(await store.search('pnpm test', { workspaceId: wsB })).toHaveLength(1);
+  });
+
+  /**
+   * `memories.workspace_id` cascades on workspace delete, so the tier a memory
+   * sits on decides whether it survives its project. Worth pinning: it is the
+   * one consequence of promotion that has nothing to do with retrieval.
+   */
+  it('promotion outlives the workspace the memory was learned in', async () => {
+    const kept = await store.remember({
+      workspaceId: wsA,
+      kind: 'semantic',
+      title: 'Promoted',
+      content: 'Survives its project.',
+    });
+    const doomed = await store.remember({
+      workspaceId: wsA,
+      kind: 'semantic',
+      title: 'Left behind',
+      content: 'Does not survive its project.',
+    });
+
+    await store.promote(kept.memory.id);
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run(wsA);
+
+    expect(store.get(kept.memory.id)).not.toBeNull();
+    expect(store.get(doomed.memory.id)).toBeNull();
+  });
+
+  it('promoting something already global is a no-op, not an error', async () => {
+    const { memory } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Already there',
+      content: 'Global from birth.',
+    });
+
+    const result = await store.promote(memory.id);
+
+    expect(result.moved).toBe(false);
+    expect(result.memory).toEqual(memory);
+  });
+
+  it('confining a global memory takes it out of every other workspace', async () => {
+    const { memory } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Test command',
+      content: 'The tests run with pnpm test:run from the repository root.',
+    });
+
+    expect(await store.search('pnpm test', { workspaceId: wsB })).toHaveLength(1);
+
+    const result = await store.confine(memory.id, wsA);
+
+    expect(result.moved).toBe(true);
+    expect(result.memory.workspaceId).toBe(wsA);
+    expect(await store.search('pnpm test', { workspaceId: wsB })).toHaveLength(0);
+    expect(await store.search('pnpm test', { workspaceId: wsA })).toHaveLength(1);
+  });
+
+  it('confining to the workspace it already sits in is a no-op', async () => {
+    const { memory } = await store.remember({
+      workspaceId: wsA,
+      kind: 'semantic',
+      title: 'Stays put',
+      content: 'Already where it belongs.',
+    });
+
+    const result = await store.confine(memory.id, wsA);
+
+    expect(result.moved).toBe(false);
+    expect(result.memory).toEqual(memory);
+  });
+
+  it('refuses to confine to a workspace that does not exist', async () => {
+    const { memory } = await store.remember({
+      workspaceId: null,
+      kind: 'semantic',
+      title: 'Anything',
+      content: 'Anything at all.',
+    });
+
+    await expect(store.confine(memory.id, 'ws_nope')).rejects.toThrow(/no such workspace/i);
+    expect(store.get(memory.id)?.workspaceId).toBeNull();
+  });
+
+  it('refuses to promote or confine a memory that is gone', async () => {
+    await expect(store.promote('mem_nope')).rejects.toThrow(/no longer exists/i);
+    await expect(store.confine('mem_nope', wsA)).rejects.toThrow(/no longer exists/i);
+  });
+
+  it('a scope move touches updated_at, so the recency prior sees the curation', async () => {
+    const { memory } = await store.remember({
+      workspaceId: wsA,
+      kind: 'semantic',
+      title: 'Curated',
+      content: 'Moved by hand.',
+    });
+    db.prepare('UPDATE memories SET updated_at = 1000 WHERE id = ?').run(memory.id);
+
+    const result = await store.promote(memory.id);
+
+    expect(result.memory.updatedAt).toBeGreaterThan(1000);
   });
 });

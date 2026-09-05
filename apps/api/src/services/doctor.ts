@@ -15,6 +15,7 @@
 import type { DoctorCheck, DoctorReport } from '@metaclaude/shared';
 import { APP_VERSION } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
+import { DUPLICATE_SCAN_LIMIT } from '../learning/memory.js';
 
 const GB = 1024 ** 3;
 /** Below this, writes are at risk soon; below the floor, now. */
@@ -37,6 +38,14 @@ const BACKUP_STALE_MS = 26 * HOUR;
  * furniture.
  */
 const CREDENTIAL_WARN_DAYS = 14;
+
+/**
+ * Scope size at which the deduplication ceiling starts being worth mentioning.
+ *
+ * Below the ceiling on purpose: a corpus reports the problem while there is
+ * still room to act, rather than once duplicates are already going unnoticed.
+ */
+const DEDUPLICATION_WARN_AT = Math.round(DUPLICATE_SCAN_LIMIT * 0.9);
 
 export interface DoctorDeps {
   db: Db;
@@ -138,6 +147,7 @@ export class Doctor {
     await examine('network', () => this.network());
     await examine('claude-cli', () => this.claudeCli());
     await examine('retrieval', () => this.retrieval());
+    await examine('memory', () => this.memory());
     await examine('runs', () => this.runs());
     await examine('automations', () => this.automations());
 
@@ -404,6 +414,71 @@ export class Doctor {
       }
     }
     return { name: 'claude-cli', status: 'ok', summary: version, detail: `auth: ${mode}` };
+  }
+
+  /**
+   * The shape of the memory corpus, and whether deduplication still sees all
+   * of it.
+   *
+   * `findNearDuplicate` compares a write against the newest
+   * `DUPLICATE_SCAN_LIMIT` rows *in its scope*, and a workspace's scope is its
+   * own rows plus the global tier — that is what the query does, so that is
+   * what is counted here. Past the ceiling the oldest rows stop being compared
+   * and duplicates start accumulating again, with nothing failing and nothing
+   * logged. A ceiling nobody can see is the failure this check exists for.
+   */
+  private memory(): DoctorCheck {
+    const globals =
+      this.deps.db
+        .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM memories WHERE workspace_id IS NULL')
+        .get()?.n ?? 0;
+    const scoped =
+      this.deps.db
+        .prepare<[], { n: number }>(
+          'SELECT COUNT(*) AS n FROM memories WHERE workspace_id IS NOT NULL',
+        )
+        .get()?.n ?? 0;
+
+    if (globals + scoped === 0) {
+      return {
+        name: 'memory',
+        status: 'ok',
+        summary: 'No memories yet.',
+        detail: 'The reflexion pass writes them as runs finish; you can also write one by hand.',
+      };
+    }
+
+    // Every scope's scan size, worst first. The global tier's own scan is just
+    // itself; a workspace's is its rows plus the globals it inherits.
+    const perWorkspace = this.deps.db
+      .prepare<[], { name: string; n: number }>(
+        `SELECT w.name AS name, COUNT(m.id) AS n
+           FROM workspaces w JOIN memories m ON m.workspace_id = w.id
+          GROUP BY w.id ORDER BY n DESC`,
+      )
+      .all();
+    const crowded = perWorkspace
+      .map((row) => ({ name: row.name, scan: row.n + globals }))
+      .concat({ name: 'the global tier', scan: globals })
+      .sort((a, b) => b.scan - a.scan)[0];
+
+    const summary =
+      `${globals + scoped} memories — ${globals} global, ${scoped} in ${perWorkspace.length} ` +
+      `workspace${perWorkspace.length === 1 ? '' : 's'}.`;
+
+    if (crowded && crowded.scan >= DEDUPLICATION_WARN_AT) {
+      return {
+        name: 'memory',
+        status: 'warn',
+        summary: `${summary} ${crowded.name} is the largest scope, at ${crowded.scan}.`,
+        detail:
+          `A write is only compared against the newest ${DUPLICATE_SCAN_LIMIT} memories in its scope, ` +
+          'so past that duplicates stop being caught and the corpus starts repeating itself. ' +
+          'Consolidate from the Memory screen, or delete what is no longer true.',
+      };
+    }
+
+    return { name: 'memory', status: 'ok', summary, detail: null };
   }
 
   private runs(): DoctorCheck {

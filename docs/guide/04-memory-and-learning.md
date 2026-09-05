@@ -22,6 +22,62 @@ changing the embedding provider.
 
 Memory can be disabled per workspace, for projects that should stay cold.
 
+### Two tiers: this project, and everywhere
+
+Every memory sits on one of two tiers, and the list is grouped by them:
+
+- **Global** — recalled in every workspace. Standing notes about you or about
+  how you like to work: the language you write in, a practice you always want
+  followed.
+- **A workspace** — recalled only there. Anything naming a command, a path or
+  a convention that belongs to one project.
+
+A run is given **both**: its own workspace's memories *and* every global one.
+That is why the list shows both, and why it separates them — the union is what
+the agent sees, and you should be able to tell at a glance which half is which.
+
+The reflexion pass always writes into the workspace it learned in, because one
+run is not evidence that a lesson travels. Deciding that it does is yours:
+**Make global** on any workspace memory, **Confine to…** on any global one.
+Both ask first, because promoting changes what every *other* project recalls —
+a consequence you cannot see from the screen you press it on.
+
+One consequence worth knowing: deleting a workspace deletes its memories.
+Promoting one is how a lesson outlives the project it was learned in.
+
+### Consolidation
+
+Left alone, a corpus starts repeating itself. The reflexion pass rediscovers
+"this workspace works in French" in four different wordings, and since only
+eight memories are recalled into a run, four of those eight go on saying one
+thing.
+
+**Maintenance → Consolidate** looks for that. It shortlists memories that sit
+close together, asks one cheap model call whether they genuinely say the same
+thing, and files what it finds *below*, for you to decide on. It never merges
+anything by itself.
+
+Two kinds of finding arrive:
+
+- **Repetition** — several memories stating one fact. The card shows every one
+  of them, names the one that would survive, and shows the text that would
+  replace them. **Merge** folds them together; the survivor keeps the combined
+  history — its use count, its reinforcement, and its place in the genesis of
+  every past run that was given any of them. Where the fact does not name
+  anything project-specific, **Merge and make global** is offered beside it.
+- **Contradiction** — two memories that cannot both be true. There is no button
+  to press here on purpose: which one is right is a judgement only you can
+  make, by editing or deleting. This is the finding worth the pass — until now
+  both were quietly handed to every run that matched either.
+
+The same pass runs by itself after any run that learned something, looking only
+at the neighbourhood of what was just written. Most runs cost nothing at all:
+if the new memories have no close neighbour, no model call is made.
+
+If a proposal has gone stale — a memory it names was edited or deleted since —
+applying it is refused rather than merged over. Dismiss it and run the pass
+again.
+
 ## The knowledge library
 
 Memory is what the system *learned*; the knowledge library is what you *gave
@@ -111,8 +167,10 @@ stands aside for that message.
 
 After a run, a cheap, tool-less pass reads the transcript and extracts durable
 lessons into memory — the mechanism by which "the tests need the shared
-package built first" stops being rediscovered weekly. Reflexion can be toggled
-per workspace.
+package built first" stops being rediscovered weekly. It writes into the
+workspace the run happened in, and each memory it writes says which session it
+came from, so you can open the conversation that taught it. Reflexion can be
+toggled per workspace.
 
 ## Distilling a skill
 

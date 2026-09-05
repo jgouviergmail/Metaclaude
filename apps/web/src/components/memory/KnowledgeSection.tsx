@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 
 import type { KnowledgeDocumentMeta, Workspace } from '@metaclaude/shared';
 
+import { ScopeBadge } from '@/components/memory/ScopeBadge';
 import { Switch } from '@/components/ui/controls';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { Badge, Button, Card, EmptyState, Input, Label, Skeleton, Textarea, Tooltip } from '@/components/ui/primitives';
@@ -166,8 +167,6 @@ export function KnowledgeSection({
   };
 
   const documents = query.data?.documents ?? [];
-  const workspaceName = (id: string | null) =>
-    id === null ? t('Global') : (workspaces.find((w) => w.id === id)?.name ?? t('Workspace'));
 
   return (
     <section className="space-y-4" aria-labelledby="knowledge-heading">
@@ -238,9 +237,7 @@ export function KnowledgeSection({
                     >
                       {doc.title}
                     </button>
-                    <Badge tone={doc.workspaceId === null ? 'info' : 'neutral'}>
-                      {workspaceName(doc.workspaceId)}
-                    </Badge>
+                    <ScopeBadge workspaceId={doc.workspaceId} workspaces={workspaces} />
                     {!doc.enabled ? <Badge tone="warning">{t('Paused')}</Badge> : null}
                   </div>
                   <p className="text-[12px] text-subtle">

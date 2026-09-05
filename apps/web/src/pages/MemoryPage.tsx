@@ -17,6 +17,8 @@ import {
   Check,
   ChevronDown,
   Filter,
+  Folder,
+  Globe,
   Lightbulb,
   MoreHorizontal,
   Pencil,
@@ -29,11 +31,14 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { normaliseTags, type Insight, type Memory, type MemoryKind } from '@metaclaude/shared';
+import { normaliseTags, type Insight, type Memory, type MemoryKind, type Workspace } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
 import { KnowledgeSection } from '@/components/memory/KnowledgeSection';
+import { ConsolidationCard, readProposal } from '@/components/memory/ConsolidationCard';
+import { ScopeBadge, scopeName } from '@/components/memory/ScopeBadge';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
@@ -51,8 +56,9 @@ import {
   Tooltip,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { INSIGHT_TONE } from '@/lib/insights';
 import { cn, formatPercent, formatRelative } from '@/lib/utils';
-import { useT } from '@/lib/i18n';
+import { usePlural, useT } from '@/lib/i18n';
 
 type KindFilter = 'all' | MemoryKind;
 
@@ -70,10 +76,16 @@ const KIND_TONE: Record<MemoryKind, 'info' | 'accent' | 'thinking'> = {
 };
 
 const MAINTENANCE: ReadonlyArray<{
-  action: 'decay' | 'collect' | 'reindex';
+  action: 'decay' | 'collect' | 'reindex' | 'consolidate';
   label: string;
   explanation: string;
 }> = [
+  {
+    action: 'consolidate',
+    label: 'Consolidate',
+    explanation:
+      'Look for memories that repeat one another, or that contradict one another, and file what is found below for review. Nothing is merged without you.',
+  },
   {
     action: 'decay',
     label: 'Decay',
@@ -94,16 +106,79 @@ const MAINTENANCE: ReadonlyArray<{
   },
 ];
 
-const INSIGHT_TONE: Record<Insight['kind'], 'info' | 'accent' | 'danger' | 'success' | 'thinking'> = {
-  lesson: 'info',
-  pattern: 'accent',
-  failure: 'danger',
-  preference: 'success',
-  skill_proposal: 'thinking',
-};
+/** The label a maintenance action is announced by. One table, one spelling. */
+function labelFor(action: (typeof MAINTENANCE)[number]['action']): string {
+  return MAINTENANCE.find((entry) => entry.action === action)?.label ?? action;
+}
+
+export interface MemoryTier {
+  /** `null` is the global tier. */
+  workspaceId: string | null;
+  name: string;
+  memories: Memory[];
+}
+
+/**
+ * Split the list into the tiers it has always contained.
+ *
+ * `GET /api/memory` for a workspace answers with that workspace's memories
+ * *and* every global one, because that union is exactly what a run there is
+ * given — and it is sorted by pinned, then confidence, which interleaves the
+ * two so thoroughly that the page read as one undifferentiated pile. The list
+ * is right; only its shape was wrong.
+ *
+ * Global first, always: it is the tier whose contents reach everywhere, and
+ * the one an operator is least likely to expect to find in a workspace's list.
+ * The rest go alphabetically, because any other order is a fact about the sort
+ * above rather than about the workspaces.
+ */
+export function tiersOf(
+  memories: readonly Memory[],
+  workspaces: readonly Workspace[],
+  t: (key: string) => string,
+): MemoryTier[] {
+  const byScope = new Map<string | null, Memory[]>();
+  for (const memory of memories) {
+    const bucket = byScope.get(memory.workspaceId);
+    if (bucket) bucket.push(memory);
+    else byScope.set(memory.workspaceId, [memory]);
+  }
+
+  const tiers: MemoryTier[] = [];
+  const globals = byScope.get(null);
+  if (globals) tiers.push({ workspaceId: null, name: t('Global'), memories: globals });
+
+  const scoped = [...byScope.entries()]
+    .filter((entry): entry is [string, Memory[]] => entry[0] !== null)
+    .map(([workspaceId, rows]) => ({
+      workspaceId,
+      name: scopeName(workspaceId, workspaces, t),
+      memories: rows,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return [...tiers, ...scoped];
+}
+
+/**
+ * The session a memory was learned in, or null.
+ *
+ * A run is read inside its session — there is no page for one on its own —
+ * so the link needs both ids, which the list response carries beside the
+ * memories. A run past its retention window has no entry, and no link.
+ */
+function sourceHrefOf(
+  memory: Memory,
+  sources: Record<string, { sessionId: string; workspaceId: string }> | undefined,
+): string | null {
+  if (!memory.sourceRunId) return null;
+  const source = sources?.[memory.sourceRunId];
+  return source ? `/w/${source.workspaceId}/s/${source.sessionId}` : null;
+}
 
 export function MemoryPage() {
   const t = useT();
+  const plural = usePlural();
   const queryClient = useQueryClient();
 
   /** `all` = every memory, `global` = unscoped only, anything else = a workspace id. */
@@ -117,6 +192,8 @@ export function MemoryPage() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [deleting, setDeleting] = useState<Memory | null>(null);
+  /** The memory whose tier is being changed, and where it would go. */
+  const [moving, setMoving] = useState<{ memory: Memory; to: string | null } | null>(null);
 
   // Typing should not fire a request per keystroke; 250ms is below the point
   // where the list feels detached from the box.
@@ -211,14 +288,94 @@ export function MemoryPage() {
   });
 
   const maintenance = useMutation({
-    mutationFn: (action: 'decay' | 'collect' | 'reindex') => api.memoryMaintenance(action),
+    mutationFn: (action: 'decay' | 'collect' | 'reindex' | 'consolidate') =>
+      api.memoryMaintenance(action),
     onSuccess: (result, action) => {
       refreshMemory();
-      toast.success(`${MAINTENANCE.find((m) => m.action === action)?.label ?? action} complete`, {
-        description: `${result.affected} ${result.affected === 1 ? 'memory' : 'memories'} affected.`,
+      if (action === 'consolidate') {
+        // The only action that answers with a queue rather than a change, so
+        // it is the only one whose report has to say what to do next. A pass
+        // that found nothing is the common and correct outcome, and saying so
+        // plainly beats "0 memories affected", which reads like a failure.
+        void queryClient.invalidateQueries({ queryKey: ['insights'] });
+        const found = result.consolidation?.proposed ?? 0;
+        // A pass can be capped, and one that only says "nothing found" would
+        // be telling the operator something it does not know: it looked at
+        // part of the corpus, and the rest is unexamined rather than clean.
+        const seeds = result.consolidation?.seeds ?? 0;
+        const corpus = result.consolidation?.corpus ?? 0;
+        const partial = corpus > seeds;
+        toast.success(
+          found === 0
+            ? t('Nothing to consolidate')
+            : plural(found, '{n} group to review', '{n} groups to review'),
+          {
+            description: partial
+              ? t('{seeds} of {corpus} memories examined — run it again to continue.', {
+                  seeds,
+                  corpus,
+                })
+              : found === 0
+                ? t('No memory in this corpus repeats or contradicts another.')
+                : t('They are listed below. Nothing is merged until you say so.'),
+          },
+        );
+        return;
+      }
+      toast.success(t('{action} complete', { action: t(labelFor(action)) }), {
+        description: plural(result.affected, '{n} memory affected.', '{n} memories affected.'),
       });
     },
     onError: (error) => toast.error(messageFor(error, t('Maintenance failed.'))),
+  });
+
+  /**
+   * Move a memory between tiers.
+   *
+   * Confirmed rather than immediate, and not because it is hard to undo — it
+   * is one press back — but because promoting changes what every *other*
+   * workspace recalls, and that consequence is invisible from the screen the
+   * operator is looking at.
+   */
+  const setScopeOf = useMutation({
+    mutationFn: ({ id, workspaceId }: { id: string; workspaceId: string | null }) =>
+      api.setMemoryScope(id, workspaceId),
+    onSuccess: (result) => {
+      refreshMemory();
+      setMoving(null);
+      toast.success(
+        result.memory.workspaceId === null ? t('Made global') : t('Confined to this workspace'),
+        {
+          description:
+            result.memory.workspaceId === null
+              ? t('Every workspace will now recall it.')
+              : t('Only this workspace will recall it.'),
+        },
+      );
+    },
+    onError: (error) => toast.error(messageFor(error, t('Could not move that memory.'))),
+  });
+
+  const applyConsolidation = useMutation({
+    mutationFn: ({ id, promote }: { id: string; promote: boolean }) =>
+      api.applyConsolidation(id, promote),
+    onSuccess: (result) => {
+      refreshMemory();
+      void queryClient.invalidateQueries({ queryKey: ['insights'] });
+      toast.success(
+        plural(result.absorbed.length, '{n} memory folded in', '{n} memories folded in'),
+        {
+          description: result.moved
+            ? t('The survivor is now global — every workspace recalls it.')
+            : t('The survivor keeps the history of all of them.'),
+        },
+      );
+    },
+    // A 409 here is the proposal having gone stale — a member edited or
+    // collected since it was drawn up — and the message says which one, so it
+    // is worth showing verbatim rather than behind a generic apology.
+    onError: (error) =>
+      toast.error(messageFor(error, t('That consolidation could not be applied.'))),
   });
 
   const setInsightStatus = useMutation({
@@ -265,6 +422,8 @@ export function MemoryPage() {
 
   const stats = memoryQuery.data?.stats;
   const memories = memoryQuery.data?.memories ?? [];
+  const workspaces = workspacesQuery.data?.workspaces ?? [];
+  const tiers = tiersOf(memories, workspaces, t);
   const insights = insightsQuery.data?.insights ?? [];
   const scopeLabel =
     scope === 'all'
@@ -510,7 +669,15 @@ export function MemoryPage() {
                             <span className="block truncate text-[13px] font-medium text-ink">
                               {result.memory.title}
                             </span>
-                            <span className="mt-0.5 block text-[11.5px] text-muted">
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
+                              {/* The one list on this screen that is not
+                                  grouped, and the only place a tier is
+                                  otherwise unknowable: recall answers with the
+                                  union a run would be given, best-first. */}
+                              <ScopeBadge
+                                workspaceId={result.memory.workspaceId}
+                                workspaces={workspaces}
+                              />
                               {t('{kind} · confidence {value}', {
                                 kind: result.memory.kind,
                                 value: formatPercent(result.memory.confidence),
@@ -595,16 +762,55 @@ export function MemoryPage() {
                     }}
                   />
                 </Card>
-                {memories.map((memory) => (
-                  <MemoryCard
-                    key={memory.id}
-                    memory={memory}
-                    onTogglePin={() =>
-                      updateMemory.mutate({ id: memory.id, patch: { pinned: !memory.pinned } })
-                    }
-                    onEdit={() => setEditing(memory)}
-                    onDelete={() => setDeleting(memory)}
-                  />
+                {/* Grouped by tier rather than sorted into one pile. Retrieval
+                    hands a run its own workspace's memories *and* every global
+                    one, so the list has always shown the union — but sorted by
+                    pinned, then confidence, which interleaves the two and
+                    leaves an operator unable to tell which is which. The
+                    heading is the answer: structure, not a badge to notice. */}
+                {tiers.map((tier) => (
+                  <section
+                    key={tier.workspaceId ?? 'global'}
+                    className="space-y-2"
+                    aria-labelledby={`tier-${tier.workspaceId ?? 'global'}`}
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-line pb-1.5">
+                      <h3
+                        id={`tier-${tier.workspaceId ?? 'global'}`}
+                        className="flex items-center gap-1.5 text-[13px] font-semibold text-ink"
+                      >
+                        {tier.workspaceId === null ? (
+                          <Globe className="size-3.5 text-info" aria-hidden />
+                        ) : (
+                          <Folder className="size-3.5 text-subtle" aria-hidden />
+                        )}
+                        {tier.name}
+                      </h3>
+                      <span className="text-[11.5px] tabular-nums text-subtle">
+                        {tier.memories.length}
+                      </span>
+                      <span className="ml-auto hidden text-[11.5px] text-subtle sm:inline">
+                        {tier.workspaceId === null
+                          ? t('Recalled in every workspace')
+                          : t('Recalled only here')}
+                      </span>
+                    </div>
+
+                    {tier.memories.map((memory) => (
+                      <MemoryCard
+                        key={memory.id}
+                        memory={memory}
+                        workspaces={workspaces}
+                        onTogglePin={() =>
+                          updateMemory.mutate({ id: memory.id, patch: { pinned: !memory.pinned } })
+                        }
+                        onEdit={() => setEditing(memory)}
+                        onDelete={() => setDeleting(memory)}
+                        onMove={(to) => setMoving({ memory, to })}
+                        sourceHref={sourceHrefOf(memory, memoryQuery.data?.sources)}
+                      />
+                    ))}
+                  </section>
                 ))}
               </div>
             )}
@@ -656,7 +862,33 @@ export function MemoryPage() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {insights.map((insight) => (
+                {insights.map((insight) => {
+                  // A consolidation is a decision about rows that already
+                  // exist, not an observation to accept or reject, so it gets
+                  // its own card with its own verbs — and the generic accept /
+                  // reject pair below would be the wrong question entirely.
+                  const proposal =
+                    insight.kind === 'consolidation' ? readProposal(insight.payload) : null;
+                  if (proposal) {
+                    return (
+                      <ConsolidationCard
+                        key={insight.id}
+                        proposal={proposal}
+                        workspaces={workspaces}
+                        busy={
+                          applyConsolidation.isPending &&
+                          applyConsolidation.variables?.id === insight.id
+                        }
+                        onApply={(promote) =>
+                          applyConsolidation.mutate({ id: insight.id, promote })
+                        }
+                        onDismiss={() =>
+                          setInsightStatus.mutate({ id: insight.id, status: 'rejected' })
+                        }
+                      />
+                    );
+                  }
+                  return (
                   <Card key={insight.id} className="space-y-3 p-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone={INSIGHT_TONE[insight.kind]}>
@@ -716,12 +948,13 @@ export function MemoryPage() {
                       ) : null}
                     </div>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
 
-          <KnowledgeSection scope={scope} workspaces={workspacesQuery.data?.workspaces ?? []} />
+          <KnowledgeSection scope={scope} workspaces={workspaces} />
         </div>
       </div>
 
@@ -785,6 +1018,38 @@ export function MemoryPage() {
           setDeleting(null);
         }}
       />
+
+      {/* Confirmed, though it is one press to undo. What is hard to undo is
+          not the row — it is having every other workspace's runs shaped by a
+          memory nobody there expected, which is a consequence invisible from
+          the screen this is pressed on. */}
+      <ConfirmDialog
+        open={moving !== null}
+        onOpenChange={(open) => {
+          if (!open) setMoving(null);
+        }}
+        title={moving?.to === null ? t('Make this global?') : t('Confine this memory?')}
+        description={
+          moving?.to === null
+            ? t(
+                '“{title}” would be recalled by every workspace, not just this one. You can confine it again at any time.',
+                { title: moving?.memory.title ?? '' },
+              )
+            : t(
+                '“{title}” would only be recalled in {name}. Other workspaces stop seeing it.',
+                {
+                  title: moving?.memory.title ?? '',
+                  name: scopeName(moving?.to ?? null, workspaces, t),
+                },
+              )
+        }
+        confirmLabel={moving?.to === null ? t('Make global') : t('Confine')}
+        onConfirm={async () => {
+          if (moving) {
+            await setScopeOf.mutateAsync({ id: moving.memory.id, workspaceId: moving.to });
+          }
+        }}
+      />
     </AppShell>
   );
 }
@@ -795,17 +1060,26 @@ export function MemoryPage() {
 
 function MemoryCard({
   memory,
+  workspaces,
+  sourceHref,
   onTogglePin,
   onEdit,
   onDelete,
+  onMove,
 }: {
   memory: Memory;
+  workspaces: readonly Workspace[];
   onTogglePin: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** `null` promotes to the global tier; an id confines to that workspace. */
+  onMove: (to: string | null) => void;
+  /** The session this was learned in, when the run still exists. */
+  sourceHref: string | null;
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
+  const isGlobal = memory.workspaceId === null;
 
   return (
     <Card id={`memory-${memory.id}`} className="p-4">
@@ -813,6 +1087,11 @@ function MemoryCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={KIND_TONE[memory.kind]}>{memory.kind}</Badge>
+            {/* Repeated from the section heading on purpose: a card is reached
+                directly — from the constellation, from a notification link —
+                and one that does not say which tier it is on cannot be read
+                on its own. */}
+            <ScopeBadge workspaceId={memory.workspaceId} workspaces={workspaces} />
             {memory.pinned ? <Badge tone="warning">{t('pinned')}</Badge> : null}
             <h3 className="min-w-0 text-[13.5px] font-medium text-ink">{memory.title}</h3>
           </div>
@@ -852,6 +1131,39 @@ function MemoryCard({
             <MenuItem icon={<Pencil />} onSelect={onEdit}>
               {t('Edit')}
             </MenuItem>
+
+            <MenuSeparator />
+            <MenuLabel>{t('Scope')}</MenuLabel>
+            {isGlobal ? (
+              // Confining needs a destination, and offering every workspace in
+              // this menu would put a list of unrelated projects inside a
+              // single memory's actions. The workspaces are listed; a global
+              // memory with nowhere to go simply has no entry here.
+              workspaces.map((workspace) => (
+                <MenuItem
+                  key={workspace.id}
+                  icon={
+                    <span
+                      className="mt-0.5 block size-3 rounded-[4px]"
+                      style={{ background: workspace.color }}
+                      aria-hidden
+                    />
+                  }
+                  onSelect={() => onMove(workspace.id)}
+                >
+                  {t('Confine to {name}', { name: workspace.name })}
+                </MenuItem>
+              ))
+            ) : (
+              <MenuItem
+                icon={<Globe />}
+                description={t('Every workspace would recall it')}
+                onSelect={() => onMove(null)}
+              >
+                {t('Make global')}
+              </MenuItem>
+            )}
+
             <MenuSeparator />
             <MenuItem icon={<Trash2 />} tone="danger" onSelect={onDelete}>
               {t('Delete')}
@@ -895,6 +1207,14 @@ function MemoryCard({
           {t('used')} {memory.useCount}× · {memory.successCount} {t('succeeded')}
         </span>
         <span>{t('updated')} {formatRelative(memory.updatedAt)}</span>
+        {/* Where it came from. Stored since the table existed and never shown:
+            a memory whose origin an operator can open is one they can judge,
+            and judging is the whole point of this screen. */}
+        {sourceHref ? (
+          <Link to={sourceHref} className="font-medium text-accent hover:underline">
+            {t('where this came from')}
+          </Link>
+        ) : null}
       </div>
     </Card>
   );

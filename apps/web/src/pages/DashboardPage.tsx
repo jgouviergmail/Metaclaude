@@ -30,6 +30,7 @@ import { SystemPulse } from '@/components/dashboard/SystemPulse';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { INSIGHT_TONE, isLearned } from '@/lib/insights';
 import { usePlural, useT } from '@/lib/i18n';
 import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
@@ -77,7 +78,10 @@ export function DashboardPage() {
 
   const insightsQuery = useQuery({
     queryKey: ['insights', 'new'],
-    queryFn: () => api.insights({ status: 'new', limit: 5 }),
+    // Asked for more than the five shown: consolidation proposals share this
+    // queue and are filtered out below, and taking five from the server would
+    // let a sweep's worth of them leave the digest empty.
+    queryFn: () => api.insights({ status: 'new', limit: 20 }),
   });
 
   // The brief embeds the doctor and (cached) quota, both of which cost a
@@ -111,6 +115,11 @@ export function DashboardPage() {
   const greeting = `${t(
     timeOfDayGreeting(),
   )}, ${user?.displayName || user?.username || t('there')}.`;
+
+  // The digest is about what the system *learned*. A consolidation proposal
+  // is filed in the same queue and is a request to delete rows, which is not
+  // that — and the Review link below already leads to where it is answered.
+  const learned = (insightsQuery.data?.insights ?? []).filter(isLearned).slice(0, 5);
 
   return (
     <AppShell>
@@ -400,7 +409,7 @@ export function DashboardPage() {
                 </Link>
               </div>
 
-              {(insightsQuery.data?.insights ?? []).length === 0 ? (
+              {learned.length === 0 ? (
                 <EmptyState
                   title={t('Nothing new')}
                   description={t(
@@ -410,18 +419,10 @@ export function DashboardPage() {
                 />
               ) : (
                 <ul className="divide-y divide-[var(--mc-border)]">
-                  {insightsQuery.data?.insights.map((insight) => (
+                  {learned.map((insight) => (
                     <li key={insight.id} className="px-4 py-3">
                       <div className="flex items-start gap-2">
-                        <Badge
-                          tone={
-                            insight.kind === 'failure'
-                              ? 'danger'
-                              : insight.kind === 'skill_proposal'
-                                ? 'accent'
-                                : 'thinking'
-                          }
-                        >
+                        <Badge tone={INSIGHT_TONE[insight.kind]}>
                           {insight.kind.replace('_', ' ')}
                         </Badge>
                       </div>

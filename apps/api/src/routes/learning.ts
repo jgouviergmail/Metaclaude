@@ -7,13 +7,57 @@
  */
 
 import type { App } from '../http/types.js';
-import { CreateMemoryRequest, SaveKnowledgeRequest, MemoryKind } from '@metaclaude/shared';
+import {
+  ApplyConsolidationRequest,
+  ConsolidationProposal,
+  CreateMemoryRequest,
+  SaveKnowledgeRequest,
+  MemoryKind,
+} from '@metaclaude/shared';
 import type { RunGenesis } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { HttpError, mustGetWorkspace, requestIp, requireOperator } from '../http/guards.js';
 import { spreadInt } from '../http/query.js';
+import { fingerprint } from '../learning/consolidation.js';
+import { MemoryReconcileError } from '../learning/memory.js';
 import { listInsights, setInsightStatus } from '../learning/reflexion.js';
+
+/**
+ * Where each memory was learned, as somewhere an operator can actually go.
+ *
+ * `source_run_id` has been stored since the table existed and shown nowhere,
+ * because a run id alone is not a destination: runs are read inside their
+ * session, and the memory row knows nothing about sessions. One indexed
+ * lookup per page turns a dead identifier into a link.
+ *
+ * Returned beside the memories rather than folded into them: `Memory` is a
+ * shared schema that the web bundle carries at runtime, and this is a join
+ * result rather than a property of the memory. A run that has since been
+ * pruned by retention simply has no entry, and the card shows no link.
+ */
+function sourcesOf(
+  context: AppContext,
+  memories: readonly { sourceRunId: string | null }[],
+): Record<string, { sessionId: string; workspaceId: string }> {
+  const ids = [...new Set(memories.map((memory) => memory.sourceRunId).filter(Boolean))];
+  if (ids.length === 0) return {};
+
+  // One statement, three columns. `RunRepo.get` reads the whole row and parses
+  // its usage JSON, which is two hundred needless parses on a full page for
+  // two fields — and a page is the common case, not the extreme one.
+  const rows = context.db
+    .prepare<string[], { id: string; session_id: string; workspace_id: string }>(
+      `SELECT id, session_id, workspace_id FROM runs WHERE id IN (${ids.map(() => '?').join(',')})`,
+    )
+    .all(...(ids as string[]));
+
+  const sources: Record<string, { sessionId: string; workspaceId: string }> = {};
+  for (const row of rows) {
+    sources[row.id] = { sessionId: row.session_id, workspaceId: row.workspace_id };
+  }
+  return sources;
+}
 
 export function registerLearningRoutes(app: App, context: AppContext): void {
   /* -------------------------------- Memory ------------------------------ */
@@ -49,6 +93,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       memories,
       stats: context.memory.stats(workspaceFilter),
       total: context.memory.count(workspaceFilter),
+      sources: sourcesOf(context, memories),
     });
   });
 
@@ -115,13 +160,56 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
   });
 
   /**
+   * Move a memory between tiers.
+   *
+   * Not part of `PATCH /api/memory/:id`, and deliberately so. Every other
+   * field there is the memory's own content; this one decides which runs, in
+   * which projects, will be shaped by it — promoting one memory changes what
+   * every workspace recalls. It gets its own verb, its own audit line, and its
+   * own confirmation in the interface.
+   */
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    '/api/memory/:id/scope',
+    async (request, reply) => {
+      const actor = requireOperator(request);
+      const parsed = z
+        .object({ workspaceId: z.string().nullable() })
+        .safeParse(request.body);
+      if (!parsed.success) throw new HttpError(400, 'Invalid request.');
+
+      try {
+        const result =
+          parsed.data.workspaceId === null
+            ? await context.memory.promote(request.params.id)
+            : await context.memory.confine(request.params.id, parsed.data.workspaceId);
+
+        if (result.moved) {
+          context.audit.record({
+            actor: actor.username,
+            action: parsed.data.workspaceId === null ? 'memory.promote' : 'memory.confine',
+            target: result.memory.id,
+            ipAddress: requestIp(context, request),
+            detail: result.memory.title,
+          });
+        }
+        return reply.send({ memory: result.memory, moved: result.moved });
+      } catch (error) {
+        if (error instanceof MemoryReconcileError) {
+          throw new HttpError(error.statusCode, error.message);
+        }
+        throw error;
+      }
+    },
+  );
+
+  /**
    * Manual maintenance. These run on a schedule anyway; exposing them lets the
    * operator see the effect immediately rather than waiting a day.
    */
   app.post('/api/memory/maintenance', async (request, reply) => {
-    requireOperator(request);
+    const actor = requireOperator(request);
     const parsed = z
-      .object({ action: z.enum(['decay', 'collect', 'reindex']) })
+      .object({ action: z.enum(['decay', 'collect', 'reindex', 'consolidate']) })
       .safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, 'Unknown maintenance action.');
 
@@ -132,6 +220,20 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
         return reply.send({ affected: context.memory.collect() });
       case 'reindex':
         return reply.send({ affected: await context.memory.reindex() });
+      case 'consolidate': {
+        // The only one that spends anything, and the only one that answers
+        // with more than a count: what it found is a queue of questions, not
+        // a change. `affected` stays the shape every other action returns so
+        // one client method covers all four.
+        const result = await context.consolidator.sweep();
+        context.audit.record({
+          actor: actor.username,
+          action: 'memory.consolidate',
+          ipAddress: requestIp(context, request),
+          detail: `${result.groups} group(s) examined, ${result.proposed} proposed`,
+        });
+        return reply.send({ affected: result.proposed, consolidation: result });
+      }
     }
   });
 
@@ -178,6 +280,86 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
    * The generated skill is only installed by this explicit action — the
    * reflexion pass never writes to the registry itself.
    */
+  /**
+   * Apply a consolidation the operator has read and agreed with.
+   *
+   * Everything here is a re-check of something the pass already decided,
+   * because the pass decided it against a corpus that has since been live:
+   * runs reinforce memories, the operator edits them, the janitor collects
+   * them. A plan drawn up ten minutes ago can describe a memory that no longer
+   * says what it said, and folding on that basis would delete an edit nobody
+   * ever saw. So the fingerprints are compared, and any drift is a 409 the
+   * operator can act on rather than a silent best effort.
+   */
+  app.post<{ Params: { id: string } }>('/api/insights/:id/consolidate', async (request, reply) => {
+    const actor = requireOperator(request);
+    const body = ApplyConsolidationRequest.safeParse(request.body ?? {});
+    if (!body.success) throw new HttpError(400, 'Invalid request.');
+
+    const insight = listInsights(context.db, { limit: 500 }).find((i) => i.id === request.params.id);
+    if (!insight) throw new HttpError(404, 'Insight not found.');
+    if (insight.kind !== 'consolidation' || !insight.payload) {
+      throw new HttpError(400, 'That insight does not carry a consolidation proposal.');
+    }
+    if (insight.status === 'applied') {
+      throw new HttpError(409, 'That consolidation has already been applied.');
+    }
+
+    let proposal: ConsolidationProposal;
+    try {
+      proposal = ConsolidationProposal.parse(JSON.parse(insight.payload));
+    } catch {
+      throw new HttpError(422, 'The stored consolidation proposal is malformed.');
+    }
+    if (proposal.verdict !== 'duplicate' || !proposal.merged) {
+      // A contradiction has no merged text by construction: what to keep is a
+      // judgement the operator makes by editing or deleting, not a button.
+      throw new HttpError(409, 'That proposal has nothing to merge — decide between them yourself.');
+    }
+
+    for (const member of proposal.members) {
+      const current = context.memory.get(member.id);
+      if (!current) {
+        throw new HttpError(409, `“${member.title}” no longer exists — dismiss this and run consolidation again.`);
+      }
+      if (fingerprint(current.title, current.content) !== member.fingerprint) {
+        throw new HttpError(409, `“${current.title}” changed since this was proposed — dismiss it and run consolidation again.`);
+      }
+    }
+
+    if (body.data.promote && !proposal.promotable) {
+      throw new HttpError(409, 'This proposal was not judged to hold beyond its workspace.');
+    }
+
+    const losers = proposal.members.map((member) => member.id).filter((id) => id !== proposal.winnerId);
+    let result;
+    try {
+      result = await context.memory.reconcile({
+        winnerId: proposal.winnerId,
+        loserIds: losers,
+        title: proposal.merged.title,
+        content: proposal.merged.content,
+        tags: proposal.merged.tags,
+        ...(body.data.promote ? { scope: null } : {}),
+      });
+    } catch (error) {
+      if (error instanceof MemoryReconcileError) {
+        throw new HttpError(error.statusCode, error.message);
+      }
+      throw error;
+    }
+
+    setInsightStatus(context.db, insight.id, 'applied');
+    context.audit.record({
+      actor: actor.username,
+      action: 'memory.merge',
+      target: result.memory.id,
+      ipAddress: requestIp(context, request),
+      detail: `absorbed ${result.absorbed.length}${result.moved ? ', promoted to global' : ''}`,
+    });
+    return reply.send({ memory: result.memory, absorbed: result.absorbed, moved: result.moved });
+  });
+
   app.post<{ Params: { id: string } }>('/api/insights/:id/install-skill', async (request, reply) => {
     const actor = requireOperator(request);
 

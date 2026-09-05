@@ -11,6 +11,210 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.43.0] — 2026-09-05
+
+### Added
+
+- **Memory has two tiers, and the screen finally says which is which.**
+  Retrieval has always handed a run its own workspace's memories *and* every
+  global one — `workspace_id = ? OR workspace_id IS NULL`, which is right, and
+  which is what makes a standing note reach every project. The Memory page then
+  sorted that union by pinned, then confidence, then recency, and drew it as one
+  list. The two tiers were interleaved with nothing to tell them apart, and the
+  same union had already caused a visible bug once: the page rendered more rows
+  than the total beside them.
+
+  The list is now grouped: Global first, headed and counted, then one section
+  per workspace. Every card carries its tier as well, because a card is reached
+  directly — from the constellation, from a notification link — and one that
+  cannot be read on its own is not much of a card. `ScopeBadge` is one component
+  shared with the knowledge library, which had this right from the start; the
+  vocabulary and the colour now exist once rather than twice.
+
+- **A memory can be promoted to the global tier, and confined back.**
+  Nothing could move one before: `MemoryStore.update`, the route's patch schema
+  and the API client all stopped at the memory's own content, so a lesson was
+  born in a workspace and died there. The reflexion pass writes
+  `workspaceId: run.workspaceId` every time, so in practice the global tier was
+  unreachable — measured on the live deployment: twenty-two memories, none of
+  them global.
+
+  `POST /api/memory/:id/scope` is its own verb rather than a field on `PATCH`,
+  deliberately: every other field there is what the memory says, while this one
+  decides which projects recall it at all. It gets its own audit line and its
+  own confirmation, because promoting changes what every *other* workspace's
+  runs are given and that consequence is invisible from the screen it is pressed
+  on. Promotion also outlives the project — `memories.workspace_id` cascades on
+  workspace delete, so the tier a memory sits on decides whether it survives.
+
+- **Consolidation: the pass that notices the corpus repeating itself.**
+  `remember` folds a write into a near-duplicate above 0.92 cosine, and on the
+  hashing embedder this deployment ships that threshold is unreachable. Measured
+  on the production corpus: the *highest* similarity between any two of its
+  twenty-two memories was 0.51, while four of them said the workspace works in
+  French and five described the same quota behaviour. A third of the corpus was
+  redundant, nothing could see it, and the injection budget is eight memories —
+  so four rows took half of every run's recall to say one thing.
+
+  No threshold fixes that. Swept over the same corpus, catching every real
+  duplicate needs a floor of 0.15, which also admits fifty-eight unrelated pairs
+  out of seventy-seven. The cosine cannot be the decision; it can only be the
+  shortlist. So: a star per memory (its own nearest neighbours above 0.25,
+  capped at four), one tool-less `haiku` call to judge, and every verdict filed
+  in the operator's existing review queue. Nothing is ever merged without a
+  press.
+
+  Two shapes were tried and measured before this one. Union-find over the same
+  neighbour graph swallowed eight unrelated memories into a single component at
+  0.25 and fifteen of twenty-two at 0.20, because "somewhat similar" is
+  transitive and meaning is not. And a star per seed alone produced *fourteen*
+  groups for twenty-two memories — four of them about the same French cluster —
+  which is four model calls for one question and, worse, four competing
+  proposals of which applying any one leaves the other three stale. A group is
+  now dropped when it shares more than half its members with one already kept;
+  on that same corpus, fourteen groups become seven, one per cluster.
+
+- **`contradictory` is the verdict that pays for the pass.** Two memories close
+  enough to be retrieved together that tell the agent opposite things are far
+  more dangerous than two that repeat, and today both are injected side by side
+  with nothing anywhere noticing. The same shortlist finds them and the same
+  call classifies them, for the same price. There is no merge button on one:
+  which is right is a judgement only the operator can make.
+
+- **The doctor reports the shape of the memory corpus.** `findNearDuplicate`
+  compares a write against the newest 2000 rows *in its scope*, and a
+  workspace's scope is its own rows plus the global tier. Past that ceiling the
+  oldest stop being compared and duplicates accumulate again, with nothing
+  failing and nothing logged. A ceiling nobody can see is not a ceiling.
+
+- **Where a memory came from, as somewhere to go.** `source_run_id` has been
+  stored since the table existed and shown nowhere, because a run id alone is
+  not a destination — runs are read inside their session. The listing now
+  resolves it, and a run past its retention window simply has no link rather
+  than a dead one.
+
+- **The i18n table check sees a list, not only a record.** Every "copy table"
+  measure scanned object literals, so an *array* of rows — the maintenance
+  actions on the Memory page, the sections in the git panel, the navigation in
+  the shell — was not scanned at all, and adding an untranslated row to a
+  translated table of four was invisible. Judged one property at a time,
+  because the two shapes differ in where the identifiers live: a record puts
+  them in the keys, an array puts them in values beside the copy, and treating
+  those together indicts every route path, cron expression and enum key in the
+  app. With a capital first letter required, the same rule `SENTENCE` rests on,
+  it finds nothing today and turns red the moment a row is added without one.
+
+### Changed
+
+- **Deduplication stops partitioning by kind.** The classification is a guess
+  the reflector makes from one run and it is not stable: production held the
+  same observation about the workspace's language as `semantic` on one row and
+  `procedural` on another, so one fact could live once per kind, and did.
+  Duplication is a property of meaning; the surviving row keeps its own kind.
+
+- **A workspace write is compared against the global tier too.** A fact the
+  global tier already carries is reachable from the workspace already, so
+  writing a local copy of it creates a duplicate spanning two tiers — which
+  `workspace_id IS ?` could never see. The reverse is still refused: a global
+  write only ever matches another global, or a fact that belongs everywhere
+  would be quietly demoted into whichever workspace observed it first.
+
+- **`remember` and the merge path are one write path.** Folding a duplicate now
+  goes through `reconcile`, which already knows how to rewrite a surviving row
+  and re-embed only when the text moved. Two copies of that is how they drift.
+
+- **Vectors are rebuilt at boot when the embedder changed.** An embedding is
+  only comparable to one from the same provider, so switching
+  `METACLAUDE_EMBEDDINGS` — or having `local` fall back to `hash` because the
+  optional package is absent — silently turned off dense retrieval *and*
+  duplicate detection until somebody happened to press Re-index. The count is
+  one cheap query and the work runs in the background, because a rebuild must
+  not hold up the health endpoint the deploy gate waits on.
+
+### Fixed
+
+- **The consolidation pass is reproducible.** Its read ordered by
+  `updated_at DESC` alone, and several memories written by one run share a
+  millisecond — so the order was not total, and the order decides which memory
+  anchors a cluster, hence which members its group holds, hence its key. Two
+  sweeps over an unchanged corpus could form *different* groups, and the key
+  that suppresses a question the operator has already answered would match
+  nothing. Found because the test asserting it was itself flaky, twice in five
+  runs; the same family as the audit chain's `rowid` ordering.
+
+- **A memory too long to be shown whole is never folded.** The arbiter's answer
+  *becomes* the surviving text, so it can only write what it was shown — and
+  judging a longer memory on a prefix would fold its tail away into a merged
+  note derived from that prefix, approved by an operator who was shown the same
+  prefix. The excerpt is now the reflexion pass's own content ceiling, and
+  anything above it is excluded from grouping outright: those are the long-form
+  notes an operator wrote by hand, which are exactly the ones not to merge
+  automatically.
+
+- **The arbiter is told the notes are data.** They are model-authored text from
+  earlier runs, and one of them can carry an instruction addressed to this
+  call. Said in the same words the recall block uses when it hands memories to
+  a run — the blast radius was only ever a misleading proposal a person still
+  had to accept, but the sentence costs nothing.
+
+- **A consolidation proposal is filed under the workspace it is about.**
+  `listInsights` filters `workspace_id IS ?` exactly, with no union with the
+  globals — unlike the memory list — so a group of one workspace's rows whose
+  survivor happened to be a global memory was filed under NULL and invisible
+  from the only screen an operator would look for it on.
+
+- **The brief counts what is still waiting on a person.** `newInsights` was a
+  plain `COUNT(*)` over the window, so it included insights already triaged —
+  and would have announced a dozen new ones after a consolidation sweep whose
+  "these are distinct" answers are filed pre-rejected and shown nowhere.
+
+- **The dashboard's "Recently learned" stays about what was learned.** A
+  consolidation proposal shares the review queue and is a request to delete
+  rows, not something remembered; left in, one sweep's worth filled a panel
+  capped at five and pushed the lessons out. It also gave that proposal a
+  lesson's colour, because the Dashboard spelled the tone as a ternary chain
+  while the Memory page spelled it as an exhaustive record — one table now,
+  where a new kind fails the build rather than picking up a default.
+
+- **Folding two memories no longer rewrites a finished run's history.**
+  `memory_usages.memory_id` cascades on delete, and that table is what
+  `recalledFor` reads to show a run's genesis. A naive merge would have made a
+  completed run silently lose a memory it was demonstrably given. The usage rows
+  are repointed first, with the primary-key collision — a run that saw both —
+  resolved by keeping the larger score, so the attribution `reinforce` derives
+  from it survives. Evidence sums, confidence takes the maximum, and a pin
+  survives whichever row carried it.
+
+- **A reconciliation re-takes its decision inside the transaction.** The rows
+  are read to build the embedding text and embedding is awaited, so a memory
+  deleted on that await would have had its use counts folded in from a row that
+  no longer existed, and one *edited* on it would have had the edit overwritten
+  by the copy read beforehand — including when the caller only meant to rename
+  it. Both refuse now rather than proceeding on a stale snapshot.
+
+- **`composeSystemAppend` is gone.** Exported, tested, and with no caller since
+  the kernel started composing the appendix inline — the same shape as
+  `resolvePermissionMode`, which had drifted out of sight the same way. The
+  recall block's header also stopped claiming every note came from this
+  workspace, which was about to become false the moment the global tier had
+  anything in it.
+
+### Notes
+
+- No migration. `insights.kind` is a plain `TEXT` column, so a consolidation
+  proposal is an ordinary row in a table that already exists — with the status
+  it already has doing the work of remembering what the operator answered. A
+  "these are distinct" verdict is filed pre-triaged for exactly that reason: it
+  is the common answer, it costs a model call, and without a record of it the
+  same question is paid for on every sweep for as long as both memories exist.
+
+- Two proposals can still share a memory when a cluster is larger than one
+  group. Applying either makes the other stale, and the apply route answers 409
+  naming the row that moved and what to do about it — which is the honest
+  handling of a plan drawn up against a corpus that has since changed, and the
+  reason every proposal carries a fingerprint of the text it was drawn against.
+
+
 ## [0.42.0] — 2026-08-30
 
 ### Added

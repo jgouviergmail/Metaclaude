@@ -420,6 +420,65 @@ restates the code is noise; one that records a decision or a trap is not.
   string values are *already* in the catalogue is copy by demonstration, and
   every one of its values must be.
 
+- **A threshold that no test ever reaches is a feature that does not exist.**
+  `remember` merges a near-duplicate above 0.92 cosine, is documented as the
+  thing that stops the corpus degenerating, and has four passing tests. On the
+  hashing embedder that ships by default, the *highest* similarity between any
+  two memories of a real deployment was **0.51** — while a third of that corpus
+  was semantically redundant. Every merge test used byte-identical text, so
+  they proved the branch executes and never that the threshold is reachable.
+  Same family as the edge-schema trap: when a constant decides whether code
+  runs, one test has to approach it from where the real inputs actually sit.
+  And no threshold fixes it — 0.15 catches every true pair and fifty-eight
+  false ones out of seventy-seven, so `learning/consolidation.ts` shortlists
+  with the cosine and *asks a model*.
+- **"Somewhat similar" is transitive and meaning is not.** Union-find over the
+  neighbour graph at 0.25 swallowed eight unrelated memories of that corpus
+  into one component, and fifteen of twenty-two at 0.20. Group around a centre
+  instead — a star cannot chain. But one star per member is not enough either:
+  a cluster of four produces four *overlapping* stars, which is four model
+  calls for one question and four competing proposals of which applying any one
+  leaves the other three stale. Drop a group that shares more than half its
+  members with one already kept. Both numbers were measured by replaying the
+  production corpus through the real pass, and neither was visible from a unit
+  fixture — a three-member cluster produces identical stars, so the overlap
+  never appears until there are four.
+- **`ORDER BY <timestamp> DESC` is not a total order.** Several memories written
+  by one run share a millisecond, and in the consolidation pass the read order
+  decides which memory anchors a cluster, hence its members, hence its key —
+  so two sweeps over an unchanged corpus formed *different* groups and the key
+  that suppresses an answered question matched nothing. It surfaced as a test
+  failing two runs in five. Add `rowid` wherever the order is load-bearing;
+  same family as the audit chain's ordering.
+- **A fingerprint of a fresh read proves nothing about what was judged.** The
+  consolidation arbiter is awaited, so a memory can be edited while the call is
+  in flight. Fingerprinting the row *afterwards* records agreement with an edit
+  the merged wording was never written against, and the apply route — whose
+  entire job is to refuse a plan drawn against text that has since moved —
+  waves it through and drops the edit silently. Fingerprint the snapshot the
+  model was shown.
+- **A model can only decide about what it was shown.** Its answer becomes the
+  surviving text, so judging a longer memory on a prefix folds the tail away
+  into a note derived from that prefix — approved by an operator shown the same
+  prefix. `ARBITER_EXCERPT` bounds what is shown *and* excludes anything longer
+  from being grouped at all.
+- **`listInsights` filters `workspace_id IS ?` exactly.** No union with the
+  globals, unlike the memory list — so a row filed under `NULL` is invisible
+  from every workspace view. File a proposal under the project it is *about*,
+  which is not necessarily its survivor's tier.
+- **An exhaustive `Record` notices a new case; a ternary chain does not.**
+  `INSIGHT_TONE` on the Memory page failed the build when `Insight['kind']`
+  gained a member. The Dashboard spelled the same mapping as
+  `kind === 'failure' ? … : …` and silently gave the new kind a lesson's
+  colour. Two spellings of one table is the bug; `lib/insights.ts` is the fix.
+- **The i18n copy-table measures only saw object literals.** An *array* of rows
+  — the maintenance actions, the git panel's sections, the shell's navigation —
+  was not scanned at all, so adding an untranslated row to a translated table
+  was invisible. Generalising it needs care: a record puts identifiers in the
+  keys and copy in the values, an array puts both in values, so judge one
+  property at a time and require a capital first letter, or every route path and
+  cron expression in the app is indicted.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +

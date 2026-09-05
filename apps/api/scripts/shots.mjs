@@ -83,6 +83,96 @@ const pinned = await context.memory.remember({
 });
 context.db.prepare('UPDATE memories SET last_used_at = ? WHERE id = ?').run(now - HOUR, pinned.memory.id);
 
+// The global tier, and a second workspace to put it beside.
+//
+// Without these the Memory page renders exactly one section and looks
+// identical to the version before it was grouped — so the bench could not show
+// the change it was built to judge. A screen whose new layout is invisible in
+// the only place anyone looks at it is a screen nobody reviewed.
+const GLOBALS = [
+  ['semantic', 'The operator writes in French', 0.94, 3 * HOUR],
+  ['procedural', 'Prove a new test can fail before trusting it', 0.88, 20 * HOUR],
+  ['semantic', 'Never push personal infrastructure details to a repository', 0.9, 2 * DAY],
+];
+for (const [kind, title, confidence, age] of GLOBALS) {
+  const { memory } = await context.memory.remember({
+    workspaceId: null,
+    kind,
+    title,
+    content: `${title}. Applies wherever the agent works.`,
+    confidence,
+  });
+  context.db
+    .prepare('UPDATE memories SET last_used_at = ?, use_count = ? WHERE id = ?')
+    .run(now - age, Math.max(2, Math.round(18 * confidence)), memory.id);
+}
+
+const sideProject = context.workspaceRepo.create({
+  name: 'Chambéry',
+  slug: 'chambery',
+  description: 'A second project, so the tiers have something to separate',
+  path: join(server.config.workspacesDir, 'chambery'),
+  color: '#0ea5e9',
+  icon: 'folder',
+  settings: (await import(pathToFileURL(join(REPO_ROOT, 'apps/api/dist/kernel/repositories.js')).href)).defaultWorkspaceSettings(),
+});
+await context.memory.remember({
+  workspaceId: sideProject.id,
+  kind: 'semantic',
+  title: 'The lease notice period is three months',
+  content: 'One month inside a zone tendue; three everywhere else.',
+  confidence: 0.82,
+});
+
+// One consolidation proposal, so the review queue shows the card it grew for.
+const repeated = [];
+for (const title of [
+  'This workspace operates in French',
+  'Card descriptions are written in French',
+]) {
+  const { memory } = await context.memory.remember({
+    workspaceId: ws.id,
+    kind: 'semantic',
+    title,
+    content: `${title}. Everything written here is in French.`,
+    confidence: 0.76,
+  });
+  repeated.push(memory);
+}
+const { createHash } = await import('node:crypto');
+const digest = (memory) =>
+  createHash('sha256').update(`${memory.title}\n\n${memory.content}`).digest('hex').slice(0, 16);
+context.db
+  .prepare(
+    `INSERT INTO insights (id, workspace_id, run_id, kind, title, body, confidence, status, payload, created_at)
+     VALUES (?, ?, NULL, 'consolidation', ?, ?, 0.7, 'new', ?, ?)`,
+  )
+  .run(
+    'insight_shots_consolidation',
+    ws.id,
+    '2 memories say the same thing',
+    'Both state that this workspace works in French.',
+    JSON.stringify({
+      key: repeated.map((memory) => memory.id).sort().join('|'),
+      verdict: 'duplicate',
+      reason: 'Both state that this workspace works in French, in different words.',
+      members: repeated.map((memory) => ({
+        id: memory.id,
+        title: memory.title,
+        fingerprint: digest(memory),
+        workspaceId: memory.workspaceId,
+      })),
+      winnerId: repeated[0].id,
+      merged: {
+        title: 'This workspace works in French',
+        content: 'Everything written here — cards, commits, conversation — is in French.',
+        tags: ['language'],
+      },
+      promotable: true,
+    }),
+    now - 40 * 60_000,
+  );
+
 // A day of runs for the pulse and analytics: session + runs backdated by SQL.
 const session = context.sessionRepo.create({
   workspaceId: ws.id,

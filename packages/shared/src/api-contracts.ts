@@ -357,7 +357,12 @@ export const Insight = z.object({
   id: z.string(),
   workspaceId: z.string().nullable(),
   runId: z.string().nullable(),
-  kind: z.enum(['lesson', 'pattern', 'failure', 'preference', 'skill_proposal']),
+  // `consolidation` carries a ConsolidationProposal in `payload`. It is the
+  // only kind the operator can *act* on from here besides a skill proposal,
+  // and the only one the system also files pre-triaged: see the note on
+  // ConsolidationProposal for why a "these are distinct" verdict is stored as
+  // an already-rejected row rather than not stored at all.
+  kind: z.enum(['lesson', 'pattern', 'failure', 'preference', 'skill_proposal', 'consolidation']),
   title: z.string(),
   body: z.string(),
   /** 0..1 confidence reported by the reflector. */
@@ -1011,3 +1016,83 @@ export const CreateApiTokenResponse = z.object({
   secret: z.string(),
 });
 export type CreateApiTokenResponse = z.infer<typeof CreateApiTokenResponse>;
+
+/* -------------------------------------------------------------------------- */
+/* Memory consolidation                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A memory a consolidation proposal is about, as it stood when the proposal
+ * was drawn up.
+ *
+ * The fingerprint is the load-bearing field. A proposal is a plan written
+ * against particular text and reviewed by a person some time later; between
+ * the two, a run can reinforce a memory, the operator can edit one, and the
+ * plan then describes something that no longer exists. Applying it anyway
+ * would fold an edit away without ever showing it to anybody, so the apply
+ * step compares this against the live row and refuses on any drift.
+ */
+export const ConsolidationMember = z.object({
+  id: z.string(),
+  title: z.string(),
+  /** Digest of the exact title and content this plan was drawn against. */
+  fingerprint: z.string(),
+  workspaceId: z.string().nullable(),
+});
+export type ConsolidationMember = z.infer<typeof ConsolidationMember>;
+
+/**
+ * What the consolidation pass proposes about one group of memories, carried in
+ * `Insight.payload`.
+ *
+ * Two verdicts reach an operator. `duplicate` is the one that saves budget:
+ * several rows saying one thing, folded into the survivor the pass names.
+ * `contradictory` is the one that saves correctness — two memories that
+ * *disagree*, which is far more dangerous than a duplicate, because today both
+ * are injected side by side and nothing anywhere notices. There is no merged
+ * text for that case: what to keep is a judgement only the operator can make.
+ *
+ * The third verdict, `complementary`, never becomes a payload. It is the
+ * arbiter saying "these are related but distinct", which is the common and
+ * correct answer, and it is recorded as an already-triaged insight purely so
+ * the pass does not pay to ask the same question every six hours.
+ */
+export const ConsolidationProposal = z.object({
+  /**
+   * The group's identity: its member ids, sorted and joined. Two passes over
+   * an unchanged corpus produce the same key, which is what lets a proposal
+   * the operator has already answered stay answered.
+   */
+  key: z.string(),
+  verdict: z.enum(['duplicate', 'contradictory']),
+  /** One sentence from the arbiter, saying why. */
+  reason: z.string(),
+  members: z.array(ConsolidationMember).min(2).max(8),
+  /** The row that survives — always one of `members`. */
+  winnerId: z.string(),
+  /** What the survivor should say afterwards. Absent for `contradictory`. */
+  merged: z
+    .object({
+      title: z.string(),
+      content: z.string(),
+      tags: z.array(z.string()),
+    })
+    .optional(),
+  /**
+   * Whether the arbiter judged the fact to hold beyond this project.
+   *
+   * Only ever an invitation to promote, never to demote: a global memory is
+   * something an operator put on the global tier, and no model judgement moves
+   * it back down. The apply route makes promotion a separate button anyway, so
+   * this is a suggestion twice over.
+   */
+  promotable: z.boolean(),
+});
+export type ConsolidationProposal = z.infer<typeof ConsolidationProposal>;
+
+/** Body of `POST /api/insights/:id/consolidate`. */
+export const ApplyConsolidationRequest = z.object({
+  /** Also move the survivor to the global tier. Refused unless `promotable`. */
+  promote: z.boolean().default(false),
+});
+export type ApplyConsolidationRequest = z.infer<typeof ApplyConsolidationRequest>;
