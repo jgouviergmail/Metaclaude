@@ -279,6 +279,34 @@ describe('SessionRepo', () => {
     expect(sessions.get(watched.id)?.lastReadAt).toBe(sessions.get(watched.id)?.lastActivityAt);
   });
 
+  /**
+   * Archiving used to be one-way from the interface: the row left the list and
+   * nothing anywhere offered it back. The fold that fixes that needs its own
+   * query — `includeArchived` returns both kinds mixed, in the live list's
+   * order — and a count, so the fold can name what it holds before it is
+   * opened.
+   */
+  it('lists a workspace’s archived sessions on their own, newest first, and counts them', () => {
+    const live = makeSession(workspace.id, 'live');
+    const older = makeSession(workspace.id, 'older');
+    const newer = makeSession(workspace.id, 'newer');
+    const elsewhere = makeSession(makeWorkspace('other', 'Other').id, 'elsewhere');
+
+    expect(sessions.countArchived(workspace.id)).toBe(0);
+    expect(sessions.listArchived(workspace.id)).toEqual([]);
+
+    sessions.update(older.id, { archived: true });
+    sessions.update(newer.id, { archived: true });
+    sessions.update(elsewhere.id, { archived: true });
+    db.prepare('UPDATE sessions SET last_activity_at = ? WHERE id = ?').run(1000, older.id);
+    db.prepare('UPDATE sessions SET last_activity_at = ? WHERE id = ?').run(2000, newer.id);
+
+    expect(sessions.listArchived(workspace.id).map((s) => s.title)).toEqual(['newer', 'older']);
+    expect(sessions.countArchived(workspace.id)).toBe(2);
+    // The live one is untouched by either.
+    expect(sessions.list(workspace.id).map((s) => s.title)).toEqual([live.title]);
+  });
+
   it('lists sessions of a workspace, pinned first then most recently active', () => {
     const older = makeSession(workspace.id, 'older');
     const newer = makeSession(workspace.id, 'newer');

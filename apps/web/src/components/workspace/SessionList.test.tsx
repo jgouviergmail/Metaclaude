@@ -11,7 +11,7 @@
  * exists, or the transcript points at something the sidebar no longer offers.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Session } from '@metaclaude/shared';
@@ -21,7 +21,7 @@ import { renderWithProviders } from '@/test/render';
 import { SessionList } from './SessionList';
 
 const { apiMock, navigate } = vi.hoisted(() => ({
-  apiMock: { updateSession: vi.fn(), deleteSession: vi.fn() },
+  apiMock: { updateSession: vi.fn(), deleteSession: vi.fn(), workspaceSessions: vi.fn() },
   navigate: vi.fn(),
 }));
 
@@ -48,12 +48,13 @@ const session = (id: string, title: string, extra: Partial<Session> = {}): Sessi
     ...extra,
   }) as Session;
 
-const list = (sessions: Session[], activeSessionId = 'ses_1') =>
+const list = (sessions: Session[], activeSessionId = 'ses_1', archivedCount = 0) =>
   renderWithProviders(
     <SessionList
       workspaceId="ws_a"
       activeSessionId={activeSessionId}
       sessions={sessions}
+      archivedCount={archivedCount}
       onCreate={vi.fn()}
       creating={false}
     />,
@@ -63,6 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   apiMock.updateSession.mockResolvedValue({});
   apiMock.deleteSession.mockResolvedValue({ ok: true });
+  apiMock.workspaceSessions.mockResolvedValue({ sessions: [] });
 });
 
 describe('the list', () => {
@@ -271,6 +273,53 @@ describe('renaming a session', () => {
     expect((screen.getByRole('button', { name: 'Rename' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(apiMock.updateSession).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The archived fold.
+ *
+ * Archiving used to be one-way: the row left the sidebar and the interface
+ * offered no way back — the session existed, and only the API could reach it.
+ * The fold is closed by default and loads its rows on opening, so a workspace
+ * with a long history costs nothing until someone goes looking.
+ */
+describe('archived sessions', () => {
+  it('shows no fold when there are none', () => {
+    list([session('ses_1', 'Bail')]);
+    expect(screen.queryByTestId('archived-sessions')).toBeNull();
+  });
+
+  it('names how many there are without fetching them', () => {
+    list([session('ses_1', 'Bail')], 'ses_1', 2);
+
+    const fold = screen.getByTestId('archived-sessions') as HTMLDetailsElement;
+    // jsdom does not hide the children of a closed <details>; assert the
+    // element's own `open` rather than visibility.
+    expect(fold.open).toBe(false);
+    expect(within(fold).getByText('Archived sessions (2)')).toBeTruthy();
+    expect(apiMock.workspaceSessions).not.toHaveBeenCalled();
+  });
+
+  it('loads them when opened and restores one', async () => {
+    apiMock.workspaceSessions.mockResolvedValue({
+      sessions: [session('ses_9', 'Old lease', { archived: true })],
+    });
+    list([session('ses_1', 'Bail')], 'ses_1', 1);
+
+    const fold = screen.getByTestId('archived-sessions') as HTMLDetailsElement;
+    fold.open = true;
+    fireEvent(fold, new Event('toggle', { bubbles: false }));
+
+    await waitFor(() =>
+      expect(apiMock.workspaceSessions).toHaveBeenCalledWith('ws_a', { archived: true }),
+    );
+    expect(await within(fold).findByText('Old lease')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore Old lease' }));
+    await waitFor(() =>
+      expect(apiMock.updateSession).toHaveBeenCalledWith('ses_9', { archived: false }),
+    );
   });
 });
 

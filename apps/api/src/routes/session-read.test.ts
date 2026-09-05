@@ -100,3 +100,49 @@ describe('the session read marker over HTTP', () => {
     expect(missing.status).toBe(404);
   });
 });
+
+/**
+ * Archived sessions, through the routes.
+ *
+ * Archiving was one-way from the interface until this existed: the row left
+ * the sidebar and nothing offered it back. What the routes owe the fold is a
+ * count on the workspace payload and a list of its own.
+ */
+describe('archived sessions over HTTP', () => {
+  it('counts them on the workspace, lists them on demand, and hands one back', async () => {
+    const session = await newSession();
+
+    // Relative to what the earlier cases left behind: this file shares one
+    // server, and an absolute count here would be a test about test order.
+    const before = await server.get<{ archivedSessionCount: number; sessions: { id: string }[] }>(
+      `/api/workspaces/${workspace.id}`,
+    );
+    const baseline = before.archivedSessionCount;
+    expect(before.sessions.some((entry) => entry.id === session.id)).toBe(true);
+
+    const archived = await server.send('PATCH', `/api/sessions/${session.id}`, { archived: true });
+    expect(archived.status).toBe(200);
+
+    const after = await server.get<{ archivedSessionCount: number; sessions: { id: string }[] }>(
+      `/api/workspaces/${workspace.id}`,
+    );
+    expect(after.archivedSessionCount).toBe(baseline + 1);
+    // Gone from the live list, which is what made it unreachable before.
+    expect(after.sessions.some((entry) => entry.id === session.id)).toBe(false);
+
+    const list = await server.get<{ sessions: Session[] }>(
+      `/api/workspaces/${workspace.id}/sessions?archived=1`,
+    );
+    expect(list.sessions.map((entry) => entry.id)).toContain(session.id);
+
+    // And without the flag the same route answers the live ones.
+    const live = await server.get<{ sessions: Session[] }>(`/api/workspaces/${workspace.id}/sessions`);
+    expect(live.sessions.some((entry) => entry.id === session.id)).toBe(false);
+
+    const restored = await server.send('PATCH', `/api/sessions/${session.id}`, { archived: false });
+    expect(restored.status).toBe(200);
+    const back = await server.get<{ archivedSessionCount: number }>(`/api/workspaces/${workspace.id}`);
+    expect(back.archivedSessionCount).toBe(baseline);
+  });
+});
+

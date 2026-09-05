@@ -355,6 +355,36 @@ export class SessionRepo {
     return Object.fromEntries(rows.map((row) => [row.workspace_id, row.n]));
   }
 
+  /**
+   * The archived sessions of a workspace, newest first.
+   *
+   * A method of its own rather than a flag on `list`: what the sidebar's fold
+   * wants is *only* the archived ones, and `includeArchived` returns both
+   * mixed together in the order the live list needs. Pinning is ignored here —
+   * an archived session is out of the way, and a pin was about where it sat
+   * in a list it has left.
+   */
+  listArchived(workspaceId: string, limit = 100): Session[] {
+    return this.db
+      .prepare<[string, number], SessionRow>(
+        `SELECT * FROM sessions WHERE workspace_id = ? AND archived = 1
+         ORDER BY last_activity_at DESC, rowid DESC LIMIT ?`,
+      )
+      .all(workspaceId, Math.min(limit, 500))
+      .map(toSession);
+  }
+
+  /** How many there are, for the fold's label — the list itself loads on demand. */
+  countArchived(workspaceId: string): number {
+    return (
+      this.db
+        .prepare<[string], { n: number }>(
+          'SELECT COUNT(*) AS n FROM sessions WHERE workspace_id = ? AND archived = 1',
+        )
+        .get(workspaceId)?.n ?? 0
+    );
+  }
+
   setStatus(id: string, status: SessionStatus): void {
     this.db
       .prepare('UPDATE sessions SET status = ?, updated_at = ?, last_activity_at = ? WHERE id = ?')

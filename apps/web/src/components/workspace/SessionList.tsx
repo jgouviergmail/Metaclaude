@@ -9,8 +9,19 @@
  * refetch confirms the change.
  */
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Archive, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Archive,
+  ArchiveRestore,
+  MessageSquarePlus,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -26,25 +37,39 @@ export function SessionList({
   workspaceId,
   activeSessionId,
   sessions,
+  archivedCount = 0,
   onCreate,
   creating,
 }: {
   workspaceId: string;
   activeSessionId: string;
   sessions: Session[];
+  /** How many archived sessions this workspace holds; the fold's label. */
+  archivedCount?: number;
   onCreate: () => void;
   creating: boolean;
 }) {
   const t = useT();
+  const plural = usePlural();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState('');
   const [pendingDelete, setPendingDelete] = useState<Session | null>(null);
   const [renaming, setRenaming] = useState<Session | null>(null);
+  // Archived sessions load when the fold is opened, not before: they are asked
+  // for rarely, and by someone who has just decided to go looking for one.
+  const [showArchived, setShowArchived] = useState(false);
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+    void queryClient.invalidateQueries({ queryKey: ['archived-sessions', workspaceId] });
   };
+
+  const archivedQuery = useQuery({
+    queryKey: ['archived-sessions', workspaceId],
+    queryFn: () => api.workspaceSessions(workspaceId, { archived: true }),
+    enabled: showArchived && Boolean(workspaceId),
+  });
 
   const fail = (error: unknown, fallback: string): void => {
     toast.error(error instanceof ApiError ? error.message : fallback);
@@ -77,6 +102,15 @@ export function SessionList({
       toast.success(t('Session renamed'));
     },
     onError: (error) => fail(error, t('Could not rename the session.')),
+  });
+
+  const unarchive = useMutation({
+    mutationFn: (id: string) => api.updateSession(id, { archived: false }),
+    onSuccess: () => {
+      invalidate();
+      toast.success(t('Session restored'));
+    },
+    onError: (error) => fail(error, t('Could not restore the session.')),
   });
 
   const remove = useMutation({
@@ -172,6 +206,44 @@ export function SessionList({
           </ul>
         )}
       </nav>
+
+      {archivedCount > 0 ? (
+        <div className="shrink-0 border-t border-line p-2">
+          <details
+            data-testid="archived-sessions"
+            onToggle={(event) => setShowArchived((event.target as HTMLDetailsElement).open)}
+            className="rounded-lg bg-sunken/40 px-2.5 py-2"
+          >
+            <summary className="cursor-pointer text-[11.5px] font-medium text-muted">
+              {plural(archivedCount, 'Archived session ({n})', 'Archived sessions ({n})')}
+            </summary>
+            {archivedQuery.isLoading ? (
+              <p className="mt-2 text-[11.5px] text-subtle">{t('Loading')}</p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {(archivedQuery.data?.sessions ?? []).map((archivedSession) => (
+                  <li key={archivedSession.id} className="flex items-center gap-1">
+                    <Link
+                      to={`/w/${workspaceId}/s/${archivedSession.id}`}
+                      className="min-w-0 flex-1 truncate rounded px-1 py-1 text-[12px] text-muted hover:text-ink"
+                    >
+                      {sessionTitle(archivedSession, t)}
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => unarchive.mutate(archivedSession.id)}
+                      aria-label={t('Restore {title}', { title: sessionTitle(archivedSession, t) })}
+                    >
+                      <ArchiveRestore className="size-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
+        </div>
+      ) : null}
 
       <RenameDialog
         session={renaming}

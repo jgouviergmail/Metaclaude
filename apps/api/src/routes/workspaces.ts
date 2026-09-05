@@ -92,9 +92,33 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       isSystem: context.systemWorkspace.isSystem(workspace.id),
       gitStatus,
       sessions: context.sessionRepo.list(workspace.id),
+      // The count, not the rows: the fold that shows them is closed by
+      // default and loads on opening, but its label has to be honest before
+      // anyone touches it — and a workspace with none shows no fold at all.
+      archivedSessionCount: context.sessionRepo.countArchived(workspace.id),
       memoryStats: context.memory.stats(workspace.id),
     });
   });
+
+  /**
+   * A workspace's sessions, live or archived.
+   *
+   * The detail route above carries the live ones with everything else a
+   * screen needs at once. This one exists for the archived ones, which are
+   * asked for rarely and by someone who has just decided to go looking.
+   */
+  app.get<{ Params: { id: string }; Querystring: { archived?: string } }>(
+    '/api/workspaces/:id/sessions',
+    async (request, reply) => {
+      const workspace = mustGetWorkspace(request.params.id);
+      const archived = request.query.archived === '1' || request.query.archived === 'true';
+      return reply.send({
+        sessions: archived
+          ? context.sessionRepo.listArchived(workspace.id)
+          : context.sessionRepo.list(workspace.id),
+      });
+    },
+  );
 
   const UpdateWorkspace = z.object({
     name: z.string().min(1).max(120).optional(),

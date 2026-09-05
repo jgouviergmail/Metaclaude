@@ -117,6 +117,11 @@ its sessions carries one — so the projects that answered while you were away
 are visible without opening any of them. Archiving a session clears its dot for
 good: hiding it is a way of being done with it.
 
+**Archived sessions** are folded at the bottom of the sidebar, under a line
+saying how many there are. Open it and they load: click one to read it, or
+restore it to put it back in the list. Nothing is deleted by archiving — that
+is what **Delete** is for, and it says so.
+
 ## Sessions from the CLI
 
 The Claude CLI keeps its own record of every conversation held in a directory —

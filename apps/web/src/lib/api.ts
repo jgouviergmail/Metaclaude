@@ -300,8 +300,15 @@ export const api = {
       isSystem: boolean;
       gitStatus: GitStatus | null;
       sessions: Session[];
+      /** Archived sessions exist but are not in `sessions`; this is how many. */
+      archivedSessionCount: number;
       memoryStats: Record<MemoryKind, number>;
     }>(`/api/workspaces/${id}`),
+
+  workspaceSessions: (id: string, options: { archived?: boolean } = {}) =>
+    request<{ sessions: Session[] }>(
+      `/api/workspaces/${id}/sessions${qs({ archived: options.archived })}`,
+    ),
 
   createWorkspace: (body: {
     name: string;

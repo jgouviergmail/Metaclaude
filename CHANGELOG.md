@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.53.0] — 2026-09-05
+
+### Added
+
+- **Archived sessions can be found again.** Archiving was one-way from the
+  interface: the row left the sidebar and nothing anywhere offered it back —
+  the session was still there, and only the API or the steward could reach it.
+  The sidebar now folds them at the bottom under a line saying how many there
+  are; opening it loads them, and each one can be read or restored. The count
+  rides the workspace payload so the label is honest before anything is
+  fetched, and the rows themselves load only when someone goes looking:
+  `GET /api/workspaces/:id/sessions?archived=1`.
+
 ## [0.52.0] — 2026-09-05
 
 Three things the sidebar owed the operator, asked for together because they

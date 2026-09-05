@@ -291,6 +291,7 @@ export function SessionPage() {
         workspaceId={workspaceId}
         activeSessionId={sessionId}
         sessions={workspaceQuery.data?.sessions ?? []}
+        archivedCount={workspaceQuery.data?.archivedSessionCount ?? 0}
         onCreate={() => newSession.mutate()}
         creating={newSession.isPending}
       />
