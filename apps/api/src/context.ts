@@ -201,6 +201,14 @@ function findDocsDir(): string | null {
   return null;
 }
 
+/** Same idea for the compiled API: `apps/api/dist` under the image's root, `dist` in a built checkout. */
+function findCodeDir(): string | null {
+  for (const candidate of [resolve(process.cwd(), 'apps/api/dist'), resolve(process.cwd(), 'dist')]) {
+    if (existsSync(join(candidate, 'index.js'))) return candidate;
+  }
+  return null;
+}
+
 export async function createAppContext(config: Config, log: Logger): Promise<AppContext> {
   const db = openDatabase({ path: config.databasePath });
   const applied = migrate(db, (message) => log.info(message));
@@ -381,6 +389,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     workspaces: workspaceRepo,
     workspacesRoot: config.workspacesDir,
     docsDir: findDocsDir(),
+    codeDir: findCodeDir(),
     version: APP_VERSION,
     language: () => contentLanguage(systemWorkspace.id()),
     preapproved: () => systemToolNames(),

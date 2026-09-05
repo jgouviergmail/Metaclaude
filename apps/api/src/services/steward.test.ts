@@ -330,6 +330,9 @@ describe('reading', () => {
 
     expect(steward.runs({ workspace: 'project', status: 'failed' })).toHaveLength(1);
     expect(steward.runs({ workspace: 'metaclaude' })).toHaveLength(0);
+    // The status filter looks past the limit: the one failure sits behind
+    // the most recent run, and asking for one failed run must still find it.
+    expect(steward.runs({ workspace: 'project', status: 'failed', limit: 1 })).toHaveLength(1);
 
     const detail = steward.run(ok.id);
     expect(detail.toolCalls).toEqual([{ name: 'Read', status: 'ok' }]);
@@ -463,6 +466,20 @@ describe('what stays the operator’s', () => {
     expect(updated.name).toBe('Projet');
     expect(updated.settings.language).toBe('fr');
     expect(audit.list({ action: 'steward.workspace.update' })[0]?.detail).toBe('name, language');
+  });
+
+  it('validates the settings it is handed like the route does, and strips what it does not know', () => {
+    const before = workspaces.getBySlug('project')!.settings;
+
+    expect(() =>
+      steward.workspaceUpdate(ACTOR, 'project', { settings: { defaultModel: 123 } as never }),
+    ).toThrow(/Invalid settings: defaultModel/);
+    expect(workspaces.getBySlug('project')!.settings).toEqual(before);
+
+    steward.workspaceUpdate(ACTOR, 'project', { settings: { unknownKey: 'x', language: 'en' } as never });
+    const after = workspaces.getBySlug('project')!.settings as Record<string, unknown>;
+    expect(after.language).toBe('en');
+    expect('unknownKey' in after).toBe(false);
   });
 
   it.each(REACH_SETTINGS)('refuses to touch %s on any workspace, its own included', (key) => {

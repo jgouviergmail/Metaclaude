@@ -250,8 +250,10 @@ const browser = await chromium.launch(executablePath ? { executablePath } : {});
 
 async function shoot(theme, viewport, suffix) {
   // colorScheme, not localStorage: the app follows the system by default,
-  // and headless Chromium's default is light.
-  const page = await browser.newPage({ viewport, colorScheme: theme });
+  // and headless Chromium's default is light. The locale is pinned for the
+  // same reason: the interface follows the browser, the bench's selectors
+  // are English, and a French machine otherwise stops at the first tab name.
+  const page = await browser.newPage({ viewport, colorScheme: theme, locale: 'en-US' });
   await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
   await page.fill('input[name="username"], #username', USERNAME);
   await page.fill('input[type="password"]', PASSWORD);

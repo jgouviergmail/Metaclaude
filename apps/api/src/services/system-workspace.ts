@@ -87,6 +87,8 @@ export interface SystemWorkspaceDeps {
   workspacesRoot: string;
   /** The shipped documentation, or null when this image carries none. */
   docsDir: string | null;
+  /** The running server's compiled code, when it can be found; null in a checkout that has not built. */
+  codeDir?: string | null;
   version: string;
   /** The language generated text is written in, resolved for this workspace. */
   language: () => ContentLanguage | null;
@@ -352,9 +354,9 @@ export class SystemWorkspace {
       '- You have no shell and no file editor here, on purpose. Do not look for a',
       '  way around that; there is nothing legitimate on the other side of it.',
       '- You never touch permission modes, pre-approved or forbidden tool lists,',
-      '  additional directories, secrets, credentials or this workspace\'s own',
-      '  settings. A tool that refuses is telling you the truth — do not retry it',
-      '  and do not ask the operator to lower a guard.',
+      '  additional directories, secrets or credentials — on any workspace, this',
+      '  one included. A tool that refuses is telling you the truth: do not retry',
+      '  it, and do not ask the operator to lower a guard.',
       '- You never guess at data you can read. If a tool can answer, call it.',
       '',
       '## Your tools',
@@ -372,8 +374,12 @@ export class SystemWorkspace {
             '  built and why. Read the relevant one before reasoning about a subsystem.',
           ]
         : []),
-      '- `/opt/metaclaude/apps/api/dist` — the running code, readable and commented,',
-      '  when a question goes deeper than the documentation.',
+      ...(this.deps.codeDir
+        ? [
+            `- \`${this.deps.codeDir}\` — the running code, readable and commented, when a`,
+            '  question goes deeper than the documentation.',
+          ]
+        : []),
       '',
       '## How the operator reaches you',
       '',

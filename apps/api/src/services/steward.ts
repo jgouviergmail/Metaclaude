@@ -25,6 +25,7 @@
  * — the one decision an absent operator would want to have made themselves.
  */
 
+import { WorkspaceSettings, patchSchema } from '@metaclaude/shared';
 import type {
   AdvisorProposal,
   ApprovalRequest,
@@ -43,7 +44,6 @@ import type {
   UpdateApplyStatus,
   UpdateCheck,
   Workspace,
-  WorkspaceSettings,
 } from '@metaclaude/shared';
 import type { Kernel } from '../kernel/kernel.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from '../kernel/repositories.js';
@@ -130,6 +130,7 @@ export const STEWARD_SESSION_TITLE = 'Metaclaude';
 export const CONVERSATION_TITLE = 'Conversation';
 
 const DEFAULT_SESSION_MAX_EVENTS = 400;
+const SETTINGS_PATCH = patchSchema(WorkspaceSettings);
 const PROMPT_EXCERPT = 300;
 const CONTENT_EXCERPT = 1200;
 const NOT_YET =
@@ -346,9 +347,15 @@ export class Steward {
   runs(options: { workspace?: string; sinceHours?: number; limit?: number; status?: Run['status'] } = {}) {
     const workspaceId = options.workspace ? this.findWorkspace(options.workspace).id : undefined;
     const since = options.sinceHours ? this.now() - options.sinceHours * 3600_000 : undefined;
+    const limit = Math.min(options.limit ?? 50, 500);
+    // The status filter runs on a wider window than the limit, or "the last
+    // ten failures" would mean "the failures among the last ten runs" and
+    // answer nothing on a day that went well until the evening.
+    const window = options.status ? 500 : limit;
     return this.deps.runs
-      .listRecent({ workspaceId, since, limit: Math.min(options.limit ?? 50, 500) })
+      .listRecent({ workspaceId, since, limit: window })
       .filter((run) => !options.status || run.status === options.status)
+      .slice(0, limit)
       .map(compactRun);
   }
 
@@ -630,7 +637,22 @@ export class Steward {
     patch: { name?: string; description?: string; settings?: Partial<WorkspaceSettings> },
   ) {
     const workspace = this.findWorkspace(ref);
-    const touched = REACH_SETTINGS.filter((key) => patch.settings?.[key] !== undefined);
+    // Through the same schema the route uses: the tool's wire shape is a
+    // record of unknowns, and a repository that merges whatever it is given
+    // would store an unknown key or a number where a model alias belongs.
+    let settings: Partial<WorkspaceSettings> | undefined;
+    if (patch.settings) {
+      const parsed = SETTINGS_PATCH.safeParse(patch.settings);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        throw new StewardError(
+          `Invalid settings: ${issue ? `${issue.path.join('.')} ${issue.message}` : 'unreadable'}.`,
+          'refused',
+        );
+      }
+      settings = parsed.data as Partial<WorkspaceSettings>;
+    }
+    const touched = REACH_SETTINGS.filter((key) => settings?.[key] !== undefined);
     if (touched.length > 0) {
       throw new StewardError(
         `Changing ${touched.join(', ')} widens or narrows what an agent can reach — ${NOT_YET}`,
@@ -640,14 +662,14 @@ export class Steward {
     const updated = this.deps.workspaces.update(workspace.id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.description !== undefined ? { description: patch.description } : {}),
-      ...(patch.settings ? { settings: patch.settings } : {}),
+      ...(settings ? { settings } : {}),
     });
     if (!updated) throw new StewardError(`No workspace is called "${ref}".`, 'not-found');
     this.record(
       actor,
       'steward.workspace.update',
       workspace.id,
-      [...(patch.name !== undefined ? ['name'] : []), ...(patch.description !== undefined ? ['description'] : []), ...Object.keys(patch.settings ?? {})].join(', '),
+      [...(patch.name !== undefined ? ['name'] : []), ...(patch.description !== undefined ? ['description'] : []), ...Object.keys(settings ?? {})].join(', '),
     );
     return compactWorkspace(updated, this.isSystem(updated.id));
   }

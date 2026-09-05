@@ -221,11 +221,20 @@ describe('what it writes into the workspace', () => {
   });
 
   it('copes with no documentation shipped, as in a bare dev checkout', async () => {
-    const workspace = await make({ docsDir: null }).ensure();
+    const workspace = await make({ docsDir: null, codeDir: null }).ensure();
 
     expect(existsSync(join(workspace.path, 'docs'))).toBe(false);
     expect(existsSync(join(workspace.path, 'CLAUDE.md'))).toBe(true);
-    expect(readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8')).not.toContain('docs/ARCHITECTURE.md');
+    const claude = readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8');
+    expect(claude).not.toContain('docs/ARCHITECTURE.md');
+    // No invented path either: a pointer to code that is not there is worse than none.
+    expect(claude).not.toMatch(/the running code/);
+  });
+
+  it('points at the running code where the deployment actually has it', async () => {
+    const workspace = await make({ codeDir: '/opt/metaclaude/apps/api/dist' }).ensure();
+
+    expect(readFileSync(join(workspace.path, 'CLAUDE.md'), 'utf8')).toContain('`/opt/metaclaude/apps/api/dist` — the running code');
   });
 
   it('says nothing about language when neither setting has an opinion', async () => {

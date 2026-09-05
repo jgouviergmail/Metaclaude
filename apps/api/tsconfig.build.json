@@ -7,5 +7,5 @@
   // `exclude` replaces rather than merges, so the parent's entries are repeated
   // here in full.
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test/**"]
 }

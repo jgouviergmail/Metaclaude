@@ -11,6 +11,36 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.45.1] — 2026-09-05
+
+### Fixed
+
+- **The steward validated nothing it was handed for a workspace's settings.**
+  Found in the cold review of 0.45.0, before it reached anyone: the
+  `system_workspace_update` tool took a record of unknowns and the repository
+  merges whatever it is given, so an unknown key or a number where a model
+  alias belongs would have been stored. The facade now parses the patch
+  through the same schema the route uses, strips what it does not know, and
+  refuses the rest with the field named.
+
+- **"The last ten failed runs" meant "the failures among the last ten runs".**
+  The status filter ran after the limit, so on a day that went well until the
+  evening the steward answered that nothing had failed. The filter now looks
+  through a wider window and the limit applies to what matched.
+
+- **The design bench stopped at the first tab on a French machine.** It reads
+  English tab names while the interface follows the browser's locale, which
+  headless Chromium takes from the system. The bench now pins `en-US`.
+
+### Changed
+
+- **Route tests share one booted server.** Ten of them carried the same forty
+  lines — temp directory, config, context, server, login, cookies, CSRF. The
+  two new ones use `src/test/server-harness.ts`; the others can follow. The
+  harness is excluded from the shipped build, which `tsconfig.build.json` now
+  says.
+
+
 ## [0.45.0] — 2026-09-05
 
 ### Added
