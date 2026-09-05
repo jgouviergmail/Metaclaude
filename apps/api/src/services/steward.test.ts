@@ -435,6 +435,14 @@ describe('writing, under its own name', () => {
     const actors = new Set(audit.list({ limit: 10 }).map((entry) => entry.actor));
     expect(actors).toEqual(new Set(['metaclaude:run_steward']));
     expect(audit.list({ action: 'steward.memory.update' })[0]?.detail).toBe('pinned');
+
+    // Asked for at creation, not only by a second call: the store takes both.
+    const pinned = await steward.memoryWrite(ACTOR, {
+      workspace: 'project', kind: 'semantic', title: 'House rule', content: 'Never deploy on Friday.', confidence: 1, pinned: true,
+    });
+    expect(pinned).toMatchObject({ pinned: true, confidence: 1 });
+    // And defaults still apply when neither is given.
+    expect(created).toMatchObject({ pinned: false, confidence: 0.7 });
   });
 
   it('moves a memory between tiers', async () => {

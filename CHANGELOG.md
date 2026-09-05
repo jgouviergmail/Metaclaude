@@ -11,6 +11,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.48.1] — 2026-09-05
+
+### Fixed
+
+- **`system_memory_write` now applies `confidence` and `pinned` on a
+  creation.** The tool accepted both, the store takes both, and the two
+  links between them forwarded four fields of six — so a memory the steward
+  asked for as pinned at confidence 1 came back unpinned at 0.7, with no
+  error. Reported by Metaclaude itself. An edit by id was never affected.
+
+
 ## [0.48.0] — 2026-09-05
 
 ### Changed

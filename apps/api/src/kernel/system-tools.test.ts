@@ -94,10 +94,18 @@ describe('the binding', () => {
       args: [SCOPE, { id: 'mem_1', patch: { pinned: true, title: 'T' } }],
     });
 
-    await handlers.system_memory_write!({ workspace: 'global', kind: 'semantic', title: 'T', content: 'C' });
+    // Every field the schema accepts on a creation is forwarded. Four of six
+    // were, and a memory asked for as pinned at confidence 1 came back
+    // unpinned at 0.7 — the steward reported it from production.
+    await handlers.system_memory_write!({
+      workspace: 'global', kind: 'semantic', title: 'T', content: 'C', confidence: 1, pinned: true,
+    });
     expect(calls.at(-1)).toEqual({
       method: 'memoryWrite',
-      args: [SCOPE, { workspace: 'global', kind: 'semantic', title: 'T', content: 'C', tags: undefined }],
+      args: [
+        SCOPE,
+        { workspace: 'global', kind: 'semantic', title: 'T', content: 'C', tags: undefined, confidence: 1, pinned: true },
+      ],
     });
 
     const refused = await handlers.system_memory_write!({ title: 'no workspace' });

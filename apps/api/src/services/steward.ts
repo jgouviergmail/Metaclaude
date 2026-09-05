@@ -513,7 +513,15 @@ export class Steward {
     actor: StewardActor,
     input:
       | { id: string; patch: Partial<Pick<Memory, 'title' | 'content' | 'tags' | 'confidence' | 'pinned' | 'kind'>> }
-      | { workspace: string | 'global'; kind: MemoryKind; title: string; content: string; tags?: string[] },
+      | {
+          workspace: string | 'global';
+          kind: MemoryKind;
+          title: string;
+          content: string;
+          tags?: string[];
+          confidence?: number;
+          pinned?: boolean;
+        },
   ) {
     if ('id' in input) {
       const memory = await this.deps.memory.update(input.id, input.patch);
@@ -528,6 +536,8 @@ export class Steward {
       title: input.title,
       content: input.content,
       tags: input.tags ?? [],
+      ...(input.confidence !== undefined ? { confidence: input.confidence } : {}),
+      ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
       sourceRunId: actor.runId,
     });
     this.record(actor, 'steward.memory.remember', memory.id, merged ? 'merged into an existing memory' : null);

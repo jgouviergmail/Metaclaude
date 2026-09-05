@@ -512,6 +512,13 @@ restates the code is noise; one that records a decision or a trap is not.
   directories are bounded to the workspaces root like everyone's, so the
   code it reads is *copied* into its workspace (`SOURCE_TREES`), never
   granted — pointing it at `apps/api/dist` cost a card per file.
+- **A tool schema that accepts a field its handler does not forward is a
+  silent no-op.** `system_memory_write` declared `confidence` and `pinned`,
+  the store took both, and the handler and the facade between them each
+  forwarded a hand-picked subset — so a memory asked for as pinned at 1 came
+  back unpinned at 0.7 with no error, and only the steward noticed. Same
+  family as the edge-schema trap: when a schema names a field, one test has
+  to follow that field to the row.
 - **A class declared beside `vi.mock` is in its temporal dead zone when the
   factory runs.** The factories are hoisted above every top-level statement,
   so `ApiError` defined at module level and referenced from the factory

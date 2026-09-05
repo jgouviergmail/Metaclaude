@@ -268,12 +268,17 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
       if (!args.workspace || !args.kind || !args.title || !args.content) {
         throw new StewardError('A new memory needs workspace, kind, title and content.', 'refused');
       }
+      // Every field the schema accepts on a creation reaches the store. The
+      // first version forwarded four of six, so a memory asked for as pinned
+      // at confidence 1 came back unpinned at 0.7 — reported by the steward.
       return facade.memoryWrite(scope, {
         workspace: args.workspace,
         kind: args.kind,
         title: args.title,
         content: args.content,
         tags: args.tags,
+        confidence: args.confidence,
+        pinned: args.pinned,
       });
     },
   }),
