@@ -126,6 +126,19 @@ export const RUNTIME_SETTING_SPECS: readonly RuntimeSettingSpec[] = [
     fromConfig: (config) => config.logLevel,
     applies: true,
   },
+  {
+    // The language generated text is written in — read at the point of use by
+    // every pass that writes prose, so a change takes effect on the next run
+    // rather than on the next restart. `auto` leaves it to whatever each
+    // workspace says, and to the model where a workspace says nothing either.
+    key: 'language',
+    kind: 'choice',
+    min: null,
+    max: null,
+    options: ['auto', 'fr', 'en'],
+    envVar: 'METACLAUDE_LANGUAGE',
+    fromConfig: (config) => config.language,
+  },
 ];
 
 const BY_KEY = new Map(RUNTIME_SETTING_SPECS.map((spec) => [spec.key as string, spec]));

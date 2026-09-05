@@ -13,6 +13,18 @@
 
 export const fr: Record<string, string> = {
   /* Mémoire : portée, consolidation */
+  'Metaclaude writes in':
+    'Metaclaude écrit en',
+  'The language of what the system produces — memories, distilled lessons, what it proposes. Not the interface, which each browser keeps for itself; switching the language under Appearance sets both. A workspace can override this one. `auto` leaves it to the model.':
+    'La langue de ce que le système produit : mémoires, leçons distillées, propositions. Pas l’interface, que chaque navigateur garde pour lui ; changer la langue sous Apparence règle les deux. Un workspace peut passer outre celui-ci. `auto` laisse le modèle décider.',
+  'The theme and the transcript options live in this browser only.':
+    'Le thème et les options de transcript ne vivent que dans ce navigateur.',
+  'Metaclaude writes in this language too — memories, distilled lessons, what it proposes. A workspace can override it. The guide and the changelog stay in English for now.':
+    'Metaclaude écrit aussi dans cette langue : mémoires, leçons distillées, propositions. Un workspace peut passer outre. Le guide et le journal des modifications restent en anglais pour l’instant.',
+  'The consolidation pass could not finish':
+    'La passe de consolidation n’a pas pu aboutir',
+  'The model did not answer, so nothing was examined. Nothing changed — try again.':
+    'Le modèle n’a pas répondu : rien n’a été examiné. Rien n’a changé — réessayez.',
   '{seeds} of {corpus} memories examined — run it again to continue.':
     '{seeds} mémoires examinées sur {corpus} — relancez pour continuer.',
   /* Mémoire : portée, consolidation */

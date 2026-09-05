@@ -109,6 +109,7 @@ export const RuntimeSettingKey = z.enum([
   'runRetentionDays',
   'runKeepPerWorkspace',
   'logLevel',
+  'language',
 ]);
 export type RuntimeSettingKey = z.infer<typeof RuntimeSettingKey>;
 

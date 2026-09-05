@@ -636,6 +636,7 @@ export const api = {
         remaining: number;
         seeds: number;
         corpus: number;
+        reachedArbiter: boolean;
       };
     }>(
       '/api/memory/maintenance',

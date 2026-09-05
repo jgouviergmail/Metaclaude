@@ -22,11 +22,11 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { RuntimeSettingRecord } from '@metaclaude/shared';
+import { RuntimeSettingKey, type RuntimeSettingRecord } from '@metaclaude/shared';
 
 import { renderInFrench, renderWithProviders } from '@/test/render';
 
-import { ConfigurationCard } from './ConfigurationCard';
+import { ConfigurationCard, COPY } from './ConfigurationCard';
 
 const { apiMock, toastMock } = vi.hoisted(() => ({
   apiMock: { runtimeSettings: vi.fn(), setRuntimeSetting: vi.fn() },
@@ -261,5 +261,26 @@ describe('what it does with what you typed', () => {
     // number zero, and zero is the value that switches a ceiling off.
     // No jest-dom here: assert what the DOM actually carries.
     expect((screen.getByRole('button', { name: /save/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+/**
+ * A key with no entry in `COPY` renders as nothing — `if (!copy) return null`.
+ * That is right for a setting the server has stopped exposing, and silent for
+ * the opposite case: a setting *added* to the server and forgotten here simply
+ * does not appear, with nothing anywhere failing. It happened on the first
+ * try with `language`.
+ */
+describe('every setting the server can expose has words on this screen', () => {
+  it('covers every RuntimeSettingKey', () => {
+    const missing = RuntimeSettingKey.options.filter((key) => !(key in COPY));
+    expect(missing).toEqual([]);
+  });
+
+  it('says what each one is, not merely what it is called', () => {
+    for (const key of RuntimeSettingKey.options) {
+      expect(COPY[key]!.label.length).toBeGreaterThan(3);
+      expect(COPY[key]!.help.length).toBeGreaterThan(40);
+    }
   });
 });

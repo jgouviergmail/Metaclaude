@@ -234,6 +234,9 @@ anything by itself — and it reports contradictions too, which matter more: two
 memories that disagree were until now both handed to every run that matched
 either.
 
+Switch the app's language and Metaclaude switches with it — what it distils,
+what it proposes, what a merge would keep. A workspace can override it.
+
 Embeddings run **locally**. The default needs no model download at all.
 
 ### Learning

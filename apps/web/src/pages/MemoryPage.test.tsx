@@ -12,6 +12,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { toast } from 'sonner';
+
 import { renderWithProviders } from '@/test/render';
 
 import type { Memory, Workspace } from '@metaclaude/shared';
@@ -364,10 +366,36 @@ describe('consolidation', () => {
     promotable: false,
   };
 
+  const runConsolidate = () => {
+    const trigger = screen.getByRole('button', { name: 'Memory maintenance' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Consolidate/i }));
+  };
+
+  /**
+   * Seen in production: the arbiter errored, the sweep caught it as it must,
+   * and the screen said the corpus repeats nothing — a claim it had not
+   * earned. "Could not ask" is not "asked, and the answer was no".
+   */
+  it('says a pass could not finish rather than calling the corpus clean', async () => {
+    apiMock.memoryMaintenance.mockResolvedValue({
+      affected: 0,
+      consolidation: { groups: 0, proposed: 0, remaining: 4, seeds: 4, corpus: 4, reachedArbiter: false },
+    });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    runConsolidate();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
   it('reports a pass that found nothing without calling it a failure', async () => {
     apiMock.memoryMaintenance.mockResolvedValue({
       affected: 0,
-      consolidation: { groups: 3, proposed: 0, remaining: 0 },
+      consolidation: { groups: 3, proposed: 0, remaining: 0, seeds: 3, corpus: 3, reachedArbiter: true },
     });
     renderWithProviders(<MemoryPage />);
     await screen.findByText('Préavis de résiliation');

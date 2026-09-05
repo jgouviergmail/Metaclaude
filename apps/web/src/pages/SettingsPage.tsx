@@ -632,10 +632,31 @@ function SessionsCard() {
 /* Appearance                                                                  */
 /* -------------------------------------------------------------------------- */
 
-function AppearanceCard() {
+export function AppearanceCard() {
   const { theme, setTheme, showThinking, setShowThinking, expandTools, setExpandTools } =
     useUiStore();
   const { lang, setLang, t } = useI18n();
+  const user = useAuthStore((state) => state.user);
+
+  /**
+   * Switching the interface's language also tells the server what to *write*
+   * in — memories, distilled lessons, a merged note.
+   *
+   * One control, because "the app is in French" is one idea. They are two
+   * settings underneath and they have to be: the interface is a per-browser
+   * preference, while a corpus of text has exactly one language whoever is
+   * reading it. So the browser half always applies, and the server half is
+   * attempted — best effort, because only an owner may change a deployment
+   * setting and a viewer's own reading language is still theirs to choose.
+   */
+  const chooseLanguage = (value: Lang): void => {
+    void setLang(value);
+    if (user?.role !== 'owner') return;
+    void api.setRuntimeSetting('language', value).catch(() => {
+      // Already reported by the interface changing; a failure here leaves the
+      // deployment writing in whatever it wrote in before, which is safe.
+    });
+  };
 
   const options: Array<{ value: ThemeMode; label: string; icon: React.ReactNode }> = [
     { value: 'light', label: 'Light', icon: <Sun /> },
@@ -655,7 +676,7 @@ function AppearanceCard() {
     <Card>
       <CardHeader
         title={t('Appearance')}
-        description={t('These preferences live in this browser only.')}
+        description={t('The theme and the transcript options live in this browser only.')}
       />
       <div className="space-y-5 p-4">
         <div>
@@ -665,7 +686,7 @@ function AppearanceCard() {
               <button
                 key={option.value}
                 type="button"
-                onClick={() => void setLang(option.value)}
+                onClick={() => chooseLanguage(option.value)}
                 aria-pressed={lang === option.value}
                 className={cn(
                   'flex-1 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors',
@@ -679,7 +700,11 @@ function AppearanceCard() {
             ))}
           </div>
           <p className="mt-2 text-[12px] text-muted">
-            {t('The guide and the changelog stay in English for now.')}
+            {user?.role === 'owner'
+              ? t(
+                  'Metaclaude writes in this language too — memories, distilled lessons, what it proposes. A workspace can override it. The guide and the changelog stay in English for now.',
+                )
+              : t('The guide and the changelog stay in English for now.')}
           </p>
         </div>
 

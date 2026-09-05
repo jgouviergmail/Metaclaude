@@ -11,6 +11,55 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.44.0] — 2026-09-05
+
+### Added
+
+- **Metaclaude writes in the language the app is set to.** Every pass that
+  produces prose an operator reads — a distilled lesson, a merged note, a
+  drafted skill — carried no opinion about which language that should be. The
+  run's own answers followed the operator, because `WorkspaceSettings.language`
+  reaches the run's system prompt; everything the system wrote *about* the run
+  followed whatever the transcript happened to be in. Measured on a French
+  deployment: twenty-two memories, every one of them in English.
+
+  The decision is server-side and deliberately not the interface's language: a
+  browser preference cannot decide what a shared corpus is written in, because
+  two people reading one store of text in two languages is not a thing that
+  exists. So a deployment setting (`METACLAUDE_LANGUAGE`, hot, with provenance
+  like every other), which any workspace may override, resolved at the point of
+  use — a change takes effect on the next run rather than the next restart.
+
+  It stays one control: switching the language under Settings → Appearance
+  writes the deployment setting too, for an owner. A viewer's own reading
+  language is still theirs, and a refused write leaves the deployment writing
+  as it did before.
+
+  The directive is worded for a *structured* call rather than a conversation,
+  and both halves are load-bearing: it says the language governs the values and
+  not the field names — a model told only "write in French" will translate the
+  keys and make its own answer unparseable — and it exempts what must survive
+  verbatim, because a procedure whose entire value is `pnpm test:run` is worth
+  nothing translated. The consolidation pass batches by language before size, so
+  no single call is ever asked to reply in two.
+
+### Fixed
+
+- **A consolidation pass that could not run no longer reports a clean corpus.**
+  Seen in production on the first press: the arbiter answered with an error, the
+  sweep caught it as it must — maintenance never fails its caller — and the
+  screen said no memory in the corpus repeats or contradicts another. It had not
+  asked. "Could not ask" and "asked, and the answer was no" are different facts,
+  and the result now carries which one it is.
+
+- **A runtime setting with no words on the configuration screen was invisible.**
+  `if (!copy) return null` is right for a setting the server has stopped
+  exposing and silent for the opposite case: one *added* to the server and
+  forgotten there simply does not render, with nothing failing. It happened on
+  the first try with `language`. A test now holds the screen's copy against
+  `RuntimeSettingKey`, so the next one fails the build instead.
+
+
 ## [0.43.0] — 2026-09-05
 
 ### Added

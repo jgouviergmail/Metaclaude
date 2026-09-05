@@ -39,6 +39,8 @@ import {
   readConsolidationOutput,
   type ConsolidationOutput,
 } from './learning/consolidation.js';
+import { contentLanguageDirective, resolveContentLanguage } from './learning/language.js';
+import { withLanguage } from './learning/reflexion.js';
 import { reindexStale } from './learning/reindex.js';
 import { KnowledgeStore } from './learning/knowledge.js';
 import { ReflexionEngine } from './learning/reflexion.js';
@@ -333,9 +335,23 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     log[level](data ?? {}, message);
   };
 
+  /**
+   * The language generated text should be in, for one workspace.
+   *
+   * Read at the point of use rather than captured: the deployment setting is
+   * hot, so a change takes effect on the next run rather than the next restart
+   * — the same contract every other runtime setting has.
+   */
+  const contentLanguage = (workspaceId: string | null) =>
+    resolveContentLanguage(
+      (workspaceId ? workspaceRepo.get(workspaceId)?.settings.language : undefined) ?? 'auto',
+      runtimeSettings.choice('language') as 'auto' | 'fr' | 'en',
+    );
+
   const reflexion = new ReflexionEngine({
     db,
     memory,
+    language: (workspaceId) => contentLanguage(workspaceId),
     env: claudeEnv,
     claudeBinPath: config.claude.binPath,
     // The reflector runs in a scratch directory, never a workspace: it has no
@@ -351,13 +367,14 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     db,
     memory,
     embedderId: embedder.id,
-    call: async (groups) => {
+    language: (workspaceId) => contentLanguage(workspaceId),
+    call: async (groups, language) => {
       const { prompt, numbering } = buildConsolidationPrompt(groups);
       const output = await structuredCall<ConsolidationOutput>(
         { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
         {
           prompt,
-          systemPrompt: CONSOLIDATION_SYSTEM_PROMPT,
+          systemPrompt: withLanguage(CONSOLIDATION_SYSTEM_PROMPT, language),
           schema: CONSOLIDATION_SCHEMA as unknown as Record<string, unknown>,
           accept: (parsed) => Array.isArray((parsed as ConsolidationOutput).groups),
         },
@@ -741,12 +758,12 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const synthesizer = new SkillSynthesizer({
     db,
     memory,
-    call: (prompt) =>
+    call: (prompt, workspaceId) =>
       structuredCall<SynthesisOutput>(
         { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
         {
           prompt,
-          systemPrompt: SYNTHESIS_SYSTEM_PROMPT,
+          systemPrompt: withLanguage(SYNTHESIS_SYSTEM_PROMPT, contentLanguage(workspaceId)),
           schema: SYNTHESIS_SCHEMA as unknown as Record<string, unknown>,
           accept: (parsed) => typeof (parsed as SynthesisOutput).worthIt === 'boolean',
         },

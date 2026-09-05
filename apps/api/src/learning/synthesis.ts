@@ -63,8 +63,14 @@ export interface SynthesisDeps {
   memory: {
     list(options: { workspaceId?: string | null; kind?: Memory['kind']; limit?: number }): Memory[];
   };
-  /** The tool-less structured call. Injected; tests never spawn the CLI. */
-  call: (prompt: string) => Promise<SynthesisOutput | null>;
+  /**
+   * The tool-less structured call. Injected; tests never spawn the CLI.
+   *
+   * Takes the workspace so the caller can resolve which language the drafted
+   * skill should be written in — a skill is prose an operator reads, and one
+   * distilled in English from a French project is one they will not use.
+   */
+  call: (prompt: string, workspaceId: string) => Promise<SynthesisOutput | null>;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
   now?: () => number;
 }
@@ -99,7 +105,7 @@ export class SkillSynthesizer {
       ),
     ].join('\n');
 
-    const output = await this.deps.call(prompt);
+    const output = await this.deps.call(prompt, workspaceId);
     if (!output) {
       throw new SynthesisError('The synthesis pass produced no answer — try again later.', 502);
     }

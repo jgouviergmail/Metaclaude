@@ -50,6 +50,43 @@ Three kinds, following the standard cognitive-architecture split:
 | `procedural` | repeatable methods | "To add a migration: append to MIGRATIONS, never edit a shipped one." |
 | `episodic` | what happened in a run | "The 2026-04 auth refactor broke session resume." |
 
+### The language it writes in
+
+Every pass in this document produces prose an operator reads — a lesson, a
+merged note, a drafted skill — and until 0.44 none of them carried an opinion
+about which language that should be. The run's own answers followed the
+operator, because `WorkspaceSettings.language` reaches the run's system prompt;
+everything the system wrote *about* the run followed whatever the transcript
+happened to be in. Measured on a French deployment: twenty-two memories, all of
+them in English.
+
+The decision is server-side, and deliberately not the interface's language: a
+browser preference cannot decide what a shared corpus is written in, because
+two people reading one store of text in two languages is not a thing that
+exists. So there are two settings and one rule —
+
+```
+workspace.language ≠ auto   ⟹  that
+otherwise deployment.language ≠ auto ⟹  that
+otherwise                       ⟹  no directive, as before
+```
+
+— resolved at the point of use in `learning/language.ts`, so a change takes
+effect on the next run rather than the next restart. The interface's language
+picker writes the deployment setting too, for an owner, so "the app is in
+French" stays one idea with one control.
+
+The directive is worded for a *structured* call rather than a conversation, and
+both halves of that are load-bearing: it says the language governs the values
+and not the field names — a model told only "write in French" will translate
+the keys and make its own answer unparseable — and it exempts what must survive
+verbatim, because a procedure whose entire value is `pnpm test:run` is worth
+nothing translated.
+
+The consolidation pass batches by language before size. A group never spans two
+workspaces, so each has exactly one answer, and no single call is ever asked to
+reply in two.
+
 ### Two tiers, and moving between them
 
 `memories.workspace_id` is nullable, and the null is the global tier. Retrieval

@@ -40,6 +40,7 @@ import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { unpackEmbedding } from '../db/index.js';
 import { cosineSimilarity } from './embeddings.js';
+import type { ContentLanguage } from './language.js';
 
 /**
  * Cosine floor for admitting a neighbour to a group.
@@ -132,8 +133,18 @@ export interface ConsolidationDeps {
    * The tool-less structured call, one batch of groups at a time. Injected for
    * the same reason as everywhere else in this directory: a test must never
    * spawn the CLI, and what is worth testing is the grouping and the guards.
+   *
+   * The language is resolved here and handed over, so every batch is
+   * single-language: a group never spans two workspaces, so each has exactly
+   * one answer, and batching by it means the arbiter is never asked to write
+   * two languages in one reply.
    */
-  call: (groups: ArbiterMemory[][]) => Promise<ArbiterVerdict[]>;
+  call: (groups: ArbiterMemory[][], language: ContentLanguage | null) => Promise<ArbiterVerdict[]>;
+  /**
+   * The language a workspace's generated text should be in. `null` says
+   * nothing, which is the behaviour that shipped before this existed.
+   */
+  language: (workspaceId: string | null) => ContentLanguage | null;
   log: (level: 'debug' | 'info' | 'warn', message: string, data?: unknown) => void;
 }
 
@@ -160,6 +171,17 @@ export interface SweepResult {
    */
   seeds: number;
   corpus: number;
+  /**
+   * Whether the arbiter answered at all.
+   *
+   * Maintenance never fails its caller, so a model that cannot be reached is
+   * caught and the sweep returns normally with nothing proposed — which is
+   * indistinguishable, from the outside, from a corpus that repeats nothing.
+   * Seen in production on a first press: the screen said the corpus was clean
+   * while the logs said "Reached maximum number of turns". "Could not ask" and
+   * "asked, and the answer was no" are different facts.
+   */
+  reachedArbiter: boolean;
 }
 
 interface CandidateRow {
@@ -240,10 +262,24 @@ export class Consolidator {
       remaining: fresh.length - examined.length,
       seeds: seeds.length,
       corpus: vectors.size,
+      reachedArbiter: true,
     };
 
-    for (let i = 0; i < examined.length; i += GROUPS_PER_CALL) {
-      const batch = examined.slice(i, i + GROUPS_PER_CALL);
+    // Batched by language before size, so no single call is asked to answer in
+    // two. A group never spans two workspaces, so its language is unambiguous.
+    const languageOf = (group: readonly string[]) =>
+      this.deps.language(byId.get(group[0] as string)?.workspace_id ?? null);
+    const ordered = [...examined].sort((a, b) =>
+      String(languageOf(a)).localeCompare(String(languageOf(b))),
+    );
+
+    for (let i = 0; i < ordered.length; ) {
+      const language = languageOf(ordered[i] as string[]);
+      const batch: string[][] = [];
+      while (i < ordered.length && batch.length < GROUPS_PER_CALL && languageOf(ordered[i] as string[]) === language) {
+        batch.push(ordered[i] as string[]);
+        i += 1;
+      }
       let verdicts: ArbiterVerdict[];
       try {
         verdicts = await this.deps.call(
@@ -253,6 +289,7 @@ export class Consolidator {
               return { id, title: row.title, content: row.content };
             }),
           ),
+          language,
         );
       } catch (error) {
         // Consolidation is maintenance. A model that cannot be reached leaves
@@ -261,8 +298,12 @@ export class Consolidator {
         this.deps.log('warn', 'the consolidation arbiter could not be reached', {
           message: (error as Error).message,
         });
-        result.groups -= examined.length - i;
-        result.remaining += examined.length - i;
+        // `i` has already advanced past this batch, so what is left unexamined
+        // is everything from where the batch started.
+        const unexamined = ordered.length - (i - batch.length);
+        result.groups -= unexamined;
+        result.remaining += unexamined;
+        result.reachedArbiter = false;
         break;
       }
 

@@ -45,6 +45,20 @@ a consequence you cannot see from the screen you press it on.
 One consequence worth knowing: deleting a workspace deletes its memories.
 Promoting one is how a lesson outlives the project it was learned in.
 
+### The language it writes in
+
+Switch the app's language under **Settings → Appearance** and Metaclaude
+switches with it: the memories it distils, the lessons it proposes, the note a
+merge would keep. A workspace can override it under its own settings, for a
+project you work on in another language.
+
+Two settings underneath, and they have to be. The interface's language is
+yours, kept in your browser; what the system *writes* is a corpus with one
+language whoever reads it. The picker sets both, so you only ever touch one.
+
+Commands, paths, identifiers and error text are never translated — a procedure
+whose whole value is `pnpm test:run` is worth nothing in translation.
+
 ### Consolidation
 
 Left alone, a corpus starts repeating itself. The reflexion pass rediscovers

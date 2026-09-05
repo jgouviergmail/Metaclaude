@@ -138,6 +138,13 @@ const EnvSchema = z.object({
     .default(''),
 
   /** `hash` needs no model download; `local` loads a sentence-transformer. */
+  /**
+   * The language Metaclaude *writes* in — memories, distilled lessons, a
+   * merged note. Not the interface's language, which is a per-browser
+   * preference: two people reading one corpus in two languages is not a
+   * thing a store of text can be. A workspace may override it.
+   */
+  METACLAUDE_LANGUAGE: z.enum(['auto', 'fr', 'en']).default('auto'),
   METACLAUDE_EMBEDDINGS: z.enum(['hash', 'local']).default('hash'),
   METACLAUDE_EMBEDDING_MODEL: z.string().default('Xenova/all-MiniLM-L6-v2'),
 
@@ -186,6 +193,7 @@ export interface Config {
   idleTimeoutMs: number;
   /** Run retention: how long finished runs live, and the per-workspace floor. */
   runRetention: { days: number; keepPerWorkspace: number };
+  language: 'auto' | 'fr' | 'en';
   embeddings: { provider: 'hash' | 'local'; model: string };
   /** VAPID `sub` claim for push; relays validate its shape. */
   pushSubject: string;
@@ -350,6 +358,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       days: env.METACLAUDE_RUN_RETENTION_DAYS,
       keepPerWorkspace: env.METACLAUDE_RUN_KEEP_PER_WORKSPACE,
     },
+    language: env.METACLAUDE_LANGUAGE,
     embeddings: { provider: env.METACLAUDE_EMBEDDINGS, model: env.METACLAUDE_EMBEDDING_MODEL },
     pushSubject: env.METACLAUDE_PUSH_SUBJECT,
     publicUrl: env.METACLAUDE_PUBLIC_URL ? env.METACLAUDE_PUBLIC_URL.replace(/\/+$/, '') : null,

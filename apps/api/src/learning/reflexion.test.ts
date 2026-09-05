@@ -4,13 +4,7 @@ import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
 import { HashingEmbedder } from './embeddings.js';
 import { MemoryStore } from './memory.js';
-import {
-  ReflexionEngine,
-  listInsights,
-  parseJsonLoose,
-  pruneInsights,
-  setInsightStatus,
-} from './reflexion.js';
+import { ReflexionEngine, listInsights, parseJsonLoose, pruneInsights, setInsightStatus, withLanguage } from './reflexion.js';
 
 /**
  * `reflect()` and `invoke()` need a live Claude CLI subprocess, so nothing here
@@ -102,6 +96,7 @@ beforeEach(() => {
   engine = new ReflexionEngine({
     db,
     memory: new MemoryStore(db, new HashingEmbedder()),
+    language: () => null,
     env: {},
     claudeBinPath: null,
     cwd: '/tmp',
@@ -461,5 +456,37 @@ describe('insights', () => {
     const left = listInsights(db).map((insight) => insight.title).sort();
     // The review queue survives however old it is; only rejected/applied go.
     expect(left).toEqual(['accepted', 'new', 'recent-applied']);
+  });
+});
+
+describe('the language lessons are written in', () => {
+  /**
+   * The gap this closes, measured in production: a French deployment whose
+   * only workspace sat on the default `auto` had distilled twenty-two memories
+   * and every one was in English. The run's own answers followed the operator,
+   * as they always had; everything the system wrote *about* the run did not,
+   * because this prompt carried no opinion and nothing gave it one.
+   */
+  it('appends the directive to the system prompt, without displacing the schema rules', () => {
+    const prompt = withLanguage('SCHEMA RULES HERE', 'fr');
+
+    expect(prompt.startsWith('SCHEMA RULES HERE')).toBe(true);
+    expect(prompt).toContain('French');
+  });
+
+  it('leaves the prompt untouched when there is no opinion', () => {
+    expect(withLanguage('SCHEMA RULES HERE', null)).toBe('SCHEMA RULES HERE');
+  });
+
+  /**
+   * The lesson bodies are prose, but a procedural memory's whole value is
+   * often a literal command. Translating `pnpm test:run` would make it wrong,
+   * not merely foreign.
+   */
+  it('tells the writer what must survive verbatim', () => {
+    const prompt = withLanguage('X', 'en');
+
+    expect(prompt).toMatch(/command|identifier|path/i);
+    expect(prompt).toMatch(/field name|key/i);
   });
 });

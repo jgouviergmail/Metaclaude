@@ -51,6 +51,9 @@ services:
       # Caddy, so it belongs in this block: a variable named in .env and never
       # forwarded here is unset as far as the process is concerned.
       METACLAUDE_PUBLIC_URL: ${METACLAUDE_PUBLIC_URL:-}
+      # The language Metaclaude writes in. Forwarded, or it does not exist as
+      # far as the process is concerned however carefully .env names it.
+      METACLAUDE_LANGUAGE: ${METACLAUDE_LANGUAGE:-auto}
       METACLAUDE_EMBEDDINGS: ${METACLAUDE_EMBEDDINGS:-hash}
       # Only read under `local`. Forwarded so the knob .env.example documents
       # is not silently discarded by the deployment that reads that file.

@@ -299,25 +299,34 @@ export function MemoryPage() {
         // plainly beats "0 memories affected", which reads like a failure.
         void queryClient.invalidateQueries({ queryKey: ['insights'] });
         const found = result.consolidation?.proposed ?? 0;
-        // A pass can be capped, and one that only says "nothing found" would
-        // be telling the operator something it does not know: it looked at
-        // part of the corpus, and the rest is unexamined rather than clean.
+        // Three outcomes, and two of them used to read as the third. A pass
+        // that could not reach the model reported nothing found, and so did a
+        // pass that was capped part-way through the corpus — both saying the
+        // corpus repeats nothing, which is a claim neither had earned.
         const seeds = result.consolidation?.seeds ?? 0;
         const corpus = result.consolidation?.corpus ?? 0;
-        const partial = corpus > seeds;
+        if (result.consolidation?.reachedArbiter === false) {
+          toast.error(t('The consolidation pass could not finish'), {
+            description: t(
+              'The model did not answer, so nothing was examined. Nothing changed — try again.',
+            ),
+          });
+          return;
+        }
         toast.success(
           found === 0
             ? t('Nothing to consolidate')
             : plural(found, '{n} group to review', '{n} groups to review'),
           {
-            description: partial
-              ? t('{seeds} of {corpus} memories examined — run it again to continue.', {
-                  seeds,
-                  corpus,
-                })
-              : found === 0
-                ? t('No memory in this corpus repeats or contradicts another.')
-                : t('They are listed below. Nothing is merged until you say so.'),
+            description:
+              corpus > seeds
+                ? t('{seeds} of {corpus} memories examined — run it again to continue.', {
+                    seeds,
+                    corpus,
+                  })
+                : found === 0
+                  ? t('No memory in this corpus repeats or contradicts another.')
+                  : t('They are listed below. Nothing is merged until you say so.'),
           },
         );
         return;

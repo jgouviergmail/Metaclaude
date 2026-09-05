@@ -16,6 +16,7 @@
  *    affect the run the operator is watching.
  */
 
+import { contentLanguageDirective, type ContentLanguage } from './language.js';
 import { extractJson, structuredCall } from './structured-call.js';
 import type { Insight, MemoryKind, Run, TranscriptEvent } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
@@ -87,6 +88,18 @@ interface ReflexionOutput {
   skillProposal?: { name: string; description: string; body: string };
 }
 
+/**
+ * Append the language directive to a system prompt, when there is one.
+ *
+ * At the end rather than the start: the schema rules above it are what the
+ * call is *for*, and a language instruction that displaces them is how a model
+ * comes back with prose instead of JSON.
+ */
+export function withLanguage(prompt: string, language: ContentLanguage | null): string {
+  const directive = contentLanguageDirective(language);
+  return directive ? `${prompt}\n\n${directive}` : prompt;
+}
+
 const SYSTEM_PROMPT = `You analyse a finished AI coding session and extract knowledge worth remembering.
 
 You will be shown: the user's request, what the assistant did, which tools it used, and how the run ended.
@@ -109,6 +122,15 @@ Respond with JSON matching the required schema. No prose outside the JSON.`;
 export interface ReflexionDeps {
   db: Db;
   memory: MemoryStore;
+  /**
+   * The language the lessons should be written in, for this workspace.
+   *
+   * A getter, and per workspace, because both halves are live: the deployment
+   * setting is hot, and each workspace may override it. Without it this pass
+   * wrote in whatever language the transcript happened to be in — which is why
+   * a French deployment's twenty-two memories were all in English.
+   */
+  language: (workspaceId: string) => ContentLanguage | null;
   /** Environment for the CLI subprocess (carries subscription auth). */
   env: Record<string, string>;
   claudeBinPath: string | null;
@@ -137,7 +159,10 @@ export class ReflexionEngine {
 
     let output: ReflexionOutput | null = null;
     try {
-      output = await this.invoke(this.buildTranscriptSummary(run, events));
+      output = await this.invoke(
+        this.buildTranscriptSummary(run, events),
+        this.deps.language(run.workspaceId),
+      );
     } catch (error) {
       this.deps.log('warn', `reflexion failed for run ${run.id}`, {
         message: (error as Error).message,
@@ -302,14 +327,17 @@ export class ReflexionEngine {
   }
 
   /** Run the tool-less structured call. Mechanics shared with skill synthesis. */
-  private async invoke(transcript: string): Promise<ReflexionOutput | null> {
+  private async invoke(
+    transcript: string,
+    language: ContentLanguage | null,
+  ): Promise<ReflexionOutput | null> {
     return structuredCall<ReflexionOutput>(
       { env: this.deps.env, claudeBinPath: this.deps.claudeBinPath, cwd: this.deps.cwd },
       {
         prompt: transcript,
         // A plain system prompt, not the claude_code preset: the reflector is
         // a classifier, not an agent, and the preset would add cost and tools.
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: withLanguage(SYSTEM_PROMPT, language),
         schema: REFLEXION_SCHEMA as unknown as Record<string, unknown>,
         accept: (parsed) => Array.isArray((parsed as ReflexionOutput).lessons),
       },

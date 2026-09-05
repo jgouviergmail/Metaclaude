@@ -105,7 +105,20 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 const consolidator = (call: ReturnType<typeof arbiter>) =>
-  new Consolidator({ db, memory: store, embedderId: new HashingEmbedder().id, call, log: () => {} });
+  new Consolidator({ db, memory: store, embedderId: new HashingEmbedder().id, language: () => null, call, log: () => {} });
+
+/** A consolidator whose arbiter the test supplies directly, language included. */
+const consolidatorWith = (
+  call: (groups: Array<{ id: string; title: string; content: string }[]>, language: string | null) => unknown,
+) =>
+  new Consolidator({
+    db,
+    memory: store,
+    embedderId: new HashingEmbedder().id,
+    language: () => null,
+    call: call as never,
+    log: () => {},
+  });
 
 const proposals = (): ConsolidationProposal[] =>
   listInsights(db, { limit: 100 })
@@ -451,6 +464,7 @@ describe('bounds', () => {
       db,
       memory: store,
       embedderId: new HashingEmbedder().id,
+      language: () => null,
       call: async () => {
         throw new Error('the model was unreachable');
       },
@@ -816,6 +830,7 @@ describe('what the arbiter actually judged', () => {
       db,
       memory: store,
       embedderId: new HashingEmbedder().id,
+      language: () => null,
       call: async (groups) => {
         // Somebody edits a member while the arbiter is thinking.
         await store.update(edited, { content: 'Une precision ajoutee pendant l appel.' });
@@ -858,6 +873,7 @@ describe('what the arbiter actually judged', () => {
       db,
       memory: store,
       embedderId: new HashingEmbedder().id,
+      language: () => null,
       call: async (groups) =>
         groups.map((group) => ({
           ids: group.map((entry) => entry.id),
@@ -1033,5 +1049,111 @@ describe('what the arbiter is allowed to decide about', () => {
 
   it('tells it to refuse a merge that would not fit', () => {
     expect(CONSOLIDATION_SYSTEM_PROMPT).toMatch(/would not fit/i);
+  });
+});
+
+describe('a pass that could not run', () => {
+  /**
+   * Seen in production on the first press: the arbiter answered with an error,
+   * the sweep caught it as it must — maintenance never fails a caller — and
+   * reported zero proposals. The screen then said the corpus repeats nothing,
+   * which is not what happened and not something anyone could tell from the
+   * outside. "Could not ask" and "asked, and the answer was no" are different
+   * facts and the result has to carry which one it is.
+   */
+  it('says the arbiter was unreachable rather than reporting a clean corpus', async () => {
+    await french();
+
+    const result = await new Consolidator({
+      db,
+      memory: store,
+      embedderId: new HashingEmbedder().id,
+      language: () => null,
+      call: async () => {
+        throw new Error('Reached maximum number of turns (1)');
+      },
+      log: () => {},
+    }).sweep();
+
+    expect(result.reachedArbiter).toBe(false);
+    expect(result.proposed).toBe(0);
+    // And it left the questions unanswered, so a retry asks them again.
+    expect(result.remaining).toBeGreaterThan(0);
+    expect(proposals()).toHaveLength(0);
+  });
+
+  it('says it did reach the arbiter when it did', async () => {
+    await french();
+
+    const result = await consolidator(arbiter()).sweep();
+
+    expect(result.reachedArbiter).toBe(true);
+  });
+
+  /** Nothing to ask is not a failure to ask. */
+  it('counts an empty corpus as reached, having had nothing to ask', async () => {
+    const result = await consolidator(arbiter()).sweep();
+
+    expect(result.groups).toBe(0);
+    expect(result.reachedArbiter).toBe(true);
+  });
+});
+
+describe('the language generated text is written in', () => {
+  /**
+   * A group never spans two workspaces, so its language is unambiguous — and
+   * batching by it is what stops one call being asked to answer in two.
+   */
+  it('hands the arbiter the language of the workspace it is asking about', async () => {
+    await french();
+    const seen: Array<string | null> = [];
+
+    await new Consolidator({
+      db,
+      memory: store,
+      embedderId: new HashingEmbedder().id,
+      language: () => 'fr',
+      call: async (groups, language) => {
+        seen.push(language);
+        return groups.map(() => ({ ids: [], verdict: 'complementary' as const, reason: 'x', global: false }));
+      },
+      log: () => {},
+    }).sweep();
+
+    expect(seen).toEqual(['fr']);
+  });
+
+  it('never asks one call to answer in two languages', async () => {
+    // Two workspaces, two languages, each with its own cluster.
+    await french(wsA);
+    await french(wsB);
+    const seen: Array<string | null> = [];
+
+    await new Consolidator({
+      db,
+      memory: store,
+      embedderId: new HashingEmbedder().id,
+      language: (workspaceId) => (workspaceId === wsA ? 'fr' : 'en'),
+      call: async (groups, language) => {
+        seen.push(language);
+        return groups.map(() => ({ ids: [], verdict: 'complementary' as const, reason: 'x', global: false }));
+      },
+      log: () => {},
+    }).sweep();
+
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect([...new Set(seen)].sort()).toEqual(['en', 'fr']);
+  });
+
+  it('says nothing when neither the workspace nor the deployment has an opinion', async () => {
+    await french();
+    const seen: Array<string | null> = [];
+
+    await consolidatorWith((groups, language) => {
+      seen.push(language);
+      return groups.map(() => ({ ids: [], verdict: 'complementary' as const, reason: 'x', global: false }));
+    }).sweep();
+
+    expect(seen).toEqual([null]);
   });
 });

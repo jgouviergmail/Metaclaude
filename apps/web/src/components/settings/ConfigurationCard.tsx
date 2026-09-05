@@ -35,7 +35,7 @@ import { formatRelative } from '@/lib/utils';
  * language in. Keyed by the server's own key, so a setting the server stops
  * exposing simply stops being rendered.
  */
-const COPY: Record<string, { label: string; help: string }> = {
+export const COPY: Record<string, { label: string; help: string }> = {
   idleTimeoutMs: {
     label: 'Stop a run that goes quiet after',
     help: 'The ceiling that should normally do the stopping: it asks whether a run is still alive, not how long it has worked. The agent reports every half minute while a tool runs, so silence this long means it stopped. 0 switches it off.',
@@ -63,6 +63,10 @@ const COPY: Record<string, { label: string; help: string }> = {
   logLevel: {
     label: 'Log level',
     help: 'What the server writes to its own log. `debug` is worth switching on while chasing something and worth switching off afterwards.',
+  },
+  language: {
+    label: 'Metaclaude writes in',
+    help: 'The language of what the system produces — memories, distilled lessons, what it proposes. Not the interface, which each browser keeps for itself; switching the language under Appearance sets both. A workspace can override this one. `auto` leaves it to the model.',
   },
 };
 
