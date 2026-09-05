@@ -11,6 +11,29 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.48.0] — 2026-09-05
+
+### Changed
+
+- **Metaclaude's permission mode is yours to set.** It was fixed to *Ask* for
+  three releases beside the tool lists, which made the steward unable to be
+  autonomous by anyone's choice: an operator's *Don't ask* was refused with a
+  409 and, had it reached the row, re-set at the next boot. With the shell and
+  the editors forbidden and its reach bounded to the pre-approved list, the
+  mode decides how much you want to be asked, not what the agent can do — so
+  the settings dialog now offers every mode but *Bypass*, the server keeps
+  your choice across boots and refuses bypass alone, and the tool lists and
+  extra directories stay locked. The steward itself is still refused the
+  setting, on every workspace.
+
+- **The shipped *Morning review* runs under *Don't ask*.** Nobody is there at
+  eight to answer a card, and the whole reversible surface is pre-approved, so
+  the review acts on what it may and is refused the rest instead of leaving a
+  card to expire. A review seeded by an earlier release under *Ask* that has
+  never fired is brought to the same policy once; one that has run, or that
+  you moved, is left alone.
+
+
 ## [0.47.1] — 2026-09-05
 
 ### Fixed

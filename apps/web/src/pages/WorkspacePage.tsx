@@ -558,7 +558,7 @@ function WorkspaceSettingsModal({
             className="rounded-lg border border-line bg-accent-soft px-3 py-2 text-[12px] leading-relaxed text-ink"
           >
             {t(
-              'This is Metaclaude’s own workspace. Its permission mode and tool lists are fixed: it asks before anything irreversible, uses its own tools and never gets a shell.',
+              'This is Metaclaude’s own workspace. Its tool lists are fixed: it uses its own tools and never gets a shell. The permission mode is yours — under "Don’t ask" it acts on its pre-approved tools without waiting for you; Bypass is never offered here.',
             )}
           </p>
         ) : null}
@@ -570,18 +570,18 @@ function WorkspaceSettingsModal({
           <Menu
             side="bottom"
             trigger={
-              <Button
-                variant="secondary"
-                size="sm"
-                className="w-full justify-between"
-                disabled={locked}
-              >
+              <Button variant="secondary" size="sm" className="w-full justify-between">
                 {t(PERMISSION_MODE_INFO[draft.defaultPermissionMode].label)}
               </Button>
             }
           >
             <MenuLabel>{t('How much to ask before acting')}</MenuLabel>
-            {(Object.keys(PERMISSION_MODE_INFO) as PermissionMode[]).map((mode) => (
+            {/* The system workspace never runs with permissions bypassed — the
+                server answers 409 — so the entry is not offered rather than
+                offered and refused. Every other mode is the operator's. */}
+            {(Object.keys(PERMISSION_MODE_INFO) as PermissionMode[])
+              .filter((mode) => !(locked && mode === 'bypassPermissions'))
+              .map((mode) => (
               <MenuItem
                 key={mode}
                 selected={draft.defaultPermissionMode === mode}

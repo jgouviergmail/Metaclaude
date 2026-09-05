@@ -473,13 +473,19 @@ application rather than on a project. Three modules, one rule each.
 
 `services/system-workspace.ts` makes the workspace *system*. It is
 identified by a `kv` key rather than a slug — a slug is the operator's to
-take — created once, and re-asserted at every boot: the four settings that
-decide what an agent can reach (`defaultPermissionMode`, `allowedTools`,
-`disallowedTools`, `additionalDirectories`) are rewritten if they drifted,
-and the routes refuse to change them, archive the workspace or delete it
-with a 409. The guard compares *values*, not presence: the settings dialog
-sends the whole object back, so a guard on presence would have refused the
-operator's language change because the fixed lists rode along with it.
+take — created once, and re-asserted at every boot: the three settings that
+decide what an agent can reach (`allowedTools`, `disallowedTools`,
+`additionalDirectories`) are rewritten if they drifted, and the routes
+refuse to change them, archive the workspace or delete it with a 409.
+`defaultPermissionMode` is not among them, since 0.48.0: with the shell
+forbidden and the reach bounded to the pre-approved list, the mode decides
+how much the operator is asked rather than what the agent can do, so it is
+the operator's — `bypassPermissions` alone is refused and put back at boot.
+Fixing it for three releases had made the steward unable to be autonomous
+by anyone's choice. The guard compares *values*, not presence: the settings
+dialog sends the whole object back, so a guard on presence would have
+refused the operator's language change because the fixed lists rode along
+with it.
 The same boot writes the workspace's knowledge — `CLAUDE.md` generated from
 the running version, `SYSTEM-MAP.md`, a copy of `docs/`, and under `code/`
 the TypeScript sources of the running version (`SOURCE_TREES`: the API,

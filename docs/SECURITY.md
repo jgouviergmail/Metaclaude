@@ -412,12 +412,17 @@ itself, so its boundary is drawn in three layers that do not depend on
 one another.
 
 **It cannot reach the host or its own configuration.** The workspace's
-permission mode is `default`, its forbidden list holds every shell and
-file-editing tool, and its extra directories are empty; the server
-re-asserts those four settings at every boot and answers 409 to any route
+forbidden list holds every shell and file-editing tool, its extra
+directories are empty, and its permission mode is never `bypassPermissions`;
+the server re-asserts those at every boot and answers 409 to any route
 that would change them, archive the workspace or delete it — whoever asks,
 the operator included, because the interface is exactly what a persuasive
-agent would talk an operator into using. The pre-approved list is the
+agent would talk an operator into using. The permission mode short of
+bypass is the operator's to set: with the shell forbidden and the reach
+bounded to the pre-approved list, it decides how much they are asked, not
+what the agent can do, and `dontAsk` is what lets the steward act with
+nobody watching. The steward itself is refused the mode like every reach
+setting, on every workspace. The pre-approved list is the
 reversible surface by exact name and nothing else — its own tool table,
 the board tools and the proposal tools, each held to what its server
 registers by a test — so every other tool still opens a card, and the code

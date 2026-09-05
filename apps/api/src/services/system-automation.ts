@@ -40,9 +40,13 @@ export const MORNING_REVIEW_PROMPT = [
 export function seedSystemAutomation(deps: {
   db: Db;
   workspaceId: string;
-  automations: Pick<Scheduler, 'create'>;
+  automations: Pick<Scheduler, 'create' | 'get' | 'update'>;
 }): Automation | null {
-  if (kvGet<string | null>(deps.db, SYSTEM_AUTOMATION_KEY, null)) return null;
+  const existing = kvGet<string | null>(deps.db, SYSTEM_AUTOMATION_KEY, null);
+  if (existing) {
+    alignNeverFired(deps.automations, existing);
+    return null;
+  }
 
   const automation = deps.automations.create({
     workspaceId: deps.workspaceId,
@@ -54,7 +58,24 @@ export function seedSystemAutomation(deps: {
     prompt: MORNING_REVIEW_PROMPT,
     trigger: { type: 'cron', expression: '0 8 * * *' },
     enabled: false,
+    // Nobody is there at eight. Under `dontAsk` nothing prompts and the
+    // steward's whole reversible surface is pre-approved, so the review acts
+    // on what it may and is refused the rest instead of leaving a card that
+    // expires unanswered. Shipped as `default` for three releases, which made
+    // the scheduled review wait ten minutes on its first `board_get`.
+    policy: { permissionMode: 'dontAsk' },
   });
   kvSet(deps.db, SYSTEM_AUTOMATION_KEY, automation.id);
   return automation;
+}
+
+/**
+ * A review seeded by an earlier release under `default` and never fired gets
+ * the policy a fresh one would; one that has run, or that the operator has
+ * moved off the shipped mode, is theirs and is left alone.
+ */
+function alignNeverFired(automations: Pick<Scheduler, 'get' | 'update'>, id: string): void {
+  const current = automations.get(id);
+  if (!current || current.runCount > 0 || current.policy.permissionMode !== 'default') return;
+  automations.update(id, { policy: { permissionMode: 'dontAsk' } });
 }

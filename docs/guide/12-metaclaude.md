@@ -65,14 +65,23 @@ The boundary is drawn by **reversibility**, not by subject.
   a later release.
 
 Two lines it never crosses, whichever ring: it has **no shell and no file
-editor** in its own workspace, and it cannot widen its own reach. Its
-permission mode and tool lists are fixed by the server; the workspace cannot
-be archived or deleted, and its settings dialog shows those controls locked
-rather than let you discover the rule from a failed save.
+editor** in its own workspace, and it cannot widen its own reach. Its tool
+lists are fixed by the server; the workspace cannot be archived or deleted,
+and its settings dialog shows those controls locked rather than let you
+discover the rule from a failed save.
+
+**The permission mode is yours.** It decides how much you want to be asked,
+not what Metaclaude can reach — every mode keeps the shell and the editors
+forbidden and its tools bounded to the pre-approved list. Leave it on *Ask*
+and anything outside that list (a web fetch, say) waits for you; set it to
+*Don't ask* and it acts on its own tools without waiting and is refused the
+rest, which is what makes it autonomous while you are away. *Bypass* is the
+one mode never offered here.
 
 ## Scheduling it
 
-An automation called **Morning review** ships in its workspace, **disabled**.
+An automation called **Morning review** ships in its workspace, **disabled**
+and set to *Don't ask*, since nobody is there at eight to answer a card.
 Enable it on the Automations page and every morning at eight Metaclaude reads
 the last twenty-four hours — failures, waiting approvals, new insights,
 health — acts on what is reversible and clearly right, and leaves you a short

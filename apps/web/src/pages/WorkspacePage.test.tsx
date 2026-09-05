@@ -184,11 +184,13 @@ describe('the workspace settings dialog', () => {
   }
 
   /**
-   * The server answers 409 to a change of the system workspace's permission
-   * mode or tool lists. The dialog says so up front and locks those two
-   * controls; everything else stays editable, because it is.
+   * The server answers 409 to a change of the system workspace's tool lists,
+   * and to bypass. The dialog says so up front and locks the tool lists;
+   * the permission mode stays the operator's — it decides how much they are
+   * asked, not what the agent can reach — with bypass simply not offered.
+   * Everything else stays editable, because it is.
    */
-  it('locks the fixed controls of the system workspace, and says why', async () => {
+  it('locks the tool lists of the system workspace, leaves the mode open without bypass, and says why', async () => {
     apiMock.workspace.mockResolvedValue({
       workspace,
       isSystem: true,
@@ -199,7 +201,14 @@ describe('the workspace settings dialog', () => {
     await openSettings();
 
     expect(screen.getByRole('note').textContent).toMatch(/never gets a shell/);
-    expect((screen.getByRole('button', { name: 'Ask' }) as HTMLButtonElement).disabled).toBe(true);
+    const modeButton = screen.getByRole('button', { name: 'Ask' }) as HTMLButtonElement;
+    expect(modeButton.disabled).toBe(false);
+    fireEvent.pointerDown(modeButton);
+    fireEvent.click(modeButton);
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByText("Don't ask")).toBeTruthy();
+    expect(within(menu).queryByText('Bypass')).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     const tools = within(screen.getByRole('group', { name: 'Pre-approved tools' }));
     const boxes = tools.getAllByRole('checkbox') as HTMLInputElement[];
     expect(boxes.length).toBeGreaterThan(0);

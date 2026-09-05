@@ -14,10 +14,12 @@
  *     slug, so an operator who already named a workspace "metaclaude" is not
  *     in anyone's way.
  *  2. **Its safety settings cannot drift.** No shell, no file writes, no
- *     extra directories, the default permission mode — and the system tools
+ *     extra directories, never `bypassPermissions` — and the reversible tools
  *     pre-approved by exact name so they flow without a card and leave a
  *     transcript line each. Re-asserted on every boot, because an upgrade
  *     grows the tool list and a hand edit could shrink the forbidden one.
+ *     The permission mode short of bypass is the operator's: it decides how
+ *     much they want to be asked, not what the agent can reach.
  *     The interface may change everything else about it; `guard` is what the
  *     routes lean on to refuse the rest.
  *  3. **What it knows is regenerated, not maintained.** `CLAUDE.md`, the
@@ -56,12 +58,22 @@ const SYSTEM_WORKSPACE_SLUG = 'metaclaude';
  * `allowedTools` is not here because it is not a constant: it is the system
  * tool catalogue, which grows with the product, and it is supplied by the
  * module that owns that catalogue so the two cannot disagree.
+ *
+ * The permission mode is deliberately *not* here either. It was, for three
+ * releases, and it left the steward unable to be autonomous by the operator's
+ * own choice: every mode short of `bypassPermissions` keeps the shell and the
+ * editors forbidden and the reach bounded to this list, so the mode decides
+ * only how much the operator wants to be asked — which is theirs to decide.
+ * Bypass alone is refused, see `FORBIDDEN_PERMISSION_MODE`.
  */
 export const SYSTEM_WORKSPACE_SAFETY = {
-  defaultPermissionMode: 'default',
   disallowedTools: ['Bash', 'BashOutput', 'Write', 'Edit', 'NotebookEdit', 'KillShell'],
   additionalDirectories: [] as string[],
 } as const satisfies Partial<WorkspaceSettings>;
+
+/** The mode this workspace never runs in; re-set to the initial one at boot if found. */
+export const FORBIDDEN_PERMISSION_MODE: WorkspaceSettings['defaultPermissionMode'] = 'bypassPermissions';
+const INITIAL_PERMISSION_MODE: WorkspaceSettings['defaultPermissionMode'] = 'default';
 
 /**
  * What of the repository the steward gets to read, relative to the source
@@ -80,7 +92,6 @@ export const SOURCE_TREES: ReadonlyArray<{ from: string; to: string }> = [
 
 /** The settings the interface may not change on this workspace, by name. */
 const GUARDED_SETTINGS = [
-  'defaultPermissionMode',
   'allowedTools',
   'disallowedTools',
   'additionalDirectories',
@@ -183,6 +194,11 @@ export class SystemWorkspace {
     if (patch.archived === true) {
       throw new SystemWorkspaceError('The system workspace cannot be archived.');
     }
+    if (patch.settings?.defaultPermissionMode === FORBIDDEN_PERMISSION_MODE) {
+      throw new SystemWorkspaceError(
+        'The system workspace never runs with permissions bypassed; every other mode is yours to choose.',
+      );
+    }
     const wanted = this.safetySettings();
     const touched = GUARDED_SETTINGS.filter(
       (key) =>
@@ -219,6 +235,7 @@ export class SystemWorkspace {
       memoryEnabled: true,
       knowledgeEnabled: true,
       reflexionEnabled: true,
+      defaultPermissionMode: INITIAL_PERMISSION_MODE,
       ...this.safetySettings(),
     });
 
@@ -242,9 +259,17 @@ export class SystemWorkspace {
     };
   }
 
-  /** Re-assert the fixed settings; write only when something actually drifted. */
+  /**
+   * Re-assert the fixed settings; write only when something actually drifted.
+   * The permission mode is the operator's and is left alone — unless it is
+   * the one forbidden value, which only a write straight to the database can
+   * have put there.
+   */
   private assertSafety(workspace: Workspace): Workspace {
-    const wanted = this.safetySettings();
+    const wanted: Partial<WorkspaceSettings> = this.safetySettings();
+    if (workspace.settings.defaultPermissionMode === FORBIDDEN_PERMISSION_MODE) {
+      wanted.defaultPermissionMode = INITIAL_PERMISSION_MODE;
+    }
     const drifted = (Object.keys(wanted) as (keyof WorkspaceSettings)[]).some(
       (key) => JSON.stringify(workspace.settings[key]) !== JSON.stringify(wanted[key]),
     );
@@ -442,8 +467,11 @@ export class SystemWorkspace {
       'From the Dashboard, through a session of this workspace called',
       '`Conversation`; a busy conversation is never doubled. They may also',
       'schedule you: an automation called `Morning review` ships disabled here,',
-      'and any automation of this workspace runs with these same tools. Their',
-      'standing instructions to you are `NOTES.md`, imported above.',
+      'and any automation of this workspace runs with these same tools. The',
+      'permission mode of this workspace is theirs to set: under *Don\'t ask*',
+      'nothing prompts and your pre-approved tools are all you have; under *Ask*',
+      'anything else waits for them. Their standing instructions to you are',
+      '`NOTES.md`, imported above.',
       '',
       '## How to reason',
       '',
@@ -495,10 +523,10 @@ export class SystemWorkspace {
       '',
       `Generated at ${new Date().toISOString()} for workspace \`${workspace.slug}\` (${workspace.id}).`,
       '',
-      '## Safety settings of this workspace (fixed)',
+      '## Safety settings of this workspace',
       '',
-      `- permission mode: \`${SYSTEM_WORKSPACE_SAFETY.defaultPermissionMode}\``,
-      `- forbidden tools: ${SYSTEM_WORKSPACE_SAFETY.disallowedTools.map((t) => `\`${t}\``).join(', ')}`,
+      `- permission mode: \`${workspace.settings.defaultPermissionMode}\` — the operator's choice; \`${FORBIDDEN_PERMISSION_MODE}\` is refused`,
+      `- forbidden tools (fixed): ${SYSTEM_WORKSPACE_SAFETY.disallowedTools.map((t) => `\`${t}\``).join(', ')}`,
       `- pre-approved tools: ${this.deps.preapproved().length}` +
         (this.deps.tools
           ? ` (${this.deps.tools().filter((entry) => entry.ring === 1).length} read, ${this.deps.tools().filter((entry) => entry.ring === 2).length} reversible)`

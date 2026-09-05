@@ -107,8 +107,22 @@ describe('what it refuses', () => {
     expect((await stored()).archived).toBe(false);
   });
 
+  /**
+   * The permission mode is the operator's, bypass excepted — the dialog's
+   * one unlocked reach control. Stored through the same route the form uses,
+   * and read back through the same one the form reads.
+   */
+  it('lets the operator set any permission mode short of bypass, and keeps it', async () => {
+    const response = await server.send('PATCH', `/api/workspaces/${systemId}`, {
+      settings: { defaultPermissionMode: 'dontAsk' },
+    });
+
+    expect(response.status).toBe(200);
+    expect((await stored()).settings.defaultPermissionMode).toBe('dontAsk');
+  });
+
   it.each([
-    ['defaultPermissionMode', { defaultPermissionMode: 'auto' }],
+    ['defaultPermissionMode', { defaultPermissionMode: 'bypassPermissions' }],
     ['allowedTools', { allowedTools: ['WebFetch'] }],
     ['disallowedTools', { disallowedTools: [] }],
     ['additionalDirectories', { additionalDirectories: ['/srv/metaclaude/workspaces/other'] }],

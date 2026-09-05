@@ -79,7 +79,7 @@ describe('ensure', () => {
 
     expect(workspace.name).toBe('Metaclaude');
     expect(kvGet(db, SYSTEM_WORKSPACE_KEY, null)).toBe(workspace.id);
-    expect(workspace.settings.defaultPermissionMode).toBe(SYSTEM_WORKSPACE_SAFETY.defaultPermissionMode);
+    expect(workspace.settings.defaultPermissionMode).toBe('default');
     expect(workspace.settings.disallowedTools).toEqual(SYSTEM_WORKSPACE_SAFETY.disallowedTools);
     expect(workspace.settings.additionalDirectories).toEqual([]);
     expect(workspace.settings.allowedTools).toEqual(['mcp__metaclaude_system__system_overview']);
@@ -149,6 +149,22 @@ describe('ensure', () => {
     expect(again.settings.disallowedTools).toEqual(SYSTEM_WORKSPACE_SAFETY.disallowedTools);
     expect(again.settings.defaultPermissionMode).toBe('default');
     expect(again.settings.allowedTools).toEqual(['mcp__metaclaude_system__system_overview']);
+  });
+
+  /**
+   * The mode is the operator's. For three releases it was re-asserted to
+   * `default` at every boot beside the tool lists, which made the steward
+   * unable to be autonomous by anyone's choice: the operator's *Don't ask*
+   * survived until the next restart. Only bypass is put back.
+   */
+  it('keeps the operator’s permission mode across boots, bypass excepted', async () => {
+    const workspace = await make().ensure();
+    repo.update(workspace.id, { settings: { defaultPermissionMode: 'dontAsk' } });
+
+    const again = await make().ensure();
+
+    expect(again.settings.defaultPermissionMode).toBe('dontAsk');
+    expect(logged).not.toContain('system workspace safety settings had drifted — re-applied');
   });
 
   it('picks up a grown tool catalogue on the next boot', async () => {
@@ -397,7 +413,7 @@ describe('the guard the routes lean on', () => {
     const workspace = await system.ensure();
 
     for (const settings of [
-      { defaultPermissionMode: 'auto' as const },
+      { defaultPermissionMode: 'bypassPermissions' as const },
       { allowedTools: ['Bash'] },
       { disallowedTools: [] },
       { additionalDirectories: ['/srv/metaclaude/workspaces/other'] },
@@ -412,6 +428,11 @@ describe('the guard the routes lean on', () => {
         settings: { language: 'en', memoryEnabled: false, defaultModel: 'sonnet' },
       }),
     ).not.toThrow();
+    // Every mode short of bypass is the operator's to choose: it decides how
+    // much they are asked, never what the agent can reach.
+    for (const mode of ['plan', 'default', 'acceptEdits', 'auto', 'dontAsk'] as const) {
+      expect(() => system.guard(workspace.id, { settings: { defaultPermissionMode: mode } })).not.toThrow();
+    }
   });
 
   /**

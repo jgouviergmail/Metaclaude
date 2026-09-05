@@ -1815,8 +1815,8 @@ export const fr: Record<string, string> = {
   'last exchange {when}': 'dernier échange {when}',
   'Metaclaude is still answering — opening the conversation.': 'Metaclaude répond encore — ouverture de la conversation.',
   'Could not reach Metaclaude.': 'Metaclaude n’a pas pu être joint.',
-  'This is Metaclaude’s own workspace. Its permission mode and tool lists are fixed: it asks before anything irreversible, uses its own tools and never gets a shell.':
-    'Ceci est le workspace de Metaclaude lui-même. Son mode de permission et ses listes d’outils sont fixés : il demande avant toute action irréversible, utilise ses propres outils et n’obtient jamais de shell.',
+  'This is Metaclaude’s own workspace. Its tool lists are fixed: it uses its own tools and never gets a shell. The permission mode is yours — under "Don’t ask" it acts on its pre-approved tools without waiting for you; Bypass is never offered here.':
+    'Ceci est le workspace de Metaclaude lui-même. Ses listes d’outils sont fixées : il utilise ses propres outils et n’obtient jamais de shell. Le mode de permission est le vôtre — en « Ne pas demander » il agit avec ses outils pré-approuvés sans vous attendre ; le contournement n’est jamais proposé ici.',
   'Actions for {name}': 'Actions pour {name}',
   'Workspace created': 'Espace de travail créé',
   'Use colour {swatch}': 'Utiliser la couleur {swatch}',
