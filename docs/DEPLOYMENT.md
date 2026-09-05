@@ -215,9 +215,21 @@ happened. Three consequences worth knowing:
   loading it holds the app container near 1 GB of memory, on top of what the
   agent's CLI processes take. A 4 GB host with the default limits runs it;
   a host without swap has no cushion if two long runs and a large document
-  land together, so give it a 2 GB swap file. `METACLAUDE_EMBEDDINGS=hash`
-  turns the model off entirely, at the cost of matching words rather than
-  meaning — see docs/LEARNING.md, *Embeddings*.
+  land together — without swap the kernel kills rather than slows. Give it
+  a swap file, persistent, with a low swappiness so it stays a cushion and
+  not a habit (this is what the reference deployment runs):
+
+  ```bash
+  sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+  sudo mkswap /swapfile && sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/90-metaclaude-swap.conf && sudo sysctl -p /etc/sysctl.d/90-metaclaude-swap.conf
+  ```
+
+  Compose leaves the container's swap allowance at twice its memory limit,
+  so the app can spill into it. `METACLAUDE_EMBEDDINGS=hash` turns the
+  model off entirely, at the cost of matching words rather than meaning —
+  see docs/LEARNING.md, *Embeddings*.
 
 The steps are written out below anyway. A script that provisions your only
 server is not one to run without knowing what it does.

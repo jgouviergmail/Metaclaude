@@ -599,8 +599,12 @@ of vectors still waiting.
 `hash` takes effect at once and starts the rebuild; switching to `local`
 switches every store to the model's id at once — they answer lexically until
 it is ready — and the rebuild follows. A stored choice is read at boot, so it
-outlives a restart. The manual **Re-index** under Memory → Maintenance now
-rebuilds all three stores and reports each count.
+outlives a restart. Toggling keeps one local provider: switched away and back,
+it is handed to the stores again — loading or loaded — rather than loaded a
+second time, and only a provider that gave up is reloaded, which is how fixing
+missing model files needs no restart (`learning/embedder-switch.ts`). The
+manual **Re-index** under Memory → Maintenance now rebuilds all three stores
+and reports each count.
 
 ## What this is not
 

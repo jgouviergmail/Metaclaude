@@ -11,6 +11,32 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.46.1] — 2026-09-05
+
+### Fixed
+
+- **Toggling the embeddings setting twice no longer loads the model twice.**
+  Found in the cold review of 0.46.0: switching local → hash → local within a
+  minute created a second sentence-transformer beside the first, about a
+  gigabyte each. The switch now keeps one local provider, hands it back to
+  the stores while it is loading or once loaded, and reloads only a provider
+  that has given up — which is also how fixing missing model files needs no
+  restart. `learning/embedder-switch.ts`, with the rule tested in isolation.
+
+- **A document embedded under a previous provider now shows *Vectors
+  pending*.** The badge only knew about documents written without a model;
+  after a change of embedder, the ones waiting for the rebuild looked current.
+  The Memory page hands the section the embedder in force and any other id
+  is pending.
+
+### Changed
+
+- **Operations: the reference host runs a 4 GB swap file**, persistent, with
+  `vm.swappiness=10`, so a memory spike under the model and two long runs slows
+  the box rather than letting the kernel kill the app. docs/DEPLOYMENT.md
+  carries the exact commands and the reason.
+
+
 ## [0.46.0] — 2026-09-05
 
 ### Added

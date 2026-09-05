@@ -41,14 +41,24 @@ interface Draft {
 
 const EMPTY_DRAFT: Draft = { title: '', content: '', workspaceId: null, enabled: true };
 
+/**
+ * Pending either way: written without a model (`''`), or under a provider that
+ * is no longer the live one. Both are rebuilt by the same pass; both deserve the
+ * same badge.
+ */
+const pendingVectorsFor = (embedder: string | undefined) => (doc: KnowledgeDocumentMeta): boolean =>
+  doc.embeddingModel === '' || (embedder !== undefined && doc.embeddingModel !== embedder);
+
 export function KnowledgeSection({
   scope,
-  workspaces,
-}: {
+  workspaces, embedder }: {
   /** `all` | `global` | a workspace id — the Memory page's own scope. */
   scope: string;
-  workspaces: Workspace[];
+  workspaces: Workspace[]; 
+  /** The embedder in force, from the health endpoint; a document under any other id is waiting for a rebuild. */
+  embedder?: string;
 }) {
+  const pendingVectors = pendingVectorsFor(embedder);
   const t = useT();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -244,7 +254,7 @@ export function KnowledgeSection({
                     </button>
                     <ScopeBadge workspaceId={doc.workspaceId} workspaces={workspaces} />
                     {!doc.enabled ? <Badge tone="warning">{t('Paused')}</Badge> : null}
-                    {doc.embeddingModel === '' ? (
+                    {pendingVectors(doc) ? (
                       <Tooltip content={t('Findable by its words already; its vectors are being computed in the background.')}>
                         <span className="inline-flex"><Badge tone="thinking">{t('Vectors pending')}</Badge></span>
                       </Tooltip>

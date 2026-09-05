@@ -218,3 +218,21 @@ describe('vectors pending', () => {
     expect(screen.getAllByText('Vectors pending')).toHaveLength(1);
   });
 });
+
+describe('vectors pending after a change of embedder', () => {
+  it('marks every document not embedded with the live provider', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" embedder="st:Xenova/bge-m3" workspaces={WORKSPACES} />);
+
+    await screen.findByText('Conventions');
+    // The hashed one and the pending one: neither carries the live id.
+    expect(screen.getAllByText('Vectors pending')).toHaveLength(2);
+  });
+
+  it('marks none when every document is current', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" embedder="hash-v1:512" workspaces={WORKSPACES} />);
+
+    await screen.findByText('Conventions');
+    // doc_2 was written pending and stays marked whatever the live id.
+    expect(screen.getAllByText('Vectors pending')).toHaveLength(1);
+  });
+});

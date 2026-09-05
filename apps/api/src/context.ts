@@ -32,10 +32,10 @@ import { SYSTEM_TOOLS, systemToolNames } from './kernel/system-tools.js';
 import { decideApproval } from './http/approvals.js';
 import { PolicyLearner } from './learning/bandit.js';
 import { TaskClassifier } from './learning/classifier.js';
+import { createEmbedderSwitch } from './learning/embedder-switch.js';
 import {
   createEmbeddingProvider,
   describeEmbedder,
-  HashingEmbedder,
   SwitchableEmbedder,
   type EmbeddingProvider,
 } from './learning/embeddings.js';
@@ -333,18 +333,17 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
         })
         .catch((error: unknown) => log.warn({ err: error }, 'could not notify the embeddings fallback'));
     });
-  const embedder = new SwitchableEmbedder(
-    await createEmbeddingProvider({
-      provider: runtimeSettings.choice('embeddings') as 'hash' | 'local',
-      model: config.embeddings.model,
-      cacheDir: embeddingCacheDir,
-      log: (level, message) => log[level](message),
-      // The model came up: whatever was written pending, or under another
-      // provider, can be rebuilt now.
-      onReady: () => onceBooted(() => rebuildVectors()),
-      onFallback: notifyFallback,
-    }),
-  );
+  const bootEmbedder = await createEmbeddingProvider({
+    provider: runtimeSettings.choice('embeddings') as 'hash' | 'local',
+    model: config.embeddings.model,
+    cacheDir: embeddingCacheDir,
+    log: (level, message) => log[level](message),
+    // The model came up: whatever was written pending, or under another
+    // provider, can be rebuilt now.
+    onReady: () => onceBooted(() => rebuildVectors()),
+    onFallback: notifyFallback,
+  });
+  const embedder = new SwitchableEmbedder(bootEmbedder);
   log.info(`embeddings provider: ${embedder.id} (${embedder.ready ? `${embedder.dimension}d` : 'loading'})`);
 
   const memory = new MemoryStore(db, embedder);
@@ -375,30 +374,18 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const rebuildVectors = (): void => rebuild.trigger();
   rebuildVectors();
 
-  // The setting's hot half. `use()` changes every store's live id at once:
-  // to `hash`, the rebuild starts now; to `local`, the stores answer
-  // lexically until the model is ready and the rebuild follows `onReady`.
-  switchEmbedder = (provider) => {
-    if (provider === 'hash') {
-      if (embedder.family === 'hash') return;
-      embedder.use(new HashingEmbedder());
-      log.info('embeddings: switched to the hashing embedder; rebuilding vectors');
-      rebuildVectors();
-      return;
-    }
-    if (embedder.id === `st:${config.embeddings.model}`) return;
-    void createEmbeddingProvider({
-      provider: 'local',
-      model: config.embeddings.model,
-      cacheDir: embeddingCacheDir,
-      log: (level, message) => log[level](message),
-      onReady: () => rebuildVectors(),
-      onFallback: notifyFallback,
-    }).then((local) => {
-      embedder.use(local);
-      log.info(`embeddings: switching to ${local.id}; lexical-only until it is ready`);
-    });
-  };
+  // The setting's hot half — see `embedder-switch.ts` for the rule that
+  // keeps one model in memory across toggles and retries only a failed one.
+  const embedderSwitch = createEmbedderSwitch({
+    embedder,
+    model: config.embeddings.model,
+    cacheDir: embeddingCacheDir,
+    rebuild: rebuildVectors,
+    onFallback: notifyFallback,
+    log: (level, message) => log[level](message),
+    initial: bootEmbedder,
+  });
+  switchEmbedder = (provider) => embedderSwitch.apply(provider);
 
   /** What retrieval is right now — the doctor, the health endpoint and the steward all read this one. */
   const retrieval = (): RetrievalStatus => {

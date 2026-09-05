@@ -982,7 +982,7 @@ export function MemoryPage() {
             )}
           </section>
 
-          <KnowledgeSection scope={scope} workspaces={workspaces} />
+          <KnowledgeSection embedder={systemQuery.data?.retrieval.embedder} scope={scope} workspaces={workspaces} />
         </div>
       </div>
 
