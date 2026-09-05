@@ -11,6 +11,37 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.1] — 2026-09-05
+
+### Fixed
+
+- **The gateway card no longer says the address is unset while it is loading
+  it.** Reported from use, on a deployment where `METACLAUDE_PUBLIC_URL` *is*
+  set: `endpoint.data?.url` is falsy in three situations and the card treated
+  them as one, so a claim about this deployment's configuration was made
+  before the server had answered. Loading shows the shape of the field, a
+  failed request says the address could not be read, and only a resolved
+  `null` is the configuration itself. Same family as the gateway's empty list
+  the same day: an unverified conclusion presented as a fact.
+
+### Added
+
+- **The doctor says whether this deployment knows its own address.** A warning,
+  not a failure — everything that does not hand an address to somebody else
+  runs untouched. What does not run is authorizing an MCP server (which needs
+  a redirect URI) and showing the gateway endpoint, and both refuse with a
+  sentence about a setting, which reads as a broken feature until you know
+  which line of `.env` is missing.
+
+### Changed
+
+- **`bootstrap.sh` writes `METACLAUDE_PUBLIC_URL` from the site it just asked
+  for.** The app still refuses to derive its address from a request — a `Host`
+  header is attacker-controlled and a redirect URI is the one value that must
+  never be — but the installer already knows the answer, and leaving the
+  operator to state it a second time meant every fresh deployment started with
+  both of those features unusable.
+
 ## [0.56.0] — 2026-09-05
 
 ### Fixed

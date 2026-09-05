@@ -1859,6 +1859,8 @@ export const fr: Record<string, string> = {
   'Cache: {read} read, {written} written': 'Cache : {read} lus, {written} écrits',
   'Session renamed': 'Session renommée',
   'Token updated': 'Jeton mis à jour',
+  'The endpoint could not be read from the server. Reload to try again.':
+    'L’adresse n’a pas pu être lue depuis le serveur. Rechargez pour réessayer.',
   'The same secret, reaching the workspaces you chose.':
     'Le même secret, avec les espaces que vous avez choisis.',
   'no workspace': 'aucun espace',

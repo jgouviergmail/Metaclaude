@@ -68,6 +68,38 @@ describe('the endpoint', () => {
    * wrong one produces a connection error that reads exactly like a bad token.
    * Saying so beats showing a guess.
    */
+  /**
+   * The message below is a claim about this deployment's configuration, and
+   * `endpoint.data?.url` is falsy in three different situations. Reported from
+   * use: an operator whose address *was* configured was told it was not,
+   * because the card asserted it while the request was still in flight.
+   */
+  it('claims nothing about the address until the server has answered', async () => {
+    let answer: (value: { url: string }) => void = () => {};
+    apiMock.gatewayEndpoint.mockReturnValue(
+      new Promise<{ url: string }>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    renderWithProviders(<McpGatewayCard />);
+
+    // Nothing yet — not the warning, and not an address either.
+    await waitFor(() => expect(apiMock.gatewayEndpoint).toHaveBeenCalled());
+    expect(screen.queryByText(/no public address configured/i)).toBeNull();
+
+    answer({ url: 'https://mc.example/api/gateway/mcp' });
+    expect(await screen.findByText('https://mc.example/api/gateway/mcp')).toBeTruthy();
+    expect(screen.queryByText(/no public address configured/i)).toBeNull();
+  });
+
+  it('says the address could not be read when the request fails, which is not the same thing', async () => {
+    apiMock.gatewayEndpoint.mockRejectedValue(new Error('boom'));
+    renderWithProviders(<McpGatewayCard />);
+
+    expect(await screen.findByText(/could not be read from the server/i)).toBeTruthy();
+    expect(screen.queryByText(/no public address configured/i)).toBeNull();
+  });
+
   it('says why it cannot show one, rather than guessing', async () => {
     apiMock.gatewayEndpoint.mockResolvedValue({ url: null });
     renderWithProviders(<McpGatewayCard />);

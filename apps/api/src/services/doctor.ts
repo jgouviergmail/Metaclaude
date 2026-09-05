@@ -109,6 +109,16 @@ export interface DoctorDeps {
     /** Rows written pending or under another provider, waiting for a rebuild. */
     pending: { memories: number; documents: number; exemplars: number };
   };
+  /**
+   * The address this deployment answers on, as the operator stated it.
+   *
+   * Not derivable here: the app refuses to read its own address off a request,
+   * so an unset value is genuinely unknown rather than merely uncomputed — and
+   * two features answer "I cannot show you" until it is set. That is worth a
+   * line where an operator looks for problems, not a discovery made while
+   * configuring something else.
+   */
+  publicUrl: () => string | null;
   activeRuns: () => number;
   queuedRuns: () => number;
   now?: () => number;
@@ -161,6 +171,7 @@ export class Doctor {
     await examine('disk:workspaces', () => this.disk('disk:workspaces', this.deps.workspacesDir));
     await examine('backup', () => this.backup());
     await examine('network', () => this.network());
+    await examine('public-url', () => this.publicUrl());
     await examine('claude-cli', () => this.claudeCli());
     await examine('retrieval', () => this.retrieval());
     await examine('memory', () => this.memory());
@@ -406,6 +417,37 @@ export class Doctor {
           summary: 'Nothing can leave this container — no runs, no clones, no HTTP MCP server.',
           detail,
         };
+  }
+
+  /**
+   * Whether this deployment knows its own address.
+   *
+   * A warning rather than a failure: everything else runs untouched without
+   * it. What does not run is anything that has to hand an address to somebody
+   * else — the redirect URI an MCP server is authorized with, and the endpoint
+   * an external agent is pointed at — and both of those refuse with a sentence
+   * about a setting, which reads as a broken feature until you know better.
+   */
+  private publicUrl(): DoctorCheck {
+    const url = this.deps.publicUrl();
+    if (url) {
+      return {
+        name: 'public-url',
+        status: 'ok',
+        summary: `This deployment answers at ${url}.`,
+        detail: null,
+      };
+    }
+    return {
+      name: 'public-url',
+      status: 'warn',
+      summary: 'No public address is configured, so nothing can be pointed at this deployment.',
+      detail:
+        'METACLAUDE_PUBLIC_URL is unset. Authorizing an MCP server needs a redirect URI, and the ' +
+        'gateway card cannot show the address to paste into another application; both refuse rather ' +
+        'than guess, because an address read off a request is attacker-controlled. Set it in .env to ' +
+        'the address this deployment answers on — https:// and the site name — and restart.',
+    };
   }
 
   private async claudeCli(): Promise<DoctorCheck> {

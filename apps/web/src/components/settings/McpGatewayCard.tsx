@@ -25,6 +25,7 @@ import {
   EmptyState,
   Input,
   Label,
+  Skeleton,
   Spinner,
 } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
@@ -147,7 +148,19 @@ export function McpGatewayCard() {
       <div className="space-y-3 px-4 pb-4">
         {/* What to paste into the other application. Shown once, above the
             list, because it is the same for every token. */}
-        {endpoint.data?.url ? (
+        {/* Three states, not two. `endpoint.data?.url` is also falsy while the
+            request is in flight and when it failed, and the message below is a
+            claim about this deployment's configuration — asserting it before
+            the server has answered told an operator their address was unset
+            when it was set. Loading shows the shape; a failure says it could
+            not be read; only a resolved `null` is the configuration itself. */}
+        {endpoint.isPending ? (
+          <Skeleton className="h-[52px] rounded-lg" />
+        ) : endpoint.isError ? (
+          <p className="rounded-lg border border-line bg-sunken px-3 py-2 text-[12px] leading-relaxed text-muted">
+            {t('The endpoint could not be read from the server. Reload to try again.')}
+          </p>
+        ) : endpoint.data?.url ? (
           <div className="space-y-1.5">
             <p className="text-[12px] text-muted">{t('Endpoint to connect to')}</p>
             <CopyableCode value={endpoint.data.url} label={t('Copy the endpoint')} />

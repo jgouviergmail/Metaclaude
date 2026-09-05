@@ -263,6 +263,20 @@ set_env METACLAUDE_BOOTSTRAP_PASSWORD "$OWNER_PASS"
 set_env METACLAUDE_MASTER_KEY "$MASTER_KEY"
 set_env METACLAUDE_SITE "$SITE"
 
+# The same address, as the application's own idea of where it answers.
+#
+# `METACLAUDE_SITE` belongs to compose and Caddy; the app deliberately refuses
+# to derive its public address from a request, because a `Host` header is
+# attacker-controlled and an OAuth redirect URI is the one value that must
+# never be. But leaving it for the operator to state a second time meant every
+# deployment started with the MCP OAuth flow and the gateway address unusable,
+# and nothing said so until one of them was reached for. Bootstrap already
+# knows the answer -- it just asked for it.
+#
+# Both schemes are https: Caddy serves TLS in either mode, internally signed
+# for a bare address and publicly trusted for a name.
+set_env METACLAUDE_PUBLIC_URL "https://$SITE"
+
 # A hostname and a bare IP are not the same deployment, and the difference is
 # not cosmetic — it decides whether a browser trusts the certificate at all.
 #

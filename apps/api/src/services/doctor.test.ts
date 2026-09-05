@@ -35,6 +35,7 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512, state: 'ready', lastError: null, pending: { memories: 0, documents: 0, exemplars: 0 } }),
     activeRuns: () => 1,
     queuedRuns: () => 0,
+    publicUrl: () => 'https://metaclaude.example.com',
     readBackupMarker: async () =>
       JSON.stringify({ at: NOW - 3_600_000, archive: 'metaclaude-backup-x.tar.gz' }),
     now: () => NOW,
@@ -67,6 +68,7 @@ describe('a healthy system', () => {
       'disk:workspaces',
       'backup',
       'network',
+      'public-url',
       'claude-cli',
       'retrieval',
       'memory',
@@ -534,3 +536,40 @@ describe('the credential check counts the days', () => {
     expect(entry.summary).toMatch(/no credential/i);
   });
 });
+
+/**
+ * The address this deployment answers on.
+ *
+ * Found from use: an external agent pointed at the MCP gateway was told this
+ * deployment had no public address configured, and nothing on any screen said
+ * so beforehand — the setting is written by hand, two features refuse without
+ * it, and both refusals read as a broken feature until you know which line of
+ * `.env` is missing.
+ */
+describe('the public address', () => {
+  const check = async (publicUrl: string | null) =>
+    (await makeDoctor({ publicUrl: () => publicUrl }).run()).checks.find(
+      (entry) => entry.name === 'public-url',
+    )!;
+
+  it('says where the deployment answers when it is set', async () => {
+    const entry = await check('https://metaclaude.example.com');
+    expect(entry.status).toBe('ok');
+    expect(entry.summary).toMatch(/metaclaude\.example\.com/);
+  });
+
+  /** A warning, not a failure: everything that does not hand out an address works. */
+  it('warns when it is unset, and names both features that refuse', async () => {
+    const entry = await check(null);
+    expect(entry.status).toBe('warn');
+    expect(entry.detail).toMatch(/METACLAUDE_PUBLIC_URL/);
+    expect(entry.detail).toMatch(/redirect URI/i);
+    expect(entry.detail).toMatch(/gateway/i);
+  });
+
+  it('does not fail the whole report on its own', async () => {
+    const report = await makeDoctor({ publicUrl: () => null }).run();
+    expect(report.status).not.toBe('fail');
+  });
+});
+

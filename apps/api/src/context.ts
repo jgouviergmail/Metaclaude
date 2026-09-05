@@ -955,6 +955,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
         pending: countStale(db, status.id),
       };
     },
+    publicUrl: () => config.publicUrl,
     activeRuns: () => kernel.activeCount,
     queuedRuns: () => kernel.queuedCount,
     // Written by deploy/bin/metaclaude-backup on the host, into the volume
