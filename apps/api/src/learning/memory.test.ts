@@ -1621,3 +1621,154 @@ describe('promote / confine', () => {
     expect(result.memory.updatedAt).toBeGreaterThan(1000);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Shelves, retirement and supersession                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The durability of a memory, orthogonal to its kind. Measured before it
+ * existed: five memories saying the same fact at five moments, none of them
+ * distinguishable from a convention by anything in the row, the steward
+ * writing "[Obsolete]" into titles for lack of a way to retire one, and a
+ * state fact staying retrievable for 230 idle days.
+ */
+describe('shelves, retirement and supersession', () => {
+  const DAY = 86_400_000;
+  const seed = (title: string, content: string, extra: Record<string, unknown> = {}) =>
+    store.remember({ workspaceId: wsA, kind: 'semantic', title, content, ...extra });
+
+  it('stores the shelf, defaulting to durable, and exposes the retirement fields', async () => {
+    const { memory: volatile } = await seed('Port', 'The API listens on 8787.', { shelf: 'volatile' });
+    const { memory: plain } = await seed('Plain', 'Nothing about durability said.');
+
+    expect(volatile.shelf).toBe('volatile');
+    expect(volatile).toMatchObject({ retiredAt: null, supersededBy: null });
+    expect(plain.shelf).toBe('durable');
+    expect((await store.update(plain.id, { shelf: 'standing' }))?.shelf).toBe('standing');
+  });
+
+  it('a retired memory leaves search and the duplicate check, stays listed, and comes back on restore', async () => {
+    // Three rows: bm25 needs a corpus for its IDF to be non-zero.
+    const { memory: target } = await seed('Vault key', 'The vault key is rotated quarterly by hand.');
+    await seed('Filler one', 'Deploys run from the pipeline.');
+    await seed('Filler two', 'Backups land nightly on the volume.');
+
+    expect((await store.search('vault key rotated', { workspaceId: wsA })).map((r) => r.memory.id)).toContain(target.id);
+    const retired = store.retire(target.id, { now: 1_000 });
+    expect(retired).toMatchObject({ retiredAt: 1_000, supersededBy: null });
+
+    expect((await store.search('vault key rotated', { workspaceId: wsA })).map((r) => r.memory.id)).not.toContain(target.id);
+    // Off the list every reader uses — synthesis, the steward, the counts —
+    // and on it only where the Memory page asks, to fold it rather than lose it.
+    expect(store.list({ workspaceId: wsA }).some((m) => m.id === target.id)).toBe(false);
+    expect(store.list({ workspaceId: wsA, includeRetired: true }).some((m) => m.id === target.id && m.retiredAt !== null)).toBe(true);
+    expect(store.count(wsA)).toBe(2);
+    expect(store.stats(wsA).semantic).toBe(2);
+    // A retired near-duplicate must not absorb a fresh write of the same text.
+    const again = await seed('Vault key', 'The vault key is rotated quarterly by hand.');
+    expect(again.merged).toBe(false);
+    expect(again.memory.id).not.toBe(target.id);
+
+    expect(store.restore(target.id)?.retiredAt).toBeNull();
+    expect((await store.search('vault key rotated', { workspaceId: wsA })).map((r) => r.memory.id)).toContain(target.id);
+  });
+
+  it('refuses to retire a pinned memory', async () => {
+    const { memory } = await seed('Pinned', 'Never lose this.', { pinned: true });
+    expect(() => store.retire(memory.id)).toThrow(/pinned/);
+    expect(store.get(memory.id)?.retiredAt).toBeNull();
+  });
+
+  /**
+   * A machine decides a supersession, so it is bounded by rule rather than
+   * by the model's judgement: the arbiter was measured wanting to replace the
+   * operator's pinned convention with a note derived from it.
+   */
+  it('supersede retires the loser pointing at the winner, and refuses a pinned, a non-volatile or a foreign loser', async () => {
+    const { memory: old } = await seed('Form', 'The form offers cron, interval and manual.', { shelf: 'volatile' });
+    const { memory: current } = await seed('Form now', 'The form offers cron, interval, manual and event.', { shelf: 'volatile' });
+    const { memory: durable } = await seed('Rule', 'Tests run with pnpm test:run.');
+    const { memory: pinned } = await seed('Convention', 'Requests go through the board.', { shelf: 'volatile', pinned: true });
+    const { memory: elsewhere } = await store.remember({ workspaceId: wsB, kind: 'semantic', title: 'Other', content: 'Another project.', shelf: 'volatile' });
+
+    expect(store.supersede(old.id, current.id, 5_000)).toMatchObject({ retiredAt: 5_000, supersededBy: current.id });
+    expect(() => store.supersede(durable.id, current.id)).toThrow(/volatile/);
+    expect(() => store.supersede(pinned.id, current.id)).toThrow(/pinned/);
+    expect(() => store.supersede(elsewhere.id, current.id)).toThrow(/same workspace/);
+    expect(() => store.supersede(current.id, current.id)).toThrow(/itself/);
+    expect(() => store.supersede(current.id, old.id)).toThrow(/retired/);
+    // A global winner may supersede a workspace loser: the tier is exempt both ways.
+    const { memory: global } = await store.remember({ workspaceId: null, kind: 'semantic', title: 'Global', content: 'Holds everywhere.' });
+    const { memory: local } = await seed('Local', 'Held here once.', { shelf: 'volatile' });
+    expect(store.supersede(local.id, global.id).supersededBy).toBe(global.id);
+  });
+
+  it('standing() lists the scope conventions and the global ones, pinned first, never a retired one', async () => {
+    const { memory: a } = await seed('Brief in French', 'Briefs are written in French.', { shelf: 'standing' });
+    const { memory: b } = await seed('Propose defaults', 'Propose a default rather than ask three questions.', { shelf: 'standing', pinned: true });
+    const { memory: g } = await store.remember({ workspaceId: null, kind: 'procedural', title: 'Board first', content: 'Requests go through the board.', shelf: 'standing' });
+    const { memory: gone } = await seed('Old rule', 'Retired convention.', { shelf: 'standing' });
+    await store.remember({ workspaceId: wsB, kind: 'semantic', title: 'Theirs', content: 'Another workspace convention.', shelf: 'standing' });
+    await seed('Just a fact', 'Not standing at all.');
+    store.retire(gone.id);
+
+    const ids = store.standing(wsA).map((m) => m.id);
+    expect(ids[0]).toBe(b.id);
+    expect(new Set(ids)).toEqual(new Set([a.id, b.id, g.id]));
+    expect(store.standing(null).map((m) => m.id)).toEqual([g.id]);
+  });
+
+  it('search can leave the standing shelf out, since the kernel injects it whole', async () => {
+    const { memory: rule } = await seed('Deploy rule', 'Deploys wait for a green pipeline.', { shelf: 'standing' });
+    await seed('Deploy note', 'Deploys take about two minutes.');
+    await seed('Filler', 'Unrelated content about tests.');
+
+    const all = await store.search('deploys pipeline', { workspaceId: wsA });
+    const without = await store.search('deploys pipeline', { workspaceId: wsA, excludeStanding: true });
+    expect(all.map((r) => r.memory.id)).toContain(rule.id);
+    expect(without.map((r) => r.memory.id)).not.toContain(rule.id);
+    expect(without.length).toBeGreaterThan(0);
+  });
+
+  it('decays each shelf on its own clock: standing never, volatile three times faster than durable', async () => {
+    const start = Date.now();
+    const { memory: standing } = await seed('Standing', 'A convention.', { shelf: 'standing', confidence: 0.8 });
+    const { memory: durable } = await seed('Durable', 'A lesson.', { confidence: 0.8 });
+    const { memory: volatile } = await seed('Volatile', 'A fact.', { shelf: 'volatile', confidence: 0.8 });
+
+    store.decay({ halfLifeDays: 90, now: start + 30 * DAY });
+
+    expect(store.get(standing.id)?.confidence).toBe(0.8);
+    expect(store.get(volatile.id)?.confidence).toBeCloseTo(0.4, 2);
+    expect(store.get(durable.id)?.confidence).toBeCloseTo(0.8 * 0.5 ** (30 / 90), 2);
+  });
+
+  it('reinforce leaves a standing memory alone', async () => {
+    const { memory: standing } = await seed('Standing', 'A convention.', { shelf: 'standing', confidence: 0.5 });
+    const { memory: durable } = await seed('Durable', 'A lesson.', { confidence: 0.5 });
+    store.recordUsage(runId, [
+      { memory: standing, score: 1 } as MemorySearchResult,
+      { memory: durable, score: 1 } as MemorySearchResult,
+    ]);
+
+    store.reinforce(runId, 1);
+
+    expect(store.get(standing.id)?.confidence).toBe(0.5);
+    expect(store.get(durable.id)!.confidence).toBeGreaterThan(0.5);
+  });
+
+  it('collect removes a retired memory after thirty days, not before, and never a pinned one', async () => {
+    const { memory: recent } = await seed('Recent', 'Retired yesterday.');
+    const { memory: old } = await seed('Old', 'Retired long ago.');
+    const { memory: kept } = await seed('Kept', 'Still current.');
+    const now = Date.now();
+    store.retire(recent.id, { now: now - DAY });
+    store.retire(old.id, { now: now - 31 * DAY });
+
+    expect(store.collect(now)).toBe(1);
+    expect(store.get(old.id)).toBeNull();
+    expect(store.get(recent.id)?.retiredAt).not.toBeNull();
+    expect(store.get(kept.id)).not.toBeNull();
+  });
+});

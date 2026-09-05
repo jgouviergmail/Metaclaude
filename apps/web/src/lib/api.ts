@@ -599,6 +599,8 @@ export const api = {
       limit?: number;
       offset?: number;
       scope?: 'global';
+      /** Retired rows too; the Memory page folds them, nothing else wants them. */
+      includeRetired?: boolean;
     } = {},
   ) =>
     request<{
@@ -615,8 +617,12 @@ export const api = {
   createMemory: (body: CreateMemoryRequest) =>
     request<{ memory: Memory; merged: boolean }>('/api/memory', { method: 'POST', body }),
 
-  updateMemory: (id: string, body: Partial<Memory>) =>
+  updateMemory: (id: string, body: Partial<Memory> & { retired?: boolean }) =>
     request<{ memory: Memory }>(`/api/memory/${id}`, { method: 'PATCH', body }),
+
+  /** Keep a note the memory gate refused, from the run's insight. */
+  keepInsightNote: (id: string, index: number) =>
+    request<{ memory: Memory }>(`/api/insights/${id}/keep`, { method: 'POST', body: { index } }),
 
   deleteMemory: (id: string) => request<{ ok: boolean }>(`/api/memory/${id}`, { method: 'DELETE' }),
 

@@ -55,6 +55,7 @@ import { listInsights, setInsightStatus, withLanguage } from './learning/reflexi
 import { countStale, createRebuildTrigger, reindexStale } from './learning/reindex.js';
 import { KnowledgeStore } from './learning/knowledge.js';
 import { ReflexionEngine } from './learning/reflexion.js';
+import { createGateCall, Gatekeeper } from './learning/gatekeeper.js';
 import { AuditLog } from './security/audit.js';
 import { ApiTokenService } from './security/api-tokens.js';
 import { AuthService } from './security/auth.js';
@@ -92,7 +93,7 @@ import { AdvisorService } from './services/advisor.js';
 import { Scheduler } from './services/scheduler.js';
 import { Steward } from './services/steward.js';
 import { seedSystemAutomation } from './services/system-automation.js';
-import { SystemWorkspace } from './services/system-workspace.js';
+import { readGenerated, SYSTEM_WORKSPACE_SAFETY, SystemWorkspace } from './services/system-workspace.js';
 import { relocateWorkspaces, WorkspaceService } from './services/workspaces.js';
 
 export interface AppContext {
@@ -513,6 +514,45 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     );
   }
 
+  // The tools a run may call without changing anything durable. A run of the
+  // system workspace made of nothing but these taught nothing a later run
+  // cannot re-read, and its reflexion was the source of most of the state
+  // notes measured in production — so such a run is not reflected on.
+  const readOnlyTools = new Set<string>([
+    ...SYSTEM_TOOLS.filter((entry) => entry.ring === 1).map((entry) => `mcp__${SYSTEM_SERVER_NAME}__${entry.name}`),
+    ...BOARD_TOOL_CATALOGUE.filter((entry) => entry.ring === 1).map((entry) => `mcp__${BOARD_SERVER_NAME}__${entry.name}`),
+    'Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'ToolSearch', 'WebFetch', 'WebSearch', 'TodoWrite', 'Task',
+  ]);
+
+  // What the gate is shown of a workspace's standing instructions: the system
+  // workspace's generated CLAUDE.md, a project's own CLAUDE.md when it has one.
+  const standingInstructions = async (workspaceId: string): Promise<string | null> => {
+    const workspace = workspaceRepo.get(workspaceId);
+    if (!workspace) return null;
+    return readGenerated(workspace, 'CLAUDE.md');
+  };
+
+  // Every tool the steward has described to it, by short name: a note about
+  // one of them repeats the instructions. Other workspaces get none — a
+  // project's lessons legitimately name the tools it runs.
+  const stewardToolNames = [
+    ...SYSTEM_TOOLS.map((entry) => entry.name),
+    ...BOARD_TOOL_CATALOGUE.map((entry) => entry.name),
+    ...ADVISOR_TOOL_CATALOGUE.map((entry) => entry.name),
+    // The built-ins its instructions name too: the ones it has, and the ones
+    // it is told it does not — "no editor here" is a note about Write.
+    ...SYSTEM_WORKSPACE_SAFETY.disallowedTools,
+    'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch',
+  ];
+  const gate = new Gatekeeper({
+    memory,
+    call: createGateCall({ env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir }),
+    describedTools: (workspaceId) => (systemWorkspace.isSystem(workspaceId) ? stewardToolNames : []),
+    instructions: standingInstructions,
+    language: (workspaceId) => contentLanguage(workspaceId),
+    log: kernelLog,
+  });
+
   const reflexion = new ReflexionEngine({
     db,
     memory,
@@ -522,6 +562,10 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     // The reflector runs in a scratch directory, never a workspace: it has no
     // tools, and pointing it at project files would be a needless risk.
     cwd: config.dataDir,
+    gate,
+    readOnlyRun: (run, events) =>
+      systemWorkspace.isSystem(run.workspaceId) &&
+      events.every((event) => event.kind !== 'tool_call' || readOnlyTools.has(event.name)),
     log: kernelLog,
   });
 

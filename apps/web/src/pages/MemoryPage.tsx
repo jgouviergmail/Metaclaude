@@ -13,7 +13,10 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Archive,
   Brain,
+  Layers,
+  RotateCcw,
   Check,
   ChevronDown,
   Filter,
@@ -33,7 +36,16 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { normaliseTags, type Insight, type Memory, type MemoryKind, type Workspace } from '@metaclaude/shared';
+import {
+  normaliseTags,
+  ReflexionInsightPayload,
+  type GateOutcome,
+  type Insight,
+  type Memory,
+  type MemoryKind,
+  type MemoryShelf,
+  type Workspace,
+} from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { RetrievalStatus } from '@/components/system/RetrievalStatus';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
@@ -70,6 +82,45 @@ const KIND_FILTERS: ReadonlyArray<{ value: KindFilter; label: string }> = [
   { value: 'semantic', label: 'Semantic' },
   { value: 'procedural', label: 'Procedural' },
 ];
+
+type ShelfFilter = 'all' | MemoryShelf;
+
+/** Copy for the shelf, translated at the render site. */
+const SHELF_LABELS: Record<MemoryShelf, string> = {
+  standing: 'Standing',
+  durable: 'Durable',
+  volatile: 'Volatile',
+};
+const SHELF_HINTS: Record<MemoryShelf, string> = {
+  standing: 'Standing — a convention, injected into every run of its scope',
+  durable: 'Durable — recalled by relevance, forgotten slowly',
+  volatile: 'Volatile — a fact that can stop being true, forgotten three times faster',
+};
+const SHELF_TONE: Record<MemoryShelf, 'accent' | 'neutral' | 'thinking'> = {
+  standing: 'accent',
+  durable: 'neutral',
+  volatile: 'thinking',
+};
+const OUTCOME_TONE: Record<GateOutcome, 'success' | 'info' | 'neutral' | 'warning'> = {
+  kept: 'success',
+  superseded: 'info',
+  skipped: 'neutral',
+  'over-budget': 'warning',
+  unjudged: 'warning',
+};
+/** A refused note is one the operator may still keep. */
+const REFUSED: ReadonlySet<GateOutcome> = new Set(['skipped', 'over-budget', 'unjudged']);
+
+/** The gate's decisions carried by a reflexion insight, or null when the payload is not that. */
+export function readDecisions(payload: string | null): ReflexionInsightPayload | null {
+  if (!payload) return null;
+  try {
+    const parsed = ReflexionInsightPayload.safeParse(JSON.parse(payload));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 const KIND_TONE: Record<MemoryKind, 'info' | 'accent' | 'thinking'> = {
   episodic: 'info',
@@ -186,6 +237,7 @@ export function MemoryPage() {
   /** `all` = every memory, `global` = unscoped only, anything else = a workspace id. */
   const [scope, setScope] = useState<string>('all');
   const [kind, setKind] = useState<KindFilter>('all');
+  const [shelf, setShelf] = useState<ShelfFilter>('all');
   const [filterInput, setFilterInput] = useState('');
   const [filter, setFilter] = useState('');
   const [recallInput, setRecallInput] = useState('');
@@ -223,6 +275,7 @@ export function MemoryPage() {
         ...(scope === 'global' ? { scope: 'global' as const } : {}),
         ...(kind !== 'all' ? { kind } : {}),
         ...(filter ? { search: filter } : {}),
+        includeRetired: true,
         limit: 200,
       }),
   });
@@ -256,6 +309,7 @@ export function MemoryPage() {
         tags: parseTags(draft.tags),
         pinned: draft.pinned,
         confidence: draft.confidence,
+        shelf: draft.shelf,
       }),
     onSuccess: (result) => {
       refreshMemory();
@@ -281,6 +335,26 @@ export function MemoryPage() {
       setEditing(null);
     },
     onError: (error) => toast.error(messageFor(error, t('Could not update that memory.'))),
+  });
+
+  const retireMemory = useMutation({
+    mutationFn: ({ id, retired }: { id: string; retired: boolean }) => api.updateMemory(id, { retired }),
+    onSuccess: (_result, { retired }) => {
+      refreshMemory();
+      toast.success(retired ? t('Memory retired') : t('Memory restored'));
+    },
+    onError: (error, { retired }) =>
+      toast.error(messageFor(error, retired ? t('Could not retire that memory.') : t('Could not restore that memory.'))),
+  });
+
+  const keepNote = useMutation({
+    mutationFn: ({ id, index }: { id: string; index: number }) => api.keepInsightNote(id, index),
+    onSuccess: () => {
+      refreshMemory();
+      void queryClient.invalidateQueries({ queryKey: ['insights'] });
+      toast.success(t('Kept as a memory'));
+    },
+    onError: (error) => toast.error(messageFor(error, t('Could not keep that note.'))),
   });
 
   const deleteMemory = useMutation({
@@ -437,7 +511,11 @@ export function MemoryPage() {
   const stats = memoryQuery.data?.stats;
   const memories = memoryQuery.data?.memories ?? [];
   const workspaces = workspacesQuery.data?.workspaces ?? [];
-  const tiers = tiersOf(memories, workspaces, t);
+  // Retired rows come with the list so they can be folded below it; the
+  // tiers only ever show what recall can still reach.
+  const live = memories.filter((memory) => memory.retiredAt === null && (shelf === 'all' || memory.shelf === shelf));
+  const retired = memories.filter((memory) => memory.retiredAt !== null);
+  const tiers = tiersOf(live, workspaces, t);
   const insights = insightsQuery.data?.insights ?? [];
   const scopeLabel =
     scope === 'all'
@@ -607,6 +685,28 @@ export function MemoryPage() {
                     )}
                   >
                     {entry.label}
+                  </button>
+                ))}
+              </div>
+              <div
+                role="group"
+                aria-label={t('Filter by shelf')}
+                className="inline-flex flex-wrap gap-0.5 rounded-lg border border-line bg-sunken p-0.5"
+              >
+                {(['all', 'standing', 'durable', 'volatile'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={shelf === value}
+                    onClick={() => setShelf(value)}
+                    className={cn(
+                      'rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors',
+                      shelf === value
+                        ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
+                        : 'text-muted hover:text-ink',
+                    )}
+                  >
+                    {value === 'all' ? t('Every shelf') : t(SHELF_LABELS[value])}
                   </button>
                 ))}
               </div>
@@ -834,6 +934,8 @@ export function MemoryPage() {
                         }
                         onEdit={() => setEditing(memory)}
                         onDelete={() => setDeleting(memory)}
+                        onRetire={() => retireMemory.mutate({ id: memory.id, retired: true })}
+                        onShelf={(next) => updateMemory.mutate({ id: memory.id, patch: { shelf: next } })}
                         onMove={(to) => setMoving({ memory, to })}
                         sourceHref={sourceHrefOf(memory, memoryQuery.data?.sources)}
                       />
@@ -842,6 +944,40 @@ export function MemoryPage() {
                 ))}
               </div>
             )}
+
+            {retired.length > 0 ? (
+              // Folded by default, and asserted on `open` in tests: jsdom does
+              // not hide the children of a closed <details>.
+              <details data-testid="retired-memories" className="rounded-lg border border-line bg-sunken/40 px-3 py-2">
+                <summary className="cursor-pointer text-[12.5px] font-medium text-muted">
+                  {t('Retired ({count})', { count: retired.length })}
+                </summary>
+                <p className="mt-1 text-[11.5px] leading-relaxed text-subtle">
+                  {t('Collected thirty days after retirement. Restore one to bring it back into recall.')}
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {retired.map((memory) => (
+                    <li key={memory.id} className="flex items-center gap-2 text-[12.5px]">
+                      <span className="min-w-0 flex-1 truncate text-muted">
+                        {memory.title}
+                        {memory.supersededBy ? (
+                          <span className="ml-1.5 text-subtle">· {t('replaced by a newer memory')}</span>
+                        ) : null}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => retireMemory.mutate({ id: memory.id, retired: false })}
+                        aria-label={t('Restore {title}', { title: memory.title })}
+                      >
+                        <RotateCcw className="size-3.5" />
+                        {t('Restore')}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
           </section>
 
           {/* ----------------------------- Insights -------------------------- */}
@@ -932,9 +1068,50 @@ export function MemoryPage() {
 
                     <div className="space-y-1">
                       <h3 className="text-[13.5px] font-medium text-ink">{insight.title}</h3>
-                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
-                        {insight.body}
-                      </p>
+                      {(() => {
+                        const gate = readDecisions(insight.payload);
+                        if (!gate) {
+                          return (
+                            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
+                              {insight.body}
+                            </p>
+                          );
+                        }
+                        return (
+                          <div className="space-y-2">
+                            <p className="text-[11.5px] text-subtle">
+                              {t('What the memory gate made of each note this run proposed. A refused note can still be kept.')}
+                            </p>
+                            <ul className="space-y-2">
+                              {gate.decisions.map((decision, index) => (
+                                <li key={index} className="flex flex-wrap items-start gap-2 text-[13px]">
+                                  <Badge tone={OUTCOME_TONE[decision.outcome]}>{t(decision.outcome)}</Badge>
+                                  <span className="text-[11.5px] text-subtle">{t(decision.level)}</span>
+                                  <span className="min-w-0 flex-1 text-muted">
+                                    <span className="font-medium text-ink">{decision.title}</span>
+                                    {decision.reason ? <span className="text-subtle"> — {decision.reason}</span> : null}
+                                  </span>
+                                  {REFUSED.has(decision.outcome) && !decision.memoryId ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => keepNote.mutate({ id: insight.id, index })}
+                                      loading={
+                                        keepNote.isPending &&
+                                        keepNote.variables?.id === insight.id &&
+                                        keepNote.variables.index === index
+                                      }
+                                      aria-label={t('Keep {title}', { title: decision.title })}
+                                    >
+                                      {t('Keep')}
+                                    </Button>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -1024,6 +1201,7 @@ export function MemoryPage() {
               tags: parseTags(draft.tags),
               pinned: draft.pinned,
               confidence: draft.confidence,
+              shelf: draft.shelf,
             },
           });
         }}
@@ -1094,12 +1272,17 @@ function MemoryCard({
   onEdit,
   onDelete,
   onMove,
+  onRetire,
+  onShelf,
 }: {
   memory: Memory;
   workspaces: readonly Workspace[];
   onTogglePin: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** A soft delete, restorable for thirty days. */
+  onRetire: () => void;
+  onShelf: (shelf: MemoryShelf) => void;
   /** `null` promotes to the global tier; an id confines to that workspace. */
   onMove: (to: string | null) => void;
   /** The session this was learned in, when the run still exists. */
@@ -1121,6 +1304,10 @@ function MemoryCard({
                 on its own. */}
             <ScopeBadge workspaceId={memory.workspaceId} workspaces={workspaces} />
             {memory.pinned ? <Badge tone="warning">{t('pinned')}</Badge> : null}
+            {/* The default shelf says nothing; a convention or a fact does. */}
+            {memory.shelf !== 'durable' ? (
+              <Badge tone={SHELF_TONE[memory.shelf]}>{t(memory.shelf)}</Badge>
+            ) : null}
             <h3 className="min-w-0 text-[13.5px] font-medium text-ink">{memory.title}</h3>
           </div>
 
@@ -1193,6 +1380,23 @@ function MemoryCard({
             )}
 
             <MenuSeparator />
+            <MenuLabel>{t('Shelf')}</MenuLabel>
+            {(['standing', 'durable', 'volatile'] as const).map((value) => (
+              <MenuItem
+                key={value}
+                icon={<Layers />}
+                selected={memory.shelf === value}
+                description={t(SHELF_HINTS[value])}
+                onSelect={() => onShelf(value)}
+              >
+                {t(SHELF_LABELS[value])}
+              </MenuItem>
+            ))}
+
+            <MenuSeparator />
+            <MenuItem icon={<Archive />} description={t('Leaves recall at once; restorable for thirty days')} onSelect={onRetire}>
+              {t('Retire')}
+            </MenuItem>
             <MenuItem icon={<Trash2 />} tone="danger" onSelect={onDelete}>
               {t('Delete')}
             </MenuItem>
@@ -1281,6 +1485,7 @@ interface MemoryDraft {
   tags: string;
   pinned: boolean;
   confidence: number;
+  shelf: MemoryShelf;
 }
 
 const EMPTY_DRAFT: MemoryDraft = {
@@ -1290,6 +1495,7 @@ const EMPTY_DRAFT: MemoryDraft = {
   tags: '',
   pinned: false,
   confidence: 0.7,
+  shelf: 'durable',
 };
 
 function draftFrom(memory: Memory): MemoryDraft {
@@ -1300,6 +1506,7 @@ function draftFrom(memory: Memory): MemoryDraft {
     tags: memory.tags.join(', '),
     pinned: memory.pinned,
     confidence: memory.confidence,
+    shelf: memory.shelf,
   };
 }
 
@@ -1379,6 +1586,22 @@ function MemoryModal({
             <option value="episodic">{t('Episodic — what happened in a run')}</option>
             <option value="semantic">{t('Semantic — a durable fact')}</option>
             <option value="procedural">{t('Procedural — how to do something')}</option>
+          </select>
+        </Label>
+
+        <Label htmlFor="memory-shelf" hint={t(
+          'How long this is meant to hold. A convention applies whatever the request is about.',
+        )}>
+          {t('Shelf')}
+          <select
+            id="memory-shelf"
+            value={draft.shelf}
+            onChange={(event) => setDraft({ ...draft, shelf: event.target.value as MemoryShelf })}
+            className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
+          >
+            {(['durable', 'standing', 'volatile'] as const).map((value) => (
+              <option key={value} value={value}>{t(SHELF_HINTS[value])}</option>
+            ))}
           </select>
         </Label>
 

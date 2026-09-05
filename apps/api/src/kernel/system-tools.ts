@@ -13,7 +13,7 @@
  */
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
-import { AutomationTrigger, MemoryKind, PermissionMode, RunStatus, RuntimeSettingKey } from '@metaclaude/shared';
+import { AutomationTrigger, MemoryKind, MemoryShelf, PermissionMode, RunStatus, RuntimeSettingKey } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { Steward, StewardActor } from '../services/steward.js';
 import { StewardError } from '../services/steward.js';
@@ -31,6 +31,7 @@ export type SystemFacade = Pick<
   | 'run'
   | 'memories'
   | 'memorySearch'
+  | 'memoryRetire'
   | 'insights'
   | 'automations'
   | 'proposals'
@@ -259,11 +260,17 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
       tags: z.array(z.string().min(1).max(64)).max(20).optional(),
       confidence: z.number().min(0).max(1).optional(),
       pinned: z.boolean().optional(),
+      shelf: MemoryShelf.optional().describe(
+        'standing = a convention or preference the operator stated, injected into every run; durable = the default; volatile = a fact that can stop being true.',
+      ),
+      supersedes: ID.optional().describe(
+        'A volatile memory this one replaces — the same subject at a later time. It is retired pointing at this one; a pinned, durable or standing memory is refused.',
+      ),
     },
     handle: (facade, scope, args) => {
       if (args.id) {
-        const { id, workspace: _workspace, ...patch } = args;
-        return facade.memoryWrite(scope, { id, patch });
+        const { id, workspace: _workspace, supersedes, ...patch } = args;
+        return facade.memoryWrite(scope, { id, patch, ...(supersedes ? { supersedes } : {}) });
       }
       if (!args.workspace || !args.kind || !args.title || !args.content) {
         throw new StewardError('A new memory needs workspace, kind, title and content.', 'refused');
@@ -279,8 +286,19 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
         tags: args.tags,
         confidence: args.confidence,
         pinned: args.pinned,
+        shelf: args.shelf,
+        supersedes: args.supersedes,
       });
     },
+  }),
+  tool({
+    name: 'system_memory_retire',
+    ring: 2,
+    description:
+      'Retire a memory that no longer holds — a soft delete: it leaves recall at once, stays readable for thirty days and can be restored with restore: true. ' +
+      'Prefer this over editing a title to say "[obsolete]". A pinned memory or a standing convention is refused.',
+    schema: { id: ID, restore: z.boolean().optional() },
+    handle: (facade, scope, args) => facade.memoryRetire(scope, args),
   }),
   tool({
     name: 'system_memory_scope',

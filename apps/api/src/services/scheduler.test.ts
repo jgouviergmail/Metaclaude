@@ -904,6 +904,7 @@ describe('event triggers', () => {
 
     expect(await scheduler.onRunFinished(finished({ triggeredBy: 'automation' }))).toBe(0);
     expect(await scheduler.onRunFinished(finished({ triggeredBy: 'loop' }))).toBe(0);
+    expect(await scheduler.onRunFinished(finished({ triggeredBy: 'system' }))).toBe(0);
     expect(await scheduler.onRunFinished(finished({ sessionId: own }))).toBe(0);
     expect(kernel.submit).not.toHaveBeenCalled();
   });

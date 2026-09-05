@@ -13,6 +13,8 @@ import {
   CreateMemoryRequest,
   SaveKnowledgeRequest,
   MemoryKind,
+  MemoryShelf,
+  ReflexionInsightPayload,
 } from '@metaclaude/shared';
 import type { RunGenesis } from '@metaclaude/shared';
 import { z } from 'zod';
@@ -22,7 +24,7 @@ import { spreadInt } from '../http/query.js';
 import { fingerprint } from '../learning/consolidation.js';
 import { MemoryReconcileError } from '../learning/memory.js';
 import { reindexStale } from '../learning/reindex.js';
-import { listInsights, setInsightStatus } from '../learning/reflexion.js';
+import { listInsights, setInsightPayload, setInsightStatus } from '../learning/reflexion.js';
 
 /**
  * Where each memory was learned, as somewhere an operator can actually go.
@@ -71,9 +73,10 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       limit?: string;
       offset?: string;
       scope?: string;
+      includeRetired?: string;
     };
   }>('/api/memory', async (request, reply) => {
-    const { workspaceId, kind, search, limit, offset, scope } = request.query;
+    const { workspaceId, kind, search, limit, offset, scope, includeRetired } = request.query;
 
     // `scope=global` means "only unscoped memories"; a workspace id means "that
     // workspace plus globals"; neither means "everything".
@@ -88,6 +91,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       ...(search ? { search } : {}),
       ...spreadInt('limit', limit, { min: 1, max: 500 }),
       ...spreadInt('offset', offset, { min: 0, max: 1_000_000 }),
+      ...(includeRetired === '1' || includeRetired === 'true' ? { includeRetired: true } : {}),
     });
 
     return reply.send({
@@ -135,15 +139,33 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
     confidence: z.number().min(0).max(1).optional(),
     pinned: z.boolean().optional(),
     kind: MemoryKind.optional(),
+    shelf: MemoryShelf.optional(),
+    /** `true` retires (a soft delete, restorable for thirty days), `false` restores. */
+    retired: z.boolean().optional(),
   });
 
   app.patch<{ Params: { id: string } }>('/api/memory/:id', async (request, reply) => {
-    requireOperator(request);
+    const actor = requireOperator(request);
     const parsed = UpdateMemory.safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, 'Invalid request.');
+    const { retired, ...patch } = parsed.data;
 
-    const memory = await context.memory.update(request.params.id, parsed.data);
+    let memory = await context.memory.update(request.params.id, patch);
     if (!memory) throw new HttpError(404, 'Memory not found.');
+    if (retired !== undefined && retired !== (memory.retiredAt !== null)) {
+      try {
+        memory = (retired ? context.memory.retire(memory.id) : context.memory.restore(memory.id)) ?? memory;
+      } catch (error) {
+        if (error instanceof MemoryReconcileError) throw new HttpError(error.statusCode, error.message);
+        throw error;
+      }
+      context.audit.record({
+        actor: actor.username,
+        action: retired ? 'memory.retire' : 'memory.restore',
+        target: memory.id,
+        ipAddress: requestIp(context, request),
+      });
+    }
     return reply.send({ memory });
   });
 
@@ -288,11 +310,50 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
   });
 
   /**
-   * Accept a proposed skill.
+   * Keep a note the memory gate refused.
    *
-   * The generated skill is only installed by this explicit action — the
-   * reflexion pass never writes to the registry itself.
+   * The gate is a model and it is wrong sometimes; what makes that safe is
+   * that every verdict rides the run's insight and the operator can overturn
+   * one here in a gesture. The memory is written the way the gate would have
+   * written it — the level's shelf, the run as its source — and the payload
+   * records the id so the button cannot be pressed twice.
    */
+  app.post<{ Params: { id: string } }>('/api/insights/:id/keep', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = z.object({ index: z.number().int().min(0) }).safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'Name the note to keep by its index.');
+
+    const insight = listInsights(context.db, { limit: 500 }).find((i) => i.id === request.params.id);
+    if (!insight) throw new HttpError(404, 'Insight not found.');
+    const payload = insight.payload ? ReflexionInsightPayload.safeParse(JSON.parse(insight.payload)) : null;
+    if (!payload?.success) throw new HttpError(400, 'That insight carries no gate decisions.');
+    const decision = payload.data.decisions[parsed.data.index];
+    if (!decision) throw new HttpError(400, 'No such note on that insight.');
+    if (decision.memoryId) throw new HttpError(409, 'That note is already a memory.');
+
+    const { memory } = await context.memory.remember({
+      workspaceId: insight.workspaceId,
+      kind: decision.kind,
+      title: decision.title,
+      content: decision.content,
+      tags: decision.tags,
+      shelf: decision.level === 'fact' ? 'volatile' : 'durable',
+      sourceRunId: insight.runId,
+    });
+    decision.memoryId = memory.id;
+    decision.outcome = 'kept';
+    decision.shelf = memory.shelf;
+    setInsightPayload(context.db, insight.id, JSON.stringify(payload.data));
+    context.audit.record({
+      actor: actor.username,
+      action: 'memory.create',
+      target: memory.id,
+      detail: `kept from insight ${insight.id}, against the gate's "${decision.level}"`,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.status(201).send({ memory });
+  });
+
   /**
    * Apply a consolidation the operator has read and agreed with.
    *

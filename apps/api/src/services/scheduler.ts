@@ -391,7 +391,10 @@ export class Scheduler {
    * is skipped with a log line, as a due schedule would be.
    */
   async onRunFinished(run: Pick<Run, 'id' | 'workspaceId' | 'sessionId' | 'status' | 'triggeredBy' | 'category' | 'prompt' | 'error'>): Promise<number> {
-    if (run.triggeredBy === 'automation' || run.triggeredBy === 'loop') return 0;
+    // Nor a `system` run — the advisor's own analyses — which the steward's
+    // first production review noticed slipping past this guard while the
+    // documentation promised "a person, a token or a delegation".
+    if (run.triggeredBy === 'automation' || run.triggeredBy === 'loop' || run.triggeredBy === 'system') return 0;
     const event = run.status === 'failed' ? 'run_failed' : run.status === 'succeeded' ? 'run_succeeded' : null;
     if (!event) return 0;
 

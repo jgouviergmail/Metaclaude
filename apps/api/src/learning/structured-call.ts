@@ -27,6 +27,16 @@ export interface StructuredCallRequest {
   accept: (parsed: unknown) => boolean;
   model?: string;
   timeoutMs?: number;
+  /**
+   * Turns the CLI may take. One by default — a classifier, not an agent. The
+   * SDK delivers a schema-constrained answer through a hidden tool call, and
+   * on a long prompt the model sometimes spends its single turn producing
+   * prose before that call, which ends as "Reached maximum number of turns
+   * (1)" with no answer at all; a caller whose prompt is long says 2 or 3 —
+   * the memory gate measured six failures in thirty calls at one turn and
+   * two at two.
+   */
+  maxTurns?: number;
   /** Injectable for tests. */
   queryFn?: typeof sdkQuery;
 }
@@ -49,7 +59,7 @@ export async function structuredCall<T>(
         cwd: context.cwd,
         systemPrompt: request.systemPrompt,
         model: request.model ?? 'haiku',
-        maxTurns: 1,
+        maxTurns: request.maxTurns ?? 1,
         // Belt and braces: no tools offered, and none permitted.
         allowedTools: [],
         disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task'],

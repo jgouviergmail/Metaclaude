@@ -1,0 +1,93 @@
+{
+  "about": "The twenty-seven notes the reflexion pass wrote in production on 2026-09-05, in the order it wrote them, grouped by the run that produced them, with the verdict a person gave each one. `keep` is a durable memory worth having in the steward's workspace given its standing instructions, documentation, source code and live tools; `either` is defensible both ways and is not scored (the operator's brief format, which the language setting already carries; the kanban procedure; the remedy the operator's objection implied, a corollary of the rule beside it); `skip` is everything else. The bench replays them through the real gate prompt and reports recall of the keeps and how many skips were kept.",
+  "instructions": "# Metaclaude — the system's own workspace\n\nYou are Metaclaude working on Metaclaude. Ring 1 reads freely; ring 2 changes what a person can undo, audited in your name; irreversible changes are never yours. You have no shell and no file editor. Your tools: system_overview, system_doctor, system_audit, system_memories, system_memory_search, system_memory_write, system_memory_scope, system_insight_status, the board tools and the proposal tools. The documentation and the source code of the running version are copied into this workspace under docs/ and code/.",
+  "runs": [
+    {
+      "run": "greeting-and-health-check",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "semantic", "title": "Retrieval uses word-matching, not semantic search on this deployment", "content": "The embedder in place is hash-v1:512 (built-in, no network). The system_doctor output explicitly states: 'Retrieval matches words, not meaning.' When using system_memory_search or naming memories, use reusable exact words rather than paraphrases or synonyms, since semantic matching is not available." },
+        { "label": "skip", "kind": "semantic", "title": "System state layers are independent", "content": "A deployment showing 0 memories/automations/runs in the overview but with 424 audit entries and 5 vault secrets means the audit and vault layers retain history while the learning layers are empty. Don't conflate 'learning layer empty' with 'system is new' — check audit to understand actual deployment history." },
+        { "label": "skip", "kind": "procedural", "title": "Use system_doctor for quick health checks without permission", "content": "system_doctor is a ring-1 tool (no permission required) that runs comprehensive checks (~26s, ~12 checks) covering SQLite, audit chain, vault secrets, disk, backups, network, CLI version, and active runs. Useful for rapid health status before deeper investigation." },
+        { "label": "skip", "kind": "procedural", "title": "Check system_audit to understand deployment history and past failures", "content": "When system_doctor shows a populated audit trail (e.g., 424 entries), use system_audit to read that trail and determine deployment provenance, what operations have run, and whether failures occurred in the past 24h." }
+      ]
+    },
+    {
+      "run": "unsolicited-memory",
+      "failed": false,
+      "notes": [
+        { "label": "keep", "kind": "procedural", "title": "Do not create system memories without explicit user request", "content": "The assistant wrote a memory entry to global scope without being asked. The user objected to the unsolicited write and asked it to be deleted. Lesson: never proactively create, edit, or scope memories without explicit instruction from the user. If you think a memory would be useful, ask first or wait for the user to direct it." },
+        { "label": "skip", "kind": "semantic", "title": "System memory has no delete tool — only create, edit, move scope", "content": "system_memory_write creates or edits, and system_memory_scope moves between scopes, but neither supports deletion. Deletion is a user-facing action via the Dashboard. When a memory needs removal, the user must delete it themselves; the assistant can only empty its content or reduce its scope." },
+        { "label": "either", "kind": "procedural", "title": "If a memory was created in error, offer to empty or scope-reduce, then wait for user decision", "content": "When the user objects to a memory: offer to empty its content (leaving the ID but no data), or move it from global to workspace-only scope (so it won't be recalled elsewhere). Present both options clearly and wait for explicit user direction before making any change. Do not take action without consent." }
+      ]
+    },
+    {
+      "run": "morning-review-by-hand",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "procedural", "title": "Deployment health review workflow and toolchain", "content": "To brief an operator on last 24h deployment status, use this sequence: (1) system_overview, (2) system_runs (failed runs), (3) system_approvals, (4) system_insights, (5) system_automations, (6) system_doctor, (7) system_proposals. For each, check: failures to flag, reversible actions to take, items needing operator decision." },
+        { "label": "skip", "kind": "semantic", "title": "Reversible vs. irreversible operator actions", "content": "Some deployment actions are reversible (reject/re-accept an insight, pause/resume an automation, toggle Morning review) and can be safely applied by the AI if clearly correct. Others (cost model changes, approval decisions, changing defaults) are irreversible or high-consequence and must be surfaced with exact proposal and operator confirmation, not applied unilaterally." },
+        { "label": "either", "kind": "procedural", "title": "Deployment brief format for non-English operators", "content": "This operator prefers French for operational briefs (full brief in French, including terminology like 'le doctor', 'réversible', 'streak'). Structure: status line, three key findings ranked by consequence, actions taken, proposals (each categorized reversible/irreversible), and three specific asks back to operator." }
+      ]
+    },
+    {
+      "run": "morning-review-by-hand-2",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "procedural", "title": "system_insight_status tool rejects low-quality insights", "content": "When an insight has empty or trivial content (e.g., titled 'no reusable procedure' with blank body, or clearly duplicate of existing memory), reject it via system_insight_status to clean up the insight queue. This is reversible — operator can re-accept if needed." },
+        { "label": "skip", "kind": "semantic", "title": "Distinguish startup conversation cost from operational cost", "content": "A single conversational run at $0.61 is high per transaction but may be acceptable for initial setup. Flag cost patterns to operator without prescribing action — operator knows acceptable spend for their reliability/quality target. Surface the model and effort settings involved so operator can make the trade-off call." }
+      ]
+    },
+    {
+      "run": "event-triggers-card",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "semantic", "title": "L'API d'automatisation accepte des déclencheurs `event` qui ne sont jamais émis", "content": "Le schéma zod dans code/packages/shared/src/domain.ts:617-627 définit les déclencheurs de type event (run_failed, run_succeeded, session_idle, file_changed). system_automation_create réutilise ce schéma sans le restreindre. Mais Scheduler.validateTrigger (scheduler.ts:239-246) ne refuse pas les events — il ignore simplement qu'ils existent, et rien ne les déclenche jamais." },
+        { "label": "skip", "kind": "semantic", "title": "Deux des quatre événements définis n'ont aucune source d'émission dans le produit", "content": "Les quatre événements du schéma sont run_failed, run_succeeded, session_idle, et file_changed. Un grep sur l'ensemble de code/ ne sort que la définition du schéma, l'affichage web, et un test en scheduler.test.ts:195. Les événements session_idle et file_changed n'ont même pas de watcher implémenté." },
+        { "label": "skip", "kind": "semantic", "title": "Le formulaire web d'automatisation ne peut créer que cron, interval, ou manual", "content": "AutomationsPage.tsx:370-374 limite la création à trois types de déclencheurs. Le formulaire ne propose pas event comme option. La seule voie d'entrée pour créer une automatisation event est donc l'API directement. Aucune automatisation event n'existe actuellement dans le workspace." }
+      ]
+    },
+    {
+      "run": "event-triggers-card-2",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "procedural", "title": "Point d'accroche correct pour câbler les automatisations événementiques", "content": "Si l'on voulait implémenter le câblage plus tard, le point d'accroche est context.ts:742-756, pas push.ts:317 comme initialement suggéré. Deux pièges à prévoir : une automatisation sur run_failed dont le run échoue se re-déclencherait indéfiniment sans garde, et il faudrait restreindre l'énumération aux événements réellement émis." },
+        { "label": "skip", "kind": "procedural", "title": "Aucun éditeur disponible pour appliquer le patch proposé dans ce workspace", "content": "Les outils Write, Edit, et Bash sont dans disallowedTools pour ce workspace. L'assistant a pu lire le code et identifier le patch à appliquer, mais ne peut pas le porter dans le dépôt. L'application requiert une action manuelle ou un autre workspace avec les permissions nécessaires." }
+      ]
+    },
+    {
+      "run": "operator-preferences-card",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "semantic", "title": "Le déploiement utilise un système de mémoires persistantes via system_memory_write", "content": "Le workspace dispose de 7 mémoires existantes (vérifiées via system_memories). Ces mémoires survivent entre sessions et permettent aux agents de mémoriser la façon de travailler, les priorités et les préférences de l'opérateur. La commande clé est system_memory_write pour créer/mettre à jour ces mémoires." },
+        { "label": "either", "kind": "procedural", "title": "Processus de validation des priorités opérateur via le kanban", "content": "Quand une carte demande les priorités/préférences de l'opérateur : (1) vérifier l'état de la carte avec board_get pour voir les commentaires existants ; (2) consulter system_memories pour voir ce qui est déjà documenté ; (3) consulter system_runs pour chercher des preuves des préférences implicites ; (4) proposer une politique par défaut concrète en commentaire ; (5) attendre la validation de l'opérateur." },
+        { "label": "keep", "kind": "procedural", "title": "Rendre les réponses triviales : proposer plutôt que demander", "content": "Au lieu de laisser l'opérateur répondre à trois questions ouvertes (priorités, seuil d'interruption, préférences permanentes), proposer une politique par défaut avec assez de détail que l'opérateur puisse valider d'un simple 'ok' ou amender point par point. Cela réduit drastiquement la friction de la réponse." }
+      ]
+    },
+    {
+      "run": "operator-preferences-card-2",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "semantic", "title": "Convention du board : demandes via commentaires en attendant la révision du matin", "content": "Une mémoire existante documente que les demandes passent via le board plutôt que d'autres canaux, et qu'il existe une revue du matin pour les digérer. C'est un point de la question 2 (seuil d'interruption) qui était déjà partiellement répondu." },
+        { "label": "skip", "kind": "semantic", "title": "Prémisse de la carte périmée : board_get révèle 7 mémoires, pas 0", "content": "La description de la carte dit 'Le déploiement compte 0 mémoire (system_overview)' mais system_memories montre 7 entrées existantes. Il fallait corriger cette prémisse en commentaire pour que la réponse soit ancrée dans la réalité actuelle." }
+      ]
+    },
+    {
+      "run": "event-triggers-verified",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "semantic", "title": "Les déclencheurs event dans les automations système sont maintenant opérationnels", "content": "Les automations à déclencheur event (spécifiquement run_failed et run_succeeded) sont désormais implémentées et fonctionnelles via un dispatcher dans Scheduler.onRunFinished (code/apps/api/src/services/scheduler.ts:393-424), branché au hook du kernel dans context.ts:760. Les déclencheurs session_idle et file_changed restent non implémentés et sont refusés par validateTrigger." },
+        { "label": "skip", "kind": "semantic", "title": "Protection anti-boucle dans les automations événementielles", "content": "Le dispatcher implémente une garde anti-boucle qui exclut en bloc tous les runs produits par une automation ou un loop, plus la propre session du watcher. Cela prévient les boucles infinies quand une automation crée un run qui réussit/échoue et aurait déclenché une nouvelle automation." },
+        { "label": "skip", "kind": "semantic", "title": "Structure du code des automations système dans scheduler.ts", "content": "validateTrigger (scheduler.ts:239-246) valide les déclencheurs lors de la création et de la mise à jour, computeNextRun (scheduler.ts:248-262) retourne null pour manual et event, tick() sélectionne uniquement les lignes avec enabled=1 AND next_run_at IS NOT NULL, et onRunFinished (scheduler.ts:393-424) déclenche les automations événementielles." }
+      ]
+    },
+    {
+      "run": "event-triggers-verified-2",
+      "failed": false,
+      "notes": [
+        { "label": "skip", "kind": "procedural", "title": "Vérifier les automations événementielles via grep et analyse du dispatcher", "content": "Pour vérifier si une automation à déclencheur event est réellement implémentée, vérifier : (1) que validateTrigger n'interfère pas, (2) que computeNextRun retourne null pour ce type, (3) qu'il existe un dispatcher appelé au bon point d'accroche, (4) que les tests couvrent les cas edge (anti-boucle, contexte du run source, filtrage)." },
+        { "label": "skip", "kind": "semantic", "title": "Les runs système (dossiers advisor) passent la garde anti-chaîne mais méritent une clarification", "content": "Les automations déclenchées par des runs system (dossiers de l'advisor) ne sont pas bloquées par la garde anti-chaîne, alors que la documentation dit que la garde concerne une personne, un token ou une délégation. Il n'y a pas de risque réel de boucle, mais un dossier advisor qui échoue peut déclencher une automation run_failed. La doc ou le code mérite une clarification." }
+      ]
+    }
+  ]
+}

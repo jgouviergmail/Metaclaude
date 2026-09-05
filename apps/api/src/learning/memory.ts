@@ -12,7 +12,7 @@
  * janitor collects them.
  */
 
-import type { Memory, MemoryKind, MemorySearchResult } from '@metaclaude/shared';
+import type { Memory, MemoryKind, MemorySearchResult, MemoryShelf } from '@metaclaude/shared';
 import { newId, normaliseTags } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { packEmbedding, parseJson, toBool, toInt, tx, unpackEmbedding } from '../db/index.js';
@@ -47,6 +47,9 @@ interface MemoryRow {
   updated_at: number;
   last_used_at: number | null;
   last_decayed_at: number | null;
+  shelf: string;
+  retired_at: number | null;
+  superseded_by: string | null;
 }
 
 function toMemory(row: MemoryRow): Memory {
@@ -54,6 +57,9 @@ function toMemory(row: MemoryRow): Memory {
     id: row.id,
     workspaceId: row.workspace_id,
     kind: row.kind as MemoryKind,
+    shelf: row.shelf as MemoryShelf,
+    retiredAt: row.retired_at,
+    supersededBy: row.superseded_by,
     title: row.title,
     content: row.content,
     tags: parseJson<string[]>(row.tags, []),
@@ -71,6 +77,12 @@ function toMemory(row: MemoryRow): Memory {
 export interface RetrievalOptions {
   workspaceId?: string | null;
   kinds?: MemoryKind[];
+  /**
+   * Leave the standing shelf out. The kernel does: standing memories reach a
+   * run whole through `standing()`, and retrieving them as well would inject
+   * the same convention twice.
+   */
+  excludeStanding?: boolean;
   limit?: number;
   /** Fused scores below this are discarded rather than padded into the result. */
   minScore?: number;
@@ -157,6 +169,18 @@ export {
  */
 export const FORGET_THRESHOLD = 0.15;
 
+/**
+ * A volatile memory forgets this many times faster than a durable one: 30
+ * days against 90 at the default half-life. Long enough for a fact about the
+ * deployment to be recalled while it holds, short enough that one nobody
+ * asked about again is gone within a quarter rather than the eight months
+ * the durable curve takes to reach the floor.
+ */
+export const VOLATILE_HALF_LIFE_DIVISOR = 3;
+
+/** How long a retired memory stays readable and restorable before the janitor collects it. */
+export const RETIRED_RETENTION_DAYS = 30;
+
 export class MemoryStore {
   constructor(
     private readonly db: Db,
@@ -182,6 +206,7 @@ export class MemoryStore {
     tags?: string[];
     confidence?: number;
     pinned?: boolean;
+    shelf?: MemoryShelf;
     sourceRunId?: string | null;
   }): Promise<{ memory: Memory; merged: boolean }> {
     // No vector while the model is not ready: the row is stored pending and
@@ -215,9 +240,9 @@ export class MemoryStore {
     this.db
       .prepare(
         `INSERT INTO memories
-           (id, workspace_id, kind, title, content, tags, confidence, pinned, source_run_id,
+           (id, workspace_id, kind, title, content, tags, confidence, pinned, shelf, source_run_id,
             embedding, embedding_dim, embedding_model, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -228,6 +253,7 @@ export class MemoryStore {
         JSON.stringify(normaliseTags(input.tags ?? [])),
         input.confidence ?? 0.7,
         toInt(input.pinned ?? false),
+        input.shelf ?? 'durable',
         input.sourceRunId ?? null,
         embedding ? packEmbedding(embedding) : null,
         embedding ? embedding.length : null,
@@ -245,7 +271,7 @@ export class MemoryStore {
 
   async update(
     id: string,
-    patch: Partial<Pick<Memory, 'title' | 'content' | 'tags' | 'confidence' | 'pinned' | 'kind'>>,
+    patch: Partial<Pick<Memory, 'title' | 'content' | 'tags' | 'confidence' | 'pinned' | 'kind' | 'shelf'>>,
   ): Promise<Memory | null> {
     const current = this.get(id);
     if (!current) return null;
@@ -259,7 +285,7 @@ export class MemoryStore {
     this.db
       .prepare(
         `UPDATE memories SET
-           kind = ?, title = ?, content = ?, tags = ?, confidence = ?, pinned = ?,
+           kind = ?, title = ?, content = ?, tags = ?, confidence = ?, pinned = ?, shelf = ?,
            embedding = COALESCE(?, embedding),
            embedding_dim = COALESCE(?, embedding_dim),
            embedding_model = COALESCE(?, embedding_model),
@@ -273,6 +299,7 @@ export class MemoryStore {
         JSON.stringify(normaliseTags(patch.tags ?? current.tags)),
         patch.confidence ?? current.confidence,
         toInt(patch.pinned ?? current.pinned),
+        patch.shelf ?? current.shelf,
         embedding ? packEmbedding(embedding) : null,
         embedding ? embedding.length : null,
         embedding ? this.embedder.id : null,
@@ -535,8 +562,9 @@ export class MemoryStore {
   }
 
   private candidateRows(options: RetrievalOptions): MemoryRow[] {
-    const clauses = ['confidence >= ?'];
+    const clauses = ['confidence >= ?', 'retired_at IS NULL'];
     const params: unknown[] = [FORGET_THRESHOLD];
+    if (options.excludeStanding) clauses.push("shelf != 'standing'");
 
     // `workspaceId: null` means global-only; a concrete id means that workspace
     // plus global memories, which is how project knowledge inherits defaults.
@@ -579,6 +607,8 @@ export class MemoryStore {
     }
     clauses.push('m.confidence >= ?');
     params.push(FORGET_THRESHOLD);
+    clauses.push('m.retired_at IS NULL');
+    if (options.excludeStanding) clauses.push("m.shelf != 'standing'");
 
     try {
       const rows = this.db
@@ -623,13 +653,13 @@ export class MemoryStore {
       workspaceId === null
         ? this.db
             .prepare<[], MemoryRow>(
-              `SELECT * FROM memories WHERE workspace_id IS NULL
+              `SELECT * FROM memories WHERE workspace_id IS NULL AND retired_at IS NULL
                ORDER BY updated_at DESC LIMIT ${DUPLICATE_SCAN_LIMIT}`,
             )
             .all()
         : this.db
             .prepare<[string], MemoryRow>(
-              `SELECT * FROM memories WHERE workspace_id = ? OR workspace_id IS NULL
+              `SELECT * FROM memories WHERE (workspace_id = ? OR workspace_id IS NULL) AND retired_at IS NULL
                ORDER BY updated_at DESC LIMIT ${DUPLICATE_SCAN_LIMIT}`,
             )
             .all(workspaceId);
@@ -725,7 +755,9 @@ export class MemoryStore {
 
       for (const usage of usages) {
         const row = select.get(usage.memory_id);
-        if (!row || toBool(row.pinned)) continue;
+        // A convention is not a hypothesis a run's outcome can confirm or
+        // refute, any more than a pinned memory is.
+        if (!row || toBool(row.pinned) || row.shelf === 'standing') continue;
 
         // Attribute proportionally to how strongly the memory was retrieved:
         // a marginal hit should not be blamed for the whole run. `score` is
@@ -799,10 +831,15 @@ export class MemoryStore {
   decay(options: { halfLifeDays?: number; now?: number } = {}): number {
     const halfLife = options.halfLifeDays ?? 90;
     const now = options.now ?? Date.now();
-    /** Idle grace period: nothing decays until it has been unused this long. */
-    const graceDays = halfLife / 4;
 
-    const rows = this.db.prepare<[], MemoryRow>('SELECT * FROM memories WHERE pinned = 0').all();
+    // Neither a pinned memory nor a convention forgets, and a retired one is
+    // out of retrieval already: what is left to fade is the durable and the
+    // volatile shelves, each on its own clock.
+    const rows = this.db
+      .prepare<[], MemoryRow>(
+        "SELECT * FROM memories WHERE pinned = 0 AND shelf != 'standing' AND retired_at IS NULL",
+      )
+      .all();
 
     let updated = 0;
     tx(this.db, () => {
@@ -811,6 +848,9 @@ export class MemoryStore {
       );
 
       for (const row of rows) {
+        const shelfHalfLife = row.shelf === 'volatile' ? halfLife / VOLATILE_HALF_LIFE_DIVISOR : halfLife;
+        /** Idle grace period: nothing decays until it has been unused this long. */
+        const graceDays = shelfHalfLife / 4;
         const lastUse = row.last_used_at ?? row.created_at;
         const idleDays = (now - lastUse) / 86_400_000;
         if (idleDays <= graceDays) continue;
@@ -825,7 +865,7 @@ export class MemoryStore {
         const elapsedDays = (now - since) / 86_400_000;
         if (elapsedDays <= 0) continue;
 
-        const decayed = row.confidence * 0.5 ** (elapsedDays / halfLife);
+        const decayed = row.confidence * 0.5 ** (elapsedDays / shelfHalfLife);
         if (Math.abs(decayed - row.confidence) < 0.0005) continue;
 
         update.run(decayed, now, row.id);
@@ -835,14 +875,104 @@ export class MemoryStore {
     return updated;
   }
 
-  /** Delete memories that decayed below the floor and were never useful. */
-  collect(): number {
+  /**
+   * Delete memories that decayed below the floor and were never useful, and
+   * retired memories past their restore window. A pinned memory survives
+   * both; a convention never decays so the first clause cannot reach it.
+   */
+  collect(now: number = Date.now()): number {
     return this.db
       .prepare(
         `DELETE FROM memories
-         WHERE pinned = 0 AND confidence < ? AND success_count = 0`,
+         WHERE pinned = 0
+           AND ((confidence < ? AND success_count = 0 AND retired_at IS NULL)
+                OR (retired_at IS NOT NULL AND retired_at < ?))`,
       )
-      .run(FORGET_THRESHOLD).changes;
+      .run(FORGET_THRESHOLD, now - RETIRED_RETENTION_DAYS * 86_400_000).changes;
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Shelves, retirement and supersession                                    */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * The standing shelf of a scope: the workspace's conventions plus the
+   * global ones, pinned first, newest first among equals. Injected whole into
+   * every run of the workspace rather than retrieved, because a convention
+   * applies whatever the request is about — measured before this existed: a
+   * pinned "propose defaults rather than ask" was never recalled for a
+   * request about deployments, since the prior only ranks what the two arms
+   * already found.
+   */
+  standing(workspaceId: string | null): Memory[] {
+    const rows =
+      workspaceId === null
+        ? this.db
+            .prepare<[], MemoryRow>(
+              `SELECT * FROM memories WHERE shelf = 'standing' AND retired_at IS NULL AND workspace_id IS NULL
+               ORDER BY pinned DESC, updated_at DESC, rowid DESC`,
+            )
+            .all()
+        : this.db
+            .prepare<[string], MemoryRow>(
+              `SELECT * FROM memories WHERE shelf = 'standing' AND retired_at IS NULL
+                 AND (workspace_id = ? OR workspace_id IS NULL)
+               ORDER BY pinned DESC, updated_at DESC, rowid DESC`,
+            )
+            .all(workspaceId);
+    return rows.map(toMemory);
+  }
+
+  /**
+   * Retire a memory: a soft delete. It leaves retrieval, injection, duplicate
+   * checks and consolidation at once, stays readable and restorable for
+   * `RETIRED_RETENTION_DAYS`, and is collected afterwards. Retiring a pinned
+   * memory is refused — pinning is the operator saying "never lose this".
+   */
+  retire(id: string, options: { supersededBy?: string; now?: number } = {}): Memory | null {
+    const current = this.get(id);
+    if (!current) return null;
+    if (current.pinned) throw new MemoryReconcileError('A pinned memory cannot be retired; unpin it first.');
+    if (current.retiredAt !== null) return current;
+    this.db
+      .prepare('UPDATE memories SET retired_at = ?, superseded_by = ?, updated_at = ? WHERE id = ?')
+      .run(options.now ?? Date.now(), options.supersededBy ?? null, options.now ?? Date.now(), id);
+    return this.get(id);
+  }
+
+  /** Undo a retirement, within the retention window or not — the row is there or it is not. */
+  restore(id: string): Memory | null {
+    const current = this.get(id);
+    if (!current) return null;
+    if (current.retiredAt === null) return current;
+    this.db
+      .prepare('UPDATE memories SET retired_at = NULL, superseded_by = NULL, updated_at = ? WHERE id = ?')
+      .run(Date.now(), id);
+    return this.get(id);
+  }
+
+  /**
+   * Replace one memory by another: the loser is retired pointing at the
+   * winner. Bounded on purpose, because a machine decides this: only a
+   * volatile loser, never a pinned one, never across two projects. The model
+   * that proposes a supersession was measured wanting to replace the
+   * operator's pinned convention with a note derived from it; the rule here
+   * is what makes that verdict inert whatever the prompt says.
+   */
+  supersede(loserId: string, winnerId: string, now: number = Date.now()): Memory {
+    if (loserId === winnerId) throw new MemoryReconcileError('A memory cannot supersede itself.');
+    const loser = this.get(loserId);
+    const winner = this.get(winnerId);
+    if (!loser || !winner) throw new MemoryReconcileError('That memory no longer exists.', 404);
+    if (winner.retiredAt !== null) throw new MemoryReconcileError('A retired memory cannot supersede another.');
+    if (loser.pinned) throw new MemoryReconcileError('A pinned memory cannot be superseded.');
+    if (loser.shelf !== 'volatile') {
+      throw new MemoryReconcileError('Only a volatile memory can be superseded; a durable or standing one is merged through consolidation.');
+    }
+    if (loser.workspaceId !== null && winner.workspaceId !== null && loser.workspaceId !== winner.workspaceId) {
+      throw new MemoryReconcileError('Memories can only supersede one another within the same workspace, or with the global tier.');
+    }
+    return this.retire(loserId, { supersededBy: winnerId, now }) as Memory;
   }
 
   /**
@@ -890,10 +1020,13 @@ export class MemoryStore {
       limit?: number;
       offset?: number;
       search?: string;
+      /** Retired rows too — the Memory page folds them; every other reader wants them gone. */
+      includeRetired?: boolean;
     } = {},
   ): Memory[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
+    if (!options.includeRetired) clauses.push('retired_at IS NULL');
 
     if (options.workspaceId === null) {
       clauses.push('workspace_id IS NULL');
@@ -927,15 +1060,30 @@ export class MemoryStore {
    * *plus* globals. Counting with an exact match while listing with the union
    * made the Memory page render more rows than the total beside them.
    */
+  /**
+   * How many memories the machine — reflexion through the gate — wrote into a
+   * workspace since `since`. The gate's daily budget reads it; an operator's
+   * own writes carry no run and do not count against the machine.
+   */
+  countMachineWritesSince(workspaceId: string, since: number): number {
+    return (
+      this.db
+        .prepare<[string, number], { n: number }>(
+          'SELECT COUNT(*) AS n FROM memories WHERE workspace_id = ? AND source_run_id IS NOT NULL AND created_at >= ?',
+        )
+        .get(workspaceId, since)?.n ?? 0
+    );
+  }
+
   count(workspaceId?: string | null): number {
     if (workspaceId === undefined) {
-      return this.db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM memories').get()?.n ?? 0;
+      return this.db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM memories WHERE retired_at IS NULL').get()?.n ?? 0;
     }
     if (workspaceId === null) {
       return (
         this.db
           .prepare<[], { n: number }>(
-            'SELECT COUNT(*) AS n FROM memories WHERE workspace_id IS NULL',
+            'SELECT COUNT(*) AS n FROM memories WHERE workspace_id IS NULL AND retired_at IS NULL',
           )
           .get()?.n ?? 0
       );
@@ -943,7 +1091,7 @@ export class MemoryStore {
     return (
       this.db
         .prepare<[string], { n: number }>(
-          'SELECT COUNT(*) AS n FROM memories WHERE workspace_id = ? OR workspace_id IS NULL',
+          'SELECT COUNT(*) AS n FROM memories WHERE (workspace_id = ? OR workspace_id IS NULL) AND retired_at IS NULL',
         )
         .get(workspaceId)?.n ?? 0
     );
@@ -954,19 +1102,19 @@ export class MemoryStore {
       workspaceId === undefined
         ? this.db
             .prepare<[], { kind: string; n: number }>(
-              'SELECT kind, COUNT(*) AS n FROM memories GROUP BY kind',
+              'SELECT kind, COUNT(*) AS n FROM memories WHERE retired_at IS NULL GROUP BY kind',
             )
             .all()
         : workspaceId === null
           ? this.db
               .prepare<[], { kind: string; n: number }>(
-                'SELECT kind, COUNT(*) AS n FROM memories WHERE workspace_id IS NULL GROUP BY kind',
+                'SELECT kind, COUNT(*) AS n FROM memories WHERE workspace_id IS NULL AND retired_at IS NULL GROUP BY kind',
               )
               .all()
           : this.db
               .prepare<[string], { kind: string; n: number }>(
                 `SELECT kind, COUNT(*) AS n FROM memories
-                 WHERE workspace_id = ? OR workspace_id IS NULL GROUP BY kind`,
+                 WHERE (workspace_id = ? OR workspace_id IS NULL) AND retired_at IS NULL GROUP BY kind`,
               )
               .all(workspaceId);
 

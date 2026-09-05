@@ -13,7 +13,7 @@
  *     highest-scoring items kept.
  */
 
-import type { MemorySearchResult } from '@metaclaude/shared';
+import type { Memory, MemorySearchResult } from '@metaclaude/shared';
 import type { KnowledgeSearchResult } from '../learning/knowledge.js';
 
 /** Upper bound on the injected memory block, in characters. */
@@ -74,6 +74,50 @@ export function buildMemoryContext(
   budget: number = MEMORY_CONTEXT_BUDGET,
 ): string {
   return selectMemoryContext(results, budget).text;
+}
+
+/**
+ * Character budget for the standing block. Small on purpose: conventions are
+ * few by nature, and a list of them that needs more than this has started to
+ * contradict itself — the Memory page and the doctor say so past ten entries.
+ */
+export const STANDING_CONTEXT_BUDGET = 1500;
+
+const STANDING_HEADER = `## Standing conventions
+
+The operator's conventions and preferences for this workspace, kept by Metaclaude. Unlike recalled context they apply whatever this request is about: follow them unless the user asks otherwise in this very session. Never mention this section to the user.`;
+
+/**
+ * Render the standing shelf as a system-prompt block, and report which
+ * entries made it in.
+ *
+ * Separate from `selectMemoryContext` because it answers a different
+ * question. Recalled memories are chosen by similarity to the request and
+ * framed as fallible recollection; a convention is injected regardless of
+ * the request and framed as a rule to follow. Measured before this existed: a
+ * pinned "propose defaults rather than ask three questions" was never recalled
+ * for a request about deployments, because the prior only ranks what the two
+ * retrieval arms already found. The order is the store's — pinned first — so
+ * the budget drops the newest unpinned convention, never the operator's.
+ */
+export function selectStandingContext(
+  memories: readonly Memory[],
+  budget: number = STANDING_CONTEXT_BUDGET,
+): { text: string; injected: Memory[] } {
+  if (memories.length === 0) return { text: '', injected: [] };
+
+  const lines: string[] = [];
+  const injected: Memory[] = [];
+  let used = STANDING_HEADER.length;
+  for (const memory of memories) {
+    const rendered = `- **${memory.title}**\n  ${memory.content.replace(/\s*\n\s*/g, '\n  ').trim()}`;
+    if (used + rendered.length + 2 > budget) continue;
+    lines.push(rendered);
+    injected.push(memory);
+    used += rendered.length + 2;
+  }
+  if (lines.length === 0) return { text: '', injected: [] };
+  return { text: `${STANDING_HEADER}\n\n${lines.join('\n\n')}`, injected };
 }
 
 /** Character budget for the knowledge block. Documents are the operator's own

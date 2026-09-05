@@ -144,6 +144,16 @@ describe('grouping', () => {
     }
   });
 
+  it('never groups a retired memory, as seed or as neighbour', async () => {
+    const ids = await french();
+    store.retire(ids[0] as string);
+
+    await consolidator(arbiter()).sweep();
+
+    for (const group of asked) expect(group.ids).not.toContain(ids[0]);
+    expect(asked.length).toBeGreaterThan(0);
+  });
+
   it('leaves a memory with no neighbour alone, at no cost', async () => {
     await store.remember({
       workspaceId: wsA,

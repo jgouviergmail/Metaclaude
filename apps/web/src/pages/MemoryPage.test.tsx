@@ -9,7 +9,7 @@
  * match over whatever happened to be loaded.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { toast } from 'sonner';
@@ -36,6 +36,7 @@ const { apiMock } = vi.hoisted(() => ({
     setInsightStatus: vi.fn(),
     synthesiseSkill: vi.fn(),
     installSkillFromInsight: vi.fn(),
+    keepInsightNote: vi.fn(),
     knowledge: {
       list: vi.fn(),
       get: vi.fn(),
@@ -65,6 +66,9 @@ const memory = (id: string, title: string, over: Record<string, unknown> = {}) =
   useCount: 3,
   successCount: 2,
   pinned: false,
+  shelf: 'durable',
+  retiredAt: null,
+  supersededBy: null,
   sourceRunId: null,
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,
@@ -559,5 +563,128 @@ describe('the recall box tells the truth about the regime', () => {
     expect(await screen.findByLabelText('Search memory by words')).toBeDefined();
     expect(screen.queryByText('Semantic recall')).toBeNull();
     expect(screen.getByText(/matches words, not meaning/)).toBeDefined();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Shelves, retirement, and the gate's decisions                              */
+/* -------------------------------------------------------------------------- */
+
+describe('shelves and retirement', () => {
+  it('badges a convention and a fact, folds the retired ones closed, and restores from the fold', async () => {
+    apiMock.memory.mockResolvedValue({
+      memories: [
+        memory('mem_rule', 'Propose defaults', { shelf: 'standing', pinned: true }),
+        memory('mem_fact', 'API port', { shelf: 'volatile' }),
+        memory('mem_plain', 'Plain lesson', { shelf: 'durable' }),
+        memory('mem_old', 'Form offers three triggers', { shelf: 'volatile', retiredAt: 1, supersededBy: 'mem_fact' }),
+      ],
+      sources: {},
+    });
+    apiMock.updateMemory.mockResolvedValue({ memory: memory('mem_old', 'Form offers three triggers') });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Propose defaults');
+
+    expect(screen.getByText('standing')).toBeTruthy();
+    expect(screen.getByText('volatile')).toBeTruthy();
+    // The list asked for the retired rows, and shows them only in the fold.
+    expect(apiMock.memory).toHaveBeenCalledWith(expect.objectContaining({ includeRetired: true }));
+    const fold = screen.getByTestId('retired-memories') as HTMLDetailsElement;
+    expect(fold.open).toBe(false);
+    expect(within(fold).getByText('Form offers three triggers')).toBeTruthy();
+    expect(within(fold).getByText(/replaced by a newer memory/)).toBeTruthy();
+    // Not on a card: a retired memory has left recall.
+    expect(screen.getAllByText('Form offers three triggers')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore Form offers three triggers' }));
+    await waitFor(() => expect(apiMock.updateMemory).toHaveBeenCalledWith('mem_old', { retired: false }));
+  });
+
+  it('filters the cards by shelf on the client', async () => {
+    apiMock.memory.mockResolvedValue({
+      memories: [
+        memory('mem_rule', 'Propose defaults', { shelf: 'standing' }),
+        memory('mem_fact', 'API port', { shelf: 'volatile' }),
+      ],
+      sources: {},
+    });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Propose defaults');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volatile' }));
+    expect(screen.queryByText('Propose defaults')).toBeNull();
+    expect(screen.getByText('API port')).toBeTruthy();
+  });
+
+  it('retires from the card menu and moves a memory to another shelf', async () => {
+    apiMock.memory.mockResolvedValue({ memories: [memory('mem_1', 'Préavis de résiliation')], sources: {} });
+    apiMock.updateMemory.mockResolvedValue({ memory: memory('mem_1', 'Préavis de résiliation') });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    const open = () => {
+      const trigger = screen.getByRole('button', { name: 'Actions for Préavis de résiliation' });
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.click(trigger);
+    };
+    open();
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Retire/ }));
+    await waitFor(() => expect(apiMock.updateMemory).toHaveBeenCalledWith('mem_1', { retired: true }));
+
+    open();
+    // The shelf entries are checkable: the current one is announced as chosen.
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Standing/ }));
+    await waitFor(() => expect(apiMock.updateMemory).toHaveBeenCalledWith('mem_1', { shelf: 'standing' }));
+  });
+
+  it('posts the chosen shelf when adding a memory', async () => {
+    apiMock.createMemory.mockResolvedValue({ memory: memory('mem_new', 'New'), merged: false });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add memory' })[0]!);
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Briefs in French' } });
+    fireEvent.change(screen.getByLabelText('Content'), { target: { value: 'Every brief is written in French.' } });
+    fireEvent.change(screen.getByLabelText('Shelf'), { target: { value: 'standing' } });
+    // The confirm button shares the header button's name; it is the last one rendered.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add memory' }).at(-1)!);
+
+    await waitFor(() => expect(apiMock.createMemory).toHaveBeenCalledWith(expect.objectContaining({ shelf: 'standing', title: 'Briefs in French' })));
+  });
+});
+
+describe('the gate’s decisions on an insight', () => {
+  const payload = {
+    kind: 'reflexion',
+    decisions: [
+      { title: 'Kept one', content: 'c', kind: 'semantic', tags: [], level: 'fact', outcome: 'kept', reason: 'holds', memoryId: 'mem_k', shelf: 'volatile' },
+      { title: 'Refused one', content: 'c', kind: 'semantic', tags: [], level: 'state', outcome: 'skipped', reason: 'changes next release', memoryId: null, shelf: null },
+    ],
+  };
+
+  it('lists each note with its verdict and offers to keep a refused one', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [{ id: 'ins_1', workspaceId: null, runId: 'run_1', kind: 'lesson', title: 'A run', body: 'ignored', confidence: 0.7, status: 'new', payload: JSON.stringify(payload), createdAt: 0 }],
+    });
+    apiMock.keepInsightNote.mockResolvedValue({ memory: memory('mem_new', 'Refused one') });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Kept one');
+
+    expect(screen.getByText('kept')).toBeTruthy();
+    expect(screen.getByText('skipped')).toBeTruthy();
+    expect(screen.getByText(/changes next release/)).toBeTruthy();
+    expect(screen.queryByText('ignored')).toBeNull();
+    // Only the refused note can be kept.
+    expect(screen.queryByRole('button', { name: 'Keep Kept one' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep Refused one' }));
+    await waitFor(() => expect(apiMock.keepInsightNote).toHaveBeenCalledWith('ins_1', 1));
+  });
+
+  it('falls back to the body when the payload is not the gate’s', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [{ id: 'ins_2', workspaceId: null, runId: null, kind: 'lesson', title: 'Old style', body: 'the body', confidence: 0.7, status: 'new', payload: null, createdAt: 0 }],
+    });
+    renderWithProviders(<MemoryPage />);
+    expect(await screen.findByText('the body')).toBeTruthy();
   });
 });

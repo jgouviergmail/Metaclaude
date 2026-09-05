@@ -535,6 +535,25 @@ restates the code is noise; one that records a decision or a trap is not.
   now have an emitter in `Scheduler.onRunFinished`; the other two are refused
   at creation, and `EMITTED_AUTOMATION_EVENTS` is the list a new emitter
   extends.
+- **A pinned memory is not an injected one.** The search scores only what its
+  two arms already found, so a pinned "propose defaults rather than ask" was
+  never recalled for a request about deployments — the +0.35 prior ranks, it
+  does not retrieve. A convention has to reach the run whether or not the
+  prompt resembles it: `MemoryStore.standing()` and `selectStandingContext`
+  inject the standing shelf whole, and the similarity search excludes it or
+  the same rule arrives twice.
+- **A gate test that fills every field drives one branch of every tool.** The
+  first version of the memory gate's test passed on the exact defect it was
+  written for, because `system_memory_write` with `id` set is an *edit* that
+  spreads its arguments — the creation branch that hand-picked four fields of
+  six was never reached. Same lesson in `tool-forwarding.test.ts`: every
+  optional removed in turn, not only everything filled. And the same for the
+  gate's own measurement: the per-note simulation kept three to five wrong
+  notes, the real batched call kept up to nine — measure the call that ships,
+  with the instructions it will actually be shown, never a stand-in. And when
+  the rules stop moving the number, change the model before the prompt again:
+  sonnet landed on the same four or five as haiku, which said the residue was
+  in the notes, not the judge.
 - **A class declared beside `vi.mock` is in its temporal dead zone when the
   factory runs.** The factories are hoisted above every top-level statement,
   so `ApiError` defined at module level and referenced from the factory

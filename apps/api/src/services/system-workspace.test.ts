@@ -197,6 +197,9 @@ describe('what it writes into the workspace', () => {
     expect(claude).toContain('9.9.9');
     expect(claude).toContain('mcp__metaclaude_system__system_overview');
     expect(claude).toContain('French');
+    // What it may remember, and that a changed fact is replaced rather than annotated.
+    expect(claude).toContain('## What you remember');
+    expect(claude).toContain('supersedes');
     expect(existsSync(join(workspace.path, 'SYSTEM-MAP.md'))).toBe(true);
     expect(readFileSync(join(workspace.path, 'docs', 'ARCHITECTURE.md'), 'utf8')).toContain('Architecture');
     expect(existsSync(join(workspace.path, 'docs', 'guide', '01-getting-started.md'))).toBe(true);

@@ -59,3 +59,18 @@ export function contentLanguageDirective(language: ContentLanguage | null): stri
     'quoted from the project — commands, identifiers, file paths, error text.'
   );
 }
+
+/**
+ * Append the language directive to a system prompt, when there is one.
+ *
+ * At the end rather than the start: the schema rules above it are what the
+ * call is *for*, and a language instruction that displaces them is how a model
+ * comes back with prose instead of JSON. Shared by every tool-less pass —
+ * reflexion, consolidation, synthesis, the memory gate.
+ */
+export function withLanguage(prompt: string, language: ContentLanguage | null): string {
+  const directive = contentLanguageDirective(language);
+  return directive ? `${prompt}
+
+${directive}` : prompt;
+}

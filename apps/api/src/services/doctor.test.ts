@@ -126,6 +126,37 @@ describe('the memory check', () => {
     expect(check.detail).toContain('2000');
   });
 
+  /**
+   * The shelves. A standing convention is injected into every run of its
+   * scope, so a scope past ten of them is warned about; what the janitor
+   * will do about retired rows and never-recalled volatile facts is said in
+   * the detail rather than counted as a problem.
+   */
+  it('warns past ten standing conventions in one scope, and tells what the janitor will do', async () => {
+    db.prepare(
+      `INSERT INTO workspaces (id, name, slug, path, created_at, updated_at)
+       VALUES ('ws_a', 'A', 'a', '/tmp/a', ?, ?)`,
+    ).run(NOW, NOW);
+    fill('ws_a', 5);
+    db.prepare("UPDATE memories SET shelf = 'standing' WHERE id IN ('mem_ws_a_0','mem_ws_a_1')").run();
+    db.prepare("UPDATE memories SET retired_at = ? WHERE id = 'mem_ws_a_2'").run(NOW);
+    db.prepare("UPDATE memories SET shelf = 'volatile', created_at = ? WHERE id = 'mem_ws_a_3'").run(NOW - 40 * 86_400_000);
+
+    const calm = (await makeDoctor().run()).checks.find((c) => c.name === 'memory')!;
+    expect(calm.status).toBe('ok');
+    expect(calm.detail).toContain('1 retired');
+    expect(calm.detail).toContain('1 volatile fact older than a month');
+
+    fill('ws_a', 11, 10);
+    db.prepare("UPDATE memories SET shelf = 'standing' WHERE workspace_id = 'ws_a' AND id LIKE 'mem_ws_a_1_'").run();
+    db.prepare("UPDATE memories SET shelf = 'standing' WHERE id = 'mem_ws_a_20'").run();
+
+    const loud = (await makeDoctor().run()).checks.find((c) => c.name === 'memory')!;
+    expect(loud.status).toBe('warn');
+    expect(loud.summary).toMatch(/standing conventions/);
+    expect(loud.detail).toContain('injected into every run');
+  });
+
   it('names the workspace whose scope is the crowded one', async () => {
     db.prepare(
       `INSERT INTO workspaces (id, name, slug, path, created_at, updated_at)

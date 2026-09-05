@@ -20,7 +20,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Run, Workspace, WorkspaceSettings } from '@metaclaude/shared';
+import type { Memory, Run, Workspace, WorkspaceSettings } from '@metaclaude/shared';
 import { WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { HashingEmbedder } from '../learning/embeddings.js';
@@ -122,6 +122,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
   const reflexion = { reflect: vi.fn().mockResolvedValue(0) };
   const memory = {
     search: vi.fn().mockResolvedValue([]),
+    standing: vi.fn<() => Memory[]>(() => []),
     recordUsage: vi.fn(),
     reinforce: vi.fn(),
   };
@@ -924,6 +925,38 @@ describe('delegation', () => {
         prompt: 'and now you ask someone else',
       }),
     ).rejects.toThrow(/cannot delegate/i);
+  });
+});
+
+/**
+ * Conventions reach a run whole, whatever the prompt. Measured before this
+ * existed: a pinned "propose defaults rather than ask" was never recalled for a
+ * request about deployments, because the prior only ranks what retrieval
+ * already found. So the standing shelf is injected first and left out of the
+ * similarity search, or the same rule would arrive twice.
+ */
+describe('standing conventions', () => {
+  it('injects the standing shelf ahead of recall, credits it, and keeps it out of the search', async () => {
+    const convention: Memory = {
+      id: 'mem_rule', workspaceId: fixture.workspace.id, kind: 'procedural', shelf: 'standing', retiredAt: null,
+      supersededBy: null, title: 'Propose defaults', content: 'Offer a default rather than ask three questions.',
+      tags: [], confidence: 0.9, useCount: 0, successCount: 0, pinned: true, sourceRunId: null,
+      createdAt: 0, updatedAt: 0, lastUsedAt: null,
+    };
+    fixture.memory.standing.mockReturnValue([convention]);
+
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'Deploy the latest tag to production.' });
+    await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
+
+    const request = fixture.supervisor.started[0]!;
+    expect(request.systemPromptAppend).toContain('## Standing conventions');
+    expect(request.systemPromptAppend).toContain('Offer a default rather than ask three questions.');
+    expect(fixture.memory.recordUsage).toHaveBeenCalledWith(run.id, [{ memory: convention, score: 1 }]);
+    expect(fixture.memory.search).toHaveBeenCalledWith(
+      'Deploy the latest tag to production.',
+      expect.objectContaining({ excludeStanding: true }),
+    );
   });
 });
 

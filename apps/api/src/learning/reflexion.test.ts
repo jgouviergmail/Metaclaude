@@ -4,16 +4,31 @@ import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
 import { HashingEmbedder } from './embeddings.js';
 import { MemoryStore } from './memory.js';
+import type { GateDecision, GateInput } from './gatekeeper.js';
 import { ReflexionEngine, listInsights, parseJsonLoose, pruneInsights, setInsightStatus, withLanguage } from './reflexion.js';
 
 /**
- * `reflect()` and `invoke()` need a live Claude CLI subprocess, so nothing here
- * calls them. Only the pure helpers and the transcript compressor are exercised.
+ * `invoke()` needs a live Claude CLI subprocess and is never called here.
+ * `reflect()` is, with the model call injected: what it decides between the
+ * model's answer and the store — the noise floor, the hand-off to the gate,
+ * when an insight is written, which runs are not reflected on — lived
+ * unobserved for forty releases because the CLI stood in the way.
  */
 
 let db: Db;
 let engine: ReflexionEngine;
 const logged: Array<{ level: string; message: string }> = [];
+let memory: MemoryStore;
+let admitted: GateInput[];
+let gateAnswer: (input: GateInput) => Promise<GateDecision[]>;
+let invokeAnswer: () => ReflexionOutputLike | null = () => null;
+let readOnly: (run: Run, events: TranscriptEvent[]) => boolean = () => false;
+
+interface ReflexionOutputLike {
+  summary: string;
+  lessons: Array<{ kind: 'semantic' | 'procedural' | 'failure'; title: string; content: string; confidence: number; tags?: string[] }>;
+  skillProposal?: { name: string; description: string; body: string };
+}
 
 function makeRun(overrides: Partial<Run> = {}): Run {
   return {
@@ -93,13 +108,43 @@ beforeEach(() => {
   logged.length = 0;
   db = openDatabase({ path: ':memory:' });
   migrate(db);
+  // The rows the foreign keys point at: memories name a workspace, insights a run.
+  const now = Date.now();
+  db.prepare(`INSERT INTO workspaces (id, name, slug, path, created_at, updated_at) VALUES ('ws_1','W','w','/tmp/w',?,?)`).run(now, now);
+  db.prepare(`INSERT INTO sessions (id, workspace_id, created_at, updated_at, last_activity_at) VALUES ('ses_1','ws_1',?,?,?)`).run(now, now, now);
+  for (const id of ['run_1', 'run_2']) {
+    db.prepare(`INSERT INTO runs (id, session_id, workspace_id, prompt, status, started_at) VALUES (?,'ses_1','ws_1','p','succeeded',?)`).run(id, now);
+  }
+  memory = new MemoryStore(db, new HashingEmbedder());
+  admitted = [];
+  gateAnswer = async (input) => {
+    // The default fake keeps everything as durable, writing the row itself
+    // the way the real gate does, so `written` carries real ids.
+    const out: GateDecision[] = [];
+    for (const candidate of input.candidates) {
+      const { memory: row } = await memory.remember({
+        workspaceId: input.workspaceId, kind: candidate.kind, title: candidate.title, content: candidate.content,
+        tags: candidate.tags, confidence: Math.min(0.75, candidate.confidence * 0.85), sourceRunId: input.runId,
+      });
+      out.push({ candidate, level: 'lesson', outcome: 'kept', reason: 'kept by the fake', memoryId: row.id, shelf: 'durable' });
+    }
+    return out;
+  };
   engine = new ReflexionEngine({
     db,
-    memory: new MemoryStore(db, new HashingEmbedder()),
+    memory,
     language: () => null,
     env: {},
     claudeBinPath: null,
     cwd: '/tmp',
+    gate: {
+      admit: async (input) => {
+        admitted.push(input);
+        return gateAnswer(input);
+      },
+    },
+    invoke: async () => invokeAnswer(),
+    readOnlyRun: (run, events) => readOnly(run, events),
     log: (level, message) => logged.push({ level, message }),
   });
 });
@@ -488,5 +533,104 @@ describe('the language lessons are written in', () => {
 
     expect(prompt).toMatch(/command|identifier|path/i);
     expect(prompt).toMatch(/field name|key/i);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* reflect()                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The decision path, driven with a fake model and a fake gate. Untested until
+ * now because `invoke` spawned a CLI; the threshold, the gate hand-off, the
+ * insight rule and the read-only skip all lived here unobserved.
+ */
+describe('reflect()', () => {
+  const events = (n = 3): TranscriptEvent[] =>
+    Array.from({ length: n }, () => toolCall('Bash', { command: 'pnpm test' }, { result: 'ok' }));
+
+  afterEach(() => {
+    invokeAnswer = () => null;
+    readOnly = () => false;
+  });
+
+  it('hands the gate every lesson above the noise floor, and returns what it kept', async () => {
+    invokeAnswer = () => ({
+      summary: 'Ran the tests.',
+      lessons: [
+        { kind: 'procedural', title: 'Build shared first', content: 'pnpm --filter shared build before the rest.', confidence: 0.9 },
+        { kind: 'failure', title: 'npm test fails', content: 'Use pnpm.', confidence: 0.6, tags: ['tests'] },
+        { kind: 'semantic', title: 'A guess', content: 'Maybe.', confidence: 0.3 },
+        { kind: 'semantic', title: '   ', content: 'Blank title.', confidence: 0.9 },
+      ],
+    });
+
+    const written = await engine.reflect(makeRun({ status: 'succeeded' }), events());
+
+    expect(admitted).toHaveLength(1);
+    expect(admitted[0]!.candidates.map((c) => c.title)).toEqual(['Build shared first', 'npm test fails']);
+    expect(admitted[0]!.candidates[1]!.tags).toEqual(['tests', 'failure-mode']);
+    expect(admitted[0]!.failed).toBe(false);
+    expect(written).toHaveLength(2);
+    expect(memory.get(written[0]!)?.title).toBe('Build shared first');
+  });
+
+  it('records an insight carrying every decision when something was kept, and none otherwise', async () => {
+    invokeAnswer = () => ({ summary: 'Routine.', lessons: [{ kind: 'semantic', title: 'State', content: 'The form has three tabs.', confidence: 0.8 }] });
+    gateAnswer = async (input) => [{ candidate: input.candidates[0]!, level: 'state', outcome: 'skipped', reason: 'changes next release' }];
+
+    await engine.reflect(makeRun({ status: 'succeeded' }), events());
+    expect(listInsights(db, { limit: 10 })).toHaveLength(0);
+
+    gateAnswer = async (input) => {
+      const { memory: row } = await memory.remember({ workspaceId: input.workspaceId, kind: 'semantic', title: 'Kept', content: 'Kept.', sourceRunId: input.runId });
+      return [
+        { candidate: input.candidates[0]!, level: 'state', outcome: 'skipped', reason: 'changes next release' },
+        { candidate: { ...input.candidates[0]!, title: 'Kept' }, level: 'fact', outcome: 'kept', reason: 'holds', memoryId: row.id, shelf: 'volatile' },
+      ];
+    };
+    await engine.reflect(makeRun({ id: 'run_2', status: 'succeeded' }), events());
+
+    const [insight] = listInsights(db, { limit: 10 });
+    expect(insight?.kind).toBe('lesson');
+    expect(insight?.body).toContain('[skipped · state] State');
+    expect(insight?.body).toContain('[kept · volatile · fact] Kept');
+    const payload = JSON.parse(insight!.payload as string) as { kind: string; decisions: Array<{ outcome: string; memoryId: string | null }> };
+    expect(payload.kind).toBe('reflexion');
+    expect(payload.decisions.map((d) => d.outcome)).toEqual(['skipped', 'kept']);
+    expect(payload.decisions[1]!.memoryId).toBeTruthy();
+  });
+
+  it('records a failure insight even when the gate kept nothing', async () => {
+    invokeAnswer = () => ({ summary: 'The build broke.', lessons: [{ kind: 'failure', title: 'Broke', content: 'Why it broke.', confidence: 0.7 }] });
+    gateAnswer = async (input) => [{ candidate: input.candidates[0]!, level: 'episodic', outcome: 'skipped', reason: 'one-off' }];
+
+    await engine.reflect(makeRun({ status: 'failed', error: 'exit 1' }), events());
+
+    const [insight] = listInsights(db, { limit: 10 });
+    expect(insight?.kind).toBe('failure');
+    expect(admitted[0]!.failed).toBe(true);
+  });
+
+  it('does not reflect on a read-only run of the workspace the caller names, unless it failed', async () => {
+    invokeAnswer = () => ({ summary: 'Read things.', lessons: [{ kind: 'semantic', title: 'X', content: 'Y.', confidence: 0.9 }] });
+    readOnly = () => true;
+
+    expect(await engine.reflect(makeRun({ status: 'succeeded' }), events())).toEqual([]);
+    expect(admitted).toHaveLength(0);
+
+    expect(await engine.reflect(makeRun({ status: 'failed', error: 'x' }), events())).toHaveLength(1);
+  });
+
+  it('survives a gate that throws: nothing stored, a warning, no insight', async () => {
+    invokeAnswer = () => ({ summary: 'S.', lessons: [{ kind: 'semantic', title: 'T', content: 'C.', confidence: 0.9 }] });
+    gateAnswer = async () => {
+      throw new Error('gate down');
+    };
+
+    expect(await engine.reflect(makeRun({ status: 'succeeded' }), events())).toEqual([]);
+    expect(memory.count()).toBe(0);
+    expect(logged.some((entry) => /memory gate failed/.test(entry.message))).toBe(true);
+    expect(listInsights(db, { limit: 10 })).toHaveLength(0);
   });
 });

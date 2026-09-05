@@ -925,4 +925,32 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 22,
+    name: 'memory_shelves',
+    sql: /* sql */ `
+      -- A memory's durability, separate from its kind.
+      --
+      -- Three shelves. 'standing' is a convention or a preference of the
+      -- operator: injected into every run of its scope whole, never decayed,
+      -- never retrieved by similarity because it must apply whatever the
+      -- request is about. 'durable' is the default and behaves as every
+      -- memory did before: retrieved by relevance, reinforced on use, forgotten
+      -- on a 90-day half-life. 'volatile' is a fact that can stop being true --
+      -- a version, a count, what is or is not implemented -- retrieved the same
+      -- way but forgotten three times faster, and the only shelf a machine
+      -- write may replace.
+      --
+      -- Retirement is a soft delete: a retired row leaves retrieval, injection
+      -- and consolidation but stays readable and restorable for thirty days,
+      -- and superseded_by names the memory that replaced it when one did.
+      -- Measured on the production corpus before this: five memories saying
+      -- the same thing at five moments, and the steward marking the old ones
+      -- [Obsolete] in their titles because it had no way to retire them.
+      ALTER TABLE memories ADD COLUMN shelf TEXT NOT NULL DEFAULT 'durable';
+      ALTER TABLE memories ADD COLUMN retired_at INTEGER;
+      ALTER TABLE memories ADD COLUMN superseded_by TEXT;
+      CREATE INDEX idx_memories_shelf ON memories(shelf, retired_at);
+    `,
+  },
 ];

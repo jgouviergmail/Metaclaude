@@ -20,6 +20,39 @@ confidence; the rest decay on a forgetting curve until the janitor collects
 them. You can pin, edit or delete any memory, and re-index the store after
 changing the embedding provider.
 
+### Three shelves
+
+Beside its kind, every memory sits on a **shelf** that says how long it is
+meant to hold — the badge on the card, the second filter above the list, and
+a choice in the form:
+
+- **Standing** — a convention or a preference you stated: "brief me in French",
+  "propose a default rather than ask three questions". It is not retrieved; it
+  is handed to **every** run of its scope whatever the request is about, and
+  it never fades. Keep these few: the doctor warns past ten in one scope.
+- **Durable** — the default: a lesson, a method that worked, a fact no document
+  carries. Recalled when relevant, reinforced when it helps, forgotten over
+  months if it never does.
+- **Volatile** — a fact that can stop being true: a version, a count, what is
+  or is not implemented yet. Recalled the same way, forgotten three times
+  faster, and the one shelf the system may replace by itself when a run learns
+  the same thing at a later time.
+
+**Retire** instead of delete when a memory has stopped being true: it leaves
+recall at once, and sits folded at the bottom of the list for thirty days,
+where **Restore** brings it back. A memory replaced by a newer one says so
+there.
+
+### What gets written, and what does not
+
+The reflexion pass proposes; a gate decides. After a run, each note the pass
+proposed is judged — a preference, a lesson, a fact, or the state of the code,
+a repetition of the instructions, a one-off — and only the first three are
+kept, two per run at most. The run's insight lists every note with its
+verdict, and a refused note has a **Keep** button: the gate is a model, it is
+wrong sometimes, and overturning it costs one press. A run of Metaclaude's
+own workspace that only read is not reflected on at all.
+
 Memory can be disabled per workspace, for projects that should stay cold.
 
 ### Two tiers: this project, and everywhere

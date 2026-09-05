@@ -37,6 +37,7 @@ import type {
   Insight,
   Memory,
   MemoryKind,
+  MemoryShelf,
   RetrievalStatus,
   Run,
   RuntimeSettingKey,
@@ -48,7 +49,7 @@ import type {
 } from '@metaclaude/shared';
 import type { Kernel } from '../kernel/kernel.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from '../kernel/repositories.js';
-import type { MemoryStore } from '../learning/memory.js';
+import { MemoryReconcileError, type MemoryStore } from '../learning/memory.js';
 import type { AuditLog } from '../security/audit.js';
 import type { AdvisorService } from './advisor.js';
 import type { AnalyticsService } from './analytics.js';
@@ -87,7 +88,7 @@ export interface StewardDeps {
   transcript: Pick<TranscriptRepo, 'byRun' | 'countBySession'>;
   memory: Pick<
     MemoryStore,
-    'get' | 'list' | 'search' | 'stats' | 'count' | 'update' | 'remember' | 'promote' | 'confine'
+    'get' | 'list' | 'search' | 'stats' | 'count' | 'update' | 'remember' | 'promote' | 'confine' | 'retire' | 'restore' | 'supersede'
   >;
   insights: {
     list(options: { workspaceId?: string | null; status?: Insight['status']; limit?: number }): Insight[];
@@ -210,6 +211,9 @@ const compactMemory = (memory: Memory) => ({
   id: memory.id,
   scope: memory.workspaceId === null ? 'global' : memory.workspaceId,
   kind: memory.kind,
+  shelf: memory.shelf,
+  retiredAt: memory.retiredAt,
+  supersededBy: memory.supersededBy,
   title: memory.title,
   content: excerpt(memory.content, CONTENT_EXCERPT),
   tags: memory.tags,
@@ -516,7 +520,11 @@ export class Steward {
   async memoryWrite(
     actor: StewardActor,
     input:
-      | { id: string; patch: Partial<Pick<Memory, 'title' | 'content' | 'tags' | 'confidence' | 'pinned' | 'kind'>> }
+      | {
+          id: string;
+          patch: Partial<Pick<Memory, 'title' | 'content' | 'tags' | 'confidence' | 'pinned' | 'kind' | 'shelf'>>;
+          supersedes?: string;
+        }
       | {
           workspace: string | 'global';
           kind: MemoryKind;
@@ -525,13 +533,16 @@ export class Steward {
           tags?: string[];
           confidence?: number;
           pinned?: boolean;
+          shelf?: MemoryShelf;
+          supersedes?: string;
         },
   ) {
     if ('id' in input) {
       const memory = await this.deps.memory.update(input.id, input.patch);
       if (!memory) throw new StewardError(`No memory is called "${input.id}".`, 'not-found');
       this.record(actor, 'steward.memory.update', memory.id, Object.keys(input.patch).join(', '));
-      return compactMemory(memory);
+      const superseded = input.supersedes ? this.supersede(actor, input.supersedes, memory.id) : null;
+      return { ...compactMemory(memory), ...(superseded ? { superseded } : {}) };
     }
     const workspaceId = input.workspace === 'global' ? null : this.findWorkspace(input.workspace).id;
     const { memory, merged } = await this.deps.memory.remember({
@@ -542,10 +553,56 @@ export class Steward {
       tags: input.tags ?? [],
       ...(input.confidence !== undefined ? { confidence: input.confidence } : {}),
       ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+      ...(input.shelf !== undefined ? { shelf: input.shelf } : {}),
       sourceRunId: actor.runId,
     });
     this.record(actor, 'steward.memory.remember', memory.id, merged ? 'merged into an existing memory' : null);
-    return { ...compactMemory(memory), merged };
+    const superseded = input.supersedes ? this.supersede(actor, input.supersedes, memory.id) : null;
+    return { ...compactMemory(memory), merged, ...(superseded ? { superseded } : {}) };
+  }
+
+  /**
+   * Retire the memory `loserId` in favour of `winnerId`. The store's rules
+   * decide — volatile, unpinned, same scope — and a refusal is reported as
+   * such rather than swallowed: the steward asked for a replacement, and the
+   * answer "the new memory stands beside the old" is one it must hear.
+   */
+  private supersede(actor: StewardActor, loserId: string, winnerId: string): string {
+    try {
+      this.deps.memory.supersede(loserId, winnerId);
+    } catch (error) {
+      if (error instanceof MemoryReconcileError) throw new StewardError(error.message, 'refused');
+      throw error;
+    }
+    this.record(actor, 'steward.memory.supersede', loserId, `replaced by ${winnerId}`);
+    return loserId;
+  }
+
+  /**
+   * Retire or restore a memory. Ring 2 because it is a soft delete the operator
+   * can undo for thirty days from the Memory page — and bounded one step
+   * further than the store: the steward never retires a standing convention,
+   * which is the operator's rule about how the steward itself behaves.
+   */
+  memoryRetire(actor: StewardActor, input: { id: string; restore?: boolean }) {
+    const current = this.deps.memory.get(input.id);
+    if (!current) throw new StewardError(`No memory is called "${input.id}".`, 'not-found');
+    if (input.restore) {
+      const memory = this.deps.memory.restore(input.id) as Memory;
+      this.record(actor, 'steward.memory.restore', input.id, null);
+      return compactMemory(memory);
+    }
+    if (current.shelf === 'standing') {
+      throw new StewardError('A standing convention is the operator’s to retire, not yours; say why it no longer holds instead.', 'refused');
+    }
+    try {
+      const memory = this.deps.memory.retire(input.id) as Memory;
+      this.record(actor, 'steward.memory.retire', input.id, null);
+      return compactMemory(memory);
+    } catch (error) {
+      if (error instanceof MemoryReconcileError) throw new StewardError(error.message, 'refused');
+      throw error;
+    }
   }
 
   async memoryScope(actor: StewardActor, input: { id: string; workspace: string | 'global' }) {

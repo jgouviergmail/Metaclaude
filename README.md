@@ -35,7 +35,12 @@ What that gives you, in one list:
 - **Memory that persists** across sessions and projects — and that is retrieved
   automatically into the runs where it helps, by meaning rather than by
   keyword: a sentence-transformer (bge-m3, French and English alike) ships in
-  the image and runs on your server, so nothing leaves the machine.
+  the image and runs on your server, so nothing leaves the machine. Three
+  shelves: a **convention** you stated reaches every run whatever it is about,
+  a **durable** lesson is recalled when relevant, a **volatile** fact fades
+  fast and is replaced when it changes. And a gate: what the machine proposes
+  to remember is judged before it is written, two notes per run at most, with
+  every refusal one press from being overturned.
 - **A knowledge library the agent quotes.** Drop reference documents — a
   contract, a spec, a runbook — globally or per workspace; runs retrieve the
   relevant passages (hybrid semantic + exact-word search) and cite them by

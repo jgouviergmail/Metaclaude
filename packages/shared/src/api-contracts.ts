@@ -27,6 +27,7 @@ import {
   McpTransport,
   Memory,
   MemoryKind,
+  MemoryShelf,
   RunPolicy,
   Millis,
   ModelSelector,
@@ -311,6 +312,7 @@ export const CreateMemoryRequest = z.object({
   tags: z.array(z.string().max(48)).max(24).default([]),
   pinned: z.boolean().default(false),
   confidence: z.number().min(0).max(1).default(0.7),
+  shelf: MemoryShelf.default('durable'),
 });
 export type CreateMemoryRequest = z.infer<typeof CreateMemoryRequest>;
 

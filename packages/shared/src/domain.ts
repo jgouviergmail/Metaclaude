@@ -567,10 +567,58 @@ export function normaliseTags(tags: readonly string[]): string[] {
 export const MemoryKind = z.enum(['episodic', 'semantic', 'procedural']);
 export type MemoryKind = z.infer<typeof MemoryKind>;
 
+/**
+ * How long a memory is meant to hold, orthogonal to its kind.
+ *
+ * `standing` — a convention or preference of the operator: injected into every
+ * run of its scope, never decayed, never retrieved by similarity because it
+ * applies whatever the request is about. `durable` — the default: retrieved by
+ * relevance, reinforced on use, forgotten on the long half-life. `volatile` — a
+ * fact that can stop being true: retrieved the same way, forgotten three times
+ * faster, and the one shelf a machine write may replace.
+ */
+export const MemoryShelf = z.enum(['standing', 'durable', 'volatile']);
+export type MemoryShelf = z.infer<typeof MemoryShelf>;
+
+/**
+ * What the reflexion pass proposed after a run and what the memory gate made
+ * of each proposal — carried in the run's insight so the operator can see
+ * what was refused, and keep any of it in one gesture. Declared here rather
+ * than in api-contracts because the Memory page parses it at runtime.
+ */
+export const GateLevel = z.enum(['preference', 'lesson', 'fact', 'state', 'redundant', 'episodic', 'unjudged']);
+export type GateLevel = z.infer<typeof GateLevel>;
+export const GateOutcome = z.enum(['kept', 'superseded', 'skipped', 'over-budget', 'unjudged']);
+export type GateOutcome = z.infer<typeof GateOutcome>;
+
+export const ReflexionInsightPayload = z.object({
+  kind: z.literal('reflexion'),
+  decisions: z.array(
+    z.object({
+      title: z.string(),
+      content: z.string(),
+      kind: MemoryKind,
+      tags: z.array(z.string()),
+      level: GateLevel,
+      outcome: GateOutcome,
+      reason: z.string(),
+      /** Set once a memory exists for this decision — by the gate, or by the operator keeping it later. */
+      memoryId: z.string().nullable(),
+      shelf: MemoryShelf.nullable(),
+    }),
+  ),
+});
+export type ReflexionInsightPayload = z.infer<typeof ReflexionInsightPayload>;
+
 export const Memory = z.object({
   id: z.string(),
   workspaceId: z.string().nullable(),
   kind: MemoryKind,
+  shelf: MemoryShelf.default('durable'),
+  /** Set when the memory was retired — a soft delete, restorable for thirty days. */
+  retiredAt: Millis.nullable().default(null),
+  /** The memory that replaced this one, when retirement was a supersession. */
+  supersededBy: z.string().nullable().default(null),
   /** Short retrieval key, ~1 sentence. */
   title: z.string().max(300),
   /** Full body injected into context when retrieved. */

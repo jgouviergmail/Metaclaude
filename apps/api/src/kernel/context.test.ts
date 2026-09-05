@@ -5,6 +5,8 @@ import {
   MEMORY_CONTEXT_BUDGET,
   buildMemoryContext,
   selectMemoryContext,
+  selectStandingContext,
+  STANDING_CONTEXT_BUDGET,
   selectKnowledgeContext,
   KNOWLEDGE_CONTEXT_BUDGET,
 } from './context.js';
@@ -14,6 +16,9 @@ function memory(overrides: Partial<Memory> = {}): Memory {
     id: 'mem_1',
     workspaceId: null,
     kind: 'semantic' as MemoryKind,
+    shelf: 'durable',
+    retiredAt: null,
+    supersededBy: null,
     title: 'Test runner',
     content: 'This project runs its tests with vitest.',
     tags: [],
@@ -211,5 +216,40 @@ describe('selectKnowledgeContext', () => {
     const { text } = selectKnowledgeContext([{ ...passage(1, 60), heading: '' }]);
     expect(text).toContain('**Document 1**');
     expect(text).not.toContain('›');
+  });
+});
+
+/**
+ * The standing block: conventions injected whatever the request is about.
+ * Framed as rules to follow, not recollection, and cut from the tail — the
+ * store hands them pinned first, so an over-full shelf drops the newest
+ * unpinned convention rather than the operator's.
+ */
+describe('selectStandingContext', () => {
+  it('returns nothing for an empty shelf, and frames a full one as rules', () => {
+    expect(selectStandingContext([])).toEqual({ text: '', injected: [] });
+
+    const { text, injected } = selectStandingContext([
+      memory({ id: 'mem_a', title: 'Propose defaults', content: 'Offer a default rather than ask.', shelf: 'standing' }),
+    ]);
+    expect(text).toMatch(/^## Standing conventions/);
+    expect(text).toMatch(/apply whatever this request is about/);
+    expect(text).not.toMatch(/recollection/);
+    expect(text).toContain('**Propose defaults**');
+    expect(text).toContain('Offer a default rather than ask.');
+    expect(injected.map((m) => m.id)).toEqual(['mem_a']);
+  });
+
+  it('keeps the head of the shelf within the budget and reports exactly what it injected', () => {
+    const shelf = [
+      memory({ id: 'mem_pinned', title: 'Pinned rule', content: 'x'.repeat(300), shelf: 'standing', pinned: true }),
+      memory({ id: 'mem_two', title: 'Second rule', content: 'y'.repeat(300), shelf: 'standing' }),
+      memory({ id: 'mem_three', title: 'Third rule', content: 'z'.repeat(300), shelf: 'standing' }),
+    ];
+    // Room for the header and one entry: the pinned one, whatever comes after it.
+    const { injected, text } = selectStandingContext(shelf, 700);
+    expect(injected.map((m) => m.id)).toEqual(['mem_pinned']);
+    expect(text).not.toContain('Third rule');
+    expect(selectStandingContext(shelf, STANDING_CONTEXT_BUDGET).injected).toHaveLength(3);
   });
 });

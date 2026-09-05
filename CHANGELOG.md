@@ -11,6 +11,67 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.50.0] — 2026-09-05
+
+Memory learns to say no. Measured on a day of production before this release:
+the reflexion pass wrote twenty-seven notes, two of which deserved to outlive
+the session; five of them said one fact at five moments; the steward marked
+the old ones "[obsolete]" in their titles for want of a way to retire them; a
+state fact stayed retrievable for two hundred and thirty idle days; and a
+pinned convention was never recalled for a request that did not resemble it.
+
+### Added
+
+- **Three shelves.** Every memory now says how long it is meant to hold beside
+  what it is. A **standing** memory — a convention or preference the operator
+  stated — is injected whole into every run of its scope, whatever the request,
+  and never fades; the search leaves it out so it never arrives twice. A
+  **durable** memory is the default and behaves as before. A **volatile**
+  memory is a fact that can stop being true: recalled the same way, forgotten
+  three times faster, and the one shelf a machine may replace. Badge, filter
+  and form on the Memory page; `shelf` on the API, the steward's tool and the
+  operator's form; the doctor warns past ten conventions in one scope.
+
+- **Retirement, a soft delete.** A retired memory leaves recall, injection,
+  the duplicate check and consolidation at once, sits folded at the bottom of
+  the Memory page for thirty days with a Restore button, and is collected
+  after. A supersession is a retirement that names the newer memory, bounded
+  by rule: only a volatile, unpinned loser in the same scope — the arbiter was
+  measured wanting to replace the operator's pinned convention with a note
+  derived from it. The steward gains `system_memory_retire` and `supersedes`
+  on `system_memory_write`, and its instructions say what to remember, what
+  never to, and that a fact that changed is replaced rather than annotated.
+
+- **A gate on everything the machine writes.** The reflexion pass proposes;
+  `learning/gatekeeper.ts` decides, with one cheap model call per run that
+  produced candidates: each note's level — preference, lesson, fact, state,
+  redundant, episodic — and whether it describes an existing memory at a
+  later time. Only the first three levels are kept, a fact as volatile, and
+  what the model is not trusted with is bounded outside the prompt: two per
+  run, three on a failure, six per workspace per day; a supersession only
+  onto a neighbour it was shown; on any failure nothing is written and
+  nothing is lost. Every verdict rides the run's insight with its reason, and
+  a refused note has a **Keep** button — the gate is wrong sometimes, and
+  overturning it costs one press. The insight itself is only written when
+  something was kept or the run failed; a run of the steward's workspace that
+  only read is not reflected on at all.
+
+- **A bench for the gate**, `apps/api/scripts/eval-memory-gate.mjs`, replaying
+  the labelled production corpus through the real prompt on three passes.
+  Measured at release: of the twenty-seven notes that were all kept before,
+  the two worth keeping are kept on every pass and four or five of the
+  twenty-two others slip through — the same handful each time, with haiku and
+  sonnet alike — so the bench refuses a change whose worst pass misses a keep
+  or keeps more than five. `reflect()` is tested for the first time, with the
+  model call injected.
+
+### Fixed
+
+- **An advisor's own run no longer fires an event automation.** The
+  anti-chain guard promised "a person, a token or a delegation" and let a
+  `system` run through; the steward's first review noticed.
+
+
 ## [0.49.0] — 2026-09-05
 
 Three observations Metaclaude made of its own scheduling, all verified, all

@@ -16,11 +16,12 @@
  *    affect the run the operator is watching.
  */
 
-import { contentLanguageDirective, type ContentLanguage } from './language.js';
+import { withLanguage, type ContentLanguage } from './language.js';
 import { extractJson, structuredCall } from './structured-call.js';
-import type { Insight, MemoryKind, Run, TranscriptEvent } from '@metaclaude/shared';
+import type { Insight, ReflexionInsightPayload, Run, TranscriptEvent } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
+import type { GateCandidate, GateDecision, Gatekeeper } from './gatekeeper.js';
 import type { MemoryStore } from './memory.js';
 
 /* -------------------------------------------------------------------------- */
@@ -42,7 +43,10 @@ const REFLEXION_SCHEMA = {
     },
     lessons: {
       type: 'array',
-      maxItems: 5,
+      // Three, down from five: measured on a day of production, five slots
+      // were filled with the state of the code five times over. The gate
+      // keeps two of these at most, three on a failed run.
+      maxItems: 3,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -88,23 +92,14 @@ interface ReflexionOutput {
   skillProposal?: { name: string; description: string; body: string };
 }
 
-/**
- * Append the language directive to a system prompt, when there is one.
- *
- * At the end rather than the start: the schema rules above it are what the
- * call is *for*, and a language instruction that displaces them is how a model
- * comes back with prose instead of JSON.
- */
-export function withLanguage(prompt: string, language: ContentLanguage | null): string {
-  const directive = contentLanguageDirective(language);
-  return directive ? `${prompt}\n\n${directive}` : prompt;
-}
+// `withLanguage` moved to language.ts when the memory gate arrived; re-exported so callers and tests are undisturbed.
+export { withLanguage } from './language.js';
 
 const SYSTEM_PROMPT = `You analyse a finished AI coding session and extract knowledge worth remembering.
 
 You will be shown: the user's request, what the assistant did, which tools it used, and how the run ended.
 
-Extract only what will genuinely help on a FUTURE task in this same project. Be ruthless:
+Extract only what will genuinely help on a FUTURE task in this same project and will still be true in three months. Be ruthless:
 
 - A lesson must be specific and actionable. "Write good code" is worthless. "This project's tests run with \`pnpm -w test:run\`, not \`npm test\`" is valuable.
 - Prefer facts you can point at in the transcript over inferences.
@@ -112,6 +107,14 @@ Extract only what will genuinely help on a FUTURE task in this same project. Be 
 - Never invent details that are not in the transcript.
 - Set confidence honestly: 0.9 for something stated explicitly, 0.5 for a reasonable inference, below 0.4 for a guess (and prefer to omit those).
 - Propose a skill ONLY if the run followed a genuinely repeatable multi-step procedure. Most runs should not produce one.
+
+Never record as a lesson:
+- the state of the code, the interface, the data or a setting at this moment — what is or is not implemented, a bug that exists today, a count, a version, what a tool showed. It changes with the next release and can be re-read live;
+- anything the assistant can read in its standing instructions, the documentation or the source code of what it works on;
+- what happened in this one session — an action taken, a mistake made once, the premise of one card — unless a rule generalises from it;
+- a restatement of the user's request or of the assistant's answer.
+
+What does belong: a preference or convention the user stated, a non-obvious way of doing something here that worked, a fact about the project that no document carries.
 
 Respond with JSON matching the required schema. No prose outside the JSON.`;
 
@@ -136,8 +139,26 @@ export interface ReflexionDeps {
   claudeBinPath: string | null;
   /** Working directory for the reflector. A scratch dir, never a workspace. */
   cwd: string;
+  /**
+   * The gate every lesson passes before it is stored — see `gatekeeper.ts`.
+   * Required: the reflector proposes, the gate decides, and there is no path
+   * from a model's proposal to a row that skips it.
+   */
+  gate: Pick<Gatekeeper, 'admit'>;
+  /**
+   * A run that only read — the steward listing, getting, searching — teaches
+   * nothing a later run cannot re-read, and its reflexion was the source of
+   * most of the state notes measured. Decided by the caller, who knows which
+   * tools read; absent, every run reflects.
+   */
+  readOnlyRun?: (run: Run, events: TranscriptEvent[]) => boolean;
+  /** The model call, injectable so `reflect()` can be tested without a CLI. */
+  invoke?: (transcript: string, language: ContentLanguage | null) => Promise<ReflexionOutput | null>;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }
+
+/** What one candidate became, as the run's insight records it and the Memory page reads it. */
+export type ReflexionDecision = ReflexionInsightPayload['decisions'][number];
 
 export class ReflexionEngine {
   constructor(private readonly deps: ReflexionDeps) {}
@@ -159,7 +180,7 @@ export class ReflexionEngine {
 
     let output: ReflexionOutput | null = null;
     try {
-      output = await this.invoke(
+      output = await (this.deps.invoke ?? this.invoke.bind(this))(
         this.buildTranscriptSummary(run, events),
         this.deps.language(run.workspaceId),
       );
@@ -171,45 +192,68 @@ export class ReflexionEngine {
     }
     if (!output) return [];
 
-    const written: string[] = [];
-
+    // The reflector proposes; the gate decides. Low-confidence noise is
+    // dropped before it costs a verdict, and the kind the reflector guessed is
+    // carried as a tag when it is `failure`, because that is a property of the
+    // lesson rather than a storage kind.
+    const candidates: GateCandidate[] = [];
     for (const lesson of output.lessons ?? []) {
-      // Drop low-confidence noise before it ever enters the corpus.
       if (lesson.confidence < 0.4) continue;
       if (!lesson.title?.trim() || !lesson.content?.trim()) continue;
-
-      const kind: MemoryKind = lesson.kind === 'semantic' ? 'semantic' : 'procedural';
-      const tags = [...(lesson.tags ?? []), lesson.kind === 'failure' ? 'failure-mode' : 'lesson'];
-
-      try {
-        const { memory } = await this.deps.memory.remember({
-          workspaceId: run.workspaceId,
-          kind,
-          title: lesson.title.trim(),
-          content: lesson.content.trim(),
-          tags: tags.slice(0, 8),
-          // Start below what the reflector claims: a lesson earns trust by
-          // being retrieved into runs that then succeed, not by asserting it.
-          confidence: Math.min(0.75, lesson.confidence * 0.85),
-          sourceRunId: run.id,
-        });
-        written.push(memory.id);
-      } catch (error) {
-        this.deps.log('warn', 'failed to store a reflexion lesson', {
-          message: (error as Error).message,
-        });
-      }
+      candidates.push({
+        kind: lesson.kind === 'semantic' ? 'semantic' : 'procedural',
+        title: lesson.title.trim(),
+        content: lesson.content.trim(),
+        confidence: lesson.confidence,
+        tags: [...(lesson.tags ?? []), lesson.kind === 'failure' ? 'failure-mode' : 'lesson'].slice(0, 8),
+      });
     }
 
-    if (output.summary?.trim()) {
+    let decisions: GateDecision[] = [];
+    try {
+      decisions = await this.deps.gate.admit({
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        failed: run.status === 'failed',
+        candidates,
+      });
+    } catch (error) {
+      this.deps.log('warn', 'the memory gate failed; nothing was stored for this run', {
+        runId: run.id,
+        message: (error as Error).message,
+      });
+    }
+    const written = decisions.filter((d) => d.memoryId).map((d) => d.memoryId as string);
+
+    // An insight only when there is something to show: a memory kept, or a
+    // failure whose lessons — kept or not — an operator will want to read.
+    // One row per reflected run was the other half of the flood, and a row
+    // that says "nothing learned" is not an insight.
+    if (output.summary?.trim() && (written.length > 0 || run.status === 'failed')) {
+      const payload: ReflexionInsightPayload = {
+        kind: 'reflexion',
+        decisions: decisions.map((d) => ({
+          title: d.candidate.title,
+          content: d.candidate.content,
+          kind: d.candidate.kind,
+          tags: d.candidate.tags,
+          level: d.level,
+          outcome: d.outcome,
+          reason: d.reason,
+          memoryId: d.memoryId ?? null,
+          shelf: d.shelf ?? null,
+        })),
+      };
       this.recordInsight({
         workspaceId: run.workspaceId,
         runId: run.id,
         kind: run.status === 'failed' ? 'failure' : 'lesson',
         title: output.summary.trim().slice(0, 300),
-        body: (output.lessons ?? []).map((l) => `- ${l.title}: ${l.content}`).join('\n'),
+        body: payload.decisions
+          .map((d) => `- [${d.outcome}${d.shelf ? ` · ${d.shelf}` : ''} · ${d.level}] ${d.title}: ${d.content}`)
+          .join('\n'),
         confidence: 0.7,
-        payload: null,
+        payload: JSON.stringify(payload),
       });
     }
 
@@ -238,6 +282,7 @@ export class ReflexionEngine {
   private isWorthReflecting(run: Run, events: TranscriptEvent[]): boolean {
     if (run.status === 'interrupted') return false;
     if (run.prompt.trim().length < 24) return false;
+    if (run.status !== 'failed' && this.deps.readOnlyRun?.(run, events)) return false;
 
     const toolCalls = events.filter((e) => e.kind === 'tool_call').length;
     const assistantChars = events
@@ -431,6 +476,11 @@ export function listInsights(
 
 export function setInsightStatus(db: Db, id: string, status: Insight['status']): boolean {
   return db.prepare('UPDATE insights SET status = ? WHERE id = ?').run(status, id).changes > 0;
+}
+
+/** Rewrite an insight's payload — how a refused note records that the operator kept it after all. */
+export function setInsightPayload(db: Db, id: string, payload: string): boolean {
+  return db.prepare('UPDATE insights SET payload = ? WHERE id = ?').run(payload, id).changes > 0;
 }
 
 /**

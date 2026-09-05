@@ -457,6 +457,16 @@ not for trusting the model to spot the injection.
 The agent reads content it does not control: repository files, fetched pages,
 tool output. Assume some of it is hostile.
 
+The memory gate reads it too, one step removed: the notes it judges were
+written by a model that read the transcript, and the neighbours it is shown
+are earlier memories. Its prompt says to treat both as data, and what bounds
+the damage of a note that argues with it is structural rather than verbal — a
+verdict can keep at most two notes per run onto the durable or volatile shelf,
+never the standing one; can retire only a volatile, unpinned memory it was
+actually shown; and every verdict is on the run's insight where the operator
+sees it. The worst a poisoned note can do is have itself refused or another
+volatile fact retired for thirty days, both visible and both reversible.
+
 Metaclaude does not claim to solve prompt injection. What it does is make the
 consequences bounded and visible:
 

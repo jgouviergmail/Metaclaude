@@ -78,6 +78,19 @@ and anything outside that list (a web fetch, say) waits for you; set it to
 rest, which is what makes it autonomous while you are away. *Bypass* is the
 one mode never offered here.
 
+## What it remembers
+
+Its standing instructions say what belongs in memory and what does not: a
+convention or preference you stated (a **standing** memory, injected into
+every one of its runs, so only when you said it), a non-obvious way of doing
+something that worked, a fact about the deployment no document carries. Not
+the state of the code, which it can read; not what happened in one session;
+not what its instructions already say. A fact that changed is replaced —
+with `supersedes` on the new memory, or by retiring the old one — never
+annotated "obsolete" in a title. A defect it finds becomes a card on its
+board. What the reflexion pass keeps or refuses after each of its runs is on
+the run's insight, and it never reflects on a run of its own that only read.
+
 ## Scheduling it
 
 An automation called **Morning review** ships in its workspace, **disabled**,

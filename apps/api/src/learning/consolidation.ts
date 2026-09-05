@@ -228,7 +228,7 @@ export class Consolidator {
         // operator has already answered would not match. Insertion order is
         // also the truest reading of "newest first".
         `SELECT id, workspace_id, title, content, embedding, embedding_model
-           FROM memories ORDER BY updated_at DESC, rowid DESC LIMIT ${MAX_CORPUS}`,
+           FROM memories WHERE retired_at IS NULL ORDER BY updated_at DESC, rowid DESC LIMIT ${MAX_CORPUS}`,
       )
       .all();
 

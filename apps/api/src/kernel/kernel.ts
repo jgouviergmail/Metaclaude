@@ -35,7 +35,7 @@ import type { KnowledgeStore } from '../learning/knowledge.js';
 import type { ReflexionEngine } from '../learning/reflexion.js';
 import type { AttachmentService } from '../services/attachments.js';
 import type { EventBus } from './bus.js';
-import { selectMemoryContext, selectKnowledgeContext } from './context.js';
+import { selectKnowledgeContext, selectMemoryContext, selectStandingContext } from './context.js';
 import { capPermissionMode, PermissionBroker } from './permissions.js';
 import { planRewind } from './rewind.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
@@ -769,9 +769,23 @@ export class Kernel {
       .join('\n\n');
     if (workspace.settings.memoryEnabled) {
       try {
+        // The standing shelf first, whole and regardless of the request: a
+        // convention that only reached a run when the prompt happened to
+        // resemble it was measured never reaching the runs it was written
+        // for. Credited like a recalled memory so the genesis shows it; the
+        // store leaves a standing memory's confidence alone on reinforcement.
+        const standing = selectStandingContext(this.deps.memory.standing(workspace.id));
+        if (standing.injected.length > 0) {
+          this.deps.memory.recordUsage(
+            run.id,
+            standing.injected.map((memory) => ({ memory, score: 1 })),
+          );
+          systemPromptAppend = [systemPromptAppend, standing.text].filter(Boolean).join('\n\n');
+        }
         const retrieved = await this.deps.memory.search(run.prompt, {
           workspaceId: workspace.id,
           limit: 8,
+          excludeStanding: true,
         });
         if (retrieved.length > 0) {
           // Credit what was injected, not what was retrieved: the budget can

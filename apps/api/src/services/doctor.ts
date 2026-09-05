@@ -47,6 +47,13 @@ const CREDENTIAL_WARN_DAYS = 14;
  */
 const DEDUPLICATION_WARN_AT = Math.round(DUPLICATE_SCAN_LIMIT * 0.9);
 
+/**
+ * Standing conventions per scope past which the doctor warns. Every one is
+ * injected into every run of the scope whatever the request, inside a budget
+ * of 1500 characters; a list longer than this competes with itself.
+ */
+export const STANDING_WARN_AT = 10;
+
 export interface DoctorDeps {
   db: Db;
   audit: {
@@ -503,6 +510,44 @@ export class Doctor {
       `${globals + scoped} memories — ${globals} global, ${scoped} in ${perWorkspace.length} ` +
       `workspace${perWorkspace.length === 1 ? '' : 's'}.`;
 
+    // The shelves. A standing convention is injected into every run of its
+    // scope, so a scope that holds more than a handful has started to
+    // contradict itself; the other two numbers say what the janitor will do.
+    const standingBusiest =
+      this.deps.db
+        .prepare<[], { n: number }>(
+          `SELECT COUNT(*) AS n FROM memories WHERE shelf = 'standing' AND retired_at IS NULL
+            GROUP BY workspace_id ORDER BY n DESC LIMIT 1`,
+        )
+        .get()?.n ?? 0;
+    const retired =
+      this.deps.db
+        .prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM memories WHERE retired_at IS NOT NULL')
+        .get()?.n ?? 0;
+    const staleVolatile =
+      this.deps.db
+        .prepare<[number], { n: number }>(
+          `SELECT COUNT(*) AS n FROM memories
+            WHERE shelf = 'volatile' AND retired_at IS NULL AND use_count = 0 AND created_at < ?`,
+        )
+        .get(Date.now() - 30 * 86_400_000)?.n ?? 0;
+    const shelves =
+      (retired > 0 ? ` ${retired} retired, collected thirty days after retirement.` : '') +
+      (staleVolatile > 0 ? ` ${staleVolatile} volatile fact${staleVolatile === 1 ? '' : 's'} older than a month never recalled — fading.` : '');
+
+    if (standingBusiest > STANDING_WARN_AT) {
+      return {
+        name: 'memory',
+        status: 'warn',
+        summary: `${summary} One scope carries ${standingBusiest} standing conventions.`,
+        detail:
+          'Every standing memory is injected into every run of its scope, whatever the request. ' +
+          `Past ${STANDING_WARN_AT} they compete for the same budget and start to contradict one another: ` +
+          'fold them into fewer, or move the ones that are really facts to the volatile shelf.' +
+          shelves,
+      };
+    }
+
     if (crowded && crowded.scan >= DEDUPLICATION_WARN_AT) {
       return {
         name: 'memory',
@@ -515,7 +560,7 @@ export class Doctor {
       };
     }
 
-    return { name: 'memory', status: 'ok', summary, detail: null };
+    return { name: 'memory', status: 'ok', summary, detail: shelves.trim() || null };
   }
 
   private runs(): DoctorCheck {

@@ -445,6 +445,47 @@ describe('writing, under its own name', () => {
     expect(created).toMatchObject({ pinned: false, confidence: 0.7 });
   });
 
+  /**
+   * The steward's answer to "[Obsolete]" in a title: a fact that changed is
+   * replaced with `supersedes`, or retired. Both bounded by the store — a
+   * pinned or durable loser is refused and the refusal reaches the steward as
+   * such — and one step further here: a standing convention is never the
+   * steward's to retire.
+   */
+  it('writes a shelf, supersedes a volatile memory, retires and restores, and refuses what is not its to retire', async () => {
+    const fact = await steward.memoryWrite(ACTOR, {
+      workspace: 'project', kind: 'semantic', title: 'Form', content: 'The form offers three triggers.', shelf: 'volatile',
+    });
+    expect(fact.shelf).toBe('volatile');
+
+    const replaced = await steward.memoryWrite(ACTOR, {
+      workspace: 'project', kind: 'semantic', title: 'Form now', content: 'The form offers four triggers.', shelf: 'volatile', supersedes: fact.id,
+    });
+    expect(replaced.superseded).toBe(fact.id);
+    expect(memory.get(fact.id)).toMatchObject({ supersededBy: replaced.id });
+    expect(audit.list({ action: 'steward.memory.supersede' })).toHaveLength(1);
+
+    const rule = await steward.memoryWrite(ACTOR, {
+      workspace: 'project', kind: 'procedural', title: 'Convention', content: 'Requests go through the board.', shelf: 'standing',
+    });
+    await expect(
+      steward.memoryWrite(ACTOR, { workspace: 'project', kind: 'semantic', title: 'X', content: 'Y.', supersedes: rule.id }),
+    ).rejects.toThrow(/volatile/);
+    expect(() => steward.memoryRetire(ACTOR, { id: rule.id })).toThrow(/operator/);
+    expect(memory.get(rule.id)!.retiredAt).toBeNull();
+
+    const retired = steward.memoryRetire(ACTOR, { id: replaced.id });
+    expect(retired.retiredAt).not.toBeNull();
+    expect(steward.memories({ workspace: 'project' }).some((m) => m.id === replaced.id)).toBe(false);
+    expect(steward.memoryRetire(ACTOR, { id: replaced.id, restore: true }).retiredAt).toBeNull();
+    expect(audit.list({ action: 'steward.memory.retire' })).toHaveLength(1);
+    expect(audit.list({ action: 'steward.memory.restore' })).toHaveLength(1);
+
+    await steward.memoryWrite(ACTOR, { id: replaced.id, patch: { pinned: true } });
+    expect(() => steward.memoryRetire(ACTOR, { id: replaced.id })).toThrow(/pinned/);
+    expect(() => steward.memoryRetire(ACTOR, { id: 'mem_missing' })).toThrow(StewardError);
+  });
+
   it('moves a memory between tiers', async () => {
     const created = await steward.memoryWrite(ACTOR, {
       workspace: 'project', kind: 'semantic', title: 'Everyone uses pnpm', content: 'pnpm everywhere',

@@ -50,6 +50,92 @@ Three kinds, following the standard cognitive-architecture split:
 | `procedural` | repeatable methods | "To add a migration: append to MIGRATIONS, never edit a shipped one." |
 | `episodic` | what happened in a run | "The 2026-04 auth refactor broke session resume." |
 
+### Shelves — how long a memory is meant to hold
+
+The kind says what a memory *is*; since 0.50.0 the **shelf** says how long it
+is meant to hold, and it is the shelf that decides how the store treats it.
+Measured on a day of production before it existed: twenty-seven notes written
+by the reflexion pass, two worth keeping, five of them the same fact restated
+at five moments, and nothing in the row that could tell a convention from a
+count.
+
+| Shelf | Holds | Reaches a run | Forgets | May be replaced by a machine |
+|---|---|---|---|---|
+| `standing` | a convention or preference the operator stated | injected **whole** into every run of its scope, whatever the request | never | never |
+| `durable` | a lesson, a method that worked, a fact no document carries | retrieved by relevance | 90-day half-life | no — consolidation, with a person |
+| `volatile` | a fact that can stop being true: a version, a count, what is or is not implemented | retrieved by relevance | 30-day half-life | yes, by a newer note on the same subject |
+
+**Standing memories are not retrieved, and that is the point.** The search
+scores only what its two arms already found; a pinned "propose defaults rather
+than ask three questions" was never recalled for a request about deployments,
+because nothing in that request resembled it. So the kernel injects the
+standing shelf first — pinned first, within a budget of 1 500 characters — and
+leaves it out of the similarity search so a convention does not arrive twice.
+The block is framed as rules to follow, where recalled memories are framed as
+fallible recollection. The doctor warns past ten conventions in one scope: a
+list of rules that needs more than that has started to contradict itself.
+
+**Retirement is a soft delete.** A retired memory leaves retrieval, injection,
+the duplicate check and consolidation at once, stays readable and restorable
+for thirty days on the Memory page, and is collected by the janitor after
+that. A *supersession* is a retirement that names the newer memory, and it is
+bounded by rule rather than by anyone's judgement: only a volatile, unpinned
+loser, in the same scope. The arbiter below was measured wanting to replace
+the operator's pinned convention with a note derived from it; the rule is what
+makes that verdict inert whatever the prompt says.
+
+### The gate — what a machine may write
+
+An operator's explicit write goes straight to the store. Everything the
+machine writes — the reflexion pass — goes through `learning/gatekeeper.ts`
+first: one cheap model call per run that produced candidates, never for zero
+candidates, shown every candidate of the run together, each one's nearest
+existing memories, and an excerpt of the workspace's standing instructions.
+For each note it answers a level — `preference`, `lesson`, `fact`, `state`,
+`redundant`, `episodic` — and whether the note describes an existing memory
+at a later time. Only the first three are kept: a preference or a lesson as
+`durable`, a fact as `volatile`. A preference the model inferred is *not*
+promoted to standing — a false positive there would be injected into every
+run — the operator promotes it in one gesture from the Memory page.
+
+What the model is not trusted with is bounded outside the prompt: at most two
+memories per run, three on a failed run, six per workspace per rolling day; a
+supersession only onto a volatile neighbour the model was actually shown; and
+on any failure of the call, nothing written — every candidate rides the run's
+insight as *unjudged*, where the operator can keep any of them. Every verdict,
+kept or refused, is on that insight with its reason, so a wrong refusal is a
+button press away rather than a loss.
+
+Four more rules sit after the model, because the bench showed it would not
+apply them itself. A keep must say what a future session would get *wrong*
+without the note; a verdict that cannot is a skip, whatever level it chose. A
+note that cites a file or a line of code is describing the code, which can be
+read: `state`. A note that names one of the assistant's own tools — for the
+system workspace, its whole catalogue and the built-ins it is told it lacks —
+is about tooling the instructions describe at every session: `redundant`. And
+a preference is somebody's rule: a note the model called a preference that
+never mentions the operator is judged as a lesson, and then by the two rules
+above; one that does is exempt from them, since the operator's rule may well
+name a tool. Each overrule is written into the reason beside what the model
+had said.
+
+Why a model at all: the cosine cannot make this decision. Measured under
+bge-m3, a contrary claim sits at 0.76 from its original while two paraphrases
+of one fact sit at 0.57 — "the same thing, later" and "another thing, same
+subject" are not separable by distance. And why the small model: replayed over
+the labelled corpus in `apps/api/scripts/memory-gate-corpus.json` — the
+twenty-seven notes of that production day, judged by hand — the prompt alone
+kept eight or nine of the twenty-two notes that should have been refused; the
+counterfactual and the structural rules brought that to four or five, with
+haiku and sonnet alike, and no note worth keeping was ever lost. What remains
+is always the same handful: an interpretation heuristic, a judgement about one
+cost, three notes about the code that name no file. Against the twenty-seven
+that were all kept before, that is the flood reduced by four fifths, with the
+budgets bounding the rest. The bench `scripts/eval-memory-gate.mjs` replays
+that corpus through the real prompt on three passes and refuses a change whose
+worst pass misses a keep or keeps more than five skips — the number the
+prompt may not worsen without.
+
 ### The language it writes in
 
 Every pass in this document produces prose an operator reads — a lesson, a
