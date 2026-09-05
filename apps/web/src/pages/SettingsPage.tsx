@@ -23,6 +23,7 @@ import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { TotpQr } from '@/components/auth/TotpQr';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
+import { RetrievalStatus } from '@/components/system/RetrievalStatus';
 import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
 import { GoogleConnectionCard } from '@/components/settings/GoogleConnectionCard';
 import { ConfigurationCard } from '@/components/settings/ConfigurationCard';
@@ -903,8 +904,8 @@ function SystemCard() {
           <Row label={t('Active runs')}>{data.activeRuns}</Row>
           <Row label={t('Queued runs')}>{data.queuedRuns}</Row>
           <Row label={t('Stored memories')}>{data.memoryCount}</Row>
-          <Row label={t('Embedding provider')}>
-            <code className="font-mono text-[12px]">{data.embeddingProvider}</code>
+          <Row label={t('Retrieval')}>
+            <RetrievalStatus status={data.retrieval} />
           </Row>
         </dl>
       </Card>

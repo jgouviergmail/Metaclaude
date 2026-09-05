@@ -64,6 +64,10 @@ export const COPY: Record<string, { label: string; help: string }> = {
     label: 'Log level',
     help: 'What the server writes to its own log. `debug` is worth switching on while chasing something and worth switching off afterwards.',
   },
+  embeddings: {
+    label: 'Embeddings',
+    help: '`local` loads the sentence-transformer shipped with the image and switches search to meaning — in French and English — once it is ready; until then, and under `hash`, search matches words. Every stored vector is rebuilt in the background after a switch, and the Memory page says how many still wait.',
+  },
   language: {
     label: 'Metaclaude writes in',
     help: 'The language of what the system produces — memories, distilled lessons, what it proposes. Not the interface, which each browser keeps for itself; switching the language under Appearance sets both. A workspace can override this one. `auto` leaves it to the model.',

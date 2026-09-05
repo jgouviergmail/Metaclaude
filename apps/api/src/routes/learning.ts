@@ -21,6 +21,7 @@ import { HttpError, mustGetWorkspace, requestIp, requireOperator } from '../http
 import { spreadInt } from '../http/query.js';
 import { fingerprint } from '../learning/consolidation.js';
 import { MemoryReconcileError } from '../learning/memory.js';
+import { reindexStale } from '../learning/reindex.js';
 import { listInsights, setInsightStatus } from '../learning/reflexion.js';
 
 /**
@@ -218,8 +219,20 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
         return reply.send({ affected: context.memory.decay() });
       case 'collect':
         return reply.send({ affected: context.memory.collect() });
-      case 'reindex':
-        return reply.send({ affected: await context.memory.reindex() });
+      case 'reindex': {
+        // Every store the model serves, not memories alone: a change of
+        // embedder leaves documents and the classifier's exemplars just as
+        // stale, and the button used to rebuild a third of what it claimed.
+        const done = await reindexStale({
+          db: context.db,
+          memory: context.memory,
+          knowledge: context.knowledge,
+          classifier: context.classifier,
+          embedder: context.embedder,
+          log: (level, message, data) => context.log[level](data ?? {}, message),
+        });
+        return reply.send({ affected: done.memories + done.documents + done.exemplars, reindex: done });
+      }
       case 'consolidate': {
         // The only one that spends anything, and the only one that answers
         // with more than a count: what it found is a queue of questions, not

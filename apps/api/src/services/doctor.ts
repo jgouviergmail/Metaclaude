@@ -92,7 +92,16 @@ export interface DoctorDeps {
    * question and one that only matches words, the divergence has to be
    * visible where an operator looks for problems.
    */
-  embeddings: () => { requested: string; active: string; dimension: number };
+  embeddings: () => {
+    requested: string;
+    active: string;
+    dimension: number;
+    /** ready, loading, or lexical-only: what the provider is doing, not only its name. */
+    state: 'ready' | 'loading' | 'lexical-only';
+    lastError: string | null;
+    /** Rows written pending or under another provider, waiting for a rebuild. */
+    pending: { memories: number; documents: number; exemplars: number };
+  };
   activeRuns: () => number;
   queuedRuns: () => number;
   now?: () => number;
@@ -307,19 +316,47 @@ export class Doctor {
    * regime this deployment is in rather than only naming a string.
    */
   private retrieval(): DoctorCheck {
-    const { requested, active, dimension } = this.deps.embeddings();
-    const lexicalOnly = active.startsWith('hash');
+    const { requested, active, dimension, state, lastError, pending } = this.deps.embeddings();
+    const waiting = pending.memories + pending.documents + pending.exemplars;
+    const waitingNote =
+      waiting > 0
+        ? ` ${waiting} vector${waiting === 1 ? '' : 's'} (${pending.memories} memories, ${pending.documents} documents, ${pending.exemplars} exemplars) await a rebuild.`
+        : '';
 
-    if (requested !== 'hash' && lexicalOnly) {
+    if (active.startsWith('hash')) {
+      return {
+        name: 'retrieval',
+        status: 'ok',
+        summary: `${active} (${dimension}d)`,
+        detail:
+          'The built-in hashing embedder: no download, no network — and no semantics. Retrieval matches words, not meaning.' +
+          waitingNote,
+      };
+    }
+
+    if (state === 'loading') {
       return {
         name: 'retrieval',
         status: 'warn',
-        summary: `"${requested}" embeddings were requested; the built-in hashing embedder is what is running.`,
+        summary: `${active} is loading; retrieval is lexical-only meanwhile.`,
         detail:
-          'The optional model package is missing or its download failed, so retrieval matches words rather than meaning: ' +
-          'a question phrased differently from its answer will find nothing. Install @huggingface/transformers in the ' +
-          'image and re-index from Memory → Knowledge, or keep to the hashing embedder and phrase questions in the ' +
-          'corpus’ own words.',
+          'The model is still coming up. Until it does, memory and knowledge search match words only and every ' +
+          'new memory is stored pending — they are re-indexed automatically once the model answers.' +
+          waitingNote,
+      };
+    }
+
+    if (state === 'lexical-only') {
+      return {
+        name: 'retrieval',
+        status: 'warn',
+        summary: `"${requested}" embeddings were requested; the model did not load, so retrieval is lexical-only.`,
+        detail:
+          `${active} could not be loaded${lastError ? ` (${lastError})` : ''}. Retrieval matches words rather than ` +
+          'meaning: a question phrased differently from its answer will find nothing, and every memory written ' +
+          'meanwhile is stored pending. Ship the model with the image (the runtime never downloads), or switch the ' +
+          'embeddings setting to hash; either way the stale rows are re-indexed automatically.' +
+          waitingNote,
       };
     }
 
@@ -327,9 +364,9 @@ export class Doctor {
       name: 'retrieval',
       status: 'ok',
       summary: `${active} (${dimension}d)`,
-      detail: lexicalOnly
-        ? 'The built-in hashing embedder: no download, no network — and no semantics. Retrieval matches words, not meaning.'
-        : 'A sentence-transformer: retrieval bridges a question to an answer that shares no words with it.',
+      detail:
+        'A sentence-transformer: retrieval bridges a question to an answer that shares no words with it.' +
+        waitingNote,
     };
   }
 

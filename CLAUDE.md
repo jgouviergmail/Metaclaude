@@ -499,6 +499,32 @@ restates the code is noise; one that records a decision or a trap is not.
   so `ApiError` defined at module level and referenced from the factory
   throws "Cannot access before initialization". Declare it inside
   `vi.hoisted`, with the mocks.
+- **A floor measured on one vector space is wrong on another by a factor of
+  two.** Every retrieval gate was a measurement of the hashing embedder;
+  under bge-m3 a stopword query scores 0.36 where hashing noise stopped at
+  0.10, and the 0.25 consolidation floor would shortlist the whole corpus.
+  Equal-weight fusion, right for two arms that both match words, demoted
+  passages a real model had ranked first. `retrievalProfile(family)` in
+  `learning/retrieval.ts` is the only place such a number may live, and
+  `retrieval-profile.test.ts` pins each to the measured band, not to a value.
+- **A lexical test needs three rows.** bm25's IDF is
+  `log((N − n + 0.5) / (n + 0.5))`: zero for a term in one row of two, and
+  clamped to nothing on a one-row corpus. A store test that seeds one
+  memory and searches for its word finds nothing, and reads as a broken
+  lexical arm. Seed two unrelated rows first.
+- **A model that fails to load must keep its own id.** The old fallback
+  to hashing re-embedded the whole corpus one way at a failed boot and back
+  the other way at the next that loaded. A provider that is not `ready`
+  writes nothing and compares nothing; the rows wait, and `reindexStale`
+  keeps the promise. `readiness.test.ts` holds all four consumers to it.
+- **The embedder factory answers before the model has loaded.** A bench or
+  a script that uses it at once measures the lexical arm alone and reports
+  a semantic result of zero. `await embedder.whenSettled()` and refuse to
+  measure if it is not ready — `scripts/eval-retrieval.mjs` does.
+- **`onnxruntime-node` ships every platform's binaries.** 124 MB of Windows
+  and 35 MB of macOS in a Linux image; the Dockerfile removes them after
+  the production install. Its postinstall is skipped under pnpm's build
+  allow-list and only fetched CUDA libraries anyway.
 
 ## Testing
 

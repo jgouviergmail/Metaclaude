@@ -127,40 +127,37 @@ handed to read are different trusts.
 
 ### What it finds, and what it does not
 
-This is worth knowing before you rely on it, because the shape is sharp
-rather than gradual. Retrieval was measured against a corpus of a hundred
-passages with a labelled answer for each question:
+Retrieval runs on a sentence-transformer shipped with Metaclaude (bge-m3),
+so a question reaches a passage it shares no word with: *« puis-je partir
+avant la fin ? »* finds the clause about *préavis*, *« on m'a cambriolé »*
+finds the one about *vol*, and an English question reaches a French answer.
+Measured on a labelled corpus, every such question comes back in the top five,
+and every question asked in the document's own words still comes back at
+rank 1 — including three leases that differ only by their title, because each
+passage is indexed with its document's name.
 
-- **Ask in the document's own words and it is exact.** Every labelled
-  question — including paraphrases like *« combien de temps pour récupérer le
-  dépôt de garantie ? »* against a passage that says *restitué dans un délai
-  de deux mois* — comes back at rank 1. It stays at rank 1 as the shelf grows
-  past three hundred passages, and when several documents differ only by
-  their title (three leases, three different notice periods) the right one
-  still wins, because each passage is indexed with its document title.
-- **Ask in words the document never uses and it finds nothing.** *« puis-je
-  partir avant la fin ? »* does not reach a passage about *préavis*; *« on
-  m'a cambriolé »* does not reach one about *vol*; an English question does
-  not reach a French answer. Measured at zero.
+Two things are worth knowing about how that works:
 
-The cause is the embedding provider. By default Metaclaude uses a built-in
-hashing embedder — no model download, no network, works everywhere — whose
-"similarity" is really character-overlap. It is a very good fuzzy word
-matcher and not a semantic one. **Settings → System → Doctor** now names
-which embedder is actually running and says which of the two regimes you are
-in.
+- **The model takes a moment to load** after a start — about a minute and a
+  half on a small server. Until it has, search matches words only, and a
+  memory or document written meanwhile waits for its vectors; they are
+  computed automatically the moment the model answers. The Memory page shows
+  a line while this is the case, with the count still waiting.
+- **A large document is indexed in two steps.** Its text is searchable the
+  instant you save it; its vectors follow in the background, and the document
+  carries a *Vectors pending* badge until they do. A small one is embedded on
+  the spot.
 
-To cross that wall, enable a real sentence-transformer: install
-`@huggingface/transformers` in the image, set `METACLAUDE_EMBEDDINGS=local`,
-restart, then press **Re-index** on the knowledge library (and Re-index under
-Memory maintenance) so existing passages are re-embedded in the new space.
-Until that re-index runs, the exact-word arm keeps answering and the
-semantic one stays silent — which is why the doctor warns rather than
-failing.
+**Settings → Configuration → Embeddings** chooses the provider, without a
+restart. `local` is the model above. `hash` is a built-in word matcher — no
+model in memory, no semantics — for a host that cannot spare the gigabyte;
+under it, phrase the question with a word the document actually contains, and
+the **Rehearse a retrieval** box will tell you in two seconds. Switching
+either way rebuilds every stored vector in the background.
 
-Until then, the practical habit is simple: **phrase the question with a word
-the document actually contains.** The **Rehearse a retrieval** box is there
-to check in two seconds.
+If the model cannot load at all, Metaclaude does not quietly fall back to word
+matching: the doctor warns with the reason, you receive a notification, and
+the Memory page says *Model unavailable* until it is fixed.
 
 ## The policy learner
 

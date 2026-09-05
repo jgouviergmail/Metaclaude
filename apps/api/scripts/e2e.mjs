@@ -483,6 +483,48 @@ results.section('audit');
   );
 }
 
+results.section('retrieval');
+{
+  const system = await api.call('/api/system');
+  const retrieval = system.body.retrieval ?? {};
+  results.check(
+    'the health endpoint says what retrieval is',
+    ['hash', 'st'].includes(retrieval.family) && ['ready', 'loading', 'lexical-only'].includes(retrieval.state),
+    JSON.stringify(retrieval),
+  );
+  results.check(
+    'semantic is claimed only by a ready sentence-transformer',
+    retrieval.semantic === (retrieval.family === 'st' && retrieval.state === 'ready'),
+  );
+  // Only where the shipped model is actually present (CI fetches it once):
+  // the model loads, and a question sharing no word with its answer finds it.
+  if (process.env.METACLAUDE_E2E_EXPECT_SEMANTIC === '1') {
+    const ready = await until(
+      async () => (await api.call('/api/system')).body.retrieval?.semantic === true,
+      { timeoutMs: 240_000, everyMs: 2_000, what: 'the embedding model to load' },
+    ).catch(() => false);
+    results.check('the shipped model loads and retrieval becomes semantic', ready === true);
+    const saved = await api.call('/api/knowledge', {
+      method: 'POST',
+      body: {
+        workspaceId: null,
+        title: 'Bail',
+        content:
+          'Le délai de préavis est de trois mois, réduit à un mois en zone tendue.\n\n' +
+          'Le dépôt de garantie est restitué dans un délai de deux mois après la remise des clés.\n\n' +
+          'Les grosses réparations, dont le remplacement de la chaudière, restent à la charge du bailleur.',
+      },
+    });
+    results.check('a document is saved and embedded inline', saved.status === 201 && saved.body.document?.embeddingModel?.startsWith('st:'));
+    const hits = await api.call(`/api/knowledge/search?q=${encodeURIComponent('puis-je partir avant la fin sans pénalité ?')}`);
+    results.check(
+      'a question sharing no word with its answer finds the passage',
+      hits.status === 200 && hits.body.results?.[0]?.text?.includes('préavis'),
+      JSON.stringify(hits.body.results?.map((hit) => hit.text.slice(0, 40))),
+    );
+  }
+}
+
 const code = results.finish();
 await server.stop();
 process.exit(code);

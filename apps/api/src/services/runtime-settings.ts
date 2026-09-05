@@ -139,6 +139,22 @@ export const RUNTIME_SETTING_SPECS: readonly RuntimeSettingSpec[] = [
     envVar: 'METACLAUDE_LANGUAGE',
     fromConfig: (config) => config.language,
   },
+  {
+    // The embedding provider, hot. `local` switches every store to the
+    // shipped model at once — they answer lexically until it is ready, then
+    // every stale vector is rebuilt — and `hash` switches back immediately.
+    // Read at boot through `choice()`, so a stored override outlives a
+    // restart without a replay; applied live by `switchEmbedder` in
+    // context.ts.
+    key: 'embeddings',
+    kind: 'choice',
+    min: null,
+    max: null,
+    options: ['hash', 'local'],
+    envVar: 'METACLAUDE_EMBEDDINGS',
+    fromConfig: (config) => config.embeddings.provider,
+    applies: true,
+  },
 ];
 
 const BY_KEY = new Map(RUNTIME_SETTING_SPECS.map((spec) => [spec.key as string, spec]));

@@ -95,6 +95,13 @@ export async function startServer(options = {}) {
     METACLAUDE_INSECURE_COOKIES: 'true',
     METACLAUDE_PORT: '8787',
     METACLAUDE_RUN_TIMEOUT_MS: '180000',
+    // The retrieval knobs pass through when the caller set them: CI runs the
+    // live check once against the shipped model, from a fetched cache.
+    ...Object.fromEntries(
+      ['METACLAUDE_EMBEDDINGS', 'METACLAUDE_EMBEDDING_MODEL', 'METACLAUDE_EMBEDDING_CACHE']
+        .filter((key) => process.env[key])
+        .map((key) => [key, process.env[key]]),
+    ),
     ...options.env,
   });
 

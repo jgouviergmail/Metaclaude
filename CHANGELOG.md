@@ -11,6 +11,63 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.46.0] — 2026-09-05
+
+### Added
+
+- **Retrieval is semantic, and the model ships with the image.** Memory and
+  knowledge search used to run on a hashing embedder that matched words: on
+  six questions sharing no content word with their answer, it found none.
+  bge-m3 — multilingual, quantised, pinned by revision, fetched at build time
+  by `deploy/fetch-embedding-model.sh` and loaded offline — finds all six on
+  its dense arm. It was chosen on the repository's own retrieval bench
+  against five candidates; the model the code named as its `local` default
+  did not separate French at all. docs/LEARNING.md carries the table.
+
+- **One retrieval profile per family of vector space.** Every gate in
+  retrieval was a measurement of the hashing embedder and was wrong for a
+  sentence-transformer by a factor of two: the consolidation floor would have
+  shortlisted an entire corpus, and equal-weight fusion demoted passages the
+  model had ranked first. `retrievalProfile(family)` now chooses the floors,
+  the automatic-merge threshold and the fusion rule — dense-first under a
+  model — and a test pins each number to the band it was measured in.
+
+- **Embeddings is a hot setting.** Settings → Configuration switches between
+  the model and the hashing embedder without a restart; every stored vector is
+  rebuilt in the background afterwards, and the choice outlives a restart. The
+  health endpoint carries a `retrieval` block — embedder, state, whether it is
+  semantic, how many vectors still wait — and Settings, the Memory page and
+  the Dashboard read it, so "semantic" is claimed in exactly one place and
+  only when true.
+
+### Changed
+
+- **A model that does not load leaves retrieval explicitly lexical.** The
+  provider keeps its own id and writes no vectors; the doctor warns with the
+  reason; a push notification says so once. It used to fall back silently to
+  hashing and re-embed the whole corpus in that space — and back again at the
+  next boot that loaded. Nothing writes or compares a vector under a provider
+  that is not ready: memories, documents and classifier exemplars are stored
+  pending, found by their words meanwhile, and rebuilt the moment the model
+  answers.
+
+- **A large document is indexed in two steps.** Its text and fts index are
+  written inside the request; its vectors are computed by the background
+  rebuild, and the document carries a *Vectors pending* badge until they are.
+  Measured: a hundred chunks take about thirty seconds on the server, which
+  was one synchronous request.
+
+- **Re-index rebuilds every store.** The maintenance button, and the rebuild
+  after a change of embedder, used to rebuild memories alone; documents and
+  the classifier's exemplars stayed under the old model and silently stopped
+  counting.
+
+- **The steward reads the retrieval regime rather than assuming it.** Its
+  overview carries the embedder, its state and the sentence to repeat; the
+  memory-search tool no longer calls itself semantic on a deployment where it
+  is not — the steward itself reported that, in production, on its first day.
+
+
 ## [0.45.2] — 2026-09-05
 
 ### Changed

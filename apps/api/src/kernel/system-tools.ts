@@ -166,7 +166,10 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
   tool({
     name: 'system_memory_search',
     ring: 1,
-    description: 'Semantic search over the memories, the same retrieval a run gets.',
+    description:
+      'Search the memories with the same hybrid retrieval a run gets: the embedder in force plus word matching. ' +
+      'Semantic only when a sentence-transformer is loaded — read `retrieval` in system_overview first; with the ' +
+      'built-in hashing embedder, or while a model loads, it matches words, so title memories with the words you will search for.',
     schema: { query: z.string().min(1), workspace: WORKSPACE.optional(), limit: LIMIT },
     handle: (facade, _scope, args) => facade.memorySearch(args.query, { workspace: args.workspace, limit: args.limit }),
   }),

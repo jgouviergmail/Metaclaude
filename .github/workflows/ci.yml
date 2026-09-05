@@ -129,11 +129,26 @@ jobs:
         with:
           name: dist
 
+      # The shipped embedding model, once per pinned revision: the live check
+      # is the one place the real model loads in CI before the image does.
+      - name: Cache the embedding model
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.models
+          key: embedding-model-${{ hashFiles('deploy/fetch-embedding-model.sh') }}
+      - name: Fetch the embedding model
+        run: deploy/fetch-embedding-model.sh Xenova/bge-m3 "${{ github.workspace }}/.models"
+
       # Boots the real server against a throwaway data directory: the guards,
-      # the migrations, the static handler and the CSP, not a test double.
+      # the migrations, the static handler and the CSP, not a test double —
+      # and, with the model fetched above, the semantic regime end to end.
       - name: End-to-end check
         env:
           METACLAUDE_E2E_NO_AGENT: '1'
+          METACLAUDE_EMBEDDINGS: local
+          METACLAUDE_EMBEDDING_MODEL: Xenova/bge-m3
+          METACLAUDE_EMBEDDING_CACHE: ${{ github.workspace }}/.models
+          METACLAUDE_E2E_EXPECT_SEMANTIC: '1'
         run: pnpm --filter @metaclaude/api check:e2e
 
   browser:
@@ -342,6 +357,31 @@ jobs:
             cat /tmp/login.json || true
             exit 1
           fi
+
+      # The health gate never waited for the model — the API answers before
+      # it loads — so this is where the image proves it ships one that works:
+      # bge-m3 takes tens of seconds on a runner, and `semantic` flips only
+      # once a first vector has come back.
+      - name: The shipped model loads and retrieval is semantic
+        run: |
+          set -euo pipefail
+          jar="$(mktemp)"
+          curl -sS -k --max-time 20 -c "$jar" -o /dev/null \
+            --resolve smoke.metaclaude.test:443:127.0.0.1 -X POST https://smoke.metaclaude.test/api/auth/login \
+            -H 'content-type: application/json' \
+            --data-binary '{"username":"owner","password":"sm0ke-pa$sw\"rd-9x"}'
+          body=''
+          for _ in $(seq 1 60); do
+            body="$(curl -sS -k --max-time 15 -b "$jar" --resolve smoke.metaclaude.test:443:127.0.0.1 https://smoke.metaclaude.test/api/system)"
+            if printf '%s' "$body" | jq -e '.retrieval.semantic == true' >/dev/null 2>&1; then
+              printf '%s' "$body" | jq '.retrieval'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::retrieval never became semantic inside the deployed image"
+          printf '%s' "$body" | jq '.retrieval' || true
+          exit 1
 
       - name: Logs
         if: failure()

@@ -43,6 +43,7 @@ const DOCS = [
     contentLength: 2048,
     enabled: true,
     chunkCount: 3,
+    embeddingModel: 'hash-v1:512',
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,
   },
@@ -53,6 +54,7 @@ const DOCS = [
     contentLength: 4096,
     enabled: false,
     chunkCount: 7,
+    embeddingModel: '',
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,
   },
@@ -205,5 +207,14 @@ describe('re-indexing', () => {
         'Everything was already indexed with the current embedder.',
       ),
     );
+  });
+});
+
+describe('vectors pending', () => {
+  it('marks a document whose chunks await the model, and only that one', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+
+    await screen.findByText('Conventions');
+    expect(screen.getAllByText('Vectors pending')).toHaveLength(1);
   });
 });

@@ -193,7 +193,8 @@ describe('the surface is closed', () => {
       'trustProxy',
       'masterKey',
       'dataDir',
-      'embeddings',
+      // `embeddings` left this list when it became a hot setting; the
+      // retrieval-settings route test covers it in both directions.
     ]) {
       expect((await put(owner, key, 1)).status).toBe(404);
     }

@@ -228,46 +228,45 @@ describe('createEmbeddingProvider', () => {
     expect(provider.dimension).toBe(HASH_EMBEDDING_DIM);
   });
 
-  it('falls back to hashing — rather than failing the boot — when the model cannot load', async () => {
+  /**
+   * The decision, recorded: a model that cannot load leaves the deployment
+   * lexical-only under the model's own id — never the hashing embedder. The
+   * old fallback re-embedded the whole corpus in hashing at a failed boot
+   * and back the other way at the next one that loaded.
+   */
+  it('stays lexical-only under its own id — rather than hashing — when the model cannot load', async () => {
+    const provider = await createEmbeddingProvider({
+      provider: 'local',
+      model: 'Xenova/all-MiniLM-L6-v2',
+      cacheDir: '/nonexistent',
+      load: async () => {
+        throw new Error('no model here');
+      },
+    });
+    await provider.whenSettled();
+
+    expect(provider.id).toBe('st:Xenova/all-MiniLM-L6-v2');
+    expect(provider.family).toBe('st');
+    expect(provider.ready).toBe(false);
+    await expect(provider.embed('a question about retrieval')).rejects.toThrow(/lexical-only/);
+  });
+
+  it('says out loud that the model is unavailable, naming it, so the doctor is not the only witness', async () => {
     const logs: Array<{ level: string; message: string }> = [];
     const provider = await createEmbeddingProvider({
       provider: 'local',
       model: 'Xenova/all-MiniLM-L6-v2',
       cacheDir: '/nonexistent',
+      load: async () => {
+        throw new Error('no model here');
+      },
       log: (level, message) => logs.push({ level, message }),
     });
-
-    expect(provider.id).toBe(`hash-v1:${HASH_EMBEDDING_DIM}`);
-    // And it embeds: a provider that fell back but could not answer would be
-    // the same outage by a longer route.
-    expect(norm(await provider.embed('a question about retrieval'))).toBeCloseTo(1, 5);
-  });
-
-  it('says out loud that it fell back, naming the model, so the doctor is not the only witness', async () => {
-    const logs: Array<{ level: string; message: string }> = [];
-    await createEmbeddingProvider({
-      provider: 'local',
-      model: 'Xenova/all-MiniLM-L6-v2',
-      cacheDir: '/nonexistent',
-      log: (level, message) => logs.push({ level, message }),
-    });
+    await provider.whenSettled();
 
     const warning = logs.find((entry) => entry.level === 'warn');
     expect(warning?.message).toContain('Xenova/all-MiniLM-L6-v2');
-    expect(warning?.message).toMatch(/falling back/i);
-  });
-
-  it('leaves the requested provider legible to the doctor, which compares it with the active one', async () => {
-    // The divergence the doctor reports is exactly this pair: `local` asked
-    // for, `hash-v1:512` answering. If the id ever stopped saying which
-    // embedder is running, that check would silently pass on a lie.
-    const provider = await createEmbeddingProvider({
-      provider: 'local',
-      model: 'Xenova/all-MiniLM-L6-v2',
-      cacheDir: '/nonexistent',
-    });
-
-    expect(provider.id.startsWith('hash-')).toBe(true);
-    expect(provider.id).not.toContain('Xenova');
+    expect(warning?.message).toMatch(/lexical-only/i);
+    expect(warning?.message).not.toMatch(/falling back/i);
   });
 });

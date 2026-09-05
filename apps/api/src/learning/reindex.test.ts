@@ -61,8 +61,8 @@ describe('countStale', () => {
     memoryRow('mem_2', 'st:Xenova/all-MiniLM-L6-v2');
     documentRow('doc_1', 'hash-v1:512');
 
-    expect(countStale(db, 'hash-v1:512')).toEqual({ memories: 1, documents: 0 });
-    expect(countStale(db, 'st:Xenova/all-MiniLM-L6-v2')).toEqual({ memories: 1, documents: 1 });
+    expect(countStale(db, 'hash-v1:512')).toEqual({ memories: 1, documents: 0, exemplars: 0 });
+    expect(countStale(db, 'st:Xenova/all-MiniLM-L6-v2')).toEqual({ memories: 1, documents: 1, exemplars: 0 });
   });
 
   /**
@@ -77,7 +77,7 @@ describe('countStale', () => {
   });
 
   it('answers zero on an empty corpus', () => {
-    expect(countStale(db, 'hash-v1:512')).toEqual({ memories: 0, documents: 0 });
+    expect(countStale(db, 'hash-v1:512')).toEqual({ memories: 0, documents: 0, exemplars: 0 });
   });
 });
 
@@ -87,9 +87,9 @@ describe('reindexStale', () => {
     const memory = fakeStore(0);
     const knowledge = fakeStore(0);
 
-    const done = await reindexStale({ db, memory, knowledge, embedderId: 'hash-v1:512', log });
+    const done = await reindexStale({ db, memory, knowledge, classifier: fakeStore(0), embedder: { id: 'hash-v1:512', ready: true }, log });
 
-    expect(done).toEqual({ memories: 0, documents: 0 });
+    expect(done).toEqual({ memories: 0, documents: 0, exemplars: 0 });
     expect(memory.calls).toBe(0);
     expect(knowledge.calls).toBe(0);
     expect(lines).toEqual([]);
@@ -101,9 +101,9 @@ describe('reindexStale', () => {
     const memory = fakeStore(1);
     const knowledge = fakeStore(1);
 
-    const done = await reindexStale({ db, memory, knowledge, embedderId: 'st:new', log });
+    const done = await reindexStale({ db, memory, knowledge, classifier: fakeStore(0), embedder: { id: 'st:new', ready: true }, log });
 
-    expect(done).toEqual({ memories: 1, documents: 1 });
+    expect(done).toEqual({ memories: 1, documents: 1, exemplars: 0 });
     expect(memory.calls).toBe(1);
     expect(knowledge.calls).toBe(1);
     expect(lines.map((line) => line.level)).toEqual(['info', 'info']);
@@ -114,9 +114,9 @@ describe('reindexStale', () => {
     const memory = fakeStore(new Error('the model would not load'));
     const knowledge = fakeStore(4);
 
-    const done = await reindexStale({ db, memory, knowledge, embedderId: 'st:new', log });
+    const done = await reindexStale({ db, memory, knowledge, classifier: fakeStore(0), embedder: { id: 'st:new', ready: true }, log });
 
-    expect(done).toEqual({ memories: 0, documents: 4 });
+    expect(done).toEqual({ memories: 0, documents: 4, exemplars: 0 });
     expect(knowledge.calls).toBe(1);
     expect(lines.some((line) => line.level === 'warn')).toBe(true);
   });
@@ -125,7 +125,7 @@ describe('reindexStale', () => {
     const memory = fakeStore(0);
     const knowledge = fakeStore(0);
 
-    await reindexStale({ db, memory, knowledge, embedderId: 'hash-v1:512', log });
+    await reindexStale({ db, memory, knowledge, classifier: fakeStore(0), embedder: { id: 'hash-v1:512', ready: true }, log });
 
     expect(memory.calls).toBe(0);
   });

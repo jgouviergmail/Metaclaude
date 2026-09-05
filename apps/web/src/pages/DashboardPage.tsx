@@ -32,6 +32,7 @@ import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { INSIGHT_TONE, isLearned } from '@/lib/insights';
+import { describeRetrieval } from '@/lib/retrieval';
 import { usePlural, useT } from '@/lib/i18n';
 import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
@@ -310,7 +311,7 @@ export function DashboardPage() {
             <Stat
               label={t('Memories')}
               value={system?.memoryCount ?? 0}
-              hint={system?.embeddingProvider}
+              hint={t(describeRetrieval(system?.retrieval).label)}
               icon={<Brain />}
             />
           </div>

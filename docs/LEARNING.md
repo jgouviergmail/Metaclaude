@@ -173,14 +173,20 @@ Hybrid, because neither arm alone is good enough:
 - **Lexical** — BM25 via SQLite FTS5. Catches exact identifiers, error codes and
   rare tokens, which embeddings smear together.
 
-They are fused by **reciprocal rank fusion**:
+How they are fused depends on the **family** of the embedder — see
+*Embeddings* below. Under the hashing family, where neither arm knows meaning,
+they are peers and fused by **reciprocal rank fusion**:
 
 ```
 score(d) = Σ  1 / (k + rank_i(d)),   k = 60
 ```
 
 RRF needs no per-corpus weight tuning, which matters for a system that starts
-completely empty. The fused score is then multiplied by a prior:
+completely empty. Under a sentence-transformer the dense order is kept first
+and the lexical arm only appends what the dense arm missed: measured on
+bge-m3, equal-weight fusion demoted right passages the dense arm had ranked
+first (6 of 6 → 5 of 6 on the rephrased questions, and 3 of 6 → 1 of 6 with a
+weaker model). The fused score is then multiplied by a prior:
 
 ```
 prior = 0.55 · confidence + 0.25 · recency + (pinned ? 0.35 : 0)
@@ -478,44 +484,123 @@ memory. It also rules out the alternative explanation: the wall is the
 embedder, not the relevance gates — opening them changes nothing.
 
 The lever is the embedding provider. The hashing embedder's "similarity" is
-character-n-gram overlap; a sentence-transformer would bridge those
-questions. That is a 350 MB dependency and a model download, so it stays
-opt-in — and the doctor's `retrieval` check now reports which embedder
-actually answered, warning when the configured one silently fell back.
+character-n-gram overlap; a sentence-transformer bridges those questions, and
+since 0.46 one ships in the image and is the default. The same bench, run
+through `scripts/eval-retrieval.mjs` against every candidate, is what chose
+it — the numbers are in *Embeddings* below — and the doctor's `retrieval`
+check reports which embedder is answering and in which regime.
 
 ## Embeddings
 
 Two providers, both **local**. No text ever leaves the machine for embedding.
 
-**`hash` (default)** — feature hashing over word unigrams, bigrams and character
-4-grams, projected into 512 dimensions with signed buckets so collisions cancel
-rather than accumulate, sub-linearly weighted and L2-normalised. No download, no
-native dependency, no network. Adequate for topical recall over a personal
-corpus, and for catching the same text written twice.
+**`local` (default)** — `Xenova/bge-m3` through `@huggingface/transformers`,
+quantised, CLS-pooled, 1024 dimensions, pinned by revision and shipped in the
+image: the runtime never downloads a model. Multilingual, which the corpus
+requires — the memories are French, the documentation English, and a question
+in one language must reach an answer in the other.
 
-It is **not** adequate for detecting paraphrase, and this document used to say
-it was. Measured on a real deployment: the highest cosine between any two of
-its twenty-two memories was 0.51, its median 0.12, while a third of the corpus
-was semantically redundant. The gap between "same subject" and "same claim"
-simply is not in the signal, which is why consolidation asks a model instead of
-lowering a threshold.
+**`hash`** — feature hashing over word unigrams, bigrams and character 4-grams,
+projected into 512 dimensions with signed buckets so collisions cancel rather
+than accumulate, sub-linearly weighted and L2-normalised. No model in memory,
+no native dependency. It catches the same text written twice and nothing that
+is merely *meant* twice, and it is kept for hosts that cannot spare the
+gigabyte — at the price of matching words rather than meaning, which the
+doctor, the Settings screen and the Memory page all say out loud.
 
-**`local`** — a sentence-transformer via `@huggingface/transformers`. Better
-semantic recall, at a ~90 MB one-time download. Imported dynamically and falls
-back to `hash` if unavailable, so enabling it can never break a running
-deployment.
+### Why this model
 
-The two produce unrelated vector spaces, so switching requires a re-index. It
-now happens by itself: a vector is only comparable to one from the same
-provider, so `search` and the duplicate check both skip a row whose
-`embedding_model` is not the live one — which meant a change of provider, or
-`local` falling back to `hash` because the optional package is absent, silently
-turned off dense retrieval *and* duplicate detection until somebody pressed the
-button. `learning/reindex.ts` counts the stale rows at boot with one query and
-rebuilds them in the background, so the health endpoint the deploy gate waits
-on is never held up. The manual action remains under Memory → Maintenance.
+Measured on the labelled corpus above — six questions sharing no content word
+with their answer, recall@5 of the dense arm alone, then through the pipeline
+as it was before the profiles below existed:
 
----
+| Embedder | Dense arm alone | Old pipeline | Process RSS | On disk |
+|---|---|---|---|---|
+| `hash-v1:512` | 0/6 | 0/6 | 148 MB | — |
+| `all-MiniLM-L6-v2` (English) | 0/6 | 0/6 | 154 MB | 22 MB |
+| `paraphrase-multilingual-MiniLM-L12-v2` | 3/6 | 1/6 | 561 MB | 113 MB |
+| `multilingual-e5-small` / `-base` | 2/6 | 2/6 | 562–708 MB | 113–280 MB |
+| **`bge-m3`** | **6/6** | 5/6 | 1 009 MB | 570 MB |
+
+Two things that table says beyond the winner. The English model the code used
+to name as its default does not separate French at all — 0.44 between two
+unrelated sentences, 0.46 for a paraphrase — so "install the package and set
+`local`" was never going to work on this deployment. And the old pipeline,
+tuned on hashing, *cost* every model recall: that is the origin of the
+profiles.
+
+Cost, on this machine and scaled by the ×3 measured against the production
+CPU: bge-m3 loads in about 30 s (≈ 90 s on the server), answers a query in
+about 17 ms (≈ 50 ms), indexes a hundred chunks in about 11 s (≈ 33 s), and
+holds the process near 1 GB — 1.27 GB while embedding a batch of long chunks,
+which is why model calls are serialised and batched by eight.
+
+### One profile per family
+
+Every floor in `retrieval.ts` is a measurement, and the two families measure
+differently. On bge-m3, memory-scale texts:
+
+| Pair | Cosine |
+|---|---|
+| a query of function words, against the corpus | ≤ 0.36 |
+| unrelated memories | 0.27–0.42 |
+| same project, different facts | 0.38–0.54 |
+| the weakest genuine paraphrase (query → passage) | 0.46 |
+| the same fact, paraphrased, between two memories | 0.57 |
+| a contrary claim on the same subject | 0.76 |
+| the same fact restated in other words | 0.87 |
+
+So `retrievalProfile(family)` chooses, per family: the dense floors, the
+knowledge store's solo-dense floor, the automatic-merge threshold (0.92 for
+hashing, 0.85 for the sentence-transformer — above a contrary claim, below a
+restatement), the consolidation shortlist floor (0.25 and 0.50 — the hashing
+value would shortlist an entire bge-m3 corpus) and the fusion rule.
+`retrieval-profile.test.ts` holds each number against the band it was
+measured in rather than against a value, and `retrieval-quality-semantic.test.ts`
+guards the pipeline with a fake that has exactly one property of a real
+model — words that mean the same thing land close — so no gate or fusion may
+ever again put a right passage below where the dense arm ranked it.
+
+Pooling is part of the model, not the pipeline: bge-m3 is trained with CLS
+pooling and answers noise under the sentence-transformers default of mean
+pooling. `MODEL_PROFILES` carries it, and the dimension is discovered from the
+first vector rather than declared. The e5 family is deliberately not listed:
+it embeds queries and passages with different prefixes, which this interface
+has no seam for, and without them every text scores 0.8 against every other.
+
+### Readiness, and what happens without a model
+
+The provider exists at once and is **not ready** until the model has answered
+a first vector — tens of seconds — and stays not ready for good if it cannot.
+The rule that follows is one line, with four consumers: nothing writes or
+compares a vector under a provider that is not ready. A memory written
+meanwhile is stored *pending* (no vector, no model id); a document is written
+with its text and its fts index, marked pending, and found by its words; a
+classifier exemplar is stored empty; the consolidation sweep compares nothing.
+Search runs its lexical arm alone and says nothing false.
+
+Pending is a promise only if something keeps it: `reindexStale` rebuilds every
+stale row — memories, documents *and* the classifier's exemplars, which a
+change of embedder used to leave silently invisible — and is asked for at
+boot, when the model becomes ready, when the setting changes, and whenever a
+document too large to embed inside its request is saved. One pass runs at a
+time; asks that arrive mid-pass collapse into one more.
+
+What it never does is fall back to hashing. It used to: a failed load became
+the hashing embedder, the boot re-embedded the whole corpus in hashing, and
+the next boot that loaded did it all again the other way. Now a provider that
+cannot load keeps its own id, the doctor warns with the reason, a push
+notification says so once, and the Memory page shows the regime and the count
+of vectors still waiting.
+
+### The setting is hot
+
+`METACLAUDE_EMBEDDINGS` is a runtime setting like the others: switching to
+`hash` takes effect at once and starts the rebuild; switching to `local`
+switches every store to the model's id at once — they answer lexically until
+it is ready — and the rebuild follows. A stored choice is read at boot, so it
+outlives a restart. The manual **Re-index** under Memory → Maintenance now
+rebuilds all three stores and reports each count.
 
 ## What this is not
 

@@ -211,6 +211,13 @@ happened. Three consequences worth knowing:
 - Building needs about 2 GB of memory. On a 1 GB VPS the bundler is OOM-killed
   and Docker reports a bare `exit code 137`; add swap first. The script checks
   and warns before spending the time.
+- The image carries the embedding model (about 600 MB more to pull once) and
+  loading it holds the app container near 1 GB of memory, on top of what the
+  agent's CLI processes take. A 4 GB host with the default limits runs it;
+  a host without swap has no cushion if two long runs and a large document
+  land together, so give it a 2 GB swap file. `METACLAUDE_EMBEDDINGS=hash`
+  turns the model off entirely, at the cost of matching words rather than
+  meaning — see docs/LEARNING.md, *Embeddings*.
 
 The steps are written out below anyway. A script that provisions your only
 server is not one to run without knowing what it does.

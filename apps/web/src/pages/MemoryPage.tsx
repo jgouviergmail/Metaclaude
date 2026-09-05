@@ -35,6 +35,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { normaliseTags, type Insight, type Memory, type MemoryKind, type Workspace } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { RetrievalStatus } from '@/components/system/RetrievalStatus';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
 import { KnowledgeSection } from '@/components/memory/KnowledgeSection';
 import { ConsolidationCard, readProposal } from '@/components/memory/ConsolidationCard';
@@ -59,6 +60,7 @@ import { api, ApiError } from '@/lib/api';
 import { INSIGHT_TONE } from '@/lib/insights';
 import { cn, formatPercent, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
+import { describeRetrieval } from '@/lib/retrieval';
 
 type KindFilter = 'all' | MemoryKind;
 
@@ -102,7 +104,7 @@ const MAINTENANCE: ReadonlyArray<{
     action: 'reindex',
     label: 'Re-index',
     explanation:
-      'Recompute every embedding. Needed after switching embedding provider, otherwise semantic recall compares vectors from two different spaces.',
+      'Recompute every vector — memories, documents and the classifier’s examples — with the embedder in force. It runs by itself after a change of provider; press it if the page still says vectors are waiting.',
   },
 ];
 
@@ -209,6 +211,9 @@ export function MemoryPage() {
     queryFn: () => api.workspaces(),
     staleTime: 60_000,
   });
+  // The retrieval regime, refreshed on the beat a model load takes.
+  const systemQuery = useQuery({ queryKey: ['system'], queryFn: () => api.system(), refetchInterval: 30_000 });
+  const retrieval = describeRetrieval(systemQuery.data?.retrieval);
 
   const memoryQuery = useQuery({
     queryKey: ['memory', scope, kind, filter],
@@ -530,6 +535,16 @@ export function MemoryPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl space-y-6 px-3 py-4 sm:px-6 sm:py-6">
+          {/* What search is running on. Quiet when a model is loaded and
+              nothing waits; a line the moment it is loading, absent, or a
+              rebuild is behind — the states in which "semantic" would be a
+              lie the rest of this page tells by omission. */}
+          {retrieval.attention ? (
+            <div className="rounded-xl border border-line bg-surface px-4 py-3" data-testid="retrieval-line">
+              <RetrievalStatus status={systemQuery.data?.retrieval} />
+            </div>
+          ) : null}
+
           {/* ------------------------------ Stats ---------------------------- */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {memoryQuery.isLoading || !stats ? (
@@ -603,11 +618,15 @@ export function MemoryPage() {
               <div className="space-y-1">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
                   <Sparkles className="size-4 text-accent" aria-hidden />
-                  {t('Semantic recall')}
+                  {/* "Semantic" only while a model is loaded and answering: under the
+                      hashing embedder, or while a model loads, this box ranks by words. */}
+                  {t(retrieval.semantic ? 'Semantic recall' : 'Recall')}
                 </h2>
                 <p className="text-xs leading-relaxed text-muted">
                   {t(
-                    'Runs the same embedding search the agent runs before a prompt. Results are ranked by meaning, not wording — this is what would actually be injected into context.',
+                    retrieval.semantic
+                      ? 'Runs the same embedding search the agent runs before a prompt. Results are ranked by meaning, not wording — this is what would actually be injected into context.'
+                      : 'Runs the same retrieval the agent runs before a prompt. Right now it matches words, not meaning — this is what would actually be injected into context.',
                   )}
                 </p>
               </div>
@@ -624,7 +643,7 @@ export function MemoryPage() {
                   value={recallInput}
                   onChange={(event) => setRecallInput(event.target.value)}
                   placeholder={t('Describe a task, as you would to the agent')}
-                  aria-label={t('Search memory by meaning')}
+                  aria-label={t(retrieval.semantic ? 'Search memory by meaning' : 'Search memory by words')}
                   className="bg-surface"
                 />
                 <Button type="submit" variant="primary" size="md" className="shrink-0">

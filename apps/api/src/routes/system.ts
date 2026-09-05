@@ -107,6 +107,7 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       queuedRuns: context.kernel.queuedCount,
       memoryCount: context.memory.count(),
       embeddingProvider: context.embedder.id,
+      retrieval: context.retrieval(),
       systemWorkspaceId: context.systemWorkspace.id(),
       resources,
     };

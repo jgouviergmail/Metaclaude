@@ -20,6 +20,8 @@ function interposed(during: () => void): HashingEmbedder {
   return {
     id: inner.id,
     dimension: inner.dimension,
+    family: inner.family,
+    ready: true,
     async embed(text: string) {
       if (!fired) {
         fired = true;

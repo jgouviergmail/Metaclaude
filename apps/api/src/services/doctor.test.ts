@@ -32,7 +32,7 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     cliVersion: async () => '2.1.246 (Claude Code)',
     reachOut: async () => ({ ok: true, detail: 'HTTP 405 in 12 ms' }),
     credential: () => ({ mode: 'oauth', signInEndsAt: null }),
-    embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512 }),
+    embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512, state: 'ready', lastError: null, pending: { memories: 0, documents: 0, exemplars: 0 } }),
     activeRuns: () => 1,
     queuedRuns: () => 0,
     readBackupMarker: async () =>
@@ -333,7 +333,7 @@ describe('a broken probe', () => {
 describe('the retrieval check', () => {
   it('names the embedder actually running, and calls the hashing one word-matching', async () => {
     const report = await makeDoctor({
-      embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512 }),
+      embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512, state: 'ready', lastError: null, pending: { memories: 0, documents: 0, exemplars: 0 } }),
     }).run();
     const check = report.checks.find((c) => c.name === 'retrieval')!;
 
@@ -342,25 +342,44 @@ describe('the retrieval check', () => {
     expect(check.detail).toMatch(/matches words, not meaning/i);
   });
 
-  it('warns when the requested provider is not the one that answered', async () => {
-    // Today this divergence is one boot log line nobody reads, while the
-    // difference is a library that understands a rephrased question versus
-    // one that does not.
+  it('warns when the requested model did not load, names the reason, and counts what waits', async () => {
+    // By decision there is no fallback to hashing: the provider keeps its
+    // own id, writes nothing, and this is where a person learns why.
     const report = await makeDoctor({
-      embeddings: () => ({ requested: 'local', active: 'hash-v1:512', dimension: 512 }),
+      embeddings: () => ({
+        requested: 'local', active: 'st:Xenova/bge-m3', dimension: 0, state: 'lexical-only',
+        lastError: "Cannot find package '@huggingface/transformers'",
+        pending: { memories: 3, documents: 1, exemplars: 0 },
+      }),
     }).run();
     const check = report.checks.find((c) => c.name === 'retrieval')!;
 
     expect(check.status).toBe('warn');
     expect(check.summary).toContain('"local"');
-    expect(check.detail).toMatch(/re-index/i);
+    expect(check.summary).toMatch(/lexical-only/);
+    expect(check.detail).toContain('Cannot find package');
+    expect(check.detail).toMatch(/4 vectors \(3 memories, 1 documents, 0 exemplars\)/);
     // A warning must lift the whole report out of 'ok', or it is decoration.
     expect(report.status).not.toBe('ok');
   });
 
+  it('warns, more gently, while the model is still loading', async () => {
+    const report = await makeDoctor({
+      embeddings: () => ({
+        requested: 'local', active: 'st:Xenova/bge-m3', dimension: 0, state: 'loading', lastError: null,
+        pending: { memories: 0, documents: 0, exemplars: 0 },
+      }),
+    }).run();
+    const check = report.checks.find((c) => c.name === 'retrieval')!;
+
+    expect(check.status).toBe('warn');
+    expect(check.summary).toMatch(/loading/);
+    expect(check.detail).toMatch(/re-indexed automatically/);
+  });
+
   it('is plainly ok when a real sentence-transformer is running', async () => {
     const report = await makeDoctor({
-      embeddings: () => ({ requested: 'local', active: 'st:Xenova/all-MiniLM-L6-v2', dimension: 384 }),
+      embeddings: () => ({ requested: 'local', active: 'st:Xenova/all-MiniLM-L6-v2', dimension: 384, state: 'ready', lastError: null, pending: { memories: 0, documents: 0, exemplars: 0 } }),
     }).run();
     const check = report.checks.find((c) => c.name === 'retrieval')!;
 

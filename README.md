@@ -244,7 +244,11 @@ either.
 Switch the app's language and Metaclaude switches with it — what it distils,
 what it proposes, what a merge would keep. A workspace can override it.
 
-Embeddings run **locally**. The default needs no model download at all.
+Embeddings run **locally**, on the sentence-transformer shipped with the image
+(bge-m3 — French and English alike), so a question reaches an answer that
+shares no word with it and nothing ever leaves the machine. A hashing embedder
+remains for hosts that cannot spare the gigabyte, at the cost of matching words
+rather than meaning — and every screen that could imply otherwise says which.
 
 ### Learning
 A contextual multi-armed bandit picks the model and effort for each task

@@ -20,10 +20,16 @@
  *     node scripts/eval-retrieval.mjs            # from apps/api
  *     node scripts/eval-retrieval.mjs --copies 12
  *
- * On a deployment where the local sentence-transformer actually loads (this
- * one needs to reach huggingface.co), set METACLAUDE_EMBEDDINGS=local to
- * measure the difference. That is the comparison that matters: the semantic
- * block below is the part a real embedder is expected to unblock.
+ * To measure the shipped model, fetch it once — the runtime never downloads —
+ * and point the bench at it:
+ *
+ *     deploy/fetch-embedding-model.sh Xenova/bge-m3 ~/metaclaude-models
+ *     METACLAUDE_EMBEDDINGS=local METACLAUDE_EMBEDDING_CACHE=~/metaclaude-models \
+ *       node scripts/eval-retrieval.mjs
+ *
+ * That is the comparison that matters: the semantic block below is the part
+ * a real embedder unblocks (measured: 0/6 hashing, 6/6 bge-m3 on the dense
+ * arm alone).
  */
 
 import { migrate, openDatabase } from '../dist/db/index.js';
@@ -49,6 +55,12 @@ const embedder = await createEmbeddingProvider({
   cacheDir: process.env.METACLAUDE_EMBEDDING_CACHE ?? '/tmp/metaclaude-models',
   log: (level, message) => console.log(`[${level}] ${message}`),
 });
+// The factory answers before the model has loaded; a bench wants the verdict.
+await embedder.whenSettled();
+if (!embedder.ready) {
+  console.error(`the embedder ${embedder.id} is not ready — the bench would measure the lexical arm alone`);
+  process.exit(1);
+}
 
 const db = openDatabase({ path: ':memory:' });
 migrate(db);

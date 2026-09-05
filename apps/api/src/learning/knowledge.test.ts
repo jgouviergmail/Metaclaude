@@ -309,6 +309,8 @@ describe('changing the embedding provider', () => {
     const spy = {
       id: counting.id,
       dimension: counting.dimension,
+      family: counting.family,
+      ready: true,
       embed: (text: string) => counting.embed(text),
       embedBatch: (texts: string[]) => {
         sizes.push(texts.length);
@@ -337,6 +339,8 @@ describe('changing the embedding provider', () => {
     const truncating = {
       id: short.id,
       dimension: short.dimension,
+      family: short.family,
+      ready: true,
       embed: (text: string) => short.embed(text),
       // A provider that answers with fewer vectors than it was asked for.
       embedBatch: async (texts: string[]) => (await short.embedBatch(texts)).slice(0, -1),

@@ -79,6 +79,25 @@ RUN pnpm --filter @metaclaude/shared build \
 # Verified by running exactly this command and then opening a database.
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --prod --ignore-scripts
+# onnxruntime-node ships every platform's binaries — 124 MB of Windows and
+# 35 MB of macOS in an image that runs Linux. Its postinstall (skipped above)
+# only fetches CUDA libraries on request; the CPU binary is in the tarball.
+RUN rm -rf node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v6/darwin \
+           node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v6/win32
+
+# ──────────────────────────────────────────────────────────────────────────────
+# The embedding model, fetched at build time and pinned by revision. The
+# runtime never downloads (`allowRemoteModels` is off in the API), so what
+# this stage holds is what retrieval runs on. Its own stage so the 570 MB
+# layer is cached across source changes and only rebuilt when the fetch
+# script — which carries the pin — moves.
+FROM base AS model
+ARG EMBEDDING_MODEL=Xenova/bge-m3
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY deploy/fetch-embedding-model.sh /usr/local/bin/fetch-embedding-model.sh
+RUN /usr/local/bin/fetch-embedding-model.sh "$EMBEDDING_MODEL" /models
 
 # ──────────────────────────────────────────────────────────────────────────────
 FROM base AS runtime
@@ -118,6 +137,8 @@ COPY --from=build --chown=metaclaude:metaclaude /app/apps/web/dist ./web
 # agent can read how the thing it stewards works. Until now `docs/` was only
 # reached by the web build, one stage up, and the runtime never had it.
 COPY --from=build --chown=metaclaude:metaclaude /app/docs ./docs
+# The sentence-transformer retrieval runs on, loaded offline from here.
+COPY --from=model --chown=metaclaude:metaclaude /models ./models
 
 COPY --chown=metaclaude:metaclaude docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
@@ -140,6 +161,7 @@ ENV NODE_ENV=production \
     METACLAUDE_DATA_DIR=/var/lib/metaclaude \
     METACLAUDE_WORKSPACES_DIR=/srv/metaclaude/workspaces \
     METACLAUDE_WEB_DIR=/opt/metaclaude/web \
+    METACLAUDE_EMBEDDING_CACHE=/opt/metaclaude/models \
     HOME=/home/metaclaude
 
 USER metaclaude

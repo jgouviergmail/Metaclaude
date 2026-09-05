@@ -229,7 +229,9 @@ describe('the catalogue itself', () => {
       'masterKey',
       'dataDir',
       'workspacesDir',
-      'embeddings',
+      // `embeddings` used to sit here: a switch needed a restart and a manual
+      // re-index. It became hot the day the provider could load in the
+      // background and every stale row rebuilt itself — see `switchEmbedder`.
     ]) {
       expect(keys).not.toContain(forbidden);
     }

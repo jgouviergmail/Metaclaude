@@ -31,13 +31,16 @@ import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { packEmbedding, toBool, tx, unpackEmbedding } from '../db/index.js';
 import { chunkDocument, chunkEmbeddingText } from './chunker.js';
-import { cosineSimilarity, type EmbeddingProvider } from './embeddings.js';
+import { cosineSimilarity, type EmbeddingProvider, PENDING_EMBEDDING_MODEL } from './embeddings.js';
 import {
   MIN_ABSOLUTE_BM25,
   MIN_ABSOLUTE_SIMILARITY,
   RELATIVE_SIMILARITY_FLOOR,
   rrfFuse,
   toFtsQuery,
+  fuseRankings,
+  retrievalProfile,
+  DENSE_SOLO_FLOOR,
 } from './retrieval.js';
 
 /** One document, as stored. `content` is the operator's text, verbatim. */
@@ -48,6 +51,8 @@ export interface KnowledgeDocument {
   content: string;
   enabled: boolean;
   chunkCount: number;
+  /** The embedder these chunks were vectorised with; `''` while they wait for one. */
+  embeddingModel: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -62,6 +67,8 @@ export interface KnowledgeDocumentMeta {
   contentLength: number;
   enabled: boolean;
   chunkCount: number;
+  /** The embedder these chunks were vectorised with; `''` while they wait for one. */
+  embeddingModel: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -85,22 +92,7 @@ export interface KnowledgeRetrievalOptions {
   minSimilarity?: number;
 }
 
-/**
- * Floor for a dense-arm result the lexical arm does not corroborate.
- *
- * The relative gate alone is not enough here, and the reason is French: a
- * stopword query's character n-grams soak a French corpus, so every chunk
- * scores in a flat band and the relative floor (half the best) admits the lot.
- * Measured on chunk-scale texts with their title prefix: stopword-only
- * queries top out at 0.102 (French) and 0.061 (English), while genuine
- * paraphrase queries start at 0.446 — a gap the short, unprefixed memory
- * texts never had (memory.ts documents genuine matches down to 0.09, which
- * is why MemoryStore cannot carry this floor). 0.18 sits in the dead zone
- * with margin on both sides, and anything below it that shares a single
- * real word with the corpus is rescued by the lexical arm anyway — the
- * floor only silences matches that NO arm can vouch for.
- */
-export const DENSE_SOLO_FLOOR = 0.18;
+export { DENSE_SOLO_FLOOR } from './retrieval.js';
 
 /**
  * At most this many passages of one document in a result list: a query that
@@ -168,6 +160,7 @@ function toDocument(row: DocumentRow): KnowledgeDocument {
     content: row.content,
     enabled: toBool(row.enabled),
     chunkCount: row.chunk_count,
+    embeddingModel: row.embedding_model,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -175,11 +168,31 @@ function toDocument(row: DocumentRow): KnowledgeDocument {
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
 
+/**
+ * Up to this many chunks a document is embedded inside the request that
+ * saves it. Measured on bge-m3: about 0.1 s per chunk here, three times that
+ * on the server, so eight chunks hold a save under three seconds there. A
+ * larger document is written at once and vectorised by the background
+ * rebuild — the same path every pending row travels after a change of model.
+ */
+export const INLINE_EMBED_CEILING = 8;
+
+export interface KnowledgeStoreOptions {
+  /**
+   * Asked to run the background rebuild for a document written pending.
+   * Absent — a bench, a script, a test — every document is embedded inline,
+   * which is the old contract and still the right one where nobody would
+   * come back for the vectors.
+   */
+  embedLater?: (documentId: string) => void;
+}
+
 export class KnowledgeStore {
   constructor(
     private readonly db: Db,
     private readonly embedder: EmbeddingProvider,
     private readonly now: () => number = () => Date.now(),
+    private readonly options: KnowledgeStoreOptions = {},
   ) {}
 
   /**
@@ -234,9 +247,16 @@ export class KnowledgeStore {
     // await is not even expressible. The transaction below is the whole write.
     const chunks = chunkDocument(content);
     if (chunks.length === 0) throw new KnowledgeStoreError('A document needs content.');
-    const vectors = await this.embedder.embedBatch(
-      chunks.map((chunk) => chunkEmbeddingText(title, chunk)),
-    );
+    // Text now, vectors when the model is ready: the fts index makes the
+    // document findable at once, the document is marked pending and
+    // `reindex` embeds its chunks later. `unchanged` above compares the
+    // model id, so a pending document re-saved unchanged is re-processed.
+    const inline =
+      this.embedder.ready && (!this.options.embedLater || chunks.length <= INLINE_EMBED_CEILING);
+    const vectors = inline
+      ? await this.embedder.embedBatch(chunks.map((chunk) => chunkEmbeddingText(title, chunk)))
+      : null;
+    const model = vectors ? this.embedder.id : PENDING_EMBEDDING_MODEL;
 
     tx(this.db, () => {
       if (existing) {
@@ -257,7 +277,7 @@ export class KnowledgeStore {
             hash,
             enabled ? 1 : 0,
             chunks.length,
-            this.embedder.id,
+            model,
             at,
             id,
           );
@@ -277,7 +297,7 @@ export class KnowledgeStore {
             hash,
             enabled ? 1 : 0,
             chunks.length,
-            this.embedder.id,
+            model,
             at,
             at,
           );
@@ -294,10 +314,12 @@ export class KnowledgeStore {
           chunk.seq,
           chunk.heading,
           chunk.text,
-          packEmbedding(vectors[index]!),
+          vectors ? packEmbedding(vectors[index]!) : null,
         );
       });
     });
+    // Written, findable, and waiting: hand the vectors to the rebuild.
+    if (!vectors) this.options.embedLater?.(id);
 
     return toDocument(this.rowById(id)!);
   }
@@ -336,6 +358,7 @@ export class KnowledgeStore {
         contentLength: row.content_length,
         enabled: toBool(row.enabled),
         chunkCount: row.chunk_count,
+        embeddingModel: row.embedding_model,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
@@ -371,23 +394,25 @@ export class KnowledgeStore {
     const rows = this.candidateChunks(options);
     if (rows.length === 0) return [];
 
-    const queryVector = await this.embedder.embed(queryText);
+    // Absent, not degraded, while the model is not ready — the memory rule.
+    const queryVector = this.embedder.ready ? await this.embedder.embed(queryText) : null;
 
     const scoredAll: Array<{ id: string; score: number }> = [];
     const modelById = this.documentModels();
-    for (const row of rows) {
+    for (const row of queryVector ? rows : []) {
       const vector = unpackEmbedding(row.embedding);
       // Vectors written by a different provider are not comparable; reindex()
       // rebuilds them, and until then the lexical arm still finds the text.
       if (!vector || modelById.get(row.document_id) !== this.embedder.id) continue;
-      scoredAll.push({ id: row.id, score: cosineSimilarity(queryVector, vector) });
+      scoredAll.push({ id: row.id, score: cosineSimilarity(queryVector!, vector) });
     }
     scoredAll.sort((a, b) => b.score - a.score);
 
+    const profile = retrievalProfile(this.embedder.family);
     const best = scoredAll[0]?.score ?? 0;
     const floor = Math.max(
-      options.minSimilarity ?? best * RELATIVE_SIMILARITY_FLOOR,
-      MIN_ABSOLUTE_SIMILARITY,
+      options.minSimilarity ?? best * profile.relativeFloor,
+      profile.minAbsoluteSimilarity,
     );
     const denseTop = scoredAll.filter((entry) => entry.score >= floor).slice(0, pool);
 
@@ -395,7 +420,7 @@ export class KnowledgeStore {
     const corroborated = new Set(lexical);
     const denseScore = new Map(denseTop.map((entry) => [entry.id, entry.score]));
 
-    const fused = rrfFuse([denseTop.map((entry) => entry.id), lexical]);
+    const fused = fuseRankings(profile, denseTop.map((entry) => entry.id), lexical);
 
     const byId = new Map(rows.map((row) => [row.id, row]));
     const titles = this.documentTitles();
@@ -406,7 +431,7 @@ export class KnowledgeStore {
       if (!row) continue;
       // A dense-only match in the noise band is exactly what a stopword query
       // produces; see DENSE_SOLO_FLOOR for the measurements.
-      if (!corroborated.has(id) && (denseScore.get(id) ?? 0) < DENSE_SOLO_FLOOR) continue;
+      if (!corroborated.has(id) && (denseScore.get(id) ?? 0) < profile.denseSoloFloor) continue;
       const doc = titles.get(row.document_id);
       results.push({
         chunkId: row.id,
@@ -475,6 +500,7 @@ export class KnowledgeStore {
    * oversized batch on purpose.
    */
   async reindex(batchSize = 64): Promise<number> {
+    if (!this.embedder.ready) return 0;
     const stale = this.db
       .prepare<[string], { id: string; document_id: string; heading: string; text: string; title: string }>(
         `SELECT c.id, c.document_id, c.heading, c.text, d.title

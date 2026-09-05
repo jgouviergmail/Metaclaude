@@ -105,7 +105,7 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 const consolidator = (call: ReturnType<typeof arbiter>) =>
-  new Consolidator({ db, memory: store, embedderId: new HashingEmbedder().id, language: () => null, call, log: () => {} });
+  new Consolidator({ db, memory: store, embedder: new HashingEmbedder(), language: () => null, call, log: () => {} });
 
 /** A consolidator whose arbiter the test supplies directly, language included. */
 const consolidatorWith = (
@@ -114,7 +114,7 @@ const consolidatorWith = (
   new Consolidator({
     db,
     memory: store,
-    embedderId: new HashingEmbedder().id,
+    embedder: new HashingEmbedder(),
     language: () => null,
     call: call as never,
     log: () => {},
@@ -463,7 +463,7 @@ describe('bounds', () => {
     const result = await new Consolidator({
       db,
       memory: store,
-      embedderId: new HashingEmbedder().id,
+      embedder: new HashingEmbedder(),
       language: () => null,
       call: async () => {
         throw new Error('the model was unreachable');
@@ -829,7 +829,7 @@ describe('what the arbiter actually judged', () => {
     const consolidator = new Consolidator({
       db,
       memory: store,
-      embedderId: new HashingEmbedder().id,
+      embedder: new HashingEmbedder(),
       language: () => null,
       call: async (groups) => {
         // Somebody edits a member while the arbiter is thinking.
@@ -872,7 +872,7 @@ describe('what the arbiter actually judged', () => {
     await new Consolidator({
       db,
       memory: store,
-      embedderId: new HashingEmbedder().id,
+      embedder: new HashingEmbedder(),
       language: () => null,
       call: async (groups) =>
         groups.map((group) => ({
@@ -1067,7 +1067,7 @@ describe('a pass that could not run', () => {
     const result = await new Consolidator({
       db,
       memory: store,
-      embedderId: new HashingEmbedder().id,
+      embedder: new HashingEmbedder(),
       language: () => null,
       call: async () => {
         throw new Error('Reached maximum number of turns (1)');
@@ -1111,7 +1111,7 @@ describe('the language generated text is written in', () => {
     await new Consolidator({
       db,
       memory: store,
-      embedderId: new HashingEmbedder().id,
+      embedder: new HashingEmbedder(),
       language: () => 'fr',
       call: async (groups, language) => {
         seen.push(language);
@@ -1132,7 +1132,7 @@ describe('the language generated text is written in', () => {
     await new Consolidator({
       db,
       memory: store,
-      embedderId: new HashingEmbedder().id,
+      embedder: new HashingEmbedder(),
       language: (workspaceId) => (workspaceId === wsA ? 'fr' : 'en'),
       call: async (groups, language) => {
         seen.push(language);

@@ -23,6 +23,9 @@ import {
   RELATIVE_SIMILARITY_FLOOR,
   rrfFuse,
   toFtsQuery,
+  fuseRankings,
+  retrievalProfile,
+  DUPLICATE_THRESHOLD,
 } from './retrieval.js';
 
 interface MemoryRow {
@@ -80,8 +83,7 @@ export interface RetrievalOptions {
   candidatePool?: number;
 }
 
-/** Near-duplicate threshold. Above this cosine, two memories say the same thing. */
-export const DUPLICATE_THRESHOLD = 0.92;
+export { DUPLICATE_THRESHOLD } from './retrieval.js';
 
 /**
  * How many rows a duplicate check compares against, newest first.
@@ -182,9 +184,15 @@ export class MemoryStore {
     pinned?: boolean;
     sourceRunId?: string | null;
   }): Promise<{ memory: Memory; merged: boolean }> {
-    const embedding = await this.embedder.embed(`${input.title}\n\n${input.content}`);
+    // No vector while the model is not ready: the row is stored pending and
+    // `reindex` embeds it once the model is — and with no vector there is no
+    // duplicate check, because a merge decided blind is worse than a
+    // duplicate that consolidation catches later.
+    const embedding = this.embedder.ready
+      ? await this.embedder.embed(`${input.title}\n\n${input.content}`)
+      : null;
 
-    const duplicate = this.findNearDuplicate(embedding, input.workspaceId);
+    const duplicate = embedding ? this.findNearDuplicate(embedding, input.workspaceId) : null;
     if (duplicate) {
       // One write path, not two. `reconcile` already knows how to rewrite a
       // surviving row and re-embed only when the text actually moved; doing it
@@ -221,9 +229,9 @@ export class MemoryStore {
         input.confidence ?? 0.7,
         toInt(input.pinned ?? false),
         input.sourceRunId ?? null,
-        packEmbedding(embedding),
-        embedding.length,
-        this.embedder.id,
+        embedding ? packEmbedding(embedding) : null,
+        embedding ? embedding.length : null,
+        embedding ? this.embedder.id : null,
         now,
         now,
       );
@@ -245,7 +253,8 @@ export class MemoryStore {
     const title = patch.title ?? current.title;
     const content = patch.content ?? current.content;
     const reembed = title !== current.title || content !== current.content;
-    const embedding = reembed ? await this.embedder.embed(`${title}\n\n${content}`) : null;
+    const embedding =
+      reembed && this.embedder.ready ? await this.embedder.embed(`${title}\n\n${content}`) : null;
 
     this.db
       .prepare(
@@ -270,7 +279,17 @@ export class MemoryStore {
         Date.now(),
         id,
       );
+    // The text moved and no model was ready to follow it: the old vector
+    // describes text that no longer exists. Pending, so reindex rebuilds it.
+    if (reembed && !embedding) this.markPending(id);
     return this.get(id);
+  }
+
+  /** Strip a row's vector so it reads as stale to search, dedup and reindex alike. */
+  private markPending(id: string): void {
+    this.db
+      .prepare('UPDATE memories SET embedding = NULL, embedding_dim = NULL, embedding_model = NULL WHERE id = ?')
+      .run(id);
   }
 
   delete(id: string): boolean {
@@ -355,7 +374,8 @@ export class MemoryStore {
     // Embedding is awaited, and better-sqlite3 is synchronous — so this is the
     // one point where another request gets served, and everything read above
     // becomes a snapshot rather than a fact.
-    const embedding = rewritten ? await this.embedder.embed(`${title}\n\n${content}`) : null;
+    const embedding =
+      rewritten && this.embedder.ready ? await this.embedder.embed(`${title}\n\n${content}`) : null;
 
     tx(this.db, () => {
       // Re-read, and refuse on any drift. The alternative is the read-then-
@@ -384,6 +404,7 @@ export class MemoryStore {
          SELECT run_id, ?, score FROM memory_usages WHERE memory_id = ?
          ON CONFLICT(run_id, memory_id) DO UPDATE SET score = max(score, excluded.score)`,
       );
+      if (rewritten && !embedding) this.markPending(fresh.id);
       // Every repoint before any delete: a run that saw two of the losers must
       // not have its second row cascade away while the first is being moved.
       for (const loser of losers) repoint.run(fresh.id, loser.id);
@@ -461,31 +482,33 @@ export class MemoryStore {
     const rows = this.candidateRows(options);
     if (rows.length === 0) return [];
 
-    const queryVector = await this.embedder.embed(queryText);
-
     /* --- Arm 1: dense similarity ---------------------------------------- */
+    // Absent, not degraded, while the model is not ready: the lexical arm
+    // answers alone and says nothing false.
+    const queryVector = this.embedder.ready ? await this.embedder.embed(queryText) : null;
     const scoredAll: Array<{ id: string; score: number }> = [];
-    for (const row of rows) {
+    for (const row of queryVector ? rows : []) {
       const vector = unpackEmbedding(row.embedding);
       // Vectors written by a different provider are not comparable; they are
       // skipped here and rebuilt by `reindex`.
       if (!vector || row.embedding_model !== this.embedder.id) continue;
-      scoredAll.push({ id: row.id, score: cosineSimilarity(queryVector, vector) });
+      scoredAll.push({ id: row.id, score: cosineSimilarity(queryVector!, vector) });
     }
     scoredAll.sort((a, b) => b.score - a.score);
 
+    const profile = retrievalProfile(this.embedder.family);
     const best = scoredAll[0]?.score ?? 0;
     const floor = Math.max(
-      options.minSimilarity ?? best * RELATIVE_SIMILARITY_FLOOR,
-      MIN_ABSOLUTE_SIMILARITY,
+      options.minSimilarity ?? best * profile.relativeFloor,
+      profile.minAbsoluteSimilarity,
     );
     const denseTop = scoredAll.filter((entry) => entry.score >= floor).slice(0, pool);
 
     /* --- Arm 2: lexical (BM25 via FTS5) --------------------------------- */
     const lexical = this.lexicalSearch(queryText, options, pool);
 
-    /* --- Fusion ---------------------------------------------------------- */
-    const fused = rrfFuse([denseTop.map((entry) => entry.id), lexical]);
+    /* --- Fusion, as the family says ------------------------------------- */
+    const fused = fuseRankings(profile, denseTop.map((entry) => entry.id), lexical);
 
     const byId = new Map(rows.map((row) => [row.id, row]));
     const now = Date.now();
@@ -611,13 +634,14 @@ export class MemoryStore {
             )
             .all(workspaceId);
 
+    const threshold = retrievalProfile(this.embedder.family).duplicateThreshold;
     let best: { row: MemoryRow; score: number } | null = null;
     for (const row of rows) {
       if (row.embedding_model !== this.embedder.id) continue;
       const vector = unpackEmbedding(row.embedding);
       if (!vector) continue;
       const score = cosineSimilarity(embedding, vector);
-      if (score >= DUPLICATE_THRESHOLD && (!best || score > best.score)) best = { row, score };
+      if (score >= threshold && (!best || score > best.score)) best = { row, score };
     }
     return best ? toMemory(best.row) : null;
   }
@@ -827,6 +851,7 @@ export class MemoryStore {
    * vector spaces are unrelated.
    */
   async reindex(batchSize = 64): Promise<number> {
+    if (!this.embedder.ready) return 0;
     const rows = this.db
       .prepare<[string], MemoryRow>(
         'SELECT * FROM memories WHERE embedding_model IS NOT ? OR embedding IS NULL',

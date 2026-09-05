@@ -16,6 +16,7 @@
  */
 
 import type { Db } from '../db/index.js';
+import type { EmbeddingProvider } from './embeddings.js';
 
 /** What this needs from a store — both of the real ones satisfy it. */
 export interface Reindexable {
@@ -27,12 +28,20 @@ export interface ReindexDeps {
   memory: Reindexable;
   knowledge: Reindexable;
   /** The live embedder's id, as written into `embedding_model`. */
-  embedderId: string;
+  classifier: Reindexable;
+  /** The live provider: its id says what is stale, its readiness whether anything can be rebuilt yet. */
+  embedder: Pick<EmbeddingProvider, 'id' | 'ready'>;
   log: (level: 'info' | 'warn', message: string, data?: Record<string, unknown>) => void;
 }
 
 /** Rows whose vectors were made by a different provider than the live one. */
-export function countStale(db: Db, embedderId: string): { memories: number; documents: number } {
+export interface StaleCounts {
+  memories: number;
+  documents: number;
+  exemplars: number;
+}
+
+export function countStale(db: Db, embedderId: string): StaleCounts {
   const memories =
     db
       .prepare<[string], { n: number }>(
@@ -48,7 +57,13 @@ export function countStale(db: Db, embedderId: string): { memories: number; docu
         'SELECT COUNT(*) AS n FROM documents WHERE embedding_model IS NOT ?',
       )
       .get(embedderId)?.n ?? 0;
-  return { memories, documents };
+  const exemplars =
+    db
+      .prepare<[string], { n: number }>(
+        'SELECT COUNT(*) AS n FROM task_exemplars WHERE embedding_model IS NOT ?',
+      )
+      .get(embedderId)?.n ?? 0;
+  return { memories, documents, exemplars };
 }
 
 /**
@@ -57,17 +72,24 @@ export function countStale(db: Db, embedderId: string): { memories: number; docu
  * Never throws: a failure here degrades retrieval, exactly as it is degraded
  * already, and must not take the boot down with it.
  */
-export async function reindexStale(deps: ReindexDeps): Promise<{ memories: number; documents: number }> {
-  const stale = countStale(deps.db, deps.embedderId);
-  if (stale.memories === 0 && stale.documents === 0) return { memories: 0, documents: 0 };
+export async function reindexStale(deps: ReindexDeps): Promise<StaleCounts> {
+  const none: StaleCounts = { memories: 0, documents: 0, exemplars: 0 };
+  const stale = countStale(deps.db, deps.embedder.id);
+  if (stale.memories === 0 && stale.documents === 0 && stale.exemplars === 0) return none;
+  // Nothing can be rebuilt without a model. The rows stay pending, the lexical
+  // arm keeps answering, and the provider's `onReady` calls this again.
+  if (!deps.embedder.ready) {
+    deps.log('info', 'vectors are waiting for the embedding model', { embedder: deps.embedder.id, ...stale });
+    return none;
+  }
 
   deps.log(
     'info',
     'the embedding provider changed since these were written — rebuilding their vectors',
-    { embedder: deps.embedderId, ...stale },
+    { embedder: deps.embedder.id, ...stale },
   );
 
-  const done = { memories: 0, documents: 0 };
+  const done: StaleCounts = { memories: 0, documents: 0, exemplars: 0 };
   try {
     done.memories = await deps.memory.reindex();
   } catch (error) {
@@ -78,7 +100,49 @@ export async function reindexStale(deps: ReindexDeps): Promise<{ memories: numbe
   } catch (error) {
     deps.log('warn', 'could not rebuild knowledge vectors', { message: (error as Error).message });
   }
+  try {
+    done.exemplars = await deps.classifier.reindex();
+  } catch (error) {
+    deps.log('warn', 'could not rebuild classifier vectors', { message: (error as Error).message });
+  }
 
-  deps.log('info', 'vectors rebuilt', done);
+  deps.log('info', 'vectors rebuilt', { ...done });
   return done;
+}
+
+/**
+ * A rebuild that can be asked for from anywhere, any number of times.
+ *
+ * Boot, a model becoming ready, a setting change and every large document
+ * saved all ask for the same pass. Two passes at once would walk the same
+ * stale rows and embed them twice — the model serialises calls, so nothing
+ * breaks, but the work doubles. One pass runs at a time; asks that arrive
+ * while it runs collapse into exactly one more, which sees whatever they
+ * added.
+ */
+export function createRebuildTrigger(run: () => Promise<unknown>): {
+  trigger: () => void;
+  inFlight: () => boolean;
+} {
+  let running = false;
+  let again = false;
+  const go = (): void => {
+    running = true;
+    void run()
+      .catch(() => undefined)
+      .finally(() => {
+        running = false;
+        if (again) {
+          again = false;
+          go();
+        }
+      });
+  };
+  return {
+    trigger: () => {
+      if (running) again = true;
+      else go();
+    },
+    inFlight: () => running,
+  };
 }

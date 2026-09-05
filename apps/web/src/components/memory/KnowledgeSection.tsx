@@ -89,9 +89,14 @@ export function KnowledgeSection({
       refresh();
       setEditing(null);
       toast.success(t('Saved “{name}”', { name: result.document.title }), {
-        description: t('{n} passages indexed and ready to be retrieved.', {
-          n: String(result.document.chunkCount),
-        }),
+        description:
+          result.document.embeddingModel === ''
+            ? t('{n} passages indexed; their vectors are being computed in the background.', {
+                n: String(result.document.chunkCount),
+              })
+            : t('{n} passages indexed and ready to be retrieved.', {
+                n: String(result.document.chunkCount),
+              }),
       });
     },
     onError: (error) =>
@@ -239,6 +244,11 @@ export function KnowledgeSection({
                     </button>
                     <ScopeBadge workspaceId={doc.workspaceId} workspaces={workspaces} />
                     {!doc.enabled ? <Badge tone="warning">{t('Paused')}</Badge> : null}
+                    {doc.embeddingModel === '' ? (
+                      <Tooltip content={t('Findable by its words already; its vectors are being computed in the background.')}>
+                        <span className="inline-flex"><Badge tone="thinking">{t('Vectors pending')}</Badge></span>
+                      </Tooltip>
+                    ) : null}
                   </div>
                   <p className="text-[12px] text-subtle">
                     {t(

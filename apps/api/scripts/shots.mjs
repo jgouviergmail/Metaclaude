@@ -269,6 +269,8 @@ async function shoot(theme, viewport, suffix) {
     ['/board', 'board'],
     ['/help', 'help'],
     ['/agents', 'connectors', 'MCP servers'],
+    ['/settings', 'system-tab', 'System'],
+    ['/settings', 'configuration', 'Configuration'],
     ['/settings', 'google-connection', 'Connections'],
   ];
   for (const [path, name, tab] of screens) {

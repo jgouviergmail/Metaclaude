@@ -146,7 +146,9 @@ const EnvSchema = z.object({
    */
   METACLAUDE_LANGUAGE: z.enum(['auto', 'fr', 'en']).default('auto'),
   METACLAUDE_EMBEDDINGS: z.enum(['hash', 'local']).default('hash'),
-  METACLAUDE_EMBEDDING_MODEL: z.string().default('Xenova/all-MiniLM-L6-v2'),
+  METACLAUDE_EMBEDDING_MODEL: z.string().default('Xenova/bge-m3'),
+  /** Where model files live. The image ships them here; absent, `<dataDir>/models`. */
+  METACLAUDE_EMBEDDING_CACHE: z.string().optional(),
 
   /** Claude subscription token produced by `claude setup-token`. */
   CLAUDE_CODE_OAUTH_TOKEN: z.string().optional(),
@@ -195,6 +197,7 @@ export interface Config {
   runRetention: { days: number; keepPerWorkspace: number };
   language: 'auto' | 'fr' | 'en';
   embeddings: { provider: 'hash' | 'local'; model: string };
+  embeddingCacheDir: string | null;
   /** VAPID `sub` claim for push; relays validate its shape. */
   pushSubject: string;
   /** The deployment's public origin, or null. Only MCP OAuth needs it. */
@@ -360,6 +363,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     },
     language: env.METACLAUDE_LANGUAGE,
     embeddings: { provider: env.METACLAUDE_EMBEDDINGS, model: env.METACLAUDE_EMBEDDING_MODEL },
+    embeddingCacheDir: env.METACLAUDE_EMBEDDING_CACHE?.trim() ? env.METACLAUDE_EMBEDDING_CACHE.trim() : null,
     pushSubject: env.METACLAUDE_PUSH_SUBJECT,
     publicUrl: env.METACLAUDE_PUBLIC_URL ? env.METACLAUDE_PUBLIC_URL.replace(/\/+$/, '') : null,
     claude: {

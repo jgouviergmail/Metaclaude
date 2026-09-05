@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
-import { APP_VERSION, SYSTEM_TOPIC } from '@metaclaude/shared';
+import { APP_VERSION, SYSTEM_TOPIC, type RetrievalStatus } from '@metaclaude/shared';
 import type { ClaudeUsage } from '@metaclaude/shared';
 import type { Logger } from 'pino';
 import type { Config } from './config.js';
@@ -32,7 +32,13 @@ import { SYSTEM_TOOLS, systemToolNames } from './kernel/system-tools.js';
 import { decideApproval } from './http/approvals.js';
 import { PolicyLearner } from './learning/bandit.js';
 import { TaskClassifier } from './learning/classifier.js';
-import { createEmbeddingProvider, type EmbeddingProvider } from './learning/embeddings.js';
+import {
+  createEmbeddingProvider,
+  describeEmbedder,
+  HashingEmbedder,
+  SwitchableEmbedder,
+  type EmbeddingProvider,
+} from './learning/embeddings.js';
 import { MemoryStore } from './learning/memory.js';
 import {
   CONSOLIDATION_SCHEMA,
@@ -44,7 +50,7 @@ import {
 } from './learning/consolidation.js';
 import { contentLanguageDirective, resolveContentLanguage } from './learning/language.js';
 import { listInsights, setInsightStatus, withLanguage } from './learning/reflexion.js';
-import { reindexStale } from './learning/reindex.js';
+import { countStale, createRebuildTrigger, reindexStale } from './learning/reindex.js';
 import { KnowledgeStore } from './learning/knowledge.js';
 import { ReflexionEngine } from './learning/reflexion.js';
 import { AuditLog } from './security/audit.js';
@@ -125,6 +131,8 @@ export interface AppContext {
   transcriptRepo: TranscriptRepo;
 
   embedder: EmbeddingProvider;
+  /** What retrieval is right now: embedder, state, whether it is semantic, what waits for a rebuild. */
+  retrieval: () => RetrievalStatus;
   memory: MemoryStore;
   knowledge: KnowledgeStore;
   classifier: TaskClassifier;
@@ -236,12 +244,18 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
    * nothing to keep in step. Only the log level needs doing rather than
    * reading, because it lives on the logger object.
    */
+  // The hot half of the embeddings setting, bound once the stores exist.
+  // `applyStored()` below runs before then and is ignored on purpose: the
+  // initial provider is built from `choice('embeddings')`, which already
+  // honours a stored override.
+  let switchEmbedder: ((provider: string) => void) | null = null;
   const runtimeSettings = new RuntimeSettings({
     db,
     config,
     declared: config.declaredEnv,
     apply: (key, value) => {
       if (key === 'logLevel') log.level = String(value);
+      if (key === 'embeddings') switchEmbedder?.(String(value));
     },
   });
   // A level chosen through the screen has to survive a restart, or the screen
@@ -295,32 +309,108 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     );
   }
 
-  const embedder = await createEmbeddingProvider({
-    provider: config.embeddings.provider,
-    model: config.embeddings.model,
-    cacheDir: resolve(config.dataDir, 'models'),
-    log: (level, message) => log[level](message),
-  });
-  log.info(`embeddings provider: ${embedder.id} (${embedder.dimension}d)`);
+  // Work deferred to the end of the boot: a callback that needs a service
+  // built further down (the push service, for the fallback notice) queues
+  // here rather than reaching for a binding that may not exist yet.
+  const afterBoot: Array<() => void> = [];
+  let booted = false;
+  const onceBooted = (work: () => void): void => {
+    if (booted) work();
+    else afterBoot.push(work);
+  };
+  const embeddingCacheDir = config.embeddingCacheDir ?? resolve(config.dataDir, 'models');
+  // The model will not come up. The doctor says so on every report; this
+  // says so once, to the operator's devices, because a deployment that
+  // silently answers word matches is the failure this exists for.
+  const notifyFallback = (id: string, reason: string): void =>
+    onceBooted(() => {
+      void push
+        .notify({
+          title: 'Retrieval is lexical-only',
+          body: `The embedding model ${id} did not load: ${reason}. Memory and knowledge search match words until it does.`,
+          url: '/settings',
+          tag: 'embeddings-fallback',
+        })
+        .catch((error: unknown) => log.warn({ err: error }, 'could not notify the embeddings fallback'));
+    });
+  const embedder = new SwitchableEmbedder(
+    await createEmbeddingProvider({
+      provider: runtimeSettings.choice('embeddings') as 'hash' | 'local',
+      model: config.embeddings.model,
+      cacheDir: embeddingCacheDir,
+      log: (level, message) => log[level](message),
+      // The model came up: whatever was written pending, or under another
+      // provider, can be rebuilt now.
+      onReady: () => onceBooted(() => rebuildVectors()),
+      onFallback: notifyFallback,
+    }),
+  );
+  log.info(`embeddings provider: ${embedder.id} (${embedder.ready ? `${embedder.dimension}d` : 'loading'})`);
 
   const memory = new MemoryStore(db, embedder);
-  const knowledge = new KnowledgeStore(db, embedder);
+  // A large document is written at once and vectorised by the rebuild, so
+  // a save never waits on the model. `rebuildVectors` is declared below;
+  // it is only ever called from a request, long after this line has run.
+  const knowledge = new KnowledgeStore(db, embedder, undefined, { embedLater: () => rebuildVectors() });
   const classifier = new TaskClassifier(db, embedder);
   const policy = new PolicyLearner(db);
 
   // A vector is only comparable to one from the same provider, so a change of
-  // embedder — including `local` falling back to `hash` because the optional
-  // package is absent — silently turns off dense retrieval *and* duplicate
-  // detection until someone presses Re-index. Not awaited: the rebuild must
-  // not hold up the health endpoint the deploy gate waits on, and retrieval is
-  // already degraded in exactly this way while it runs.
-  void reindexStale({
-    db,
-    memory,
-    knowledge,
-    embedderId: embedder.id,
-    log: (level, message, data) => log[level](data ?? {}, message),
-  });
+  // embedder silently turns off dense retrieval *and* duplicate detection
+  // until the stale rows are rebuilt. Not awaited: the rebuild must not hold
+  // up the health endpoint the deploy gate waits on, and retrieval is already
+  // degraded in exactly this way while it runs. Called again whenever the
+  // model becomes ready or the setting changes; it does nothing while no
+  // model is ready.
+  const rebuild = createRebuildTrigger(() =>
+    reindexStale({
+      db,
+      memory,
+      knowledge,
+      classifier,
+      embedder,
+      log: (level, message, data) => log[level](data ?? {}, message),
+    }),
+  );
+  const rebuildVectors = (): void => rebuild.trigger();
+  rebuildVectors();
+
+  // The setting's hot half. `use()` changes every store's live id at once:
+  // to `hash`, the rebuild starts now; to `local`, the stores answer
+  // lexically until the model is ready and the rebuild follows `onReady`.
+  switchEmbedder = (provider) => {
+    if (provider === 'hash') {
+      if (embedder.family === 'hash') return;
+      embedder.use(new HashingEmbedder());
+      log.info('embeddings: switched to the hashing embedder; rebuilding vectors');
+      rebuildVectors();
+      return;
+    }
+    if (embedder.id === `st:${config.embeddings.model}`) return;
+    void createEmbeddingProvider({
+      provider: 'local',
+      model: config.embeddings.model,
+      cacheDir: embeddingCacheDir,
+      log: (level, message) => log[level](message),
+      onReady: () => rebuildVectors(),
+      onFallback: notifyFallback,
+    }).then((local) => {
+      embedder.use(local);
+      log.info(`embeddings: switching to ${local.id}; lexical-only until it is ready`);
+    });
+  };
+
+  /** What retrieval is right now — the doctor, the health endpoint and the steward all read this one. */
+  const retrieval = (): RetrievalStatus => {
+    const status = describeEmbedder(embedder);
+    return {
+      embedder: status.id,
+      family: status.family,
+      state: status.state,
+      semantic: status.family === 'st' && status.ready,
+      pending: countStale(db, status.id),
+    };
+  };
 
   const claudeEnv = buildClaudeEnv(config);
 
@@ -428,7 +518,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const consolidator = new Consolidator({
     db,
     memory,
-    embedderId: embedder.id,
+    embedder,
     language: (workspaceId) => contentLanguage(workspaceId),
     call: async (groups, language) => {
       const { prompt, numbering } = buildConsolidationPrompt(groups);
@@ -793,11 +883,17 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       const status = claudeCredentials.status();
       return { mode: status.mode, signInEndsAt: status.cliLogin?.signInEndsAt ?? null };
     },
-    embeddings: () => ({
-      requested: config.embeddings.provider,
-      active: embedder.id,
-      dimension: embedder.dimension,
-    }),
+    embeddings: () => {
+      const status = describeEmbedder(embedder);
+      return {
+        requested: runtimeSettings.choice('embeddings'),
+        active: status.id,
+        dimension: status.dimension,
+        state: status.state,
+        lastError: status.lastError,
+        pending: countStale(db, status.id),
+      };
+    },
     activeRuns: () => kernel.activeCount,
     queuedRuns: () => kernel.queuedCount,
     // Written by deploy/bin/metaclaude-backup on the host, into the volume
@@ -891,6 +987,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     updates: updateChecker
       ? { check: () => updateChecker.check(), status: () => updateApplier.status() }
       : null,
+    retrieval,
     kernel,
   });
   stewardRef = steward;
@@ -907,6 +1004,9 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       log.warn({ err: error instanceof Error ? error.message : String(error) }, 'could not seed the system automation');
     }
   }
+
+  booted = true;
+  for (const work of afterBoot.splice(0)) work();
 
   const context: AppContext = {
     config,
@@ -939,6 +1039,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     runRepo,
     transcriptRepo,
     embedder,
+    retrieval,
     memory,
     knowledge,
     classifier,

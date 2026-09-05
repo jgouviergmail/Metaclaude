@@ -28,11 +28,14 @@ export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 export interface ServerHarness {
   context: AppContext;
   baseUrl: string;
+  dataDir: string;
+  username: string;
   /** A request as the logged-in user, with the CSRF header on writes. */
   send(method: HttpMethod, path: string, body?: unknown): Promise<Response>;
   /** A `GET` that must succeed, parsed. */
   get<T>(path: string): Promise<T>;
-  close(): Promise<void>;
+  /** Stop the server. `keep` leaves the data directory for a second boot. */
+  close(options?: { keep?: boolean }): Promise<void>;
 }
 
 const PASSWORD = 'a-long-enough-test-password';
@@ -42,9 +45,15 @@ export async function bootTestServer(options: {
   name: string;
   username?: string;
   role?: UserRole;
+  /**
+   * Boot on an existing data directory — a second boot over the first's
+   * files, which is the only way a "survives a restart" claim can be tested.
+   * The user is created only when the directory is fresh.
+   */
+  reuse?: { dataDir: string; username: string };
 }): Promise<ServerHarness> {
-  const username = options.username ?? `${options.name}-user`;
-  const dataDir = mkdtempSync(join(tmpdir(), `mc-${options.name}-`));
+  const username = options.reuse?.username ?? options.username ?? `${options.name}-user`;
+  const dataDir = options.reuse?.dataDir ?? mkdtempSync(join(tmpdir(), `mc-${options.name}-`));
 
   const config = loadConfig({
     NODE_ENV: 'test',
@@ -56,7 +65,9 @@ export async function bootTestServer(options: {
   } as NodeJS.ProcessEnv);
 
   const context = await createAppContext(config, pino({ level: 'silent' }));
-  await context.auth.createUser({ username, password: PASSWORD, role: options.role ?? 'owner' });
+  if (!options.reuse) {
+    await context.auth.createUser({ username, password: PASSWORD, role: options.role ?? 'owner' });
+  }
   const app = await buildServer(context);
   await app.listen({ host: '127.0.0.1', port: 0 });
 
@@ -91,16 +102,18 @@ export async function bootTestServer(options: {
   return {
     context,
     baseUrl,
+    dataDir,
+    username,
     send,
     get: async <T>(path: string): Promise<T> => {
       const response = await send('GET', path);
       expect(response.status).toBe(200);
       return (await response.json()) as T;
     },
-    close: async () => {
+    close: async (closeOptions = {}) => {
       await app.close();
       await context.shutdown?.();
-      rmSync(dataDir, { recursive: true, force: true });
+      if (!closeOptions.keep) rmSync(dataDir, { recursive: true, force: true });
     },
   };
 }

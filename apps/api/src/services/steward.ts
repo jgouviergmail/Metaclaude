@@ -37,6 +37,7 @@ import type {
   Insight,
   Memory,
   MemoryKind,
+  RetrievalStatus,
   Run,
   RuntimeSettingKey,
   RuntimeSettingRecord,
@@ -107,6 +108,12 @@ export interface StewardDeps {
   registry: Pick<Registry, 'listSkills' | 'listAgents' | 'listMcpServers'>;
   /** Null when the deployment has no update channel configured. */
   updates: { check(): Promise<UpdateCheck>; status(): Promise<UpdateApplyStatus> } | null;
+  /**
+   * What retrieval *is* on this deployment. The steward once called memory
+   * search "semantic" from a tool description, on a hashing deployment;
+   * it reads this instead and says which regime it is in.
+   */
+  retrieval: () => RetrievalStatus;
   kernel: Pick<
     Kernel,
     'submit' | 'delegate' | 'activeCount' | 'queuedCount' | 'hasActiveRunForSession' | 'interrupt'
@@ -314,10 +321,24 @@ export class Steward {
         costUsd: Number(recent.reduce((sum, run) => sum + run.usage.costUsd, 0).toFixed(4)),
       },
       memories: this.deps.memory.count(),
+      retrieval: this.retrievalNote(),
       newInsights: this.deps.insights.list({ status: 'new', limit: 500 }).length,
       pendingProposals: this.deps.proposals.list(undefined, 'pending').length,
       automations: this.deps.automations.list().filter((automation) => automation.enabled).length,
     };
+  }
+
+  /** The retrieval regime, with the sentence the steward should repeat rather than assume. */
+  private retrievalNote() {
+    const status = this.deps.retrieval();
+    const note = status.semantic
+      ? 'A sentence-transformer is answering: search matches meaning, in French and English alike.'
+      : status.state === 'loading'
+        ? 'The model is still loading: search matches words meanwhile, and new memories wait for their vectors.'
+        : status.family === 'st'
+          ? 'The model did not load: search matches words, not meaning, until it does. Check system_doctor.'
+          : 'The built-in hashing embedder: search matches words, not meaning — title memories with the words you will search for.';
+    return { ...status, note };
   }
 
   workspaces(includeArchived = false) {

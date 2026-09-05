@@ -18,7 +18,7 @@
 import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { packEmbedding, tx, unpackEmbedding } from '../db/index.js';
-import { cosineSimilarity, type EmbeddingProvider } from './embeddings.js';
+import { cosineSimilarity, type EmbeddingProvider, PENDING_EMBEDDING_MODEL } from './embeddings.js';
 
 export const TASK_CATEGORIES = [
   'code_write',
@@ -231,7 +231,9 @@ export class TaskClassifier {
     weight = 1,
   ): Promise<void> {
     const text = prompt.slice(0, 2000);
-    const embedding = await this.embedder.embed(text);
+    // Pending while the model is not ready: an empty vector under the pending
+    // marker, which `reindex` rebuilds and kNN never reads.
+    const embedding = this.embedder.ready ? await this.embedder.embed(text) : new Float32Array(0);
 
     this.db
       .prepare(
@@ -246,12 +248,42 @@ export class TaskClassifier {
         text,
         packEmbedding(embedding),
         embedding.length,
-        this.embedder.id,
+        embedding.length > 0 ? this.embedder.id : PENDING_EMBEDDING_MODEL,
         weight,
         Date.now(),
       );
 
     this.prune(workspaceId, category);
+  }
+
+  /**
+   * Re-embed every exemplar the live model has not seen — the ones written
+   * pending, and the ones written under another provider. Without this, a
+   * change of embedder silently emptied the classifier's evidence and the
+   * rules decided alone until two hundred new runs had been learned.
+   */
+  async reindex(batchSize = 64): Promise<number> {
+    if (!this.embedder.ready) return 0;
+    const rows = this.db
+      .prepare<[string], { id: string; text: string }>(
+        'SELECT id, text FROM task_exemplars WHERE embedding_model IS NOT ? ORDER BY created_at',
+      )
+      .all(this.embedder.id);
+    let count = 0;
+    for (let i = 0; i < rows.length; i += batchSize) {
+      const batch = rows.slice(i, i + batchSize);
+      const vectors = await this.embedder.embedBatch(batch.map((row) => row.text));
+      const update = this.db.prepare(
+        'UPDATE task_exemplars SET embedding = ?, embedding_dim = ?, embedding_model = ? WHERE id = ?',
+      );
+      batch.forEach((row, index) => {
+        const vector = vectors[index];
+        if (!vector) return;
+        update.run(packEmbedding(vector), vector.length, this.embedder.id, row.id);
+        count += 1;
+      });
+    }
+    return count;
   }
 
   /**
@@ -290,6 +322,7 @@ export class TaskClassifier {
       .all(workspaceId, this.embedder.id);
 
     if (rows.length < 12) return null; // Too little evidence to beat the rules.
+    if (!this.embedder.ready) return null; // No vector to compare with: the rules decide.
 
     const queryVector = await this.embedder.embed(prompt.slice(0, 2000));
 

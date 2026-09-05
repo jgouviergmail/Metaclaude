@@ -210,6 +210,10 @@ function makeSteward(overrides: Partial<StewardDeps> = {}): Steward {
         ] as never,
     },
     updates: null,
+    retrieval: () => ({
+      embedder: 'hash-v1:512', family: 'hash', state: 'ready', semantic: false,
+      pending: { memories: 0, documents: 0, exemplars: 0 },
+    }),
     kernel: {
       submit: async (options) => {
         asked.submits.push(options);
@@ -306,6 +310,32 @@ describe('reading', () => {
       pendingProposals: 1,
       automations: 1,
     });
+  });
+
+  /**
+   * What retrieval *is* here is a fact of the deployment, not of the tool:
+   * the steward reads it from the overview rather than assume, and the note
+   * is the sentence it should repeat.
+   */
+  it('says whether memory search matches words or meaning, in words it can repeat', () => {
+    expect(steward.overview().retrieval).toMatchObject({ embedder: 'hash-v1:512', semantic: false });
+    expect(steward.overview().retrieval.note).toMatch(/words, not meaning/);
+
+    const loaded = makeSteward({
+      retrieval: () => ({
+        embedder: 'st:Xenova/bge-m3', family: 'st', state: 'ready', semantic: true,
+        pending: { memories: 0, documents: 0, exemplars: 0 },
+      }),
+    });
+    expect(loaded.overview().retrieval.note).toMatch(/matches meaning/);
+
+    const failed = makeSteward({
+      retrieval: () => ({
+        embedder: 'st:Xenova/bge-m3', family: 'st', state: 'lexical-only', semantic: false,
+        pending: { memories: 2, documents: 0, exemplars: 0 },
+      }),
+    });
+    expect(failed.overview().retrieval.note).toMatch(/did not load/);
   });
 
   it('lists workspaces marking its own, and finds one by slug or by id', () => {

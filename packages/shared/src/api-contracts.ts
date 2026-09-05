@@ -110,6 +110,7 @@ export const RuntimeSettingKey = z.enum([
   'runKeepPerWorkspace',
   'logLevel',
   'language',
+  'embeddings',
 ]);
 export type RuntimeSettingKey = z.infer<typeof RuntimeSettingKey>;
 
@@ -708,6 +709,8 @@ export type KnowledgeDocumentMeta = {
   contentLength: number;
   enabled: boolean;
   chunkCount: number;
+  /** The embedder the chunks were vectorised with; `''` while they wait for one. */
+  embeddingModel: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -913,6 +916,21 @@ export const AskMetaclaudeRequest = z.object({
 });
 export type AskMetaclaudeRequest = z.infer<typeof AskMetaclaudeRequest>;
 
+export const RetrievalStatus = z.object({
+  embedder: z.string(),
+  family: z.enum(['hash', 'st']),
+  state: z.enum(['ready', 'loading', 'lexical-only']),
+  /** True only while a sentence-transformer is loaded and answering. */
+  semantic: z.boolean(),
+  /** Rows written pending, or under another provider, that the rebuild has not reached. */
+  pending: z.object({
+    memories: z.number().int().nonnegative(),
+    documents: z.number().int().nonnegative(),
+    exemplars: z.number().int().nonnegative(),
+  }),
+});
+export type RetrievalStatus = z.infer<typeof RetrievalStatus>;
+
 export const SystemHealth = z.object({
   version: z.string(),
   uptimeMs: z.number().int().nonnegative(),
@@ -935,6 +953,12 @@ export const SystemHealth = z.object({
   queuedRuns: z.number().int().nonnegative(),
   memoryCount: z.number().int().nonnegative(),
   embeddingProvider: z.string(),
+  /**
+   * What retrieval *is* on this deployment, not only which embedder is named:
+   * a sentence-transformer that is loading or failed to load answers words,
+   * and `semantic` says which regime the next search runs in.
+   */
+  retrieval: RetrievalStatus,
   /** Metaclaude's own workspace. Null only if preparing it failed at boot. */
   systemWorkspaceId: z.string().nullable(),
   resources: SystemResources,

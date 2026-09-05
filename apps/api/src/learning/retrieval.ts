@@ -1,5 +1,5 @@
 /**
- * The retrieval pieces two stores share.
+ * The retrieval pieces two stores share, and the profile that chooses them.
  *
  * Extracted from `memory.ts` the day the knowledge store arrived, because the
  * constants here are not style — they are **measurements of this exact
@@ -9,6 +9,8 @@
  * stay with each constant; `memory.ts` re-exports everything so its callers
  * and tests are undisturbed.
  */
+
+import type { EmbedderFamily } from './embeddings.js';
 
 /**
  * Relevance gate for the dense arm.
@@ -104,4 +106,134 @@ export function rrfFuse(rankings: ReadonlyArray<readonly string[]>, k = 60): Map
     });
   }
   return fused;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Profiles — one per family of vector space                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Near-duplicate threshold for the hashing family: a write at or above this
+ * cosine against an existing row of its scope is merged into it rather than
+ * inserted. Deliberately high — the merge is automatic and silent, so a miss
+ * (two rows for one fact) is the cheap error and a false merge the expensive
+ * one. Measured on a real deployment, the highest cosine between any two of
+ * its memories was 0.51 while a third of them said the same thing: this
+ * catches the same text written twice, and consolidation catches the rest by
+ * asking a model.
+ */
+export const DUPLICATE_THRESHOLD = 0.92;
+
+/**
+ * Floor for a dense-arm result the lexical arm does not corroborate, in the
+ * knowledge store, hashing family.
+ *
+ * The relative gate alone is not enough there, and the reason is French: a
+ * stopword query's character n-grams soak a French corpus, so every chunk
+ * scores in a flat band and the relative floor admits the lot. Measured on
+ * chunk-scale texts with their title prefix: stopword-only queries top out at
+ * 0.102 (French) and 0.061 (English), genuine paraphrase starts at 0.446.
+ * 0.18 sits in the dead zone with margin on both sides.
+ */
+export const DENSE_SOLO_FLOOR = 0.18;
+
+/**
+ * What the sentence-transformer family was measured at, on bge-m3 (CLS
+ * pooling, q8), and what each profile number is held against by
+ * `retrieval-profile.test.ts`. Memory-scale texts unless stated.
+ *
+ *  - a query of nothing but function words scores at most 0.36 against a
+ *    corpus of memories, 0.36 against chunks;
+ *  - unrelated memories sit between 0.27 and 0.42; unrelated *chunks* run
+ *    higher (p95 0.55) because long legal passages share a register — which
+ *    is why ranking, not an absolute cut, decides between chunks;
+ *  - memories of the same project on different facts: 0.38–0.54;
+ *  - the weakest genuine paraphrase seen, query against passage: 0.46;
+ *  - a paraphrase of the same fact between two memories: 0.57;
+ *  - a contrary claim on the same subject: 0.76;
+ *  - the same fact restated in other words: 0.87; identical text 0.99.
+ */
+export const ST_MEASURED = {
+  stopwordQueryMax: 0.361,
+  unrelatedMemoryMax: 0.42,
+  genuineParaphraseMin: 0.46,
+  sameFactParaphrase: 0.569,
+  contraryClaim: 0.759,
+  nearDuplicate: 0.873,
+} as const;
+
+export interface RetrievalProfile {
+  family: EmbedderFamily;
+  /** The dense gate relative to the best hit. */
+  relativeFloor: number;
+  /** The dense gate in absolute terms; the larger of the two applies. */
+  minAbsoluteSimilarity: number;
+  /** Knowledge only: a dense result no lexical hit corroborates must reach this. */
+  denseSoloFloor: number;
+  /** A write at or above this cosine against an existing row is merged into it. */
+  duplicateThreshold: number;
+  /** A neighbour at or above this cosine is shortlisted for the consolidation arbiter. */
+  consolidationFloor: number;
+  /**
+   * How the two arms combine. `rrf` treats them as peers, which is right when
+   * neither knows meaning. `dense-first` keeps the dense order and lets the
+   * lexical arm only append what the dense arm missed — measured on bge-m3,
+   * equal-weight fusion demoted right passages the dense arm had ranked
+   * first, and on a weaker model took recall@5 from 3/6 to 1/6.
+   */
+  fusion: 'rrf' | 'dense-first';
+}
+
+const HASH_PROFILE: RetrievalProfile = {
+  family: 'hash',
+  relativeFloor: RELATIVE_SIMILARITY_FLOOR,
+  minAbsoluteSimilarity: MIN_ABSOLUTE_SIMILARITY,
+  denseSoloFloor: DENSE_SOLO_FLOOR,
+  duplicateThreshold: DUPLICATE_THRESHOLD,
+  consolidationFloor: 0.25,
+  fusion: 'rrf',
+};
+
+/**
+ * The sentence-transformer profile. Absolute floors sit just above the
+ * stopword band — below the weakest genuine paraphrase, with the margin the
+ * measurements allow — and the relative floor is loosened, because a real
+ * model's best hit is often the right one and half of it would cut nothing
+ * useful. Ranking does the rest.
+ */
+const ST_PROFILE: RetrievalProfile = {
+  family: 'st',
+  relativeFloor: 0.5,
+  minAbsoluteSimilarity: 0.38,
+  denseSoloFloor: 0.38,
+  duplicateThreshold: 0.85,
+  consolidationFloor: 0.5,
+  fusion: 'dense-first',
+};
+
+export function retrievalProfile(family: EmbedderFamily): RetrievalProfile {
+  return family === 'st' ? ST_PROFILE : HASH_PROFILE;
+}
+
+/**
+ * Combine the two arms as the profile says. The result maps each id to a
+ * score that only orders — `rrf` scores for the hashing family, a strictly
+ * decreasing rank score for `dense-first`, so a caller re-weighting by priors
+ * sees the same shape from both.
+ */
+export function fuseRankings(
+  profile: RetrievalProfile,
+  dense: readonly string[],
+  lexical: readonly string[],
+): Map<string, number> {
+  if (profile.fusion === 'rrf') return rrfFuse([dense, lexical]);
+  const ordered = [...dense];
+  const seen = new Set(dense);
+  for (const id of lexical) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ordered.push(id);
+    }
+  }
+  return new Map(ordered.map((id, index) => [id, 1 / (60 + index + 1)]));
 }

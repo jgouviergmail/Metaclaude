@@ -30,6 +30,7 @@ const { apiMock } = vi.hoisted(() => ({
     updateMemory: vi.fn(),
     deleteMemory: vi.fn(),
     memoryMaintenance: vi.fn(),
+    system: vi.fn(),
     setMemoryScope: vi.fn(),
     applyConsolidation: vi.fn(),
     setInsightStatus: vi.fn(),
@@ -74,6 +75,9 @@ const memory = (id: string, title: string, over: Record<string, unknown> = {}) =
 beforeEach(() => {
   vi.clearAllMocks();
   apiMock.workspaces.mockResolvedValue({ workspaces: [] });
+  apiMock.system.mockResolvedValue({
+    retrieval: { embedder: 'st:Xenova/bge-m3', family: 'st', state: 'ready', semantic: true, pending: { memories: 0, documents: 0, exemplars: 0 } },
+  });
   apiMock.memory.mockResolvedValue({
     memories: [memory('mem_1', 'Préavis de résiliation')],
     sources: {},
@@ -515,5 +519,45 @@ describe('provenance', () => {
     await screen.findByText('Apprise quelque part');
 
     expect(screen.queryByText('where this came from')).toBeNull();
+  });
+});
+
+describe('the retrieval line', () => {
+  it('stays quiet while a model is loaded and nothing waits', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Memory');
+
+    expect(screen.queryByTestId('retrieval-line')).toBeNull();
+  });
+
+  it('appears the moment vectors wait for a rebuild, and names the count', async () => {
+    apiMock.system.mockResolvedValue({
+      retrieval: { embedder: 'st:Xenova/bge-m3', family: 'st', state: 'loading', semantic: false, pending: { memories: 4, documents: 1, exemplars: 0 } },
+    });
+    renderWithProviders(<MemoryPage />);
+
+    const line = await screen.findByTestId('retrieval-line');
+    expect(line.textContent).toMatch(/Model loading/);
+    expect(line.textContent).toMatch(/5 vectors are waiting/);
+  });
+});
+
+describe('the recall box tells the truth about the regime', () => {
+  it('calls itself semantic only while a model is loaded', async () => {
+    renderWithProviders(<MemoryPage />);
+
+    expect(await screen.findByText('Semantic recall')).toBeDefined();
+    expect(screen.getByLabelText('Search memory by meaning')).toBeDefined();
+  });
+
+  it('says it matches words under the hashing embedder', async () => {
+    apiMock.system.mockResolvedValue({
+      retrieval: { embedder: 'hash-v1:512', family: 'hash', state: 'ready', semantic: false, pending: { memories: 0, documents: 0, exemplars: 0 } },
+    });
+    renderWithProviders(<MemoryPage />);
+
+    expect(await screen.findByLabelText('Search memory by words')).toBeDefined();
+    expect(screen.queryByText('Semantic recall')).toBeNull();
+    expect(screen.getByText(/matches words, not meaning/)).toBeDefined();
   });
 });

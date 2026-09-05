@@ -38,6 +38,8 @@ import { createHash } from 'node:crypto';
 import type { ConsolidationMember, ConsolidationProposal, Memory } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
+import type { EmbeddingProvider } from './embeddings.js';
+import { retrievalProfile } from './retrieval.js';
 import { unpackEmbedding } from '../db/index.js';
 import { cosineSimilarity } from './embeddings.js';
 import type { ContentLanguage } from './language.js';
@@ -128,7 +130,7 @@ export interface ConsolidationDeps {
    * run was enough to make every current vector look stale and the whole sweep
    * compare nothing at all, silently.
    */
-  embedderId: string;
+  embedder: Pick<EmbeddingProvider, 'id' | 'ready' | 'family'>;
   /**
    * The tool-less structured call, one batch of groups at a time. Injected for
    * the same reason as everywhere else in this directory: a test must never
@@ -234,8 +236,11 @@ export class Consolidator {
     // Only vectors from one provider are comparable, and the corpus can hold
     // several while `reindexStale` rebuilds after a change of embedder. The
     // rest are simply not compared yet.
-    for (const row of rows) {
-      if (row.embedding_model !== this.deps.embedderId) continue;
+    // And none at all while the model is not ready: a sweep over vectors
+    // nobody can compare would group by noise, and the arbiter would be
+    // asked about it.
+    for (const row of this.deps.embedder.ready ? rows : []) {
+      if (row.embedding_model !== this.deps.embedder.id) continue;
       const vector = unpackEmbedding(row.embedding);
       if (vector) vectors.set(row.id, vector);
     }
@@ -357,6 +362,10 @@ export class Consolidator {
     byId: ReadonlyMap<string, CandidateRow>,
     vectors: ReadonlyMap<string, Float32Array>,
   ): string[][] {
+    // The shortlist floor is the family's: 0.25 shortlists a hashing corpus and
+    // would shortlist *all* of a sentence-transformer's (unrelated pairs reach
+    // 0.42 there). See `retrievalProfile`.
+    const floor = retrievalProfile(this.deps.embedder.family).consolidationFloor;
     const groups: string[][] = [];
 
     for (const seedId of seeds) {
@@ -379,7 +388,7 @@ export class Consolidator {
         // argue with.
         if (!other || !sameScope(seed.workspace_id, other.workspace_id)) continue;
         const score = cosineSimilarity(seedVector, vector);
-        if (score >= CONSOLIDATION_FLOOR) neighbours.push({ id, score });
+        if (score >= floor) neighbours.push({ id, score });
       }
       if (neighbours.length === 0) continue;
 
