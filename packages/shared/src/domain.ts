@@ -1055,6 +1055,16 @@ export const AnalyticsSummary = z.object({
   totalCostUsd: z.number().nonnegative(),
   totalInputTokens: z.number().int().nonnegative(),
   totalOutputTokens: z.number().int().nonnegative(),
+  /**
+   * The two halves of the prompt the input figure leaves out. A turn that
+   * re-sends a context the cache still holds reads it at a tenth of the
+   * price; one that arrives after the cache has expired writes it again at
+   * a quarter more — and on a conversation of short questions that write is
+   * most of the bill. Measured by the steward before these existed: "ça va ?"
+   * cost twice a three-tool investigation, and nothing here could say why.
+   */
+  totalCacheReadTokens: z.number().int().nonnegative(),
+  totalCacheCreationTokens: z.number().int().nonnegative(),
   medianDurationMs: z.number().nonnegative(),
   p95DurationMs: z.number().nonnegative(),
   averageReward: z.number().nullable(),

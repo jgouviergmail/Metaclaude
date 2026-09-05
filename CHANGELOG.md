@@ -11,6 +11,30 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.51.0] — 2026-09-05
+
+Two things the steward asked for after a day of using its own tools, and it
+was right about both.
+
+### Added
+
+- **The steward can edit an automation.** `system_automation_update` changes
+  the name, description, prompt, trigger, notification or permission mode of
+  an automation in place — only the fields named, so a new prompt leaves the
+  description, the schedule and the failure ceiling alone. Until now its only
+  way to change the prompt of `Morning review` was to create a twin and pause
+  the original, which left a dead automation behind and lost its history.
+  Pausing stays its own tool; the change is audited as
+  `steward.automation.update` with the fields it touched.
+- **Cache tokens, where the cost is decided.** A run reports four token
+  counters and the tools showed one figure: the cost. The steward measured a
+  two-word greeting costing twice a three-tool investigation and could not say
+  why from `system_analytics`. `system_run` and `system_runs` now carry input,
+  output, cache-read and cache-written tokens per run; the analytics summary
+  totals the two cache halves over the period, and the Analytics page shows
+  them under the cost — a context written again after the cache expired is
+  most of a short turn's bill.
+
 ## [0.50.1] — 2026-09-05
 
 The cold review of 0.50.0, the shelves and the gate read end to end a day

@@ -231,6 +231,8 @@ describe('summary', () => {
       totalCostUsd: 0,
       totalInputTokens: 0,
       totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheCreationTokens: 0,
       medianDurationMs: 0,
       p95DurationMs: 0,
       averageReward: null,

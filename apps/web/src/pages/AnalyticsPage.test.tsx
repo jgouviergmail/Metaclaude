@@ -64,6 +64,10 @@ const analytics = (over: Record<string, unknown> = {}) => ({
     averageReward: 0.7,
     medianDurationMs: 4200,
     p95DurationMs: 9000,
+    totalInputTokens: 12_000,
+    totalOutputTokens: 3_000,
+    totalCacheReadTokens: 250_000,
+    totalCacheCreationTokens: 40_000,
     byModel: [],
     byCategory: [],
     byWorkspace: [],
@@ -133,6 +137,8 @@ describe('the figures', () => {
     await waitFor(() => expect(screen.getByText('42')).toBeDefined());
     // A success rate is a percentage, not a fraction, wherever it is shown.
     await waitFor(() => expect(screen.getByText(/92/)).toBeDefined());
+    // The cache split under the cost, formatted like every other token count.
+    expect(screen.getByText('Cache: 250k read, 40k written')).toBeDefined();
   });
 
   it('renders a period in which nothing happened', async () => {

@@ -17,6 +17,8 @@ const activity: Brief['activity'] = {
   totalCostUsd: 0,
   totalInputTokens: 1000,
   totalOutputTokens: 2000,
+  totalCacheReadTokens: 0,
+  totalCacheCreationTokens: 0,
   medianDurationMs: 5000,
   p95DurationMs: 9000,
   averageReward: null,

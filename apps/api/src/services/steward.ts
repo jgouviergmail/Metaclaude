@@ -56,7 +56,7 @@ import type { AnalyticsService } from './analytics.js';
 import { serverTimezone } from './cron.js';
 import type { Registry } from './registry.js';
 import type { RuntimeSettings } from './runtime-settings.js';
-import type { Scheduler } from './scheduler.js';
+import { SchedulerError, type Scheduler } from './scheduler.js';
 
 /* -------------------------------------------------------------------------- */
 /* Contract                                                                    */
@@ -202,6 +202,13 @@ const compactRun = (run: Run) => ({
   model: run.policy.model,
   permissionMode: run.policy.permissionMode,
   costUsd: run.usage.costUsd,
+  // All four counters, not the cost alone: which turn re-wrote its context
+  // into the cache is a question the cost cannot answer and the steward
+  // asked. A run from before the counters existed reads them as zero.
+  inputTokens: run.usage.inputTokens,
+  outputTokens: run.usage.outputTokens,
+  cacheReadTokens: run.usage.cacheReadTokens ?? 0,
+  cacheCreationTokens: run.usage.cacheCreationTokens ?? 0,
   durationMs: run.usage.durationMs,
   startedAt: run.startedAt,
   finishedAt: run.finishedAt,
@@ -687,6 +694,50 @@ export class Steward {
       },
     });
     this.record(actor, 'steward.automation.create', automation.id, `${automation.name} in ${workspace.slug}`);
+    return compactAutomation(automation);
+  }
+
+  /**
+   * Edit an automation in place: the fields named and nothing else, so a
+   * change of prompt leaves the description, the schedule and the failure
+   * ceiling as they were — the `.partial()` trap in api-contracts, kept out
+   * of this path by never building a patch from a schema. `enabled` is not
+   * here: pausing is its own tool, audited as such.
+   */
+  automationUpdate(
+    actor: StewardActor,
+    input: {
+      id: string;
+      name?: string;
+      description?: string;
+      prompt?: string;
+      trigger?: AutomationTrigger;
+      notify?: boolean;
+      permissionMode?: Automation['policy']['permissionMode'];
+    },
+  ) {
+    const { id, notify, permissionMode, ...fields } = input;
+    const patch: Parameters<Scheduler['update']>[1] = {};
+    if (fields.name !== undefined) patch.name = fields.name;
+    if (fields.description !== undefined) patch.description = fields.description;
+    if (fields.prompt !== undefined) patch.prompt = fields.prompt;
+    if (fields.trigger !== undefined) patch.trigger = fields.trigger;
+    if (notify !== undefined || permissionMode !== undefined) {
+      patch.policy = {
+        ...(notify !== undefined ? { notify } : {}),
+        ...(permissionMode !== undefined ? { permissionMode } : {}),
+      };
+    }
+    if (Object.keys(patch).length === 0) throw new StewardError('Name at least one field to change.', 'refused');
+    let automation: Automation | null;
+    try {
+      automation = this.deps.automations.update(id, patch);
+    } catch (error) {
+      if (error instanceof SchedulerError) throw new StewardError(error.message, 'refused');
+      throw error;
+    }
+    if (!automation) throw new StewardError(`No automation is called "${id}".`, 'not-found');
+    this.record(actor, 'steward.automation.update', id, `${automation.name}: ${Object.keys(patch).join(', ')}`);
     return compactAutomation(automation);
   }
 

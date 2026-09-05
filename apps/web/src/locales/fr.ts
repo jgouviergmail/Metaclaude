@@ -1848,6 +1848,7 @@ export const fr: Record<string, string> = {
   'Memory restored': 'Mémoire restaurée',
   'Could not retire that memory.': 'Impossible de retirer cette mémoire.',
   'Could not restore that memory.': 'Impossible de restaurer cette mémoire.',
+  'Cache: {read} read, {written} written': 'Cache : {read} lus, {written} écrits',
   '{shown} shown': '{shown} affichées',
   '{shown} shown of {total}': '{shown} affichées sur {total}',
   'Retired memory ({n})': 'Mémoire retirée ({n})',

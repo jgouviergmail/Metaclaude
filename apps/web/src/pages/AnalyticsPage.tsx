@@ -41,7 +41,7 @@ import {
   Stat,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { cn, formatCost, formatDuration, formatPercent } from '@/lib/utils';
+import { cn, formatCost, formatDuration, formatPercent, formatTokens } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 
 type Granularity = 'hour' | 'day' | 'week';
@@ -352,7 +352,21 @@ export function AnalyticsPage() {
                         : 'danger'
                   }
                 />
-                <Stat label={t('Cost')} value={formatCost(summary.totalCostUsd)} />
+                <Stat
+                  label={t('Cost')}
+                  value={formatCost(summary.totalCostUsd)}
+                  // The cache split under the cost, because that is what
+                  // moves it: a context written again after the cache
+                  // expired costs more than the work the turn did.
+                  hint={
+                    summary.totalCacheReadTokens + summary.totalCacheCreationTokens > 0
+                      ? t('Cache: {read} read, {written} written', {
+                          read: formatTokens(summary.totalCacheReadTokens),
+                          written: formatTokens(summary.totalCacheCreationTokens),
+                        })
+                      : undefined
+                  }
+                />
                 <Stat
                   label={t('Median')}
                   value={formatDuration(summary.medianDurationMs)}

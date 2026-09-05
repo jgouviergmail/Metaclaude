@@ -123,6 +123,8 @@ export class AnalyticsService {
     let cost = 0;
     let input = 0;
     let output = 0;
+    let cacheRead = 0;
+    let cacheCreation = 0;
     let ok = 0;
     const durations: number[] = [];
     const rewards: number[] = [];
@@ -132,16 +134,24 @@ export class AnalyticsService {
     const byCategory = new Map<string, { runs: number; rewards: number[] }>();
 
     for (const row of rows) {
-      const usage = parseJson<{ costUsd: number; inputTokens: number; outputTokens: number; durationMs: number }>(
-        row.usage,
-        { costUsd: 0, inputTokens: 0, outputTokens: 0, durationMs: 0 },
-      );
+      const usage = parseJson<{
+        costUsd: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens?: number;
+        cacheCreationTokens?: number;
+        durationMs: number;
+      }>(row.usage, { costUsd: 0, inputTokens: 0, outputTokens: 0, durationMs: 0 });
       const policy = parseJson<{ model?: string }>(row.policy, {});
       const succeeded = row.status === 'succeeded';
 
       cost += usage.costUsd;
       input += usage.inputTokens;
       output += usage.outputTokens;
+      // Optional in the parse: a run written before the two counters were
+      // recorded carries neither, and reads as zero rather than as a hole.
+      cacheRead += usage.cacheReadTokens ?? 0;
+      cacheCreation += usage.cacheCreationTokens ?? 0;
       if (succeeded) ok += 1;
       durations.push(usage.durationMs);
       if (row.reward !== null) rewards.push(row.reward);
@@ -184,6 +194,8 @@ export class AnalyticsService {
       totalCostUsd: round(cost, 6),
       totalInputTokens: input,
       totalOutputTokens: output,
+      totalCacheReadTokens: cacheRead,
+      totalCacheCreationTokens: cacheCreation,
       medianDurationMs: percentile(durations, 0.5),
       p95DurationMs: percentile(durations, 0.95),
       averageReward: rewards.length > 0 ? round(mean(rewards), 4) : null,

@@ -48,6 +48,7 @@ export type SystemFacade = Pick<
   | 'proposalDecide'
   | 'automationToggle'
   | 'automationCreate'
+  | 'automationUpdate'
   | 'automationFire'
   | 'sessionUpdate'
   | 'approvalDecide'
@@ -356,6 +357,23 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
       ),
     },
     handle: (facade, scope, args) => facade.automationCreate(scope, args),
+  }),
+  tool({
+    name: 'system_automation_update',
+    ring: 2,
+    description:
+      'Edit an automation in place — name, description, prompt, trigger, notify or permissionMode; only the fields named change, ' +
+      'and its history and streak stay with it. Pausing or enabling is system_automation_toggle.',
+    schema: {
+      id: ID,
+      name: z.string().min(1).max(120).optional(),
+      description: z.string().max(2000).optional(),
+      prompt: z.string().min(1).max(100_000).optional(),
+      trigger: AutomationTrigger.optional(),
+      notify: z.boolean().optional(),
+      permissionMode: PermissionMode.optional(),
+    },
+    handle: (facade, scope, args) => facade.automationUpdate(scope, args),
   }),
   tool({
     name: 'system_automation_fire',

@@ -57,6 +57,7 @@ let asked: {
   settings: unknown[];
   automations: Map<string, Automation>;
   created: unknown[];
+  updated: unknown[];
   fired: string[];
   proposals: Map<string, AdvisorProposal>;
   decided: unknown[];
@@ -144,6 +145,7 @@ function makeSteward(overrides: Partial<StewardDeps> = {}): Steward {
         return created;
       },
       update: (id, patch) => {
+        asked.updated.push(patch);
         const current = asked.automations.get(id);
         if (!current) return null;
         const next = { ...current, ...patch } as Automation;
@@ -277,7 +279,7 @@ beforeEach(async () => {
   asked = {
     submits: [], delegations: [], interrupted: [], settings: [],
     automations: new Map([['auto_a', automation('auto_a')], ['auto_b', automation('auto_b', { enabled: false, workspaceId: systemId })]]),
-    created: [], fired: [],
+    created: [], updated: [], fired: [],
     proposals: new Map([['prop_a', proposal('prop_a')]]),
     decided: [],
     pending: [approval('ap_low', 'low'), approval('ap_high', 'high'), approval('ap_mine', 'low', ACTOR.runId)],
@@ -542,6 +544,25 @@ describe('writing, under its own name', () => {
 
     expect(await steward.automationFire(ACTOR, 'auto_a')).toEqual({ id: 'auto_a', sessionId: 'ses_fired' });
     expect(audit.list({ action: 'steward.automation.fire' })).toHaveLength(1);
+  });
+
+  /**
+   * The patch the scheduler receives names what the steward named and
+   * nothing else — the `.partial()` trap: a change of prompt that arrived
+   * with `description: ''` beside it would wipe the description.
+   */
+  it('edits an automation in place, sending only the fields named', () => {
+    asked.updated.length = 0;
+    const edited = steward.automationUpdate(ACTOR, { id: 'auto_a', prompt: 'Review the night, briefly.' });
+    expect(edited.id).toBe('auto_a');
+    expect(asked.updated).toEqual([{ prompt: 'Review the night, briefly.' }]);
+
+    steward.automationUpdate(ACTOR, { id: 'auto_a', notify: true, trigger: { type: 'cron', expression: '0 8 * * *' } });
+    expect(asked.updated[1]).toEqual({ trigger: { type: 'cron', expression: '0 8 * * *' }, policy: { notify: true } });
+
+    expect(() => steward.automationUpdate(ACTOR, { id: 'auto_a' })).toThrow(/at least one field/);
+    expect(() => steward.automationUpdate(ACTOR, { id: 'auto_missing', prompt: 'x' })).toThrow(StewardError);
+    expect(audit.list({ action: 'steward.automation.update' })).toHaveLength(2);
   });
 
   it('archives a session, and refuses one that does not exist', () => {
