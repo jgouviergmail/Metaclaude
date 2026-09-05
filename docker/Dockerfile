@@ -114,6 +114,10 @@ COPY --from=build --chown=metaclaude:metaclaude /app/apps/api/dist ./apps/api/di
 COPY --from=build --chown=metaclaude:metaclaude /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build --chown=metaclaude:metaclaude /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build --chown=metaclaude:metaclaude /app/apps/web/dist ./web
+# The system workspace copies the documentation into itself at boot, so the
+# agent can read how the thing it stewards works. Until now `docs/` was only
+# reached by the web build, one stage up, and the runtime never had it.
+COPY --from=build --chown=metaclaude:metaclaude /app/docs ./docs
 
 COPY --chown=metaclaude:metaclaude docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

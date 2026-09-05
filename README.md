@@ -47,6 +47,13 @@ system around it:
   for seconds, archives every volume, and leaves a marker the in-app doctor
   watches — so backups that quietly stop become a visible warning, and
   `metaclaude-backup restore` puts everything back.
+- **A steward you can talk to.** Metaclaude has a workspace of its own,
+  prepared at every start with the running version's instructions and the
+  documentation, and a composer on the Dashboard that opens a conversation
+  with it. It reads everything the interface shows, makes reversible
+  changes at once under its own audit name, and says precisely what it
+  would do — and stops — when the right course is irreversible. No shell,
+  no file editor, and no way to widen its own reach.
 - **An advisor that studies the system itself.** On request or once a day
   per workspace, a run reads recent activity, the board and the registry,
   then creates backlog tickets and disabled automations directly — and
@@ -460,7 +467,7 @@ apps/api/
   ├── learning/     Embeddings, memory, bandit, classifier, reflexion
   ├── library/      The built-in shelf of subagents and skills
   ├── security/     Auth, TOTP, crypto, vault, audit, path jailing
-  ├── services/     Workspaces, files, git, registry, scheduler, analytics, advisor
+  ├── services/     Workspaces, files, git, registry, scheduler, analytics, advisor, steward
   ├── scripts/      Live checks and the screenshot bench (run by hand)
   └── routes/       REST + WebSocket
 apps/web/           React PWA

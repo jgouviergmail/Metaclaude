@@ -50,6 +50,7 @@ import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
+import { buildSystemServer, type SystemFacade } from './system-tools.js';
 import type { PermissionBroker } from './permissions.js';
 import { resolvePermissionMode } from './permissions.js';
 import { narrate } from './sdk-narrator.js';
@@ -181,6 +182,15 @@ export interface SupervisorDeps {
    * automation" is not reserved to the advisor's own analysis runs.
    */
   advisor?: AdvisorFacade;
+  /**
+   * The steward's tools, mounted for runs of the system workspace only — and
+   * only for runs a person or the schedule started there. Withheld from `api`
+   * runs (a token's scope is not a suggestion) and from delegated ones (a
+   * project's agent must not steer the steward by asking it a question).
+   * Resolved lazily like the broker: the steward needs the kernel, which
+   * needs this.
+   */
+  steward?: { workspaceId: () => string | null; facade: () => SystemFacade };
 }
 
 /**
@@ -720,6 +730,20 @@ export class AgentSupervisor {
           }),
         }
       : {};
+    // Metaclaude's own tools, for its own workspace, for runs started there
+    // by a person or the schedule. See `SupervisorDeps.steward`.
+    const systemServer: NonNullable<Options['mcpServers']> =
+      this.deps.steward &&
+      this.deps.steward.workspaceId() === workspace.id &&
+      request.triggeredBy !== 'api' &&
+      request.triggeredBy !== 'delegation'
+        ? {
+            metaclaude_system: buildSystemServer(this.deps.steward.facade(), {
+              runId: request.runId,
+              sessionId: request.sessionId,
+            }),
+          }
+        : {};
     // The Tools picker's hard lever: an excluded server is simply not
     // mounted for this run. Filtered before the delegation server merges,
     // so kernel machinery cannot be cut from the composer — it has its own
@@ -733,13 +757,15 @@ export class AgentSupervisor {
       Object.keys(mountedServers).length > 0 ||
       Object.keys(delegationServer).length > 0 ||
       Object.keys(boardServer).length > 0 ||
-      Object.keys(advisorServer).length > 0
+      Object.keys(advisorServer).length > 0 ||
+      Object.keys(systemServer).length > 0
     ) {
       options.mcpServers = {
         ...(mountedServers as Options['mcpServers']),
         ...delegationServer,
         ...boardServer,
         ...advisorServer,
+        ...systemServer,
       };
     }
     if (Object.keys(request.agents).length > 0) {

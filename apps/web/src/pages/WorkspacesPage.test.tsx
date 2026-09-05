@@ -57,6 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   apiMock.workspaces.mockResolvedValue({
     workspaces: [workspace('ws_a', 'Alpha'), workspace('ws_b', 'Beta')],
+    systemWorkspaceId: null,
   });
   apiMock.deleteWorkspace.mockResolvedValue({ ok: true });
   apiMock.updateWorkspace.mockResolvedValue({});
@@ -87,6 +88,46 @@ describe('the index', () => {
     expect(screen.getByRole('button', { name: /Hide archived/ }).getAttribute('aria-pressed')).toBe(
       'true',
     );
+  });
+});
+
+describe('the system workspace', () => {
+  /**
+   * The server refuses to archive or delete it with a 409. Offering the
+   * actions and letting them fail would be honest but unkind; the card
+   * simply has no menu, and says what it is instead.
+   */
+  it('is marked, and offers neither archive nor delete', async () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [workspace('ws_a', 'Metaclaude'), workspace('ws_b', 'Beta')],
+      systemWorkspaceId: 'ws_a',
+    });
+    renderWithProviders(<WorkspacesPage />);
+
+    expect(await screen.findByText('system')).toBeDefined();
+    // Beta's menu proves the render reached the actions; Metaclaude's absence
+    // is then a decision rather than a card that has not loaded yet.
+    expect(screen.getByRole('button', { name: 'Actions for Beta' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Actions for Metaclaude' })).toBeNull();
+  });
+
+  it('still opens like any other workspace', async () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [workspace('ws_a', 'Metaclaude')],
+      systemWorkspaceId: 'ws_a',
+    });
+    renderWithProviders(<WorkspacesPage />);
+
+    // By the slug, not the name: the shell's brand link is called Metaclaude too.
+    const card = (await screen.findByText('ws_a')).closest('a');
+    expect(card?.getAttribute('href')).toBe('/w/ws_a');
+  });
+
+  it('marks nothing when the server has no system workspace', async () => {
+    renderWithProviders(<WorkspacesPage />);
+
+    await screen.findByText('Alpha');
+    expect(screen.queryByText('system')).toBeNull();
   });
 });
 

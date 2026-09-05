@@ -310,6 +310,7 @@ export function WorkspacePage() {
         settings={workspace.settings}
         name={workspace.name}
         description={workspace.description}
+        locked={Boolean(data?.isSystem)}
       />
 
       <Modal
@@ -391,6 +392,7 @@ function WorkspaceSettingsModal({
   settings,
   name,
   description,
+  locked,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -398,6 +400,12 @@ function WorkspaceSettingsModal({
   settings: WorkspaceSettings;
   name: string;
   description: string;
+  /**
+   * The system workspace: permission mode and tool lists are fixed by the
+   * server, which answers 409 to a change. Shown locked rather than let
+   * the operator learn the rule from a failed save.
+   */
+  locked: boolean;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -544,6 +552,17 @@ function WorkspaceSettingsModal({
           </div>
         </div>
 
+        {locked ? (
+          <p
+            role="note"
+            className="rounded-lg border border-line bg-accent-soft px-3 py-2 text-[12px] leading-relaxed text-ink"
+          >
+            {t(
+              'This is Metaclaude’s own workspace. Its permission mode and tool lists are fixed: it asks before anything irreversible, uses its own tools and never gets a shell.',
+            )}
+          </p>
+        ) : null}
+
         <div>
           <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
             'Default permission mode',
@@ -551,7 +570,12 @@ function WorkspaceSettingsModal({
           <Menu
             side="bottom"
             trigger={
-              <Button variant="secondary" size="sm" className="w-full justify-between">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full justify-between"
+                disabled={locked}
+              >
                 {t(PERMISSION_MODE_INFO[draft.defaultPermissionMode].label)}
               </Button>
             }
@@ -582,6 +606,7 @@ function WorkspaceSettingsModal({
             {PREAPPROVABLE_TOOLS.map((tool) => (
               <CheckboxField
                 key={tool}
+                disabled={locked}
                 checked={draft.allowedTools.includes(tool)}
                 onChange={(value) =>
                   update(

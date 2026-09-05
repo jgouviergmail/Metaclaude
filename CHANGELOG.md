@@ -11,6 +11,57 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.45.0] — 2026-09-05
+
+### Added
+
+- **Metaclaude has a workspace of its own, and you can talk to it.** A
+  workspace called *Metaclaude* is created at the first start and kept system
+  from then on: its permission mode, tool lists and extra directories are fixed
+  by the server and re-asserted at every boot, it cannot be archived or
+  deleted, and its settings dialog shows those controls locked rather than let
+  you discover the rule from a failed save. Its standing instructions are
+  regenerated at every start from the running version, with the documentation
+  copied beside them, so it is never a release behind; a `NOTES.md` in the
+  workspace is yours and is never rewritten.
+
+  A composer on the Dashboard opens the conversation. The answer is an
+  ordinary session of that workspace titled *Conversation* — transcript,
+  approval cards, steering and rewind as everywhere else — kept from one
+  question to the next, and opened rather than doubled while it is still
+  answering.
+
+  What it can do is drawn by reversibility, in three rings. It reads
+  everything the interface shows, through tools of its own that never carry a
+  secret value. It makes reversible changes at once — memories and their
+  tiers, insights and proposals, automations, sessions, operational settings,
+  a workspace's ordinary settings, approvals of low or medium risk, runs asked
+  or started in other workspaces — every one audited under `metaclaude:<run>`,
+  never under your name. Nothing irreversible exists in its tool table, and a
+  test asserts the absence by name: when deleting, updating, a high-risk
+  approval or a change to any workspace's reach is the right course, it says
+  precisely what would happen and stops. The tools are mounted for runs you or
+  the schedule start in that workspace only — not for a token's run, not for
+  a delegated one.
+
+  A *Morning review* automation ships in the workspace, disabled: enable it
+  and every morning it reads the last twenty-four hours, acts on what is
+  reversible and briefs you on the rest. The guide has a chapter on all of it.
+
+- **The runtime image now carries `docs/`.** Until now only the web build
+  read it, one stage up; the system workspace copies it at boot so the agent
+  can read how the thing it stewards works.
+
+### Fixed
+
+- **The system workspace's guard refused every save of its own settings.**
+  Caught in review before it shipped, and worth recording: the settings dialog
+  sends the whole settings object back with one field changed, so a guard
+  written as "refuse a patch naming a safety setting" turned a language change
+  into a 409. It now refuses a *different* value, never presence, and a test
+  sends the stored object back unchanged.
+
+
 ## [0.44.0] — 2026-09-05
 
 ### Added

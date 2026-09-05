@@ -363,6 +363,7 @@ function makeSupervisor(
   extra: {
     delegate?: () => Promise<never>;
     board?: unknown;
+    steward?: unknown;
     runTimeoutMs?: number;
     idleTimeoutMs?: number;
   } = {},
@@ -379,6 +380,7 @@ function makeSupervisor(
     query: query as never,
     ...(extra.delegate ? { delegate: extra.delegate as never } : {}),
     ...(extra.board ? { board: extra.board as never } : {}),
+    ...(extra.steward ? { steward: extra.steward as never } : {}),
   });
 }
 
@@ -1958,6 +1960,46 @@ describe('buildOptions — the delegation tool', () => {
     );
 
     expect(Object.keys(options.mcpServers ?? {}).sort()).toEqual(['github', 'metaclaude']);
+  });
+});
+
+describe('buildOptions — the steward’s tools', () => {
+  // The fixture's workspace is `ws_1`; the facade is never called while options are built.
+  const steward = { workspaceId: () => 'ws_1', facade: () => ({}) };
+
+  it('mounts metaclaude_system for a run of the system workspace', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { steward });
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude_system');
+  });
+
+  it('withholds it from every other workspace', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      steward: { ...steward, workspaceId: () => 'ws_other' },
+    });
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude_system');
+  });
+
+  /**
+   * Even in the system workspace: a token's scope is not a suggestion, and a
+   * project's agent asking the steward a question must not thereby steer it.
+   */
+  it('withholds it from api and delegated runs, even there', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { steward });
+
+    for (const triggeredBy of ['api', 'delegation'] as const) {
+      const options = supervisor.buildOptions(makeRequest({ triggeredBy }));
+      expect(Object.keys(options.mcpServers ?? {}), triggeredBy).not.toContain('metaclaude_system');
+    }
+  });
+
+  it('offers nothing when no steward is wired', () => {
+    const options = makeSupervisor(fakeQuery().query).buildOptions(makeRequest());
+
+    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude_system');
   });
 });
 

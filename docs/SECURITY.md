@@ -405,6 +405,45 @@ hand it back.
 
 ---
 
+## The steward
+
+The system workspace is the one place an agent acts on the application
+itself, so its boundary is drawn in three layers that do not depend on
+one another.
+
+**It cannot reach the host or its own configuration.** The workspace's
+permission mode is `default`, its forbidden list holds every shell and
+file-editing tool, and its extra directories are empty; the server
+re-asserts those four settings at every boot and answers 409 to any route
+that would change them, archive the workspace or delete it — whoever asks,
+the operator included, because the interface is exactly what a persuasive
+agent would talk an operator into using. The pre-approved list is the
+steward's own tool table by exact name and nothing else, so every other
+tool still opens a card. Inside the container the run is still uid 10001
+with no shell: the master key is environment-only and allow-listed out of
+the CLI's environment, and the data and workspace directories are refused
+as extra directories like they are for every workspace.
+
+**Its tools decide by reversibility, and refuse the rest server-side.**
+Nothing irreversible exists in the tool table — a test asserts the absence
+by name — so a prompt-injected run cannot be talked into deleting a
+workspace or applying an update: there is nothing to call. What it can do
+is bounded again in the facade: the four reach settings are refused on
+every workspace, a high-risk approval is never allowed, a run never
+decides its own cards or interrupts itself. Every write is audited under
+`metaclaude:<runId>`, so what it did while nobody watched is a query on
+the audit log, not a reconstruction.
+
+**The tools are mounted for the operator's runs only.** A run started
+through the MCP gateway does not get them, because a token scoped to the
+system workspace would otherwise hold the whole deployment; a delegated
+run does not either, because a compromised project run asking the steward
+a question must not become a way to steer it. What no layer bounds is the
+text the steward reads: a memory or a run's transcript can carry an
+instruction, and the rings are what limit the damage of following one —
+which is the argument for keeping ring 3 behind a card a person presses,
+not for trusting the model to spot the injection.
+
 ## Prompt injection
 
 The agent reads content it does not control: repository files, fetched pages,

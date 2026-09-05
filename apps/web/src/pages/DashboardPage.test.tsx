@@ -25,6 +25,8 @@ const { apiMock, auth } = vi.hoisted(() => ({
     analytics: vi.fn(),
     insights: vi.fn(),
     brief: vi.fn(),
+    metaclaude: vi.fn(),
+    askMetaclaude: vi.fn(),
     createWorkspace: vi.fn(),
   },
   auth: { user: { displayName: 'Jules', username: 'jules', role: 'owner' } as Record<string, unknown> | null },
@@ -51,6 +53,7 @@ const empty = () => {
   apiMock.analytics.mockResolvedValue({ summary: undefined, series: [] });
   apiMock.insights.mockResolvedValue({ insights: [] });
   apiMock.brief.mockResolvedValue(null);
+  apiMock.metaclaude.mockResolvedValue({ workspaceId: 'ws_sys', session: null, running: false, lastRun: null });
 };
 
 beforeEach(() => {

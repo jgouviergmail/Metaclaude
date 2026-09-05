@@ -25,6 +25,7 @@ import type { Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { BriefView } from '@/components/analytics/BriefView';
 import { AdvisorCard } from '@/components/dashboard/AdvisorCard';
+import { MetaclaudeCard } from '@/components/dashboard/MetaclaudeCard';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { SystemPulse } from '@/components/dashboard/SystemPulse';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
@@ -162,6 +163,11 @@ export function DashboardPage() {
           />
 
           <GettingStartedCard />
+
+          {/* The operator's second: a composer that opens a run of the system
+              workspace. Before the warnings and the metrics, because when there
+              is no time this is the one control that stands in for the rest. */}
+          <MetaclaudeCard />
 
           {/* Credential warning: without this the first run just fails opaquely. */}
           {system && !system.claudeCli.authenticated ? (

@@ -46,7 +46,10 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
 
   app.get('/api/workspaces', async (request, reply) => {
     const includeArchived = (request.query as { archived?: string }).archived === 'true';
-    return reply.send({ workspaces: context.workspaceRepo.list(includeArchived) });
+    return reply.send({
+      workspaces: context.workspaceRepo.list(includeArchived),
+      systemWorkspaceId: context.systemWorkspace.id(),
+    });
   });
 
   app.post('/api/workspaces', async (request, reply) => {
@@ -80,6 +83,9 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     const gitStatus = await context.git.status(workspace.path).catch(() => null);
     return reply.send({
       workspace,
+      // So the settings dialog can lock the fixed controls up front rather
+      // than let the operator discover the rule from a failed save.
+      isSystem: context.systemWorkspace.isSystem(workspace.id),
       gitStatus,
       sessions: context.sessionRepo.list(workspace.id),
       memoryStats: context.memory.stats(workspace.id),
@@ -107,6 +113,11 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
     }
 
+    // The system workspace's reach is fixed. Archiving it, or touching any of
+    // the four settings that decide what its agent can reach, is a 409
+    // whoever asks — the guard is what keeps a persuasive agent from talking
+    // an operator into handing it a shell.
+    context.systemWorkspace.guard(request.params.id, parsed.data);
     assertPermissionModeAllowed(context, parsed.data.settings?.defaultPermissionMode);
     // Rejected here rather than silently dropped at run time, so the operator
     // learns the setting did not take. Both checks now run on creation too —
@@ -137,6 +148,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     async (request, reply) => {
       const actor = requireOperator(request);
       const workspace = mustGetWorkspace(request.params.id);
+      context.systemWorkspace.guardDelete(workspace.id);
       const purge = request.query.purge === 'true';
 
       await context.workspaces.delete(workspace.id, purge);

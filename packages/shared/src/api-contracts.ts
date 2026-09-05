@@ -906,6 +906,13 @@ export const McpServerDescription = z.object({
 });
 export type McpServerDescription = z.infer<typeof McpServerDescription>;
 
+/** What the Dashboard composer sends to Metaclaude. */
+export const AskMetaclaudeRequest = z.object({
+  prompt: z.string().trim().min(1, 'Say something.').max(100_000),
+  attachmentIds: z.array(z.string().min(1)).max(20).optional(),
+});
+export type AskMetaclaudeRequest = z.infer<typeof AskMetaclaudeRequest>;
+
 export const SystemHealth = z.object({
   version: z.string(),
   uptimeMs: z.number().int().nonnegative(),
@@ -928,6 +935,8 @@ export const SystemHealth = z.object({
   queuedRuns: z.number().int().nonnegative(),
   memoryCount: z.number().int().nonnegative(),
   embeddingProvider: z.string(),
+  /** Metaclaude's own workspace. Null only if preparing it failed at boot. */
+  systemWorkspaceId: z.string().nullable(),
   resources: SystemResources,
 });
 export type SystemHealth = z.infer<typeof SystemHealth>;

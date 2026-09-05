@@ -133,6 +133,23 @@ is yours — it is never rewritten automatically.
 <!-- e.g. "prefer composition over inheritance", "no default exports" -->
 `;
 
+/**
+ * The first free slug at or after `base`: `base`, then `base-2`, `base-3`…
+ *
+ * Shared between the operator's workspaces and the system's own, so the two
+ * cannot allocate against each other by different rules — a workspace an
+ * operator already named "metaclaude" simply pushes the system's to
+ * `metaclaude-2`, and identity lives in ids, never in slugs.
+ */
+export function uniqueSlug(repo: Pick<WorkspaceRepo, 'slugExists'>, base: string): string {
+  if (!repo.slugExists(base)) return base;
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${base}-${i}`;
+    if (!repo.slugExists(candidate)) return candidate;
+  }
+  throw new WorkspaceServiceError('Could not allocate a unique workspace slug.');
+}
+
 export class WorkspaceService {
   constructor(private readonly deps: WorkspaceServiceDeps) {}
 
@@ -140,7 +157,7 @@ export class WorkspaceService {
     const name = input.name.trim();
     if (!name) throw new WorkspaceServiceError('A workspace needs a name.');
 
-    const slug = this.uniqueSlug(slugify(name));
+    const slug = uniqueSlug(this.deps.repo, slugify(name));
     const path = resolve(this.deps.workspacesRoot, slug);
 
     // Defence in depth: the slug is already sanitised, but a workspace
@@ -301,14 +318,6 @@ export class WorkspaceService {
     }
   }
 
-  private uniqueSlug(base: string): string {
-    if (!this.deps.repo.slugExists(base)) return base;
-    for (let i = 2; i < 1000; i += 1) {
-      const candidate = `${base}-${i}`;
-      if (!this.deps.repo.slugExists(candidate)) return candidate;
-    }
-    throw new WorkspaceServiceError('Could not allocate a unique workspace slug.');
-  }
 
   /**
    * Delete a workspace.

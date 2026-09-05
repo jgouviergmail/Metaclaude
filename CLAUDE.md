@@ -478,6 +478,27 @@ restates the code is noise; one that records a decision or a trap is not.
   keys and copy in the values, an array puts both in values, so judge one
   property at a time and require a capital first letter, or every route path and
   cron expression in the app is indicted.
+- **A guard on "the field is present" refuses the form that round-trips
+  it.** The workspace settings dialog sends the *whole* settings object
+  back with one field changed, so the system workspace's guard, first
+  written as "refuse a patch naming a safety setting", turned every save of
+  its language into a 409. Refuse on a *different* value, never on
+  presence — and write the test that sends the stored object back unchanged.
+- **`content-type: application/json` over an empty body is a 400.** Fastify
+  refuses it before the handler, so a test helper that always sets the
+  header reports a `DELETE` guard as broken. Send the header only with a body.
+- **"The most recent session" is not a total order.** Two sessions rotated
+  in one millisecond share `last_activity_at`, and a card naming the newer
+  one flipped between runs. Same family as the audit chain's `rowid`: pick
+  by the semantics the caller needs — the one answering, else the one with
+  room — not by recency alone. And a rotation test whose newest session is
+  also the first in list order proves nothing about the ceiling; make both
+  standing sessions unavailable so a third is the only right answer.
+- **A class declared beside `vi.mock` is in its temporal dead zone when the
+  factory runs.** The factories are hoisted above every top-level statement,
+  so `ApiError` defined at module level and referenced from the factory
+  throws "Cannot access before initialization". Declare it inside
+  `vi.hoisted`, with the mocks.
 
 ## Testing
 

@@ -32,14 +32,11 @@ const HOUR = 3600_000;
 const DAY = 24 * HOUR;
 const now = Date.now();
 
-const ws = context.workspaceRepo.create({
-  name: 'Metaclaude',
-  slug: 'metaclaude',
+// The system workspace is Metaclaude's own and the boot has already prepared
+// it; the bench dresses it as a lived-in project rather than creating a
+// second one under its slug, which the unique index would refuse anyway.
+const ws = context.workspaceRepo.update((await context.systemWorkspace.ensure()).id, {
   description: 'The OS working on itself',
-  path: join(server.config.workspacesDir, 'metaclaude'),
-  color: '#6366f1',
-  icon: 'folder',
-  settings: (await import(pathToFileURL(join(REPO_ROOT, 'apps/api/dist/kernel/repositories.js')).href)).defaultWorkspaceSettings(),
 });
 
 // Memories with a believable spread of kinds, confidence and recency.

@@ -82,6 +82,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   apiMock.workspace.mockResolvedValue({
     workspace,
+    isSystem: false,
     sessions: [session],
     gitStatus: null,
     memoryStats: { episodic: 1, semantic: 2, procedural: 3 },
@@ -181,6 +182,40 @@ describe('the workspace settings dialog', () => {
     );
     await screen.findByRole('dialog');
   }
+
+  /**
+   * The server answers 409 to a change of the system workspace's permission
+   * mode or tool lists. The dialog says so up front and locks those two
+   * controls; everything else stays editable, because it is.
+   */
+  it('locks the fixed controls of the system workspace, and says why', async () => {
+    apiMock.workspace.mockResolvedValue({
+      workspace,
+      isSystem: true,
+      sessions: [session],
+      gitStatus: null,
+      memoryStats: { episodic: 0, semantic: 0, procedural: 0 },
+    });
+    await openSettings();
+
+    expect(screen.getByRole('note').textContent).toMatch(/never gets a shell/);
+    expect((screen.getByRole('button', { name: 'Ask' }) as HTMLButtonElement).disabled).toBe(true);
+    const tools = within(screen.getByRole('group', { name: 'Pre-approved tools' }));
+    const boxes = tools.getAllByRole('checkbox') as HTMLInputElement[];
+    expect(boxes.length).toBeGreaterThan(0);
+    expect(boxes.every((box) => box.disabled)).toBe(true);
+    // Narrow, deliberately: the learning switches and the name stay the operator's.
+    const learning = within(screen.getByRole('group', { name: 'Learning' }));
+    expect((learning.getAllByRole('checkbox')[0] as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it('locks nothing on an ordinary workspace', async () => {
+    await openSettings();
+
+    expect(screen.queryByRole('note')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Ask' }) as HTMLButtonElement).disabled).toBe(false);
+  });
 
   it('translates the permission mode on the workspace card and in the picker', async () => {
     await openSettings(true);

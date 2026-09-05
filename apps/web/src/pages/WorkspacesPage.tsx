@@ -46,6 +46,10 @@ export function WorkspacesPage() {
     queryKey: ['workspaces', showArchived],
     queryFn: () => api.workspaces(showArchived),
   });
+  // Metaclaude's own workspace. It is listed like the others and opened like
+  // the others, but it cannot be archived or deleted — the server answers
+  // 409 — so the card offers neither rather than a menu that only refuses.
+  const systemWorkspaceId = data?.systemWorkspaceId ?? null;
 
   const archive = useMutation({
     mutationFn: ({ id, archived }: { id: string; archived: boolean }) =>
@@ -146,6 +150,9 @@ export function WorkspacesPage() {
                     ) : null}
 
                     <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      {workspace.id === systemWorkspaceId ? (
+                        <Badge tone="accent">{t('system')}</Badge>
+                      ) : null}
                       {workspace.archived ? <Badge tone="warning">{t('archived')}</Badge> : null}
                       {workspace.settings.autoPolicyEnabled ? (
                         <Badge tone="thinking">{t('learning')}</Badge>
@@ -161,6 +168,7 @@ export function WorkspacesPage() {
 
                   {/* Positioned over the link rather than inside it: nesting a
                       menu trigger in an anchor breaks keyboard activation. */}
+                  {workspace.id === systemWorkspaceId ? null : (
                   <div className="absolute right-2 top-2">
                     <Menu
                       side="bottom"
@@ -181,7 +189,7 @@ export function WorkspacesPage() {
                           archive.mutate({ id: workspace.id, archived: !workspace.archived })
                         }
                       >
-                        {workspace.archived ? 'Restore' : 'Archive'}
+                        {workspace.archived ? t('Restore') : t('Archive')}
                       </MenuItem>
                       <MenuSeparator />
                       <MenuItem
@@ -193,6 +201,7 @@ export function WorkspacesPage() {
                       </MenuItem>
                     </Menu>
                   </div>
+                  )}
                 </li>
               ))}
             </ul>

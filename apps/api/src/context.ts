@@ -10,10 +10,11 @@
 import { execFile } from 'node:child_process';
 import { readFile, statfs } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
-import { SYSTEM_TOPIC } from '@metaclaude/shared';
+import { APP_VERSION, SYSTEM_TOPIC } from '@metaclaude/shared';
 import type { ClaudeUsage } from '@metaclaude/shared';
 import type { Logger } from 'pino';
 import type { Config } from './config.js';
@@ -27,6 +28,8 @@ import {
   WorkspaceRepo,
 } from './kernel/repositories.js';
 import { AgentSupervisor } from './kernel/supervisor.js';
+import { SYSTEM_TOOLS, systemToolNames } from './kernel/system-tools.js';
+import { decideApproval } from './http/approvals.js';
 import { PolicyLearner } from './learning/bandit.js';
 import { TaskClassifier } from './learning/classifier.js';
 import { createEmbeddingProvider, type EmbeddingProvider } from './learning/embeddings.js';
@@ -40,7 +43,7 @@ import {
   type ConsolidationOutput,
 } from './learning/consolidation.js';
 import { contentLanguageDirective, resolveContentLanguage } from './learning/language.js';
-import { withLanguage } from './learning/reflexion.js';
+import { listInsights, setInsightStatus, withLanguage } from './learning/reflexion.js';
 import { reindexStale } from './learning/reindex.js';
 import { KnowledgeStore } from './learning/knowledge.js';
 import { ReflexionEngine } from './learning/reflexion.js';
@@ -79,6 +82,9 @@ import { Registry } from './services/registry.js';
 import { LibraryService } from './library/service.js';
 import { AdvisorService } from './services/advisor.js';
 import { Scheduler } from './services/scheduler.js';
+import { Steward } from './services/steward.js';
+import { seedSystemAutomation } from './services/system-automation.js';
+import { SystemWorkspace } from './services/system-workspace.js';
 import { relocateWorkspaces, WorkspaceService } from './services/workspaces.js';
 
 export interface AppContext {
@@ -112,6 +118,8 @@ export interface AppContext {
   updateApplier: UpdateApplier;
 
   workspaceRepo: WorkspaceRepo;
+  /** Metaclaude's own workspace — the one its steward runs in. */
+  systemWorkspace: SystemWorkspace;
   sessionRepo: SessionRepo;
   runRepo: RunRepo;
   transcriptRepo: TranscriptRepo;
@@ -128,6 +136,8 @@ export interface AppContext {
   mcpOAuth: McpOAuth;
   library: LibraryService;
   advisor: AdvisorService;
+  /** What Metaclaude may see and do about itself — the facade behind its tools. */
+  steward: Steward;
   workspaces: WorkspaceService;
   files: FileService;
   attachments: AttachmentService;
@@ -177,6 +187,19 @@ export function buildClaudeEnv(config: Config): Record<string, string> {
 }
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Where the shipped documentation is. The image copies `docs/` beside `apps/`
+ * under the working directory; a dev checkout runs from `apps/api` and finds
+ * it two levels up. Null when neither exists, and the system workspace then
+ * says so rather than pointing the agent at files it does not have.
+ */
+function findDocsDir(): string | null {
+  for (const candidate of [resolve(process.cwd(), 'docs'), resolve(process.cwd(), '../../docs')]) {
+    if (existsSync(join(candidate, 'ARCHITECTURE.md'))) return candidate;
+  }
+  return null;
+}
 
 export async function createAppContext(config: Config, log: Logger): Promise<AppContext> {
   const db = openDatabase({ path: config.databasePath });
@@ -348,6 +371,36 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       runtimeSettings.choice('language') as 'auto' | 'fr' | 'en',
     );
 
+  /**
+   * Metaclaude's own workspace, prepared before anything can start a run in
+   * it. A failure here is logged rather than fatal: the deployment is worth
+   * more than its steward, and every route that asks then answers null.
+   */
+  const systemWorkspace: SystemWorkspace = new SystemWorkspace({
+    db,
+    workspaces: workspaceRepo,
+    workspacesRoot: config.workspacesDir,
+    docsDir: findDocsDir(),
+    version: APP_VERSION,
+    language: () => contentLanguage(systemWorkspace.id()),
+    preapproved: () => systemToolNames(),
+    tools: () =>
+      SYSTEM_TOOLS.map((entry) => ({
+        name: `mcp__metaclaude_system__${entry.name}`,
+        ring: entry.ring,
+        description: entry.description,
+      })),
+    log: (level, message, data) => log[level](data ?? {}, message),
+  });
+  try {
+    await systemWorkspace.ensure();
+  } catch (error) {
+    log.error(
+      { err: error instanceof Error ? error.message : String(error) },
+      'could not prepare the system workspace',
+    );
+  }
+
   const reflexion = new ReflexionEngine({
     db,
     memory,
@@ -433,6 +486,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   // two reference each other.
   let kernelRef: Kernel | null = null;
   let advisorRef: AdvisorService | null = null;
+  let stewardRef: Steward | null = null;
 
   const supervisor = new AgentSupervisor({
     broker: () => {
@@ -463,6 +517,15 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       proposeAutomation: (input) => {
         if (!advisorRef) throw new Error('The advisor is not ready yet.');
         return advisorRef.proposeAutomation(input);
+      },
+    },
+    // Same lazy shape again: the steward is built last, because it reaches
+    // everything, and the supervisor only opens it once a run is starting.
+    steward: {
+      workspaceId: () => systemWorkspace.id(),
+      facade: () => {
+        if (!stewardRef) throw new Error('The steward is not ready yet.');
+        return stewardRef;
       },
     },
   });
@@ -784,6 +847,57 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
         },
       })
     : null;
+  const updateApplier = new UpdateApplier({ dir: config.updatesDir });
+
+  /**
+   * The steward — Metaclaude's own hands. Built last because it reaches
+   * everything above; the supervisor receives it through the lazy getter
+   * declared beside the advisor's. Approvals go through `decideApproval`
+   * so a decision the steward makes is audited exactly like a person's,
+   * under its own name.
+   */
+  const steward = new Steward({
+    version: APP_VERSION,
+    systemWorkspaceId: () => systemWorkspace.id(),
+    workspaces: workspaceRepo,
+    sessions: sessionRepo,
+    runs: runRepo,
+    transcript: transcriptRepo,
+    memory,
+    insights: {
+      list: (options) => listInsights(db, options),
+      setStatus: (id, status) => setInsightStatus(db, id, status),
+    },
+    automations: scheduler,
+    proposals: advisor,
+    approvals: {
+      listPending: () => kernel.broker.listPending(),
+      decide: (decision, actor) => decideApproval(context, decision, actor),
+    },
+    settings: runtimeSettings,
+    doctor,
+    analytics,
+    audit,
+    registry,
+    updates: updateChecker
+      ? { check: () => updateChecker.check(), status: () => updateApplier.status() }
+      : null,
+    kernel,
+  });
+  stewardRef = steward;
+
+  // The one automation that ships with the system workspace — disabled, so
+  // it is an example of what scheduling the steward looks like rather than
+  // a run nobody asked for. Seeded once; an operator who deletes it is not
+  // contradicted at the next boot.
+  const systemId = systemWorkspace.id();
+  if (systemId) {
+    try {
+      seedSystemAutomation({ db, workspaceId: systemId, automations: scheduler });
+    } catch (error) {
+      log.warn({ err: error instanceof Error ? error.message : String(error) }, 'could not seed the system automation');
+    }
+  }
 
   const context: AppContext = {
     config,
@@ -809,8 +923,9 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     brief,
     synthesizer,
     updateChecker,
-    updateApplier: new UpdateApplier({ dir: config.updatesDir }),
+    updateApplier,
     workspaceRepo,
+    systemWorkspace,
     sessionRepo,
     runRepo,
     transcriptRepo,
@@ -824,6 +939,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     registry,
     library,
     advisor,
+    steward,
     workspaces,
     files: new FileService(),
     attachments,

@@ -286,11 +286,15 @@ export const api = {
 
   /* ---------------------------- Workspaces ---------------------------- */
   workspaces: (includeArchived = false) =>
-    request<{ workspaces: Workspace[] }>(`/api/workspaces${qs({ archived: includeArchived })}`),
+    request<{ workspaces: Workspace[]; systemWorkspaceId: string | null }>(
+      `/api/workspaces${qs({ archived: includeArchived })}`,
+    ),
 
   workspace: (id: string) =>
     request<{
       workspace: Workspace;
+      /** Metaclaude's own workspace: its safety settings are fixed server-side. */
+      isSystem: boolean;
       gitStatus: GitStatus | null;
       sessions: Session[];
       memoryStats: Record<MemoryKind, number>;
@@ -701,6 +705,22 @@ export const api = {
 
   /** Why one run was shaped as it was. Immutable once the run has started. */
   runGenesis: (runId: string) => request<RunGenesis>(`/api/runs/${runId}/genesis`),
+
+  /* ----------------------------- Metaclaude ---------------------------- */
+  /** Where the conversation with Metaclaude stands. */
+  metaclaude: () =>
+    request<{
+      /** Null only if preparing the system workspace failed at boot. */
+      workspaceId: string | null;
+      session: { id: string; title: string } | null;
+      running: boolean;
+      lastRun: { id: string; status: Run['status']; finishedAt: number | null } | null;
+    }>('/api/metaclaude'),
+  askMetaclaude: (body: { prompt: string; attachmentIds?: string[] }) =>
+    request<{ status: 'started'; workspaceId: string; sessionId: string; runId: string }>(
+      '/api/metaclaude/ask',
+      { method: 'POST', body },
+    ),
 
   /* ------------------------------ Advisor ------------------------------ */
   askAdvisor: (workspaceId: string) =>

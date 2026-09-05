@@ -36,6 +36,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerBoardRoutes } from './routes/board.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerLearningRoutes } from './routes/learning.js';
+import { registerMetaclaudeRoutes } from './routes/metaclaude.js';
 import { registerRegistryRoutes } from './routes/registry.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerWorkspaceRoutes } from './routes/workspaces.js';
@@ -231,6 +232,7 @@ export async function buildServer(context: AppContext): Promise<App> {
   registerRegistryRoutes(app, context);
   registerBoardRoutes(app, context);
   registerAdvisorRoutes(app, context);
+  registerMetaclaudeRoutes(app, context);
   registerIntegrationRoutes(app, context);
   registerGatewayRoutes(app, context);
   registerTokenRoutes(app, context);

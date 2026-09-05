@@ -459,6 +459,62 @@ code, and is enforced at propose time and again at accept. A workspace can
 opt into one automatic analysis per day (`advisorAuto`, default off); an
 hourly sweep applies the 24-hour gate per workspace.
 
+## The steward
+
+Metaclaude's own workspace, and the tools that let a run there act on the
+application rather than on a project. Three modules, one rule each.
+
+`services/system-workspace.ts` makes the workspace *system*. It is
+identified by a `kv` key rather than a slug — a slug is the operator's to
+take — created once, and re-asserted at every boot: the four settings that
+decide what an agent can reach (`defaultPermissionMode`, `allowedTools`,
+`disallowedTools`, `additionalDirectories`) are rewritten if they drifted,
+and the routes refuse to change them, archive the workspace or delete it
+with a 409. The guard compares *values*, not presence: the settings dialog
+sends the whole object back, so a guard on presence would have refused the
+operator's language change because the fixed lists rode along with it.
+The same boot writes the workspace's knowledge — `CLAUDE.md` generated from
+the running version, `SYSTEM-MAP.md`, a copy of `docs/` — through the path
+jail, and never touches `NOTES.md`, which `CLAUDE.md` imports and which is
+the operator's. The runtime image carries `docs/` for exactly this.
+
+`services/steward.ts` is the facade behind the tools, and the only place
+the rings are decided. Ring 1 reads, through compact projections that name
+their fields — never a spread of a row, which is how a record that grows a
+value field one day would start leaking. Ring 2 is what a person can undo
+from the interface in one gesture; every verb is audited as
+`metaclaude:<runId>`, so the log reads who did it and which run, never the
+operator. Ring 3 is absent by construction, and `system-tools.test.ts`
+checks the absence by name: no verb that deletes, purges, deploys,
+restores or hands out a credential may appear in the table whatever it is
+called. Two lines hold whatever the ring: the four reach settings are
+refused on *every* workspace, and an approval of high risk is never
+allowed — denying is always reversible, allowing a high-risk call is the
+one decision an absent operator would want to have made themselves.
+
+`kernel/system-tools.ts` is one table — name, ring, description, schema,
+handler — from which three things derive so they cannot drift: the MCP
+server `metaclaude_system` the supervisor mounts, the exact names the
+system workspace pre-approves in `allowedTools` (so no ring-1 or ring-2
+call ever opens an approval card, while `WebFetch` still does), and the
+tool list `CLAUDE.md` shows the agent, grouped by ring. The supervisor
+mounts the server for runs whose workspace *is* the system workspace and
+only those a person or the schedule started there: an `api` run is
+withheld because a token's scope is not a suggestion, a `delegation` run
+because a project's agent must not steer the steward by asking it a
+question.
+
+The conversation is not a new surface. `POST /api/metaclaude/ask` finds or
+opens a session titled *Conversation* in the system workspace — rotated at
+the same event ceiling as the gateway's standing sessions — submits the
+prompt as the operator, unawaited, and answers with where to look; the
+client goes to the ordinary session page. A conversation still answering
+is reported as a 409 with the session to open, rather than doubled beside
+it. `GET /api/metaclaude` names the session the *next* message would land
+in — the one answering, else the one with room, else the newest — because
+two sessions rotated in the same millisecond share a timestamp and "most
+recent" was not a total order (measured: a test failing two runs in five).
+
 ## Data model
 
 SQLite in WAL mode, one synchronous connection. For a single-user OS this is a
