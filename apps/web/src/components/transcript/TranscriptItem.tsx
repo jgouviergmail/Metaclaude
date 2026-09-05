@@ -413,10 +413,17 @@ export const ResultFooter = memo(function ResultFooter({
           <Tooltip
             content={
               <span className="tabular-nums">
-                {t('{in} in · {out} out · {cached} cached', {
+                {/* Written as well as read: measured in production, what
+                    makes one turn cost five times another is the context
+                    written into the cache — a session's first turn, or one
+                    that arrives after the cache expired — not the work done.
+                    Read costs a tenth of the input price, written a quarter
+                    more. */}
+                {t('{in} in · {out} out · {cached} cached · {written} written', {
                   in: formatTokens(event.usage.inputTokens),
                   out: formatTokens(event.usage.outputTokens),
                   cached: formatTokens(event.usage.cacheReadTokens),
+                  written: formatTokens(event.usage.cacheCreationTokens),
                 })}
               </span>
             }

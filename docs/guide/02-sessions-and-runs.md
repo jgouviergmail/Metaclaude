@@ -169,10 +169,16 @@ view that tells you which project is spending the ceiling.
 Under the period's cost, Analytics splits the prompt cache: tokens **read**
 from it and tokens **written** to it. A turn that arrives while the cache
 still holds the conversation reads it at a tenth of the price; one that
-arrives after it has expired writes the whole context again, at a quarter
-more. On a conversation of short questions that write is most of the bill,
-which is why a two-word greeting can cost more than a three-tool
-investigation — the cost follows the context re-sent, not the work done.
+arrives after it has expired — or the first turn of a session, which has
+nothing to reuse — writes the whole context, at a quarter more than plain
+input.
+
+That split, not the work done, is what a turn costs. Measured on one real
+conversation: its first turn, a two-word greeting answered with a single
+tool call, wrote 36 430 tokens into the cache and cost $0.42; its seventh,
+which ran three tools and searched the audit log, read 170 807 tokens from
+the cache, wrote 7 153, and cost $0.19. The run's own footer shows all four
+counters — hover the token count in the transcript.
 
 Analytics also shows the **subscription quota** itself, as the CLI reports it:
 the five-hour session window, the weekly windows, and any per-model buckets,

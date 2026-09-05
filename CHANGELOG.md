@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.51.2] — 2026-09-05
+
+### Added
+
+- **A run's footer names what it wrote to the cache, not only what it read.**
+  The transcript's token tooltip showed "in · out · cached", and the half it
+  left out is the one that decides the bill. Measured in production on one
+  conversation: its first turn — a two-word greeting answered with a single
+  tool call — wrote 36 430 tokens into the cache and cost $0.42, while its
+  seventh ran three tools, read 170 807 tokens from the cache, wrote 7 153,
+  and cost $0.19. The sessions guide now carries those figures.
+
+  The measurement also settled the question 0.51.0 instrumented: the cache
+  **holds** across the turns of a session. The system prompt carries the
+  memories recalled for each request and therefore changes every turn, which
+  should in principle break a prefix cache — it does not, in the numbers, and
+  the idea of restructuring the prompt around it was dropped.
+
 ## [0.51.1] — 2026-09-05
 
 ### Changed

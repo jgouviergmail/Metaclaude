@@ -1551,7 +1551,8 @@ export const fr: Record<string, string> = {
   'none': 'aucun',
   'Applying from here needs the host updater — re-run {script} on the server to add it.':
     'Appliquer depuis ici nécessite le programme de mise à jour de l’hôte — relancez {script} sur le serveur pour l’ajouter.',
-  '{in} in · {out} out · {cached} cached': '{in} entrée · {out} sortie · {cached} en cache',
+  '{in} in · {out} out · {cached} cached · {written} written':
+    '{in} entrée · {out} sortie · {cached} lus du cache · {written} écrits',
   'used {count}× · updated {when}': 'utilisée {count}× · modifiée {when}',
   '{n} being worked': '{n} en cours',
   '{n} in review': '{n} en relecture',

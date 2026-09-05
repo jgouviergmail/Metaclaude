@@ -16,7 +16,7 @@ import type { TranscriptEvent } from '@metaclaude/shared';
 
 import { renderWithProviders } from '@/test/render';
 
-import { AssistantText, ThinkingBlock, TodoList, TranscriptItem } from './TranscriptItem';
+import { AssistantText, ResultFooter, ThinkingBlock, TodoList, TranscriptItem } from './TranscriptItem';
 
 const { ui } = vi.hoisted(() => ({ ui: { showThinking: true, expandTools: false } }));
 
@@ -152,5 +152,55 @@ describe('dispatch', () => {
       <TranscriptItem event={event('something_new_from_the_sdk')} {...noop} />,
     );
     expect(container.textContent).toBe('');
+  });
+});
+
+/**
+ * The four token counters, and why the pair that matters is read against
+ * written. Measured in production on a real conversation: a session's first
+ * turn wrote 36 430 tokens into the cache and cost $0.42 for one tool call,
+ * while its seventh read 170 807 from the cache and cost $0.19 for three —
+ * a read costs a tenth of the input price, a write a quarter more. Showing
+ * only "cached" left the half that decides the bill invisible.
+ */
+describe('the result footer’s token tooltip', () => {
+  const result = (usage: Partial<TranscriptEvent & { kind: 'result' }>['usage']) =>
+    ({
+      kind: 'result',
+      id: 'ev_1',
+      runId: 'run_1',
+      seq: 1,
+      at: 1_000,
+      status: 'succeeded',
+      error: null,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 704,
+        cacheReadTokens: 71_630,
+        cacheCreationTokens: 36_430,
+        costUsd: 0.4177,
+        durationMs: 21_000,
+        turns: 1,
+        ...usage,
+      },
+    }) as Extract<TranscriptEvent, { kind: 'result' }>;
+
+  it('names what was read from the cache and what was written to it', async () => {
+    renderWithProviders(<ResultFooter event={result({})} run={null} {...noop} />);
+
+    // Radix renders a tooltip's content only once it opens, and it opens on
+    // focus as well as on hover — the keyboard path, and the one jsdom can
+    // drive without a timer.
+    fireEvent.focus(screen.getByText('716 tokens'));
+
+    expect(await screen.findByText('12 in · 704 out · 72k cached · 36k written')).toBeTruthy();
+  });
+
+  it('says nothing about tokens when there are none', () => {
+    renderWithProviders(
+      <ResultFooter event={result({ inputTokens: 0, outputTokens: 0 })} run={null} {...noop} />,
+    );
+
+    expect(screen.queryByText(/tokens/)).toBeNull();
   });
 });
