@@ -58,6 +58,7 @@ beforeEach(() => {
   apiMock.workspaces.mockResolvedValue({
     workspaces: [workspace('ws_a', 'Alpha'), workspace('ws_b', 'Beta')],
     systemWorkspaceId: null,
+    unread: {},
   });
   apiMock.deleteWorkspace.mockResolvedValue({ ok: true });
   apiMock.updateWorkspace.mockResolvedValue({});
@@ -207,3 +208,34 @@ describe('creating a workspace', () => {
     );
   });
 });
+
+/**
+ * The unread dot on a card.
+ *
+ * The index is where someone lands with no idea which project answered while
+ * they were away. One dot per workspace, from the count the list route sends
+ * with the workspaces — the number itself is only in the label, because what
+ * to do about two unread sessions is the same as about one.
+ */
+describe('workspaces with something unread', () => {
+  it('marks only the workspaces that have one, and says how many', async () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [workspace('ws_a', 'Alpha'), workspace('ws_b', 'Beta')],
+      systemWorkspaceId: null,
+      unread: { ws_b: 2 },
+    });
+    renderWithProviders(<WorkspacesPage />);
+
+    expect(await screen.findByText('Alpha')).toBeDefined();
+    const dots = screen.getAllByRole('img', { name: '2 sessions with an unread reply' });
+    expect(dots).toHaveLength(1);
+  });
+
+  it('shows none when nothing is waiting', async () => {
+    renderWithProviders(<WorkspacesPage />);
+
+    expect(await screen.findByText('Alpha')).toBeDefined();
+    expect(screen.queryByRole('img', { name: /unread reply/ })).toBeNull();
+  });
+});
+

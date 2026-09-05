@@ -255,8 +255,20 @@ export const Session = z.object({
   createdAt: Millis,
   updatedAt: Millis,
   lastActivityAt: Millis,
+  /**
+   * When the operator last had this session open. Older than `lastActivityAt`
+   * means something arrived that nobody has read — what the sidebar's dot and
+   * the workspace card's dot are made of. Stamped by opening the session, not
+   * by anything the agent does.
+   */
+  lastReadAt: Millis,
 });
 export type Session = z.infer<typeof Session>;
+
+/** Is there something in this session the operator has not seen? */
+export function isSessionUnread(session: Pick<Session, 'lastActivityAt' | 'lastReadAt'>): boolean {
+  return session.lastActivityAt > session.lastReadAt;
+}
 
 export const RunStatus = z.enum([
   'queued',

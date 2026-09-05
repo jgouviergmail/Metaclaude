@@ -11,6 +11,35 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.52.0] — 2026-09-05
+
+Three things the sidebar owed the operator, asked for together because they
+are one thing: knowing, from anywhere, that something is waiting.
+
+### Added
+
+- **Rename a session.** The title is written by the first message and is often
+  wrong for what the session became; until now the only way to change one was
+  to start another, which loses the transcript it was about. **Rename** is in
+  the row's menu — right-click works too — and changes nothing else.
+- **An unread dot on a session.** A run that finishes while you are on another
+  screen, or another device, used to leave the row reading exactly as it did
+  before: the only signal was a toast that had already gone. A session whose
+  activity is newer than your last look now carries a dot, and its title the
+  weight for anyone who cannot pick out six pixels of accent. Opening the
+  session clears it, and so does a run settling while you watch it — leaving
+  mid-run leaves the dot behind, which is the point. It lives in the database,
+  not the browser, so it is the same mark on the phone and on the desktop.
+- **An unread dot on a workspace.** The index carries one on any workspace with
+  at least one such session, so the projects that answered while you were away
+  are visible without opening any of them. Archiving a session clears its dot
+  for good: hiding it is a way of being done with it. The steward sees the same
+  fact — `system_sessions` reports `unread` per session.
+
+Migration 23 adds `sessions.last_read_at`, backfilled to each session's last
+activity: shipping this does not mark every session in the deployment unread on
+the morning it lands.
+
 ## [0.51.4] — 2026-09-05
 
 ### Fixed

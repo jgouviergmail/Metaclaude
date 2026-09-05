@@ -172,6 +172,32 @@ export function SessionPage() {
     return () => release.forEach((fn) => fn());
   }, [sessionId, workspaceId]);
 
+  /*
+   * Mark the session read.
+   *
+   * On arrival, and again every time the run settles — the moment the reply
+   * the dot is about has actually been put in front of somebody. Not while a
+   * run is in flight: leaving mid-run must leave the dot behind, which is the
+   * whole point of it. The workspace list is invalidated so the card's dot
+   * clears with the row's.
+   */
+  const markRead = useMutation({
+    mutationFn: (id: string) => api.markSessionRead(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
+      void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+    },
+    // A read marker is a courtesy, not a promise: a failure changes nothing
+    // the operator asked for and must not raise a toast over the transcript.
+    onError: () => undefined,
+  });
+  const markReadRef = useRef(markRead.mutate);
+  markReadRef.current = markRead.mutate;
+  useEffect(() => {
+    if (!sessionId || isRunning) return;
+    markReadRef.current(sessionId);
+  }, [sessionId, isRunning]);
+
   useEffect(() => () => useSessionStore.getState().clear(), []);
 
   /* ------------------------------ Composer -------------------------------- */

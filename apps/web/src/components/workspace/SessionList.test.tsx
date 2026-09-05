@@ -43,6 +43,8 @@ const session = (id: string, title: string, extra: Partial<Session> = {}): Sessi
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,
     lastActivityAt: 1_700_000_000_000,
+    // Read up to its last activity unless a case says otherwise.
+    lastReadAt: 1_700_000_000_000,
     ...extra,
   }) as Session;
 
@@ -191,3 +193,84 @@ describe('deleting', () => {
     );
   });
 });
+
+/**
+ * The unread dot.
+ *
+ * A run that finishes while the operator is on another screen used to leave
+ * the row reading exactly as it did before — the only signal was a toast that
+ * had already gone. The dot is what the sidebar owes them; the weight beside
+ * it is what it owes anyone who cannot pick out six pixels of accent.
+ */
+describe('unread sessions', () => {
+  const unread = (id: string, title: string, extra: Partial<Session> = {}) =>
+    session(id, title, { lastActivityAt: 2_000, lastReadAt: 1_000, ...extra });
+
+  it('marks a session whose activity is newer than the last look', () => {
+    list([unread('ses_2', 'Nightly'), session('ses_3', 'Quiet')], 'ses_1');
+
+    const dots = screen.getAllByRole('img', { name: 'Unread reply' });
+    expect(dots).toHaveLength(1);
+    // On the right row, and the title carries the weight too.
+    expect(screen.getByRole('link', { name: /Nightly/ }).textContent).toContain('Nightly');
+  });
+
+  it('never marks the session being looked at', () => {
+    // It is stamped read on arrival and again whenever a run settles under
+    // the operator's eyes, so a dot there would only ever be a flicker.
+    list([unread('ses_1', 'Open right now')], 'ses_1');
+
+    expect(screen.queryByRole('img', { name: 'Unread reply' })).toBeNull();
+  });
+
+  it('says nothing when the last look is as recent as the last activity', () => {
+    list([session('ses_2', 'Seen')], 'ses_1');
+
+    expect(screen.queryByRole('img', { name: 'Unread reply' })).toBeNull();
+  });
+});
+
+/**
+ * Renaming.
+ *
+ * A title is written by the first prompt and is often wrong for what the
+ * session became. Until this existed the only way to change one was to start
+ * a new session, which loses the transcript it was about.
+ */
+describe('renaming a session', () => {
+  const openRename = (title: string) => {
+    const trigger = screen.getByRole('button', { name: `Actions for ${title}` });
+    // Radix opens on pointerdown, never on click alone.
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+  };
+
+  it('opens with the current title and saves the new one', async () => {
+    list([session('ses_1', 'Bail')]);
+    openRename('Bail');
+
+    const field = (await screen.findByLabelText('Title')) as HTMLInputElement;
+    expect(field.value).toBe('Bail');
+
+    fireEvent.change(field, { target: { value: 'Lease review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+
+    await waitFor(() =>
+      expect(apiMock.updateSession).toHaveBeenCalledWith('ses_1', { title: 'Lease review' }),
+    );
+  });
+
+  it('refuses a blank title rather than storing one', async () => {
+    list([session('ses_1', 'Bail')]);
+    openRename('Bail');
+
+    const field = (await screen.findByLabelText('Title')) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '   ' } });
+
+    expect((screen.getByRole('button', { name: 'Rename' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(apiMock.updateSession).not.toHaveBeenCalled();
+  });
+});
+

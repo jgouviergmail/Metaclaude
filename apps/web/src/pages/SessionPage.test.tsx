@@ -9,10 +9,11 @@
  * worth holding still.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { useSessionStore } from '@/lib/store';
 
 import { SessionPage } from './SessionPage';
 
@@ -26,6 +27,7 @@ const { apiMock, navigate, pending } = vi.hoisted(() => ({
     submitRun: vi.fn(),
     rateRun: vi.fn(),
     deleteSession: vi.fn(),
+    markSessionRead: vi.fn(),
     transcript: vi.fn(),
     approvals: vi.fn(),
   },
@@ -74,6 +76,7 @@ const session = {
   createdAt: 0,
   updatedAt: 0,
   lastActivityAt: 0,
+  lastReadAt: 0,
 };
 
 beforeEach(() => {
@@ -91,6 +94,7 @@ beforeEach(() => {
   apiMock.mcpServers.mockResolvedValue({ servers: [] });
   apiMock.submitRun.mockResolvedValue({ run: { id: 'run_1' } });
   apiMock.deleteSession.mockResolvedValue({ ok: true });
+  apiMock.markSessionRead.mockResolvedValue({ session });
 });
 
 const page = () => renderWithProviders(<SessionPage />);
@@ -175,3 +179,45 @@ describe('the screen itself', () => {
     );
   });
 });
+
+/**
+ * The read marker.
+ *
+ * The dot in the sidebar is only honest if opening the session clears it, and
+ * only useful if leaving mid-run does not. Both halves live here: the page is
+ * the one thing that knows a reply was actually put in front of somebody.
+ */
+describe('marking the session read', () => {
+  it('stamps it on arrival', async () => {
+    page();
+    await waitFor(() => expect(apiMock.markSessionRead).toHaveBeenCalledWith('ses_1'));
+  });
+
+  it('stamps it again when the run settles under the operator’s eyes', async () => {
+    const run = (status: string) => ({
+      id: 'run_1',
+      sessionId: 'ses_1',
+      workspaceId: 'ws_a',
+      status,
+      prompt: 'x',
+      policy: {},
+      usage: { costUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, durationMs: 0, turns: 0 },
+      startedAt: 0,
+      finishedAt: null,
+    });
+    apiMock.session.mockResolvedValue({ session, runs: [run('running')], events: [], isRunning: true });
+    page();
+
+    // Arriving stamps it once — the operator is here, whatever is running.
+    await screen.findByTestId('stream');
+    await waitFor(() => expect(apiMock.markSessionRead).toHaveBeenCalledTimes(1));
+
+    // The result frame arrives while the page is still open: the reply has
+    // now been put in front of somebody, so the mark moves past it. Without
+    // this second stamp the dot would light up on the session being read.
+    act(() => useSessionStore.getState().applyRun(run('succeeded') as never));
+
+    await waitFor(() => expect(apiMock.markSessionRead).toHaveBeenCalledTimes(2));
+  });
+});
+

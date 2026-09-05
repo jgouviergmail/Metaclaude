@@ -10,14 +10,14 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Archive, MessageSquarePlus, MoreHorizontal, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { Archive, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { Session, SessionStatus } from '@metaclaude/shared';
+import { isSessionUnread, type Session, type SessionStatus } from '@metaclaude/shared';
 import { Menu, MenuItem, MenuSeparator } from '@/components/ui/Menu';
-import { ConfirmDialog } from '@/components/ui/Modal';
-import { Button, EmptyState, Input } from '@/components/ui/primitives';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { Button, EmptyState, Input, Label } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
 import { usePlural, useT, type TranslateFn } from '@/lib/i18n';
@@ -40,6 +40,7 @@ export function SessionList({
   const navigate = useNavigate();
   const [filter, setFilter] = useState('');
   const [pendingDelete, setPendingDelete] = useState<Session | null>(null);
+  const [renaming, setRenaming] = useState<Session | null>(null);
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
@@ -66,6 +67,16 @@ export function SessionList({
       if (id === activeSessionId) navigate(`/w/${workspaceId}`);
     },
     onError: (error) => fail(error, t('Could not archive the session.')),
+  });
+
+  const rename = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => api.updateSession(id, { title }),
+    onSuccess: () => {
+      invalidate();
+      setRenaming(null);
+      toast.success(t('Session renamed'));
+    },
+    onError: (error) => fail(error, t('Could not rename the session.')),
   });
 
   const remove = useMutation({
@@ -154,12 +165,20 @@ export function SessionList({
                   setPinned.mutate({ id: session.id, pinned: !session.pinned })
                 }
                 onArchive={() => archive.mutate(session.id)}
+                onRename={() => setRenaming(session)}
                 onDelete={() => setPendingDelete(session)}
               />
             ))}
           </ul>
         )}
       </nav>
+
+      <RenameDialog
+        session={renaming}
+        onClose={() => setRenaming(null)}
+        onSave={(title) => renaming && rename.mutate({ id: renaming.id, title })}
+        saving={rename.isPending}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -182,12 +201,87 @@ export function SessionList({
   );
 }
 
+/**
+ * Rename a session.
+ *
+ * A dialog rather than an inline field: the row is a navigation target the
+ * whole width of, and a text input inside a link is a trap for both the mouse
+ * and the keyboard. Titles are usually written by the first prompt, so this is
+ * an edit of existing text — the field opens focused with it selected.
+ */
+function RenameDialog({
+  session,
+  onClose,
+  onSave,
+  saving,
+}: {
+  session: Session | null;
+  onClose: () => void;
+  onSave: (title: string) => void;
+  saving: boolean;
+}) {
+  const t = useT();
+  const [value, setValue] = useState('');
+
+  // Reset on each opening: the dialog outlives the row it was opened from.
+  useEffect(() => {
+    if (session) setValue(session.title);
+  }, [session]);
+
+  const submit = (): void => {
+    const title = value.trim();
+    if (!title || !session) return;
+    onSave(title);
+  };
+
+  return (
+    <Modal
+      open={session !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={t('Rename session')}
+      description={t('What this session is about, in a few words. It appears in the sidebar and nowhere else.')}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            {t('Cancel')}
+          </Button>
+          <Button variant="primary" onClick={submit} disabled={!value.trim()} loading={saving}>
+            {t('Rename')}
+          </Button>
+        </>
+      }
+    >
+      <Label htmlFor="session-title">
+        {t('Title')}
+        <Input
+          id="session-title"
+          value={value}
+          autoFocus
+          maxLength={200}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          className="mt-1.5"
+        />
+      </Label>
+    </Modal>
+  );
+}
+
 function SessionRow({
   session,
   workspaceId,
   active,
   onTogglePin,
   onArchive,
+  onRename,
   onDelete,
 }: {
   session: Session;
@@ -195,12 +289,17 @@ function SessionRow({
   active: boolean;
   onTogglePin: () => void;
   onArchive: () => void;
+  onRename: () => void;
   onDelete: () => void;
 }) {
   const plural = usePlural();
   const t = useT();
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const title = sessionTitle(session, t);
+  // Never on the session being looked at: it is marked read on arrival and
+  // again whenever a run settles under the operator's eyes, so a dot there
+  // would only ever be the half-second before that request lands.
+  const unread = !active && isSessionUnread(session);
 
   return (
     <li
@@ -230,11 +329,21 @@ function SessionRow({
           <span
             className={cn(
               'min-w-0 flex-1 truncate text-[13px] leading-tight',
-              active ? 'font-medium text-ink' : 'text-muted group-hover:text-ink',
+              active ? 'font-medium text-ink' : unread ? 'font-medium text-ink' : 'text-muted group-hover:text-ink',
             )}
           >
             {title}
           </span>
+          {/* The weight carries it for anyone who cannot pick out a 6px dot;
+              the dot carries it for everyone scanning the column. */}
+          {unread ? (
+            <span
+              role="img"
+              aria-label={t('Unread reply')}
+              title={t('Unread reply')}
+              className="size-1.5 shrink-0 rounded-full bg-accent"
+            />
+          ) : null}
         </div>
 
         <div className="mt-1 flex items-center gap-1.5 text-[11px] text-subtle">
@@ -267,6 +376,9 @@ function SessionRow({
           </button>
         }
       >
+        <MenuItem icon={<Pencil />} onSelect={onRename}>
+          {t('Rename')}
+        </MenuItem>
         <MenuItem
           icon={session.pinned ? <PinOff /> : <Pin />}
           onSelect={onTogglePin}

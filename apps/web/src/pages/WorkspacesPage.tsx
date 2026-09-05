@@ -22,10 +22,11 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
-import { Trans, useT } from '@/lib/i18n';
+import { Trans, usePlural, useT } from '@/lib/i18n';
 
 export function WorkspacesPage() {
   const t = useT();
+  const plural = usePlural();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -50,6 +51,9 @@ export function WorkspacesPage() {
   // the others, but it cannot be archived or deleted — the server answers
   // 409 — so the card offers neither rather than a menu that only refuses.
   const systemWorkspaceId = data?.systemWorkspaceId ?? null;
+  // Sessions with a reply nobody has read, by workspace. The card shows the
+  // fact, not the number: what to do about it is one click away either way.
+  const unread = data?.unread ?? {};
 
   const archive = useMutation({
     mutationFn: ({ id, archived }: { id: string; archived: boolean }) =>
@@ -136,7 +140,22 @@ export function WorkspacesPage() {
                         aria-hidden
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink">{workspace.name}</p>
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                          <span className="min-w-0 truncate">{workspace.name}</span>
+                          {/* One dot, whatever the count: the number of unread
+                              sessions is not a decision this card is for. */}
+                          {(unread[workspace.id] ?? 0) > 0 ? (
+                            <span
+                              role="img"
+                              aria-label={plural(
+                                unread[workspace.id] ?? 0,
+                                '{n} session with an unread reply',
+                                '{n} sessions with an unread reply',
+                              )}
+                              className="size-1.5 shrink-0 rounded-full bg-accent"
+                            />
+                          ) : null}
+                        </p>
                         <p className="truncate font-mono text-[11.5px] text-subtle">
                           {workspace.slug}
                         </p>

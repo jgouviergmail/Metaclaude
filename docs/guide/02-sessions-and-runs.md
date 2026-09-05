@@ -95,6 +95,28 @@ served detail.
 - **Follow up.** A new message resumes the same Claude session — same context,
   new run, honest accounting.
 
+## The session list
+
+The sidebar sorts itself: pinned sessions first, then whatever was active most
+recently. Three things on a row are worth knowing.
+
+- **The title** is written by your first message, and is often wrong for what
+  the session became. **Rename** in the row's menu (or right-click it) changes
+  it; nothing else moves, and the transcript is untouched.
+- **A dot on the right, and the title in bold**, mean a reply landed that you
+  have not seen — a run that finished while you were on another screen or
+  another device. Opening the session clears it, and so does a run settling
+  while you are watching it. Leaving mid-run leaves the dot behind, which is
+  the point of it.
+- **A dot on the left** is the session's state: pulsing accent for running,
+  amber for a permission card waiting, red for a failed last run. Quiet
+  sessions get none.
+
+The same dot appears on a **workspace card** in the index when at least one of
+its sessions carries one — so the projects that answered while you were away
+are visible without opening any of them. Archiving a session clears its dot for
+good: hiding it is a way of being done with it.
+
 ## Sessions from the CLI
 
 The Claude CLI keeps its own record of every conversation held in a directory —

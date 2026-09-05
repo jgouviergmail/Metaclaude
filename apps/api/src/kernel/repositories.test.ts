@@ -239,6 +239,46 @@ describe('SessionRepo', () => {
     expect(sessions.get('ses_nope')).toBeNull();
   });
 
+  /**
+   * A new session is read: it holds nothing to read. What makes one unread is
+   * activity landing on it afterwards — a run finishing while nobody watches.
+   */
+  it('marks a session read without moving it in the list, and counts the unread per workspace', () => {
+    const watched = makeSession(workspace.id, 'watched');
+    const ignored = makeSession(workspace.id, 'ignored');
+    const other = makeWorkspace('other', 'Other');
+    const elsewhere = makeSession(other.id, 'elsewhere');
+
+    // Nothing has happened yet, so nothing is unread.
+    expect(sessions.unreadCounts()).toEqual({});
+
+    // Age them by a second: created and read at the same instant, which is
+    // also the boundary — activity *equal* to the read mark is read, and
+    // without this the three rows below all land in one millisecond.
+    db.prepare('UPDATE sessions SET last_read_at = last_read_at - 1000, last_activity_at = last_activity_at - 1000').run();
+
+    // A run settles on two of them.
+    sessions.addUsage(ignored.id, { costUsd: 0.1, inputTokens: 10, outputTokens: 5 });
+    sessions.addUsage(elsewhere.id, { costUsd: 0.1, inputTokens: 10, outputTokens: 5 });
+    expect(sessions.unreadCounts()).toEqual({ [workspace.id]: 1, [other.id]: 1 });
+
+    // Opening it clears it, and leaves both the ordering columns alone: the
+    // sidebar must not reshuffle because somebody looked.
+    const before = sessions.get(ignored.id) as Session;
+    const read = sessions.markRead(ignored.id) as Session;
+    expect(read.lastReadAt).toBeGreaterThanOrEqual(read.lastActivityAt);
+    expect(read.lastActivityAt).toBe(before.lastActivityAt);
+    expect(read.updatedAt).toBe(before.updatedAt);
+    expect(sessions.unreadCounts()).toEqual({ [other.id]: 1 });
+    expect(sessions.markRead('ses_nope')).toBeNull();
+
+    // Archiving is a way of being done with it: an archived session is not
+    // shown, so it cannot be counted — the badge would never clear.
+    sessions.update(elsewhere.id, { archived: true });
+    expect(sessions.unreadCounts()).toEqual({});
+    expect(sessions.get(watched.id)?.lastReadAt).toBe(sessions.get(watched.id)?.lastActivityAt);
+  });
+
   it('lists sessions of a workspace, pinned first then most recently active', () => {
     const older = makeSession(workspace.id, 'older');
     const newer = makeSession(workspace.id, 'newer');

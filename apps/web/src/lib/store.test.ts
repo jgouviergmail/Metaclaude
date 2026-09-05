@@ -37,6 +37,7 @@ function session(id = SESSION_ID): Session {
     createdAt: 1,
     updatedAt: 1,
     lastActivityAt: 1,
+    lastReadAt: 1,
   };
 }
 

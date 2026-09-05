@@ -953,4 +953,26 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_memories_shelf ON memories(shelf, retired_at);
     `,
   },
+  {
+    version: 23,
+    name: 'session_read_marker',
+    sql: /* sql */ `
+      -- How much of a session the operator has seen.
+      --
+      -- A run that finishes while nobody is looking leaves a reply nothing
+      -- points at: the sidebar row reads exactly as it did before, and the
+      -- only signal was a toast that has already gone. This column is stamped
+      -- whenever the session is open in front of someone, and a row whose
+      -- activity is newer than it carries the unread dot -- as does its
+      -- workspace, so a workspace with one unheard reply says so from the
+      -- list without opening it.
+      --
+      -- Backfilled to last_activity_at rather than left at 0: shipping this
+      -- must not mark every session in the deployment unread on the morning
+      -- it lands. No index: the predicate compares two columns of the same
+      -- row, which no index can serve, and the table is bounded by hand.
+      ALTER TABLE sessions ADD COLUMN last_read_at INTEGER NOT NULL DEFAULT 0;
+      UPDATE sessions SET last_read_at = last_activity_at;
+    `,
+  },
 ];

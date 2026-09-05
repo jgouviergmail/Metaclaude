@@ -57,6 +57,7 @@ interface SessionRow {
   created_at: number;
   updated_at: number;
   last_activity_at: number;
+  last_read_at: number;
 }
 
 interface RunRow {
@@ -265,6 +266,7 @@ function toSession(row: SessionRow): Session {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastActivityAt: row.last_activity_at,
+    lastReadAt: row.last_read_at,
   };
 }
 
@@ -285,8 +287,8 @@ export class SessionRepo {
       .prepare(
         `INSERT INTO sessions
            (id, workspace_id, title, model, effort, permission_mode, agent_name,
-            created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            created_at, updated_at, last_activity_at, last_read_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -298,6 +300,10 @@ export class SessionRepo {
         input.agentName ?? null,
         now,
         now,
+        now,
+        // Read at birth: a session nobody has spoken in yet holds nothing to
+        // read, and the first run of one an automation starts will move
+        // `last_activity_at` past this on its own.
         now,
       );
     return this.get(id) as Session;
@@ -316,6 +322,37 @@ export class SessionRepo {
       : `SELECT * FROM sessions WHERE workspace_id = ? AND archived = 0
          ORDER BY pinned DESC, last_activity_at DESC LIMIT ?`;
     return this.db.prepare<[string, number], SessionRow>(sql).all(workspaceId, limit).map(toSession);
+  }
+
+  /**
+   * Stamp the session as seen, as far as its latest activity.
+   *
+   * Touches neither `updated_at` nor `last_activity_at` on purpose: reading a
+   * session must not reorder the sidebar under the cursor, and `updated_at` is
+   * what an edit means. Idempotent, and cheap enough to call whenever a run
+   * settles while somebody is watching.
+   */
+  markRead(id: string, now: number = Date.now()): Session | null {
+    if (!this.get(id)) return null;
+    this.db.prepare('UPDATE sessions SET last_read_at = ? WHERE id = ?').run(now, id);
+    return this.get(id);
+  }
+
+  /**
+   * Unread sessions per workspace — what puts the dot on a workspace card.
+   *
+   * Archived sessions are out: hiding a session is a way of being done with
+   * it, and a badge that counts what the list does not show cannot be cleared.
+   */
+  unreadCounts(): Record<string, number> {
+    const rows = this.db
+      .prepare<[], { workspace_id: string; n: number }>(
+        `SELECT workspace_id, COUNT(*) AS n FROM sessions
+          WHERE archived = 0 AND last_activity_at > last_read_at
+          GROUP BY workspace_id`,
+      )
+      .all();
+    return Object.fromEntries(rows.map((row) => [row.workspace_id, row.n]));
   }
 
   setStatus(id: string, status: SessionStatus): void {

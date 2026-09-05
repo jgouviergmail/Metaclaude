@@ -49,6 +49,10 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     return reply.send({
       workspaces: context.workspaceRepo.list(includeArchived),
       systemWorkspaceId: context.systemWorkspace.id(),
+      // Sessions carrying something unread, by workspace. Here rather than on
+      // the workspace entity: it is a fact about sessions, and it changes
+      // every time one is opened.
+      unread: context.sessionRepo.unreadCounts(),
     });
   });
 
@@ -232,6 +236,20 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       ...(parsed.data.model !== undefined ? { model: String(parsed.data.model) } : {}),
     });
     return reply.send({ session });
+  });
+
+  /**
+   * Mark a session read up to now.
+   *
+   * A POST rather than a field on the PATCH above: it changes nothing the
+   * operator authored, it is sent whenever a run settles under their eyes, and
+   * it deliberately writes no audit line — a log of what someone looked at is
+   * neither useful nor anybody's business.
+   */
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/read', async (request, reply) => {
+    requireOperator(request);
+    mustGetSession(request.params.id);
+    return reply.send({ session: context.sessionRepo.markRead(request.params.id) });
   });
 
   app.delete<{ Params: { id: string } }>('/api/sessions/:id', async (request, reply) => {

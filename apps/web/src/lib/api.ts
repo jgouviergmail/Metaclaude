@@ -286,9 +286,12 @@ export const api = {
 
   /* ---------------------------- Workspaces ---------------------------- */
   workspaces: (includeArchived = false) =>
-    request<{ workspaces: Workspace[]; systemWorkspaceId: string | null }>(
-      `/api/workspaces${qs({ archived: includeArchived })}`,
-    ),
+    request<{
+      workspaces: Workspace[];
+      systemWorkspaceId: string | null;
+      /** Sessions carrying something unread, by workspace id — the card's dot. */
+      unread: Record<string, number>;
+    }>(`/api/workspaces${qs({ archived: includeArchived })}`),
 
   workspace: (id: string) =>
     request<{
@@ -342,6 +345,10 @@ export const api = {
 
   deleteSession: (id: string) =>
     request<{ ok: boolean }>(`/api/sessions/${id}`, { method: 'DELETE' }),
+
+  /** Stamp the session as seen up to now; clears its dot and the workspace's. */
+  markSessionRead: (id: string) =>
+    request<{ session: Session }>(`/api/sessions/${id}/read`, { method: 'POST' }),
 
   submitRun: (
     sessionId: string,

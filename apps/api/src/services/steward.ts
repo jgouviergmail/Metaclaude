@@ -188,6 +188,7 @@ const compactSession = (session: Session) => ({
   runCount: session.runCount,
   totalCostUsd: session.totalCostUsd,
   lastActivityAt: session.lastActivityAt,
+  unread: session.lastActivityAt > session.lastReadAt,
 });
 
 const compactRun = (run: Run) => ({
