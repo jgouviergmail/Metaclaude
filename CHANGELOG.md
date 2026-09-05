@@ -11,6 +11,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.51.3] — 2026-09-05
+
+### Fixed
+
+- **0.51.2's own test fixture did not typecheck**, so the version was tagged
+  by nothing and never shipped. `Partial<T>['usage']` is the *full* usage
+  type, not a partial one — the parameter has to be `Partial<RunUsage>`.
+  Vitest does not typecheck, so the suite was green while `pnpm typecheck`
+  and the build were red: after touching TypeScript, run the typecheck, not
+  only the tests.
+
 ## [0.51.2] — 2026-09-05
 
 ### Added

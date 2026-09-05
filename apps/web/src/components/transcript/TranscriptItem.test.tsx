@@ -12,7 +12,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TranscriptEvent } from '@metaclaude/shared';
+import type { RunUsage, TranscriptEvent } from '@metaclaude/shared';
 
 import { renderWithProviders } from '@/test/render';
 
@@ -164,7 +164,7 @@ describe('dispatch', () => {
  * only "cached" left the half that decides the bill invisible.
  */
 describe('the result footer’s token tooltip', () => {
-  const result = (usage: Partial<TranscriptEvent & { kind: 'result' }>['usage']) =>
+  const result = (usage: Partial<RunUsage> = {}) =>
     ({
       kind: 'result',
       id: 'ev_1',
@@ -186,7 +186,7 @@ describe('the result footer’s token tooltip', () => {
     }) as Extract<TranscriptEvent, { kind: 'result' }>;
 
   it('names what was read from the cache and what was written to it', async () => {
-    renderWithProviders(<ResultFooter event={result({})} run={null} {...noop} />);
+    renderWithProviders(<ResultFooter event={result()} run={null} {...noop} />);
 
     // Radix renders a tooltip's content only once it opens, and it opens on
     // focus as well as on hover — the keyboard path, and the one jsdom can
