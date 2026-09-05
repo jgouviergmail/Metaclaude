@@ -1052,6 +1052,25 @@ export const CreateApiTokenRequest = z.object({
 });
 export type CreateApiTokenRequest = z.infer<typeof CreateApiTokenRequest>;
 
+/**
+ * What may be changed on a token that already exists.
+ *
+ * Not the secret, which is a hash by then, and not the expiry, which is what
+ * the holder was told. The workspaces are here because they are the field that
+ * goes wrong on its own: deleting a workspace removes it from every grant, and
+ * a token left reaching nothing must be repairable without issuing a new
+ * secret and reconfiguring whatever holds it.
+ */
+export const UpdateApiTokenRequest = z
+  .object({
+    name: z.string().trim().min(1).max(60).optional(),
+    scopes: z.array(ApiTokenScope).min(1).optional(),
+    workspaceIds: z.array(z.string()).min(1).optional(),
+    ceiling: ApiTokenCeiling.optional(),
+  })
+  .refine((patch) => Object.keys(patch).length > 0, 'Name at least one field to change.');
+export type UpdateApiTokenRequest = z.infer<typeof UpdateApiTokenRequest>;
+
 /** The one moment the secret exists outside the client's own storage. */
 export const CreateApiTokenResponse = z.object({
   token: ApiTokenRecord,

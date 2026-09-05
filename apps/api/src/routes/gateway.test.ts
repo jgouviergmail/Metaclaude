@@ -246,6 +246,42 @@ describe('the tools', () => {
   });
 
   /**
+   * An empty list is a conclusion the caller cannot check.
+   *
+   * A token whose grants were pruned by a workspace deletion reaches nothing,
+   * and `list_workspaces` used to answer `[]` — which a program on the other
+   * side reports to its operator as "this deployment has no workspaces". It
+   * happened in production. The answer now says which of the two it is, and
+   * the count is what makes it checkable.
+   */
+  it('says a token reaches nothing rather than answering an empty list', async () => {
+    const minted = await post('/api/tokens', {
+      name: 'stale',
+      scopes: ['read'],
+      workspaceIds: [mineId],
+      ceiling: 'plan',
+      expiresInDays: 7,
+    });
+    const body = (await minted.json()) as { secret: string; token: { id: string } };
+    // Exactly the production state: the grant names a workspace that no longer
+    // exists. Set on this token alone — pruning `mineId` would empty the grants
+    // of every other case in this file.
+    context.apiTokens.update(body.token.id, { workspaceIds: ['ws_deleted'] });
+
+    const client = await connect(body.secret);
+
+    const result = (await client.callTool({ name: 'list_workspaces', arguments: {} })) as {
+      content: Array<{ text: string }>;
+      isError?: boolean;
+    };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/reaches none of the/i);
+    expect(result.content[0]!.text).toMatch(/grant it a workspace again/i);
+    await client.close();
+  });
+
+  /**
    * The property the whole design rests on. The other workspace exists, and
    * the answer must not say so.
    */

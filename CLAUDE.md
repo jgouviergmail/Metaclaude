@@ -416,6 +416,19 @@ restates the code is noise; one that records a decision or a trap is not.
   `canUseTool` can be reached; every other mode goes through
   `PermissionBroker`, which is what keeps the decision and its transcript line
   inside Metaclaude. `plan` pre-approves nothing at all.
+- **A JSON list of ids is a foreign key nothing enforces.** A gateway token's
+  `workspace_ids` kept naming a workspace that had been deleted, so the
+  gateway — which filters the workspace list by exactly those ids — answered
+  an *empty list*, and the program holding the token told its operator this
+  Metaclaude had no workspaces. Two rules came out of it: whatever holds ids
+  in JSON needs an explicit prune where the referent is deleted
+  (`ApiTokenService.forgetWorkspace`), and a filtered listing that comes back
+  empty must say *which* emptiness it is — nothing there, or nothing you may
+  see — because the caller cannot tell them apart and will pick the wrong one.
+  Related: the repair has to exist. The store could edit a token's grants and
+  no route exposed it, so a pruned grant could only be fixed by revoking the
+  credential every client held.
+
 - **A re-hydration mid-stream must not discard what is not persisted yet.**
   The session store's `load` cleared every streaming buffer, and the session
   query is invalidated whenever the socket reconnects — so a refetch during a

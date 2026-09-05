@@ -972,6 +972,9 @@ export const api = {
    * record, so nothing but the screen that mints a token has to be careful
    * with what it holds.
    */
+  updateApiToken: (id: string, body: { workspaceIds?: string[]; name?: string; ceiling?: string }) =>
+    request<{ token: ApiTokenRecord }>(`/api/tokens/${id}`, { method: 'PATCH', body }),
+
   createApiToken: (body: CreateApiTokenRequest) =>
     request<{ token: ApiTokenRecord; secret: string }>('/api/tokens', {
       method: 'POST',

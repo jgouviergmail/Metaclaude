@@ -180,12 +180,18 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       const purge = request.query.purge === 'true';
 
       await context.workspaces.delete(workspace.id, purge);
+      // A token's grants are a JSON list, so nothing cascades: prune them here
+      // or they name a workspace that no longer exists — which the gateway
+      // could only report as an empty list.
+      const tokensTouched = context.apiTokens.forgetWorkspace(workspace.id);
       context.audit.record({
         actor: actor.username,
         action: 'workspace.delete',
         target: workspace.id,
         ipAddress: requestIp(context, request),
-        detail: purge ? 'files purged' : 'record only',
+        detail:
+          (purge ? 'files purged' : 'record only') +
+          (tokensTouched > 0 ? `, removed from ${tokensTouched} token(s)` : ''),
       });
       return reply.send({ ok: true });
     },

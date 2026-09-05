@@ -145,11 +145,29 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
   };
 
   return {
-    listWorkspaces: async (): Promise<Array<{ id: string; slug: string; name: string }>> =>
-      deps.workspaces
+    listWorkspaces: async (): Promise<Array<{ id: string; slug: string; name: string }>> => {
+      const reachable = deps.workspaces
         .list()
         .filter((workspace) => token.workspaceIds.includes(workspace.id))
-        .map((workspace) => ({ id: workspace.id, slug: workspace.slug, name: workspace.name })),
+        .map((workspace) => ({ id: workspace.id, slug: workspace.slug, name: workspace.name }));
+
+      // An empty answer is a conclusion the caller cannot check: a program
+      // asking this reads "no workspaces" as "this deployment is empty" and
+      // says so to its operator. It happened — a token granted a workspace
+      // that was later deleted, and every gateway call failed with a sentence
+      // about the workspace it named rather than about the grant. So an empty
+      // result explains itself, and the deployment's own count is the proof
+      // it is about permission rather than emptiness.
+      if (reachable.length === 0) {
+        const total = deps.workspaces.list().length;
+        throw new Error(
+          total === 0
+            ? 'This Metaclaude has no workspaces yet. Ask its operator to create one.'
+            : `This token reaches none of the ${total} workspace(s) of this Metaclaude: the ones it was granted no longer exist. Ask its operator to grant it a workspace again — Settings → MCP gateway.`,
+        );
+      }
+      return reachable;
+    },
 
     start,
 

@@ -8,7 +8,7 @@
  * decision somebody made, expired is one nobody did.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiTokenRecord } from '@metaclaude/shared';
 
@@ -20,6 +20,7 @@ const { apiMock } = vi.hoisted(() => ({
   apiMock: {
     apiTokens: vi.fn(),
     createApiToken: vi.fn(),
+    updateApiToken: vi.fn(),
     revokeApiToken: vi.fn(),
     gatewayEndpoint: vi.fn(),
     workspaces: vi.fn(),
@@ -208,3 +209,55 @@ describe('describeCeiling', () => {
     expect(describeCeiling('dontAsk', t)).toMatch(/refuses the rest/i);
   });
 });
+
+/**
+ * A token that reaches nothing.
+ *
+ * Deleting a workspace prunes it from every grant, and a token left with none
+ * makes the gateway answer "this deployment is empty" to whatever holds the
+ * secret — which is what an external agent then reports to its operator. It
+ * happened in production, and nothing on this screen said so. Repairing it
+ * must not mean a new secret: every client holding the old one would break for
+ * a mistake none of them made.
+ */
+describe('a token whose reach is empty', () => {
+  it('says so where it can be repaired', async () => {
+    apiMock.apiTokens.mockResolvedValue({ tokens: [token({ workspaceIds: [] })] });
+    renderWithProviders(<McpGatewayCard />);
+
+    expect(
+      await screen.findByText(/reaches no workspace — whatever holds it sees an empty deployment/i),
+    ).toBeTruthy();
+  });
+
+  it('grants one back, keeping the same token', async () => {
+    apiMock.apiTokens.mockResolvedValue({ tokens: [token({ workspaceIds: [] })] });
+    apiMock.updateApiToken.mockResolvedValue({ token: token({ workspaceIds: ['ws_1'] }) });
+    renderWithProviders(<McpGatewayCard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Grant a workspace' }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByLabelText(/Metaclaude/));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(apiMock.updateApiToken).toHaveBeenCalledWith('tok_1', { workspaceIds: ['ws_1'] }),
+    );
+    // Never through create: that would mint a different credential.
+    expect(apiMock.createApiToken).not.toHaveBeenCalled();
+  });
+
+  it('will not save an empty reach', async () => {
+    apiMock.apiTokens.mockResolvedValue({ tokens: [token({ workspaceIds: [] })] });
+    renderWithProviders(<McpGatewayCard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Grant a workspace' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect((within(dialog).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+});
+

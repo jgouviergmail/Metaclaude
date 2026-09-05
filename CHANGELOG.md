@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.0] — 2026-09-05
+
+### Fixed
+
+- **A token no longer keeps a grant on a workspace that has been deleted.**
+  Found from use: an external agent holding a gateway token reported that this
+  Metaclaude had no workspaces at all. It had one — the token named a
+  workspace deleted since, `workspace_ids` is a JSON list that no foreign key
+  reaches into, and the gateway filters by exactly those ids. So
+  `list_workspaces` answered `[]`, which the program on the other side read as
+  an empty deployment. Deleting a workspace now prunes it from every token
+  that named it, and says so in the audit line.
+- **The gateway explains an empty answer instead of returning one.**
+  `list_workspaces` now says whether the deployment has no workspaces or the
+  token reaches none of the ones it has, with the count as proof — an empty
+  list was a conclusion the caller had no way to check.
+
+### Added
+
+- **A token's reach can be repaired without issuing a new secret.**
+  `PATCH /api/tokens/:id` changes the workspaces (and the name, scopes or
+  ceiling) of a token that already exists; the store had the method and
+  nothing exposed it, so the only fix for a pruned grant was to revoke and
+  mint again — reconfiguring every client for a mistake none of them made. The
+  MCP gateway card shows a token that reaches nothing, in the warning colour,
+  with the repair beside it.
+
 ## [0.55.1] — 2026-09-05
 
 ### Fixed

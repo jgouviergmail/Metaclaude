@@ -9,7 +9,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Plug, Trash2 } from 'lucide-react';
+import { FolderGit2, KeyRound, Plug, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { MAX_API_TOKEN_DAYS } from '@metaclaude/shared';
@@ -82,6 +82,9 @@ export function McpGatewayCard() {
   /** Held only until the dialog closes. It exists nowhere else, ever again. */
   const [minted, setMinted] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<ApiTokenRecord | null>(null);
+  // The token whose reach is being repaired, and the choice being made for it.
+  const [granting, setGranting] = useState<ApiTokenRecord | null>(null);
+  const [grants, setGrants] = useState<string[]>([]);
 
   const create = useMutation({
     mutationFn: () => api.createApiToken(draft),
@@ -90,6 +93,19 @@ export function McpGatewayCard() {
       setDrafting(false);
       setDraft(DEFAULT_DRAFT);
       setMinted(result.secret);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const regrant = useMutation({
+    mutationFn: ({ id, workspaceIds }: { id: string; workspaceIds: string[] }) =>
+      api.updateApiToken(id, { workspaceIds }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['api-tokens'] });
+      setGranting(null);
+      toast.success(t('Token updated'), {
+        description: t('The same secret, reaching the workspaces you chose.'),
+      });
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -176,8 +192,30 @@ export function McpGatewayCard() {
                     )}
                   </p>
                   <p className="text-[11.5px] leading-relaxed text-subtle">
-                    {token.workspaceIds.map(nameOf).join(', ')} · {describeCeiling(token.ceiling, t)}
+                    {token.workspaceIds.length > 0
+                      ? token.workspaceIds.map(nameOf).join(', ')
+                      : t('no workspace')}{' '}
+                    · {describeCeiling(token.ceiling, t)}
                   </p>
+                  {/* A token whose grants were pruned by a workspace deletion
+                      reaches nothing, and every call it makes reads as "this
+                      deployment is empty" on the other side. Said here, where
+                      it can be repaired, rather than left to be inferred. */}
+                  {state === 'live' && token.workspaceIds.length === 0 ? (
+                    <p className="flex flex-wrap items-center gap-2 text-[11.5px] leading-relaxed text-warning">
+                      {t('This token reaches no workspace — whatever holds it sees an empty deployment.')}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setGrants(token.workspaceIds);
+                          setGranting(token);
+                        }}
+                      >
+                        {t('Grant a workspace')}
+                      </Button>
+                    </p>
+                  ) : null}
                   <p className="font-mono text-[11px] text-subtle">
                     {token.hint}… ·{' '}
                     {state === 'live'
@@ -190,14 +228,27 @@ export function McpGatewayCard() {
                   </p>
                 </div>
                 {state === 'live' ? (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('Revoke {name}', { name: token.name })}
-                    onClick={() => setRevoking(token)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t('Workspaces for {name}', { name: token.name })}
+                      onClick={() => {
+                        setGrants(token.workspaceIds);
+                        setGranting(token);
+                      }}
+                    >
+                      <FolderGit2 className="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t('Revoke {name}', { name: token.name })}
+                      onClick={() => setRevoking(token)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </>
                 ) : null}
               </li>
             );
@@ -354,6 +405,48 @@ export function McpGatewayCard() {
             )}
           </p>
         </div>
+      </Modal>
+
+      {/* Repairing a grant, not minting a credential: the secret is untouched,
+          so whatever holds it keeps working the moment this is saved. */}
+      <Modal
+        open={granting !== null}
+        onOpenChange={(open) => {
+          if (!open) setGranting(null);
+        }}
+        title={t('Workspaces this token can reach')}
+        description={t('The secret does not change. Whatever holds it keeps working.')}
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setGranting(null)}>
+              {t('Cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={grants.length === 0}
+              loading={regrant.isPending}
+              onClick={() => granting && regrant.mutate({ id: granting.id, workspaceIds: grants })}
+            >
+              {t('Save')}
+            </Button>
+          </>
+        }
+      >
+        <fieldset className="space-y-2">
+          <legend className="sr-only">{t('Workspaces it can reach')}</legend>
+          <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-line p-2">
+            {available.map((workspace) => (
+              <CheckboxField
+                key={workspace.id}
+                checked={grants.includes(workspace.id)}
+                onChange={() => setGrants(toggle(grants, workspace.id))}
+                label={workspace.name}
+                hint={workspace.slug}
+              />
+            ))}
+          </div>
+        </fieldset>
       </Modal>
 
       <ConfirmDialog

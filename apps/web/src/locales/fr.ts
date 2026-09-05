@@ -1858,6 +1858,18 @@ export const fr: Record<string, string> = {
   'Could not restore that memory.': 'Impossible de restaurer cette mémoire.',
   'Cache: {read} read, {written} written': 'Cache : {read} lus, {written} écrits',
   'Session renamed': 'Session renommée',
+  'Token updated': 'Jeton mis à jour',
+  'The same secret, reaching the workspaces you chose.':
+    'Le même secret, avec les espaces que vous avez choisis.',
+  'no workspace': 'aucun espace',
+  'This token reaches no workspace — whatever holds it sees an empty deployment.':
+    'Ce jeton n’atteint aucun espace — ce qui le détient voit un déploiement vide.',
+  'Grant a workspace': 'Attribuer un espace',
+  'Workspaces for {name}': 'Espaces de {name}',
+  'Workspaces this token can reach': 'Espaces que ce jeton peut atteindre',
+  'The secret does not change. Whatever holds it keeps working.':
+    'Le secret ne change pas. Ce qui le détient continue de fonctionner.',
+  'Name at least one field to change.': 'Nommez au moins un champ à modifier.',
   'Session restored': 'Session restaurée',
   'Delete permanently': 'Supprimer définitivement',
   'Delete {title}': 'Supprimer {title}',

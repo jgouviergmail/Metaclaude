@@ -18,7 +18,7 @@
  * secret changes hands again, deliberately, at the moment the trust does.
  */
 
-import { CreateApiTokenRequest } from '@metaclaude/shared';
+import { CreateApiTokenRequest, UpdateApiTokenRequest } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { HttpError, requestIp, requireOwner } from '../http/guards.js';
 import type { App } from '../http/types.js';
@@ -57,6 +57,41 @@ export function registerTokenRoutes(app: App, context: AppContext): void {
     });
 
     return reply.status(201).send({ token, secret });
+  });
+
+  /**
+   * Repair a token in place.
+   *
+   * A grant is the field that goes wrong without anybody touching it: deleting
+   * a workspace prunes it from every token, and one left reaching nothing
+   * could otherwise only be fixed by revoking it and reconfiguring whatever
+   * holds the secret. The same existence check as creation applies — a grant
+   * nobody can read back is what this exists to prevent.
+   */
+  app.patch<{ Params: { id: string } }>('/api/tokens/:id', async (request, reply) => {
+    const actor = requireOwner(request);
+    const token = context.apiTokens.get(request.params.id);
+    if (!token) throw new HttpError(404, 'Token not found.');
+    if (token.revokedAt !== null) throw new HttpError(409, 'That token is revoked.');
+
+    const parsed = UpdateApiTokenRequest.safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+
+    for (const workspaceId of parsed.data.workspaceIds ?? []) {
+      if (!context.workspaceRepo.get(workspaceId)) {
+        throw new HttpError(400, 'That workspace does not exist.');
+      }
+    }
+
+    const updated = context.apiTokens.update(token.id, parsed.data);
+    context.audit.record({
+      actor: actor.username,
+      action: 'token.update',
+      target: token.id,
+      ipAddress: requestIp(context, request),
+      detail: `${token.name}: ${Object.keys(parsed.data).join(', ')}`,
+    });
+    return reply.send({ token: updated });
   });
 
   /**

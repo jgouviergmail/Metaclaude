@@ -173,3 +173,44 @@ describe('reach', () => {
     expect(verified.ceiling).toBe('plan');
   });
 });
+
+/**
+ * A grant that outlives its workspace.
+ *
+ * Measured in production: the deployment's one token named a workspace that
+ * had since been deleted and recreated with a new id. Nothing cascades into a
+ * JSON list, so the grant stood, the gateway filtered the workspace list by it
+ * and answered *nothing at all* — and the program on the other side reported
+ * that Metaclaude had no workspaces.
+ */
+describe('a deleted workspace', () => {
+  it('is pruned from every token that named it, and only from those', () => {
+    const { token: both } = tokens.create(
+      { ...MINT, scopes: [...MINT.scopes], workspaceIds: ['ws_one', 'ws_two'] },
+      'jules',
+    );
+    const { token: other } = tokens.create(
+      { ...MINT, name: 'elsewhere', scopes: [...MINT.scopes], workspaceIds: ['ws_two'] },
+      'jules',
+    );
+
+    expect(tokens.forgetWorkspace('ws_one')).toBe(1);
+    expect(tokens.get(both.id)?.workspaceIds).toEqual(['ws_two']);
+    expect(tokens.get(other.id)?.workspaceIds).toEqual(['ws_two']);
+
+    // Pruning may leave a token reaching nothing. That state has to exist:
+    // only the operator knows which workspace it should reach now, and a
+    // token silently re-granted somewhere else would be a privilege invented.
+    expect(tokens.forgetWorkspace('ws_two')).toBe(2);
+    expect(tokens.get(both.id)?.workspaceIds).toEqual([]);
+    expect(tokens.get(other.id)?.workspaceIds).toEqual([]);
+
+    // An operator's own edit still cannot empty one.
+    expect(() => tokens.update(both.id, { workspaceIds: [] })).toThrow(/at least one workspace/i);
+    expect(tokens.update(both.id, { workspaceIds: ['ws_three'] })?.workspaceIds).toEqual(['ws_three']);
+
+    // And a workspace nobody named changes nothing.
+    expect(tokens.forgetWorkspace('ws_ghost')).toBe(0);
+  });
+});
+

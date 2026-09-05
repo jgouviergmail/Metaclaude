@@ -245,6 +245,38 @@ export class ApiTokenService {
     return this.get(id);
   }
 
+  /**
+   * Drop a workspace from every token that named it.
+   *
+   * Called when a workspace is deleted, because `workspace_ids` is a JSON
+   * list and no foreign key can reach into it. Without this a token kept
+   * pointing at something that no longer exists, and the gateway — which
+   * filters the workspace list by exactly those ids — answered an *empty
+   * list* with no error: a program on the other side reported "Metaclaude has
+   * no workspaces" and there was nothing anywhere to contradict it. Measured
+   * in production, on the one token there was.
+   *
+   * A token may be left naming nothing, unlike an operator's own edit, which
+   * `update` refuses: pruning is a consequence, not a choice, and a token that
+   * reaches nothing must be *visible* rather than silently repaired — only the
+   * operator knows which workspace it should reach now.
+   */
+  forgetWorkspace(workspaceId: string): number {
+    const rows = this.db
+      .prepare<[], { id: string; workspace_ids: string }>('SELECT id, workspace_ids FROM api_tokens')
+      .all();
+    let changed = 0;
+    for (const row of rows) {
+      const ids = parseList<string>(row.workspace_ids);
+      if (!ids.includes(workspaceId)) continue;
+      this.db
+        .prepare('UPDATE api_tokens SET workspace_ids = ? WHERE id = ?')
+        .run(JSON.stringify(ids.filter((id) => id !== workspaceId)), row.id);
+      changed += 1;
+    }
+    return changed;
+  }
+
   /** Irreversible, and immediate: the next call with this value is refused. */
   revoke(id: string, now: number = Date.now()): boolean {
     const changed = this.db
