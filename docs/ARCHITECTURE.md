@@ -5,7 +5,10 @@
 Metaclaude is a single Node process that supervises Claude CLI subprocesses,
 plus a React app that talks to it. Everything else — memory, learning, the
 scheduler — is bookkeeping arranged around one operation: **run the agent, then
-learn something from having run it.**
+learn something from having run it.** One workspace is special: the system's
+own, where the same pipeline runs an agent whose tools act on the application
+itself (see *The steward*, below), through the same broker, audit log and
+memory as every other run.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -22,11 +25,13 @@ learn something from having run it.**
 │    PermissionBroker · EventBus · concurrency scheduler               │
 ├───────────────┬──────────────────┬───────────────────────────────────┤
 │  LEARNING     │  SERVICES        │  SECURITY                         │
-│  embeddings   │  workspaces      │  auth · TOTP · vault              │
-│  memory       │  files (jailed)  │  audit (hash-chained)             │
-│  bandit       │  git             │  path jailing                     │
-│  classifier   │  registry        │  rate limiting                    │
-│  reflexion    │  scheduler/cron  │                                   │
+│  embeddings   │  workspaces      │  auth · TOTP · passkeys · vault   │
+│  (bge-m3)     │  files (jailed)  │  audit (hash-chained)             │
+│  memory       │  git · registry  │  path jailing                     │
+│  knowledge    │  scheduler/cron  │  rate limiting                    │
+│  bandit       │  board · advisor │  tool grants · directory review   │
+│  classifier   │  steward · MCP   │                                   │
+│  reflexion    │  gateway         │                                   │
 ├───────────────┴──────────────────┴───────────────────────────────────┤
 │  SQLite (WAL) — single connection, synchronous, transactional        │
 └──────────────────────────────────────────────────────────────────────┘

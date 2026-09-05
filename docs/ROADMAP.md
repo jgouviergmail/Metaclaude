@@ -98,6 +98,20 @@ The changelog carries the detail; this is the map.
   (audited as `metaclaude:<run>`), and say precisely what would happen
   when the right course is irreversible. No shell, no file editor, no way
   to widen its own reach; mounted for the operator's runs only. *(0.45.0)*
+  Since then it reads the source code of the version it runs, copied into
+  its workspace with the tests beside it; its whole reversible surface —
+  its own tools, its board, the proposal tools — is pre-approved so it acts
+  without a card, and the permission mode of its workspace is the
+  operator's, *Bypass* excepted. Its first weeks in production it reported
+  three defects of its own tooling with file and line, and a pending
+  approval card is no longer mistaken for silence because of what it found.
+  *(0.47.0–0.48.2)*
+- **Retrieval that matches meaning.** A sentence-transformer (bge-m3, French
+  and English) ships in the image and runs on the server; every retrieval
+  gate is measured per model family rather than assumed; a host that cannot
+  load the model stays lexical *explicitly*, with the doctor warning and a
+  notification, and nothing is embedded under one model and compared under
+  another. *(0.46.0)*
 
 ### The multiplier
 - **Skill synthesis** from recurring procedural lessons, reviewed before it
@@ -158,10 +172,13 @@ Deliberately short. Each item names the surface it would stand on.
   — `deploy`, `rollback`, `status`, `backup`, spoken to the updater unit
   through the exchange directory the update button already uses, and never
   `restore` or `prune`, which stay a person's shell command.
-- **Metaclaude drafting its own fixes.** The steward reads the running code
-  and the documentation; the fuller version — this repository as a
-  workspace, so the system can cite its own traps and draft fixes as
-  branches CI judges — is the natural end of law 2, and is not built.
+- **Metaclaude drafting its own fixes.** The steward reads the sources of the
+  version it runs, tests included, and already reports defects by file and
+  line — three of its reports became releases. What it cannot do is *write*
+  the fix: this repository as a workspace with a shell, so the system drafts
+  a branch and CI judges it, is the natural end of law 2, and is not built.
+  It will not be built by handing the steward a shell in its own workspace;
+  it needs a separate workspace, a separate ring, and a person merging.
 
 ---
 

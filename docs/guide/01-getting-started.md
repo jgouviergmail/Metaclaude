@@ -1,7 +1,9 @@
 # Getting started
 
-Metaclaude is your private agentic OS: Claude Code with an interface, a memory,
-a schedule and a policy that learns — running on your own server, on your own
+Metaclaude is your private agentic OS: Claude Code with an interface, a memory
+that matches meaning, a schedule, a policy that learns — and a steward of its
+own that reads the system's state and code, acts on what you could undo, and
+briefs you on the rest. All of it running on your own server, on your own
 Claude subscription.
 
 ## First sign-in

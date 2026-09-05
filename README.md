@@ -4,11 +4,13 @@
 
 # Metaclaude
 
-**A private, self-hosted agentic OS built entirely on the Claude CLI.**
+**A private, self-hosted agentic OS built entirely on the Claude CLI — with an
+agent of its own to run it.**
 
 Talk to Claude Code from your laptop, tablet or phone — through an interface that
-remembers what it learned, chooses its own model, runs on a schedule, and asks
-before it does anything it cannot undo.
+remembers what it learned, chooses its own model, runs on a schedule, asks
+before it does anything it cannot undo, and keeps a steward that reads its own
+code, tends its own board and tells you what is wrong before you look.
 
 </div>
 
@@ -17,12 +19,23 @@ before it does anything it cannot undo.
 ## What this is
 
 Claude Code is excellent in a terminal. This gives it the rest of an operating
-system around it:
+system around it — and it has grown in three moves. First an interface with a
+memory, a schedule and a policy that learns which model suits which work.
+Then a system that explains itself: every choice the loop makes is drawn where
+it was made, the guide and the doctor ship inside, and retrieval matches
+*meaning*, on a model that runs on your server. And now a system that stewards
+itself: Metaclaude has a workspace of its own where the agent acts on the
+application rather than on a project — reads everything, changes what you
+could undo, and stops at what you could not.
+
+What that gives you, in one list:
 
 - **A real interface**, on every device you own. Installable as a PWA, usable
   one-handed on a phone — in English or in French.
 - **Memory that persists** across sessions and projects — and that is retrieved
-  automatically into the runs where it helps.
+  automatically into the runs where it helps, by meaning rather than by
+  keyword: a sentence-transformer (bge-m3, French and English alike) ships in
+  the image and runs on your server, so nothing leaves the machine.
 - **A knowledge library the agent quotes.** Drop reference documents — a
   contract, a spec, a runbook — globally or per workspace; runs retrieve the
   relevant passages (hybrid semantic + exact-word search) and cite them by
@@ -48,12 +61,17 @@ system around it:
   watches — so backups that quietly stop become a visible warning, and
   `metaclaude-backup restore` puts everything back.
 - **A steward you can talk to.** Metaclaude has a workspace of its own,
-  prepared at every start with the running version's instructions and the
-  documentation, and a composer on the Dashboard that opens a conversation
-  with it. It reads everything the interface shows, makes reversible
-  changes at once under its own audit name, and says precisely what it
-  would do — and stops — when the right course is irreversible. No shell,
-  no file editor, and no way to widen its own reach.
+  prepared at every start with the running version's instructions, the
+  documentation and the *source code* it is running, tests included, and a
+  composer on the Dashboard that opens a conversation with it. It reads
+  everything the interface shows, makes reversible changes at once under
+  its own audit name — memories, insights, automations, sessions, cards on
+  its own board, proposals for yours — and says precisely what it would do,
+  and stops, when the right course is irreversible. No shell, no file
+  editor, and no way to widen its own reach; how much it asks you first is
+  your setting, and under *Don't ask* it works alone. Its first weeks in
+  production it reported three defects of its own tooling, with file and
+  line; all three are fixed.
 - **An advisor that studies the system itself.** On request or once a day
   per workspace, a run reads recent activity, the board and the registry,
   then creates backlog tickets and disabled automations directly — and
@@ -153,6 +171,12 @@ since 0.23.0 the loop is *drawn where it ran*: each exchange in a transcript
 carries the classification, the arm the policy stood on and the memories that
 were actually injected. A self-modifying system you cannot read is not one you
 should trust.
+
+Since 0.45.0 the loop also has an operator of its own. The steward's runs go
+through exactly the same pipeline as yours — classified, recalled into,
+scored, reflected on — but its tools act on the system: it reads the same
+memories, insights, health and audit trail you do, and what it learns about
+running Metaclaude is stored where every later conversation with it starts.
 
 Full detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** ·
 **[docs/LEARNING.md](docs/LEARNING.md)** · **[docs/SECURITY.md](docs/SECURITY.md)** ·
@@ -305,6 +329,27 @@ trusted-publisher allowlist curated in this repository, because a web page
 saying "add this server" is what prompt injection looks like. The proposal
 tools are mounted into every run, so any agent that spots a repeated chore
 can suggest the automation on the spot.
+
+### The steward
+Metaclaude's own workspace, created at the first start and furnished again at
+every boot: standing instructions generated from the running version, the
+documentation, and under `code/` the TypeScript sources of that version with
+their tests — so a question that goes deeper than the guide is answered from
+what is actually deployed, cited by file and line. A composer on the
+Dashboard opens a standing conversation with it; a **Morning review**
+automation ships disabled, ready to brief you each day on what happened.
+
+Its tools are drawn by reversibility. Ring 1 reads everything the interface
+shows. Ring 2 changes what a person can undo in one gesture — memories and
+their tier, insights and proposals, automations, sessions, operational
+settings, cards on its own board, proposals filed for yours, runs asked of
+other workspaces — audited as `metaclaude:<run>`, never as you. Ring 3 does
+not exist: nothing that deletes, deploys, restores or hands out a credential
+is in its table, and a test asserts the absence by name. All of ring 1 and 2
+is pre-approved, so none of it opens a card; the permission mode of the
+workspace is yours, from *Ask* to *Don't ask*, with *Bypass* never offered.
+What is fixed is its reach: no shell, no file editor, no extra directory,
+and the steward itself is refused every reach setting on every workspace.
 
 ### Extensibility
 Skills (written to `.claude/skills/` before each run so the CLI discovers them),

@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.48.3] — 2026-09-05
+
+### Changed
+
+- **The README, the guide and the roadmap describe what Metaclaude has
+  become.** The front page still introduced an interface with a memory and a
+  schedule; it now tells the three moves — a system that learns, one that
+  explains itself, one that stewards itself — and carries a section on the
+  steward as it stands: sources in its workspace, rings, pre-approved
+  surface, the permission mode as the operator's. The memory bullet says
+  retrieval matches meaning on a model that runs on the server; the
+  architecture diagram names the knowledge store, the board, the advisor, the
+  steward and the gateway; the roadmap records retrieval (0.46.0) and the
+  steward's evolution (0.47.0–0.48.2) among what shipped, and states what
+  "drafting its own fixes" would and would not mean. The in-app Help renders
+  the same files.
+
+
 ## [0.48.2] — 2026-09-05
 
 ### Added
