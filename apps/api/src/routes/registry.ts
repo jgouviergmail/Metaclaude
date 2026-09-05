@@ -3,7 +3,15 @@
  */
 
 import type { App } from '../http/types.js';
-import { AutomationTrigger, EffortLevel, LibraryCategory, McpTransport, ModelSelector, PermissionMode } from '@metaclaude/shared';
+import {
+  AutomationPolicy,
+  AutomationTrigger,
+  EffortLevel,
+  LibraryCategory,
+  McpTransport,
+  ModelSelector,
+  PermissionMode,
+} from '@metaclaude/shared';
 import { z } from 'zod';
 import { InstallPluginRequest, MarketplaceInput, patchSchema } from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
@@ -547,14 +555,11 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     return reply.send({ automations: context.scheduler.list(request.query.workspaceId) });
   });
 
-  const AutomationPolicy = z.object({
-    model: ModelSelector.default('default'),
-    effort: EffortLevel.nullable().default(null),
-    permissionMode: PermissionMode.default('default'),
-    agentName: z.string().max(64).nullable().default(null),
-    maxTurns: z.number().int().min(1).max(500).nullable().default(null),
-  });
-
+  // `AutomationPolicy` comes from `packages/shared`, and deliberately: the
+  // hand-written copy that used to stand here was missing `notify`, so the
+  // browser sent it, Zod stripped it, and the automation ran silent while the
+  // checkbox said it would not. A shape the interface fills is validated from
+  // the one definition of it.
   const AutomationInput = z.object({
     workspaceId: z.string().min(1),
     name: z.string().min(1).max(120),

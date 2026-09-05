@@ -18,7 +18,7 @@
  */
 
 import type { Automation, AutomationTrigger, Run, RunStatus } from '@metaclaude/shared';
-import { EMITTED_AUTOMATION_EVENTS, newId, workspaceTopic } from '@metaclaude/shared';
+import { AutomationPolicy, EMITTED_AUTOMATION_EVENTS, newId, workspaceTopic } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { parseJson, toBool, toInt } from '../db/index.js';
 import type { EventBus } from '../kernel/bus.js';
@@ -57,14 +57,13 @@ interface AutomationRow {
   updated_at: number;
 }
 
-const DEFAULT_POLICY: Automation['policy'] = {
-  model: 'default',
-  effort: null,
-  permissionMode: 'default',
-  agentName: null,
-  maxTurns: null,
-  notify: false,
-};
+/**
+ * Every field at its declared default, read from the schema rather than typed
+ * out again. The literal that stood here was the third copy of this shape;
+ * the second — in `routes/registry.ts` — is what silently dropped `notify`
+ * for a release, and a copy that only *looks* right is how that happens.
+ */
+const DEFAULT_POLICY: Automation['policy'] = AutomationPolicy.parse({});
 
 function toAutomation(row: AutomationRow): Automation {
   return {

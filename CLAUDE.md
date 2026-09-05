@@ -416,6 +416,20 @@ restates the code is noise; one that records a decision or a trap is not.
   `canUseTool` can be reached; every other mode goes through
   `PermissionBroker`, which is what keeps the decision and its transcript line
   inside Metaclaude. `plan` pre-approves nothing at all.
+- **A route that re-declares a shared shape strips what its copy forgot.**
+  `routes/registry.ts` carried its own `AutomationPolicy` — the same five
+  fields, hand-written — and never gained the sixth, `notify`. Zod objects
+  drop unknown keys silently, so the checkbox was posted by the browser,
+  thrown away at the edge with no error, and the automation ran mute while
+  the form went on showing it enabled until the page was reloaded. The web
+  test asserting the form posts `policy.notify` passed the whole time, which
+  is the edge-schema trap again from the other side: it proved the browser
+  sends it, never that anything accepts it. Validate from the one definition
+  — `AutomationPolicy` is exported from `packages/shared` and imported by the
+  route and by the scheduler's defaults — and cover it with a test that
+  *derives* its sample from the schema, so a new field fails on the day it is
+  added: `routes/automation-policy.test.ts`.
+
 - **A green vitest run is not a green typecheck.** Vitest strips types; it
   never checks them. A test fixture typed
   `Partial<TranscriptEvent & { kind: 'result' }>['usage']` — which is the

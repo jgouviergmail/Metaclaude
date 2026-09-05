@@ -11,6 +11,32 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.53.1] — 2026-09-05
+
+### Fixed
+
+- **"Notify me when a firing ends" is saved.** It was not. `routes/registry.ts`
+  carried a hand-written copy of the automation policy — the same five fields —
+  and the copy never gained `notify`; Zod drops what it does not declare, so
+  the checkbox was posted by the browser and thrown away at the edge without
+  an error. The form went on showing it enabled until the page was reloaded,
+  and the automation ran mute. Every automation created or edited from the
+  interface since the flag shipped has it off; tick it again on the ones that
+  should speak.
+
+  The copy is gone: `AutomationPolicy` is exported from `packages/shared`, the
+  route validates against it, and the scheduler's defaults are
+  `AutomationPolicy.parse({})` rather than a third literal. The bound the
+  route's copy carried alone — `agentName` at 64 characters — moved to the
+  shared schema with it.
+
+  `routes/automation-policy.test.ts` derives its sample from the schema and
+  fails if a field is missing from it, so the next field added to the policy is
+  covered on the day it is added. The web test asserting the form posts
+  `policy.notify` had been green throughout: it proved the browser sends it,
+  never that anything accepts it — the edge-schema trap from the other side,
+  now in CLAUDE.md.
+
 ## [0.53.0] — 2026-09-05
 
 ### Added

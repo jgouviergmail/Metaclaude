@@ -698,6 +698,35 @@ export const AutomationTrigger = z.discriminatedUnion('type', [
 export const EMITTED_AUTOMATION_EVENTS = ['run_failed', 'run_succeeded'] as const;
 export type AutomationTrigger = z.infer<typeof AutomationTrigger>;
 
+/**
+ * How a firing runs, and what it does when it ends.
+ *
+ * Exported rather than declared inline inside `Automation`, and the API
+ * validates *this* object: the route used to carry a hand-written copy of the
+ * same five fields, the copy never gained `notify`, and Zod strips what it
+ * does not know — so the checkbox was saved by the browser, dropped at the
+ * edge without a word, and the automation stayed silent while the form said
+ * otherwise. One definition is the fix; a second copy is the bug.
+ */
+export const AutomationPolicy = z.object({
+  model: ModelSelector.default('default'),
+  effort: EffortLevel.nullable().default(null),
+  permissionMode: PermissionMode.default('default'),
+  // Bounded here rather than at the edge: the bound was on the route's copy,
+  // and a bound that lives on a copy is lost the moment the copy is.
+  agentName: z.string().max(64).nullable().default(null),
+  maxTurns: z.number().int().min(1).max(500).nullable().default(null),
+  /**
+   * Push the operator when a firing ends. Off by default: the machinery
+   * works while they sleep, and a channel that wakes them for it gets
+   * disabled within a week — but a brief nobody hears about is a brief
+   * read ten hours late, so the automations whose whole point is to be
+   * read opt in.
+   */
+  notify: z.boolean().default(false),
+});
+export type AutomationPolicy = z.infer<typeof AutomationPolicy>;
+
 export const Automation = z.object({
   id: z.string(),
   workspaceId: z.string(),
@@ -705,30 +734,14 @@ export const Automation = z.object({
   description: z.string().max(2000),
   prompt: z.string().min(1).max(100_000),
   trigger: AutomationTrigger,
-  policy: z
-    .object({
-      model: ModelSelector.default('default'),
-      effort: EffortLevel.nullable().default(null),
-      permissionMode: PermissionMode.default('default'),
-      agentName: z.string().nullable().default(null),
-      maxTurns: z.number().int().min(1).max(500).nullable().default(null),
-      /**
-       * Push the operator when a firing ends. Off by default: the machinery
-       * works while they sleep, and a channel that wakes them for it gets
-       * disabled within a week — but a brief nobody hears about is a brief
-       * read ten hours late, so the automations whose whole point is to be
-       * read opt in.
-       */
-      notify: z.boolean().default(false),
-    })
-    .default({
-      model: 'default',
-      effort: null,
-      permissionMode: 'default',
-      agentName: null,
-      maxTurns: null,
-      notify: false,
-    }),
+  policy: AutomationPolicy.default({
+    model: 'default',
+    effort: null,
+    permissionMode: 'default',
+    agentName: null,
+    maxTurns: null,
+    notify: false,
+  }),
   /**
    * When set, each firing continues the same Claude session instead of starting
    * fresh — this is what turns an automation into a long-running agentic loop
