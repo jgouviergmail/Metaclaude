@@ -145,15 +145,26 @@ export const useSessionStore = create<SessionState>((set) => ({
   isRunning: false,
   connection: 'closed',
 
+  /**
+   * Hydrate from a fetch of the session.
+   *
+   * The streaming buffers survive a re-hydration of the *same* session, minus
+   * the blocks whose authoritative event has since arrived. Clearing them
+   * unconditionally was a visible defect: a refetch mid-run — the one the
+   * socket's reconnect triggers — threw away everything streamed since the
+   * last persisted block, so the reply on screen jumped backwards to what the
+   * transcript held and only became whole again when the run ended. Loading a
+   * *different* session still starts from nothing, because those buffers
+   * belong to the session being left.
+   */
   load: ({ session, events, runs, approvals, isRunning }) =>
-    set({
-      sessionId: session.id,
-      session,
-      events,
-      runs,
-      approvals,
-      isRunning,
-      streaming: new Map(),
+    set((state) => {
+      const landed = new Set(events.map((event) => event.id));
+      const streaming =
+        state.sessionId === session.id
+          ? new Map([...state.streaming].filter(([id]) => !landed.has(id)))
+          : new Map();
+      return { sessionId: session.id, session, events, runs, approvals, isRunning, streaming };
     }),
 
   clear: () =>

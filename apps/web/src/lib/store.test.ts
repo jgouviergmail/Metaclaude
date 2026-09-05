@@ -291,10 +291,7 @@ describe('approvals', () => {
 });
 
 describe('lifecycle', () => {
-  it('load replaces everything, including stale streaming buffers', () => {
-    store().applyDelta(TOPIC, 'ev_1', 'assistant_text', 'stale');
-    store().applyEvent(TOPIC, textEvent('ev_1', 'stale'));
-
+  it('load replaces the transcript, the runs and the approvals', () => {
     useSessionStore.getState().load({
       session: session(),
       events: [textEvent('ev_fresh', 'fresh')],
@@ -304,8 +301,53 @@ describe('lifecycle', () => {
     });
 
     expect(store().events.map((event) => event.id)).toEqual(['ev_fresh']);
-    expect(store().streaming.size).toBe(0);
     expect(store().isRunning).toBe(true);
+  });
+
+  /**
+   * A refetch of the session the operator is *watching* must not throw away
+   * what is being streamed into it.
+   *
+   * Reported from use: the reply was truncated mid-stream and became whole
+   * again when the run ended. The socket's reconnect invalidates the session
+   * query, the answer re-hydrates the store, and `load` used to clear every
+   * streaming buffer — so the text on screen jumped back to the last block the
+   * transcript had actually persisted, and the rest only reappeared with the
+   * authoritative event at the end.
+   */
+  it('load keeps the blocks still streaming into the same session', () => {
+    store().applyDelta(TOPIC, 'ev_live', 'assistant_text', 'half a sen');
+    store().applyDelta(TOPIC, 'ev_done', 'assistant_text', 'all of it');
+
+    useSessionStore.getState().load({
+      session: session(),
+      // `ev_done` has landed as an authoritative event; `ev_live` has not.
+      events: [textEvent('ev_done', 'all of it')],
+      runs: [run('run_1', 'running')],
+      approvals: [],
+      isRunning: true,
+    });
+
+    expect(store().streaming.get('ev_live')?.text).toBe('half a sen');
+    expect(store().streaming.has('ev_done')).toBe(false);
+
+    // And the next delta continues that block rather than restarting it.
+    store().applyDelta(TOPIC, 'ev_live', 'assistant_text', 'tence.');
+    expect(store().streaming.get('ev_live')?.text).toBe('half a sentence.');
+  });
+
+  it('load of another session starts from nothing', () => {
+    store().applyDelta(TOPIC, 'ev_live', 'assistant_text', 'belongs to the old one');
+
+    useSessionStore.getState().load({
+      session: session(OTHER_ID),
+      events: [],
+      runs: [],
+      approvals: [],
+      isRunning: false,
+    });
+
+    expect(store().streaming.size).toBe(0);
   });
 
   it('clear leaves nothing behind for the next session', () => {

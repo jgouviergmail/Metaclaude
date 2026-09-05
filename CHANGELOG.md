@@ -11,6 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.55.1] — 2026-09-05
+
+### Fixed
+
+- **The reply no longer jumps backwards mid-stream.** Reported from use: text
+  appeared truncated while it streamed and became whole when the run ended.
+  The socket's reconnect invalidates the session query, the answer re-hydrates
+  the store, and `load` cleared every streaming buffer — so the screen fell
+  back to the last block the transcript had persisted and the rest reappeared
+  only with the authoritative event. Blocks still streaming into the same
+  session now survive a re-hydration; the ones whose event has landed are
+  dropped, as before.
+- **Reopening a session shows the session.** `staleTime: Infinity` makes the
+  cached answer eternally fresh, so React Query's refetch-when-stale never
+  fired: the second visit rendered the transcript as it was when the screen
+  was last closed, and an automation's run or work done from the phone was
+  missing until a live frame happened to arrive. The screen asks the server on
+  every mount now — the socket keeps an *open* session current, it cannot fill
+  in what was missed while nobody watched.
+
 ## [0.55.0] — 2026-09-05
 
 ### Added

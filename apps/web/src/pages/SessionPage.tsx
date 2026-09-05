@@ -121,6 +121,13 @@ export function SessionPage() {
     queryKey: ['session', sessionId],
     queryFn: () => api.session(sessionId),
     enabled: Boolean(sessionId),
+    // Always on mount, whatever the cache holds. `staleTime: Infinity` below
+    // makes the data eternally fresh, so React Query's default "refetch when
+    // stale" never fires — and reopening a session showed the transcript as it
+    // was when you last looked at it, with anything that happened since
+    // missing until a frame arrived to append to it. The socket keeps an open
+    // session live; it cannot fill in what was missed while nobody watched.
+    refetchOnMount: 'always',
     // The socket keeps this fresh while it is connected, so polling would only
     // fight the live state. Reconnection is handled explicitly below.
     staleTime: Infinity,

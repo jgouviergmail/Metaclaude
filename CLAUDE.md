@@ -416,6 +416,20 @@ restates the code is noise; one that records a decision or a trap is not.
   `canUseTool` can be reached; every other mode goes through
   `PermissionBroker`, which is what keeps the decision and its transcript line
   inside Metaclaude. `plan` pre-approves nothing at all.
+- **A re-hydration mid-stream must not discard what is not persisted yet.**
+  The session store's `load` cleared every streaming buffer, and the session
+  query is invalidated whenever the socket reconnects — so a refetch during a
+  run threw away the text streamed since the last persisted block. On screen
+  the reply jumped *backwards* to what the transcript held and became whole
+  again only when the run ended, which reads as the model retyping itself.
+  `load` now keeps the buffers of the same session minus the blocks whose
+  authoritative event has landed. Related, same screen: `staleTime: Infinity`
+  makes data eternally fresh, so React Query's default refetch-when-stale
+  never fires and reopening a session showed it as it was when last closed —
+  the socket keeps an *open* session current, it cannot fill in what was
+  missed while nobody watched. `refetchOnMount: 'always'` is what a
+  never-stale query needs.
+
 - **A route that re-declares a shared shape strips what its copy forgot.**
   `routes/registry.ts` carried its own `AutomationPolicy` — the same five
   fields, hand-written — and never gained the sixth, `notify`. Zod objects

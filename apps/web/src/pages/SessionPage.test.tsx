@@ -12,7 +12,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { renderWithProviders } from '@/test/render';
+import { createTestQueryClient, renderWithProviders } from '@/test/render';
 import { useSessionStore } from '@/lib/store';
 
 import { SessionPage } from './SessionPage';
@@ -218,6 +218,29 @@ describe('marking the session read', () => {
     act(() => useSessionStore.getState().applyRun(run('succeeded') as never));
 
     await waitFor(() => expect(apiMock.markSessionRead).toHaveBeenCalledTimes(2));
+  });
+});
+
+/**
+ * Reopening a session shows the session, not what it looked like last time.
+ *
+ * `staleTime: Infinity` makes the cached answer eternally fresh, so React
+ * Query's default "refetch when stale" never fires: the second visit rendered
+ * the transcript as it was when the screen was last closed, and anything that
+ * happened in between — an automation's run, work done from the phone — was
+ * missing until a live frame happened to arrive. The socket keeps an *open*
+ * session current; it cannot fill in what was missed while nobody watched.
+ */
+describe('reopening a session', () => {
+  it('asks the server again on every mount, warm cache or not', async () => {
+    const queryClient = createTestQueryClient();
+
+    const first = renderWithProviders(<SessionPage />, { queryClient });
+    await waitFor(() => expect(apiMock.session).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    renderWithProviders(<SessionPage />, { queryClient });
+    await waitFor(() => expect(apiMock.session).toHaveBeenCalledTimes(2));
   });
 });
 
