@@ -11,6 +11,16 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.45.2] — 2026-09-05
+
+### Changed
+
+- **The roadmap says what the steward is and what its third ring will be.**
+  The "resident workspace" item was half built by 0.45.0; it now reads as two:
+  the pending-action queue with an approval card (and the host bridge behind
+  it), and the system drafting its own fixes, which is still not built.
+
+
 ## [0.45.1] — 2026-09-05
 
 ### Fixed

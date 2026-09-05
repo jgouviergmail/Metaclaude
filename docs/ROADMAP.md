@@ -91,6 +91,13 @@ The changelog carries the detail; this is the map.
   *disabled* automations directly and files anything that would act into an
   inbox. MCP proposals face a trusted-publisher allowlist enforced
   server-side. *(0.22.0)*
+- **The steward**: Metaclaude has a workspace of its own, prepared at every
+  boot with the running version's instructions and the documentation, and
+  a composer on the Dashboard that opens a conversation with it. Its tools
+  are drawn by reversibility — read freely, change what a person can undo
+  (audited as `metaclaude:<run>`), and say precisely what would happen
+  when the right course is irreversible. No shell, no file editor, no way
+  to widen its own reach; mounted for the operator's runs only. *(0.45.0)*
 
 ### The multiplier
 - **Skill synthesis** from recurring procedural lessons, reviewed before it
@@ -142,11 +149,19 @@ Deliberately short. Each item names the surface it would stand on.
   docs about *behaviour* being checkable at all: "a run started by a token is
   marked in the history" was true of the database and false of the screen for
   a release, and no guard could have said so.
-- **Metaclaude as a resident workspace.** *Ask Metaclaude about itself*
-  answers from the guide. The fuller version — this repository as a workspace
-  with the doctor's read-only surface as context, so the system can cite its
-  own traps and draft its own fixes as branches CI judges — is the natural end
-  of law 2, and is not built.
+- **The steward's third ring.** The system workspace exists (0.45.0) and
+  acts on everything reversible. What it cannot do yet is *propose* an
+  irreversible action and let a person approve it from the conversation: a
+  pending-action queue with a card that says exactly what will happen, with
+  per-kind drift checks so a card approved against yesterday's state does
+  not fire against today's. The same queue is where the host bridge belongs
+  — `deploy`, `rollback`, `status`, `backup`, spoken to the updater unit
+  through the exchange directory the update button already uses, and never
+  `restore` or `prune`, which stay a person's shell command.
+- **Metaclaude drafting its own fixes.** The steward reads the running code
+  and the documentation; the fuller version — this repository as a
+  workspace, so the system can cite its own traps and draft fixes as
+  branches CI judges — is the natural end of law 2, and is not built.
 
 ---
 
