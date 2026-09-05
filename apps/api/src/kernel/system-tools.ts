@@ -161,7 +161,13 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
     ring: 1,
     description:
       'Browse memories — a workspace\'s plus the global tier, or "global" alone. Filter by kind or a text fragment.',
-    schema: { workspace: WORKSPACE_OR_GLOBAL.optional(), kind: MemoryKind.optional(), search: z.string().optional(), limit: LIMIT },
+    schema: {
+      workspace: WORKSPACE_OR_GLOBAL.optional(),
+      kind: MemoryKind.optional(),
+      search: z.string().optional(),
+      limit: LIMIT,
+      includeRetired: z.boolean().optional().describe('Also list retired memories — the ones system_memory_retire can restore.'),
+    },
     handle: (facade, _scope, args) => facade.memories(args),
   }),
   tool({

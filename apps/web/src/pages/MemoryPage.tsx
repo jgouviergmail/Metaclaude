@@ -513,7 +513,8 @@ export function MemoryPage() {
   const workspaces = workspacesQuery.data?.workspaces ?? [];
   // Retired rows come with the list so they can be folded below it; the
   // tiers only ever show what recall can still reach.
-  const live = memories.filter((memory) => memory.retiredAt === null && (shelf === 'all' || memory.shelf === shelf));
+  const liveAll = memories.filter((memory) => memory.retiredAt === null);
+  const live = liveAll.filter((memory) => shelf === 'all' || memory.shelf === shelf);
   const retired = memories.filter((memory) => memory.retiredAt !== null);
   const tiers = tiersOf(live, workspaces, t);
   const insights = insightsQuery.data?.insights ?? [];
@@ -828,10 +829,12 @@ export function MemoryPage() {
                 {t('Stored memories')}
               </h2>
               <p className="text-xs tabular-nums text-muted">
-                {memories.length} {t('shown')}
-                {memoryQuery.data && memoryQuery.data.total > memories.length
-                  ? ` of ${memoryQuery.data.total}`
-                  : ''}
+                {/* Counted over the live rows: `total` excludes the retired
+                    ones, and so does every card below — the fold has its own
+                    count. */}
+                {memoryQuery.data && memoryQuery.data.total > liveAll.length
+                  ? t('{shown} shown of {total}', { shown: live.length, total: memoryQuery.data.total })
+                  : t('{shown} shown', { shown: live.length })}
               </p>
             </div>
 
@@ -881,7 +884,7 @@ export function MemoryPage() {
                 {/* The sky above the shelves: tap a star to land on its card. */}
                 <Card className="p-3">
                   <MemoryConstellation
-                    memories={memories}
+                    memories={live}
                     onSelect={(id) => {
                       const card = document.getElementById(`memory-${id}`);
                       card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -950,7 +953,7 @@ export function MemoryPage() {
               // not hide the children of a closed <details>.
               <details data-testid="retired-memories" className="rounded-lg border border-line bg-sunken/40 px-3 py-2">
                 <summary className="cursor-pointer text-[12.5px] font-medium text-muted">
-                  {t('Retired ({count})', { count: retired.length })}
+                  {plural(retired.length, 'Retired memory ({n})', 'Retired memories ({n})')}
                 </summary>
                 <p className="mt-1 text-[11.5px] leading-relaxed text-subtle">
                   {t('Collected thirty days after retirement. Restore one to bring it back into recall.')}

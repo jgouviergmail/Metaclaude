@@ -11,6 +11,46 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.50.1] — 2026-09-05
+
+The cold review of 0.50.0, the shelves and the gate read end to end a day
+after they shipped. Nothing here changes what a memory is; each entry is a
+seam where two of the new rules met and one of them lost.
+
+### Fixed
+
+- **Pinning a retired memory restores it.** The store refused to retire a
+  pinned memory but let a retired one be pinned, and the janitor skips pinned
+  rows — so that memory was neither recalled nor collected, in a state no
+  screen showed and no gesture undid. Pinning now says what it means.
+- **A memory cannot be superseded twice.** `supersede` on an already-retired
+  loser returned success and changed nothing; it refuses now, the way it
+  refuses a pinned or a durable one. The steward's retire and restore are
+  idempotent without writing an audit line for a no-op.
+- **The gate says when it folded a note into an existing memory.** `remember`
+  merges a near-identical note rather than inserting it; the decision then
+  reported "kept" with the existing memory's id and the shelf the gate had
+  asked for, which was never applied. It now carries the memory's real shelf
+  and says "folded into an existing memory".
+- **A preference is detected in French as well as in English.** The rule that
+  asks a preference to mention the operator used `\b`, which is ASCII-only:
+  `opérateur`, `préfère` and `demandé` never matched (see the first trap in
+  CLAUDE.md). Unicode lookarounds now.
+- **A run that delegated to a subagent is reflected on.** `Task` was on the
+  read-only list, and a subagent's own calls are not in the parent's events,
+  so a steward run that changed something through one was skipped as
+  "read-only".
+- **Acting on an old insight no longer answers 404.** The keep, consolidate
+  and install-skill routes looked the insight up in the newest five hundred;
+  one reader by id serves all three.
+- **The Memory page counts what it shows.** The constellation was drawn over
+  the retired rows too; "shown" counted them while `total` did not, so the
+  two disagreed by the size of the fold. The fold's own heading pluralises
+  through `plural()`, and the count sentence is translated whole.
+- **The steward can list what it can restore.** `system_memories` takes
+  `includeRetired`; without it a retired memory was restorable only by an id
+  the steward had to remember.
+
 ## [0.50.0] — 2026-09-05
 
 Memory learns to say no. Measured on a day of production before this release:

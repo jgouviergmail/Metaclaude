@@ -417,11 +417,21 @@ export class Steward {
     };
   }
 
-  memories(options: { workspace?: string | 'global'; kind?: MemoryKind; search?: string; limit?: number } = {}) {
+  memories(
+    options: { workspace?: string | 'global'; kind?: MemoryKind; search?: string; limit?: number; includeRetired?: boolean } = {},
+  ) {
     const workspaceId =
       options.workspace === 'global' ? null : options.workspace ? this.findWorkspace(options.workspace).id : undefined;
     return this.deps.memory
-      .list({ workspaceId, kind: options.kind, search: options.search, limit: options.limit ?? 50 })
+      .list({
+        workspaceId,
+        kind: options.kind,
+        search: options.search,
+        limit: options.limit ?? 50,
+        // Off by default — a retired memory has left recall and the steward
+        // browses what recall can reach — and on when it means to restore one.
+        includeRetired: options.includeRetired === true,
+      })
       .map(compactMemory);
   }
 
@@ -588,6 +598,7 @@ export class Steward {
     const current = this.deps.memory.get(input.id);
     if (!current) throw new StewardError(`No memory is called "${input.id}".`, 'not-found');
     if (input.restore) {
+      if (current.retiredAt === null) return compactMemory(current);
       const memory = this.deps.memory.restore(input.id) as Memory;
       this.record(actor, 'steward.memory.restore', input.id, null);
       return compactMemory(memory);
@@ -595,6 +606,7 @@ export class Steward {
     if (current.shelf === 'standing') {
       throw new StewardError('A standing convention is the operator’s to retire, not yours; say why it no longer holds instead.', 'refused');
     }
+    if (current.retiredAt !== null) return compactMemory(current);
     try {
       const memory = this.deps.memory.retire(input.id) as Memory;
       this.record(actor, 'steward.memory.retire', input.id, null);

@@ -1681,6 +1681,20 @@ describe('shelves, retirement and supersession', () => {
   });
 
   /**
+   * The converse: pinning a retired memory restores it. A row both pinned and
+   * retired would be neither recalled nor collected — a state nothing on the
+   * page can show or undo.
+   */
+  it('pinning a retired memory restores it', async () => {
+    const { memory } = await seed('Retired then pinned', 'Worth keeping after all.');
+    store.retire(memory.id, { supersededBy: 'mem_other' });
+
+    const pinned = await store.update(memory.id, { pinned: true });
+
+    expect(pinned).toMatchObject({ pinned: true, retiredAt: null, supersededBy: null });
+  });
+
+  /**
    * A machine decides a supersession, so it is bounded by rule rather than
    * by the model's judgement: the arbiter was measured wanting to replace the
    * operator's pinned convention with a note derived from it.
@@ -1698,6 +1712,9 @@ describe('shelves, retirement and supersession', () => {
     expect(() => store.supersede(elsewhere.id, current.id)).toThrow(/same workspace/);
     expect(() => store.supersede(current.id, current.id)).toThrow(/itself/);
     expect(() => store.supersede(current.id, old.id)).toThrow(/retired/);
+    // The loser is already retired: a second supersession would silently
+    // report success while changing nothing.
+    expect(() => store.supersede(old.id, current.id)).toThrow(/already retired/);
     // A global winner may supersede a workspace loser: the tier is exempt both ways.
     const { memory: global } = await store.remember({ workspaceId: null, kind: 'semantic', title: 'Global', content: 'Holds everywhere.' });
     const { memory: local } = await seed('Local', 'Held here once.', { shelf: 'volatile' });

@@ -24,7 +24,8 @@ import { spreadInt } from '../http/query.js';
 import { fingerprint } from '../learning/consolidation.js';
 import { MemoryReconcileError } from '../learning/memory.js';
 import { reindexStale } from '../learning/reindex.js';
-import { listInsights, setInsightPayload, setInsightStatus } from '../learning/reflexion.js';
+import { shelfForKeep } from '../learning/gatekeeper.js';
+import { getInsight, listInsights, setInsightPayload, setInsightStatus } from '../learning/reflexion.js';
 
 /**
  * Where each memory was learned, as somewhere an operator can actually go.
@@ -323,7 +324,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
     const parsed = z.object({ index: z.number().int().min(0) }).safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, 'Name the note to keep by its index.');
 
-    const insight = listInsights(context.db, { limit: 500 }).find((i) => i.id === request.params.id);
+    const insight = getInsight(context.db, request.params.id);
     if (!insight) throw new HttpError(404, 'Insight not found.');
     const payload = insight.payload ? ReflexionInsightPayload.safeParse(JSON.parse(insight.payload)) : null;
     if (!payload?.success) throw new HttpError(400, 'That insight carries no gate decisions.');
@@ -337,7 +338,12 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       title: decision.title,
       content: decision.content,
       tags: decision.tags,
-      shelf: decision.level === 'fact' ? 'volatile' : 'durable',
+      shelf: shelfForKeep(decision.level),
+      // The run as its source, for provenance — which also makes it count as
+      // a machine write against the gate's daily budget. Deliberate: an
+      // operator keeping six refused notes in one day is six verdicts
+      // overturned, and a gate that then keeps nothing more until tomorrow
+      // errs on the side this whole path exists to hold.
       sourceRunId: insight.runId,
     });
     decision.memoryId = memory.id;
@@ -370,7 +376,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
     const body = ApplyConsolidationRequest.safeParse(request.body ?? {});
     if (!body.success) throw new HttpError(400, 'Invalid request.');
 
-    const insight = listInsights(context.db, { limit: 500 }).find((i) => i.id === request.params.id);
+    const insight = getInsight(context.db, request.params.id);
     if (!insight) throw new HttpError(404, 'Insight not found.');
     if (insight.kind !== 'consolidation' || !insight.payload) {
       throw new HttpError(400, 'That insight does not carry a consolidation proposal.');
@@ -437,7 +443,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
   app.post<{ Params: { id: string } }>('/api/insights/:id/install-skill', async (request, reply) => {
     const actor = requireOperator(request);
 
-    const insight = listInsights(context.db, { limit: 500 }).find((i) => i.id === request.params.id);
+    const insight = getInsight(context.db, request.params.id);
     if (!insight) throw new HttpError(404, 'Insight not found.');
     if (insight.kind !== 'skill_proposal' || !insight.payload) {
       throw new HttpError(400, 'That insight does not carry a skill proposal.');

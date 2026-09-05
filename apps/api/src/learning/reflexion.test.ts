@@ -5,7 +5,7 @@ import { migrate, openDatabase } from '../db/index.js';
 import { HashingEmbedder } from './embeddings.js';
 import { MemoryStore } from './memory.js';
 import type { GateDecision, GateInput } from './gatekeeper.js';
-import { ReflexionEngine, listInsights, parseJsonLoose, pruneInsights, setInsightStatus, withLanguage } from './reflexion.js';
+import { ReflexionEngine, getInsight, listInsights, parseJsonLoose, pruneInsights, setInsightStatus, withLanguage } from './reflexion.js';
 
 /**
  * `invoke()` needs a live Claude CLI subprocess and is never called here.
@@ -450,6 +450,8 @@ describe('insights', () => {
     expect(listInsights(db, { limit: 1 })).toHaveLength(1);
 
     const target = listInsights(db)[0]!;
+    expect(getInsight(db, target.id)).toEqual(target);
+    expect(getInsight(db, 'ins_nope')).toBeNull();
     expect(setInsightStatus(db, target.id, 'accepted')).toBe(true);
     expect(setInsightStatus(db, 'ins_nope', 'accepted')).toBe(false);
     expect(listInsights(db, { status: 'accepted' }).map((i) => i.id)).toEqual([target.id]);

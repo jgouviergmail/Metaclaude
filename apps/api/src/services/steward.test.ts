@@ -477,6 +477,12 @@ describe('writing, under its own name', () => {
     const retired = steward.memoryRetire(ACTOR, { id: replaced.id });
     expect(retired.retiredAt).not.toBeNull();
     expect(steward.memories({ workspace: 'project' }).some((m) => m.id === replaced.id)).toBe(false);
+    // …but listable on request, which is how it finds the one to restore.
+    expect(steward.memories({ workspace: 'project', includeRetired: true }).some((m) => m.id === replaced.id)).toBe(true);
+    // Retiring it again changes nothing and audits nothing.
+    expect(steward.memoryRetire(ACTOR, { id: replaced.id }).retiredAt).toBe(retired.retiredAt);
+    expect(steward.memoryRetire(ACTOR, { id: replaced.id, restore: true }).retiredAt).toBeNull();
+    // Restoring what is not retired changes nothing and audits nothing.
     expect(steward.memoryRetire(ACTOR, { id: replaced.id, restore: true }).retiredAt).toBeNull();
     expect(audit.list({ action: 'steward.memory.retire' })).toHaveLength(1);
     expect(audit.list({ action: 'steward.memory.restore' })).toHaveLength(1);

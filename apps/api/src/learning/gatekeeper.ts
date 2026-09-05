@@ -44,6 +44,16 @@ export const SHELF_FOR_LEVEL: Partial<Record<GateLevel, MemoryShelf>> = {
   fact: 'volatile',
 };
 
+/**
+ * The shelf a note kept *against* the gate's verdict lands on — the operator's
+ * keep button. The level's own shelf when the level has one; durable for the
+ * levels the gate never keeps, since the operator has just said it is worth
+ * keeping and nothing says it will stop being true.
+ */
+export function shelfForKeep(level: GateLevel | 'unjudged'): MemoryShelf {
+  return (level === 'unjudged' ? undefined : SHELF_FOR_LEVEL[level]) ?? 'durable';
+}
+
 /** Kept per run, and per run that failed — a failure usually carries one real lesson more. */
 export const GATE_PER_RUN = 2;
 export const GATE_PER_FAILED_RUN = 3;
@@ -163,7 +173,7 @@ export interface GatekeeperDeps {
  */
 /** The operator, in either language: what a preference has to be about. */
 const OPERATOR_REFERENCE =
-  /\b(?:operator|operateur|opérateur|user|utilisateur|utilisatrice|owner|propriétaire|proprietaire|jérôme|jerome|asked|asks|prefers?|préfère|prefere|wants?|veut|souhaite|demande|demandé|convention|agreed|convenu)\b/i;
+  /(?<![\p{L}\p{N}_])(?:operator|operateur|opérateur|user|utilisateur|utilisatrice|owner|propriétaire|proprietaire|jérôme|jerome|asked|asks|prefers?|préfère|prefere|wants?|veut|souhaite|demande|demandé|convention|agreed|convenu)(?![\p{L}\p{N}_])/iu;
 
 const CODE_REFERENCE = /(?:^|[\s(`'"])[\w@./-]+\.(?:ts|tsx|js|mjs|cjs|json|ya?ml|sql|py|go|rs|java|md)(?::\d+(?:-\d+)?)?(?=$|[\s)`'",.;:])/;
 
@@ -326,7 +336,7 @@ export class Gatekeeper {
     shown: ReadonlyMap<string, GateNeighbour>,
   ): Promise<GateDecision> {
     const shelf = decision.shelf as MemoryShelf;
-    const { memory } = await this.deps.memory.remember({
+    const { memory, merged } = await this.deps.memory.remember({
       workspaceId: input.workspaceId,
       kind: decision.candidate.kind,
       title: decision.candidate.title,
@@ -339,7 +349,17 @@ export class Gatekeeper {
       sourceRunId: input.runId,
     });
 
-    const kept: GateDecision = { ...decision, outcome: 'kept', memoryId: memory.id, shelf };
+    // `remember` folds a near-identical note into the existing row rather
+    // than inserting: the decision then names that row, and says so, because
+    // the shelf asked for was not applied to it and the operator reading the
+    // insight should not think a new memory exists.
+    const kept: GateDecision = {
+      ...decision,
+      outcome: 'kept',
+      memoryId: memory.id,
+      shelf: memory.shelf,
+      reason: merged ? `${decision.reason} (folded into an existing memory)`.trim() : decision.reason,
+    };
     if (!verdict.supersedes) return kept;
 
     // Only a neighbour the model was shown, and only one the store agrees to

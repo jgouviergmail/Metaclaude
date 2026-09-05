@@ -279,6 +279,9 @@ export class MemoryStore {
     const title = patch.title ?? current.title;
     const content = patch.content ?? current.content;
     const reembed = title !== current.title || content !== current.content;
+    // Pinning says "never lose this"; a pinned row that stayed retired would
+    // be neither recalled nor collected. Pinning a retired memory restores it.
+    if (patch.pinned === true && current.retiredAt !== null) this.restore(id);
     const embedding =
       reembed && this.embedder.ready ? await this.embedder.embed(`${title}\n\n${content}`) : null;
 
@@ -965,6 +968,7 @@ export class MemoryStore {
     const winner = this.get(winnerId);
     if (!loser || !winner) throw new MemoryReconcileError('That memory no longer exists.', 404);
     if (winner.retiredAt !== null) throw new MemoryReconcileError('A retired memory cannot supersede another.');
+    if (loser.retiredAt !== null) throw new MemoryReconcileError('That memory is already retired.');
     if (loser.pinned) throw new MemoryReconcileError('A pinned memory cannot be superseded.');
     if (loser.shelf !== 'volatile') {
       throw new MemoryReconcileError('Only a volatile memory can be superseded; a durable or standing one is merged through consolidation.');

@@ -460,18 +460,32 @@ export function listInsights(
       `SELECT * FROM insights ${where} ORDER BY created_at DESC LIMIT ?`,
     )
     .all(...params, Math.min(options.limit ?? 50, 500))
-    .map((row) => ({
-      id: row.id,
-      workspaceId: row.workspace_id,
-      runId: row.run_id,
-      kind: row.kind as Insight['kind'],
-      title: row.title,
-      body: row.body,
-      confidence: row.confidence,
-      status: row.status as Insight['status'],
-      payload: row.payload,
-      createdAt: row.created_at,
-    }));
+    .map(toInsight);
+}
+
+/**
+ * One insight by id. The routes that act on an insight used to find it in
+ * the newest five hundred, which answers 404 for a real row once the table
+ * outgrows that — and the gate's decisions make it grow one row per kept run.
+ */
+export function getInsight(db: Db, id: string): Insight | null {
+  const row = db.prepare<[string], InsightRow>('SELECT * FROM insights WHERE id = ?').get(id);
+  return row ? toInsight(row) : null;
+}
+
+function toInsight(row: InsightRow): Insight {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    runId: row.run_id,
+    kind: row.kind as Insight['kind'],
+    title: row.title,
+    body: row.body,
+    confidence: row.confidence,
+    status: row.status as Insight['status'],
+    payload: row.payload,
+    createdAt: row.created_at,
+  };
 }
 
 export function setInsightStatus(db: Db, id: string, status: Insight['status']): boolean {

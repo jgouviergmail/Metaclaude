@@ -218,6 +218,27 @@ describe('levels, shelves and the confidence cap', () => {
     expect(structuralLevel({ title: 'T', content: 'Keep answers short.' }, 'preference', tools)).toBeNull();
   });
 
+  /**
+   * `remember` folds a near-identical note into an existing row. The decision
+   * then names that row and says so: the shelf asked for was not applied to
+   * it, and the operator must not read the insight as "a new memory exists".
+   */
+  it('reports a keep that was folded into an existing memory as such, with that memory’s shelf', async () => {
+    const { memory: existing } = await store.remember({
+      workspaceId: WS, kind: 'semantic', title: 'Tests run with pnpm', content: 'This project runs its tests with pnpm test:run, never npm test.', shelf: 'durable',
+    });
+
+    const [decision] = await gate(() => [verdict({ level: 'fact' })]).admit({
+      workspaceId: WS, runId: RUN, failed: false, candidates: [candidate()],
+    });
+
+    expect(decision!.outcome).toBe('kept');
+    expect(decision!.memoryId).toBe(existing.id);
+    expect(decision!.shelf).toBe('durable');
+    expect(decision!.reason).toMatch(/folded into an existing memory/);
+    expect(store.count(WS)).toBe(1);
+  });
+
   it('ignores a verdict that says keep for a level that is never kept', async () => {
     const decisions = await gate(() => [verdict({ level: 'state', keep: true })]).admit({
       workspaceId: WS, runId: RUN, failed: false, candidates: [candidate()],

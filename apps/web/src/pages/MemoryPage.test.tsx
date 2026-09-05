@@ -591,10 +591,12 @@ describe('shelves and retirement', () => {
     expect(apiMock.memory).toHaveBeenCalledWith(expect.objectContaining({ includeRetired: true }));
     const fold = screen.getByTestId('retired-memories') as HTMLDetailsElement;
     expect(fold.open).toBe(false);
+    expect(within(fold).getByText('Retired memory (1)')).toBeTruthy();
     expect(within(fold).getByText('Form offers three triggers')).toBeTruthy();
     expect(within(fold).getByText(/replaced by a newer memory/)).toBeTruthy();
-    // Not on a card: a retired memory has left recall.
+    // Not on a card: a retired memory has left recall — and is not counted as shown.
     expect(screen.getAllByText('Form offers three triggers')).toHaveLength(1);
+    expect(screen.getByText('3 shown')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Restore Form offers three triggers' }));
     await waitFor(() => expect(apiMock.updateMemory).toHaveBeenCalledWith('mem_old', { retired: false }));

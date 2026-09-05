@@ -521,7 +521,9 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const readOnlyTools = new Set<string>([
     ...SYSTEM_TOOLS.filter((entry) => entry.ring === 1).map((entry) => `mcp__${SYSTEM_SERVER_NAME}__${entry.name}`),
     ...BOARD_TOOL_CATALOGUE.filter((entry) => entry.ring === 1).map((entry) => `mcp__${BOARD_SERVER_NAME}__${entry.name}`),
-    'Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'ToolSearch', 'WebFetch', 'WebSearch', 'TodoWrite', 'Task',
+    // Not `Task`: a subagent's own calls are not in these events, so a run
+    // that delegated could have changed something this list cannot see.
+    'Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'ToolSearch', 'WebFetch', 'WebSearch', 'TodoWrite',
   ]);
 
   // What the gate is shown of a workspace's standing instructions: the system
