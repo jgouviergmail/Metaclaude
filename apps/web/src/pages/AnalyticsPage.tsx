@@ -186,7 +186,7 @@ export function AnalyticsPage() {
     scope === 'all'
       ? t('All workspaces')
       : (workspacesQuery.data?.workspaces.find((w) => w.id === scope)?.name ?? 'Workspace');
-  const periodLabel = PERIODS.find((p) => p.days === days)?.label ?? `${days} days`;
+  const periodLabel = t(PERIODS.find((p) => p.days === days)?.label ?? `${days} days`);
 
   const chartData = series.map((point) => ({
     ...point,

@@ -1312,7 +1312,7 @@ function MemoryCard({
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={KIND_TONE[memory.kind]}>{memory.kind}</Badge>
+            <Badge tone={KIND_TONE[memory.kind]}>{t(memory.kind)}</Badge>
             {/* Repeated from the section heading on purpose: a card is reached
                 directly — from the constellation, from a notification link —
                 and one that does not say which tier it is on cannot be read

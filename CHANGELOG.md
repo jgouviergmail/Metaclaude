@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.13] — 2026-09-06
+
+### Added
+
+- The responsive check now also asks each French screen whether anything is
+  still showing in English. The rule admits no false positive by construction:
+  a run of text is a defect only when it is *exactly* a catalogue key whose
+  French value differs — a proper noun, a workspace name, a number or a
+  sentence assembled from fragments cannot match one. Rendered markdown, code
+  and the help corpus are excluded, because those stay English by design.
+
+### Fixed
+
+- Three enum values reached French screens in English and no static measure
+  could see them: a memory's kind (« episodic », « semantic ») on the memory
+  list, a run's status (« succeeded ») on the dashboard, and the analytics
+  period (« 30 days »). All three are lowercase, and the three i18n ratchets
+  rest on a capital first letter — a limit this repository already documents.
+  The browser check found them the first time it ran.
+- The measure that reads copy tables followed a `.map` callback but stopped at
+  a call, so `PERIODS.find((p) => …)?.label` was invisible to it. It walks
+  through calls now — and gained two exclusions it needed to stay honest: a
+  property read as a *condition* is not a render, and `t(a ?? b)` translates
+  `a`. A `return` hands a key to the caller, which this repository documents as
+  the correct pattern; that hole is covered from the other side by the browser
+  check.
+
 ## [0.56.12] — 2026-09-06
 
 ### Fixed

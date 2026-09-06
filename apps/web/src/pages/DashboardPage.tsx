@@ -496,7 +496,7 @@ function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
         className="flex items-center gap-3 px-4 py-2.5 hover:bg-raised"
       >
         <span className={cn('relative shrink-0', live && 'pulse-ring rounded-full')}>
-          <Badge tone={tone}>{run.status}</Badge>
+          <Badge tone={tone}>{t(run.status)}</Badge>
         </span>
 
         <p className="min-w-0 flex-1 truncate text-[13px] text-ink">

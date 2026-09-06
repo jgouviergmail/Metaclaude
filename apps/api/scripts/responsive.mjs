@@ -26,7 +26,8 @@
  * times while reporting zero.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from '@playwright/test';
@@ -37,6 +38,52 @@ if (!existsSync(join(WEB_DIST, 'index.html'))) {
   console.error(`No built web app at ${WEB_DIST}. Run \`pnpm build\` first.`);
   process.exit(1);
 }
+
+/**
+ * The French catalogue, read by the AST rather than guessed by a regex.
+ *
+ * A regex over `key: 'value',` lines misses every entry whose value sits on the
+ * next line — and a missed key is a *false negative* here: the English would
+ * show on a French screen and this check would say nothing. Measured: the
+ * regex and the AST both reported 1626, two cancelling errors, and only the
+ * AST actually held the multi-line entries.
+ *
+ * Entries whose French equals the English are excluded by construction: 57 of
+ * them are a deliberate choice (`workspace` stays `workspace`), and they can
+ * never be evidence of anything.
+ */
+function frenchCatalogue() {
+  const require = createRequire(join(REPO_ROOT, 'apps/web/package.json'));
+  const ts = require('typescript');
+  const path = join(REPO_ROOT, 'apps/web/src/locales/fr.ts');
+  const sf = ts.createSourceFile(
+    path,
+    readFileSync(path, 'utf8'),
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const translated = [];
+  const walk = (node) => {
+    if (ts.isObjectLiteralExpression(node)) {
+      for (const property of node.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const key = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+          ? property.name.text
+          : null;
+        const init = property.initializer;
+        const value =
+          ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init) ? init.text : null;
+        if (key !== null && value !== null && key !== value) translated.push(key);
+      }
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(sf);
+  return translated;
+}
+
+const FRENCH_KEYS = frenchCatalogue();
 
 const results = new Results();
 const server = await startServer({ webDir: WEB_DIST, env: { NODE_ENV: 'production' } });
@@ -258,6 +305,46 @@ const AUDIT = `
   })()
 `;
 
+/**
+ * Copy that stayed English on a French screen.
+ *
+ * The rule admits no false positive by construction: a run of text is a defect
+ * only when it is *exactly* a catalogue key whose French value differs. It
+ * cannot indict a proper noun, a workspace name, a number, or a sentence
+ * assembled from several translated fragments — none of those equal a key.
+ *
+ * Three exclusions, each for a stated reason rather than to make the number
+ * look better:
+ *  - `.prose-mc` is rendered markdown: the agent's own words and the user's,
+ *    plus the guide and the changelog, which stay English by design.
+ *  - `<code>` and `<pre>` are identifiers and commands, never copy.
+ *  - `/help` renders that corpus wholesale.
+ *
+ * What this catches that no static measure could: copy that reaches the screen
+ * through a path the ratchets cannot follow. Two such defects shipped — the
+ * memory kind filters and the board's assignee filters — and were found only
+ * because a ratchet was taught one new shape. This asks the screen instead.
+ */
+const UNTRANSLATED = (keys) => `
+  (() => {
+    const KEYS = new Set(${JSON.stringify(keys)});
+    const found = new Set();
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = (node.textContent || '').trim();
+      if (text.length < 2 || !KEYS.has(text)) continue;
+      const el = node.parentElement;
+      if (!el) continue;
+      if (el.closest('.prose-mc, code, pre')) continue;
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      if (el.getBoundingClientRect().width === 0) continue;
+      found.add(text);
+    }
+    return [...found];
+  })()
+`;
+
 const WITNESS = `(() => {
   const b = document.createElement('button');
   b.textContent = 'WITNESS';
@@ -351,6 +438,15 @@ for (const locale of LOCALES) {
       await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
       await page.waitForTimeout(700);
       await inspect(label);
+
+      if (locale === 'fr-FR' && route !== '/help') {
+        const english = await page.evaluate(UNTRANSLATED(FRENCH_KEYS));
+        results.check(
+          `${label}: nothing shows in English`,
+          english.length === 0,
+          english.map((text) => `« ${text.slice(0, 48)} »`).join(' | '),
+        );
+      }
 
       // The witness: can this probe still fail on THIS page?
       await page.evaluate(WITNESS);

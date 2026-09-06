@@ -791,11 +791,25 @@ function countUntranslatedTableReads() {
   }
   for (const { sf } of webComponents(ts)) collect(sf);
 
-  /** The identifier a member expression is ultimately rooted at. */
+  /**
+   * The identifier a member expression is ultimately rooted at.
+   *
+   * Calls and non-null assertions are walked through, because a copy table is
+   * read that way as often as by index: `PERIODS.find((p) => …)?.label` put an
+   * untranslated « 30 days » on a French analytics screen, and stopping at the
+   * call would have let it through — as it did, until a browser check asked
+   * the screen instead of the source.
+   */
   const rootOf = (node) => {
     let current = node;
     for (;;) {
-      if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+      if (
+        ts.isPropertyAccessExpression(current) ||
+        ts.isElementAccessExpression(current) ||
+        ts.isCallExpression(current) ||
+        ts.isNonNullExpression(current) ||
+        ts.isParenthesizedExpression(current)
+      ) {
         current = current.expression;
         continue;
       }
@@ -853,14 +867,48 @@ function countUntranslatedTableReads() {
         const root = rootOf(node.expression);
         const table = root && (copyTables.has(root) ? root : scope.get(root));
         if (table) {
-          const parent = node.parent;
+          // A truthiness test is not a render: `entry.hint ? t(entry.hint) : ''`
+          // reads the property twice and translates the only one that reaches
+          // the screen.
+          const asCondition =
+            node.parent &&
+            ts.isConditionalExpression(node.parent) &&
+            node.parent.condition === node;
+
+          // `t(a ?? b)` translates `a`. Walk up through the operators that
+          // merely choose between values before asking whether `t` wraps the
+          // result — otherwise a default value turns a translated read into a
+          // reported defect, which is how this measure first indicted the very
+          // line that fixed the analytics period label.
+          let top = node;
+          while (
+            top.parent &&
+            ((ts.isBinaryExpression(top.parent) &&
+              [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken].includes(
+                top.parent.operatorToken.kind,
+              )) ||
+              ts.isParenthesizedExpression(top.parent) ||
+              ts.isNonNullExpression(top.parent))
+          ) {
+            top = top.parent;
+          }
+          const parent = top.parent;
           const wrapped =
             parent &&
             ts.isCallExpression(parent) &&
             ts.isIdentifier(parent.expression) &&
             parent.expression.text === 't' &&
-            parent.arguments[0] === node;
-          if (!wrapped) {
+            parent.arguments[0] === top;
+
+          // A `return entry.label` hands a *key* back for the caller to
+          // translate — `t(labelFor(action))` — which this repository documents
+          // as the correct pattern, not a defect. Excluding it opens a hole:
+          // a caller that forgets the `t` is invisible here. That hole is
+          // covered from the other side, by the browser check that asks the
+          // screen whether any catalogue key is showing in English.
+          const returned = top.parent && ts.isReturnStatement(top.parent);
+
+          if (!wrapped && !asCondition && !returned) {
             missing += 1;
             note('read', file, `${table}[…].${node.name.text}`);
           }
