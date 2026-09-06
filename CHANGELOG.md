@@ -11,6 +11,25 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.16] — 2026-09-06
+
+### Changed
+
+- The `primary` flag on a navigation entry is gone. With ten sections it said
+  which ones the phone could afford; with five every entry carried it and the
+  filter it fed was a no-op — a distinction without a difference, which reads
+  as a choice long after it stopped being one. One list, rendered twice, and a
+  test now holds the rail and the tab bar to the same sections in the same
+  order.
+- The section chips carry the coarse-pointer hit area the small buttons already
+  use: 36px painted, ~48px of screen under a thumb, vertical only because the
+  chips sit 6px apart and a sideways area would let one steal presses meant for
+  its neighbour. Reused rather than reinvented — `TOUCH_TARGET_Y` is exported
+  now instead of copied.
+- `ContentHeader` names its title and subtitle by role rather than by pixel
+  count, and its section strip has a test: one rule under the header, never
+  two, and the strip outside the header row rather than inside it.
+
 ## [0.56.15] — 2026-09-06
 
 ### Changed

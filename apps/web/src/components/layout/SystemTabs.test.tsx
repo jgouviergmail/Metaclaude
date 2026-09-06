@@ -111,3 +111,20 @@ describe('the current section is brought into view', () => {
   });
 });
 
+/**
+ * A chip is 36px painted, which is right for the strip and short of a thumb.
+ *
+ * The app already solved this: an inset pseudo-element under `pointer: coarse`
+ * grows the hit area without touching the layout, on the vertical axis only —
+ * the chips sit 6px apart, so a sideways area would let one steal presses
+ * meant for its neighbour. Reused rather than reinvented.
+ */
+describe('the chips are reachable with a thumb', () => {
+  it('carries the coarse-pointer hit area the small controls use', () => {
+    render(<SystemTabs />, { route: '/settings' });
+    for (const link of screen.getAllByRole('link')) {
+      expect(link.className).toContain('pointer-coarse:before:');
+    }
+  });
+});
+

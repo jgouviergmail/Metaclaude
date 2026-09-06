@@ -59,7 +59,7 @@ const TOUCH_TARGET =
  * meant for its neighbour. Vertical only reaches exactly 44px and cannot
  * collide with anything beside it.
  */
-const TOUCH_TARGET_Y =
+export const TOUCH_TARGET_Y =
   "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 " +
   "pointer-coarse:before:inset-x-0 pointer-coarse:before:content-['']";
 

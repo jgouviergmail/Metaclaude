@@ -10,7 +10,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { SystemTabs } from './SystemTabs';
-import { AppShell } from './AppShell';
+import { AppShell, ContentHeader } from './AppShell';
 
 /** The System screens the rail no longer carries: its strip does. */
 const SECONDARY = ['Automations', 'Agents & skills', 'Plugins', 'Analytics', 'Help'];
@@ -183,6 +183,57 @@ describe('the five sections', () => {
     renderWithProviders(<AppShell>content</AppShell>, { route: '/board' });
     const entries = screen.getAllByLabelText('System');
     expect(entries.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
+  });
+});
+
+/**
+ * The rail and the tab bar are the same list, and that is now structural.
+ *
+ * A `primary` flag used to say which sections the phone could afford. With ten
+ * it discriminated; with five every entry carried it and the flag was a
+ * distinction without a difference — the kind of dead branch that reads as a
+ * choice long after it stopped being one. It is gone, and this is what
+ * replaces it: one list, rendered twice, in one order.
+ */
+describe('one list, two renderings', () => {
+  it('renders the same sections in the same order in the rail and the tab bar', () => {
+    renderWithProviders(<AppShell>content</AppShell>);
+    const bars = screen.getAllByRole('navigation', { name: 'Sections' });
+    const rail = bars.find((bar) => !bar.className.includes('fixed')) as HTMLElement;
+    const tabBar = bars.find((bar) => bar.className.includes('fixed')) as HTMLElement;
+
+    // The rail leads with the logo, which is not a section.
+    const railSections = within(rail)
+      .getAllByRole('link')
+      .slice(1)
+      .map((link) => link.getAttribute('href'));
+    const tabSections = within(tabBar)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+
+    expect(railSections).toEqual(tabSections);
+    expect(tabSections).toHaveLength(5);
+  });
+});
+
+describe('ContentHeader', () => {
+  it('renders a section strip under the header row when given one', () => {
+    renderWithProviders(
+      <ContentHeader title="Réglages" tabs={<nav aria-label="Sections de test">bande</nav>} />,
+    );
+    const strip = screen.getByRole('navigation', { name: 'Sections de test' });
+    // Under the header row, not inside it: the strip is navigation for the
+    // section, the row names the screen.
+    expect(strip.closest('header')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Réglages' })).toBeDefined();
+  });
+
+  it('draws one rule, not two, when a strip is present', () => {
+    const { container } = renderWithProviders(
+      <ContentHeader title="Réglages" tabs={<nav aria-label="Sections de test">bande</nav>} />,
+    );
+    const bordered = container.querySelectorAll('.border-b');
+    expect(bordered).toHaveLength(1);
   });
 });
 

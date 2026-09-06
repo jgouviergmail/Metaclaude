@@ -28,6 +28,7 @@
 import { Activity, Bot, LifeBuoy, Plug, Settings, Timer } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { TOUCH_TARGET_Y } from '@/components/ui/primitives';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -91,6 +92,11 @@ export function SystemTabs({ className }: { className?: string }) {
             className={cn(
               'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5',
               'text-label font-medium transition-colors [&>svg]:size-3.5',
+              // 36px painted, 48px of screen under a thumb. The same
+              // pseudo-element the small buttons use, and vertical only for
+              // the same reason: the chips sit 6px apart, so a sideways hit
+              // area would let one steal presses meant for its neighbour.
+              TOUCH_TARGET_Y,
               current
                 ? 'bg-accent-soft text-accent'
                 : 'text-muted hover:bg-raised hover:text-ink',

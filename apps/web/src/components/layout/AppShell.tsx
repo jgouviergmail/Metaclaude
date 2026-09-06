@@ -35,8 +35,6 @@ interface NavEntry {
   to: string;
   label: string;
   icon: ReactNode;
-  /** Shown in the phone tab bar. Space is limited, so not everything qualifies. */
-  primary?: boolean;
   /**
    * Routes this entry owns beyond its own path.
    *
@@ -73,23 +71,21 @@ function isCurrent(entry: NavEntry, pathname: string): boolean {
  * in the same order. Nothing is one tap further away than anything else.
  */
 const NAV: NavEntry[] = [
-  { to: '/', label: 'Dashboard', icon: <LayoutDashboard />, primary: true },
+  { to: '/', label: 'Dashboard', icon: <LayoutDashboard /> },
   {
     to: '/workspaces',
     label: 'Workspaces',
     icon: <FolderGit2 />,
-    primary: true,
     matches: (path) => path === '/workspaces' || path.startsWith('/w/'),
   },
-  { to: '/board', label: 'Board', icon: <SquareKanban />, primary: true },
-  { to: '/memory', label: 'Memory', icon: <Brain />, primary: true },
+  { to: '/board', label: 'Board', icon: <SquareKanban /> },
+  { to: '/memory', label: 'Memory', icon: <Brain /> },
   {
     // Points at Settings, which is where an operator most often means to go;
     // the section's own strip carries the other five.
     to: '/settings',
     label: 'System',
     icon: <Settings />,
-    primary: true,
     matches: isSystemPath,
   },
 ];
@@ -207,7 +203,7 @@ export function AppShell({
         aria-label={t('Sections')}
       >
         <div className="flex h-14 items-stretch">
-          {NAV.filter((entry) => entry.primary).map((entry) => {
+          {NAV.map((entry) => {
             const current = isCurrent(entry, location.pathname);
             return (
               <Link
@@ -280,24 +276,25 @@ export function ContentHeader({
 }) {
   return (
     <div className="shrink-0 border-b border-line bg-surface">
-    <header className="flex h-14 items-center gap-3 px-3 sm:px-4">
-      {showSidebarToggle ? <SidebarToggle /> : null}
-      {icon ? <span className="shrink-0 [&>svg]:size-4">{icon}</span> : null}
+      <header className="flex h-14 items-center gap-3 px-3 sm:px-4">
+        {showSidebarToggle ? <SidebarToggle /> : null}
+        {icon ? <span className="shrink-0 [&>svg]:size-4">{icon}</span> : null}
 
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-sm font-semibold text-ink">{title}</h1>
-        {subtitle ? <p className="truncate text-[11.5px] text-muted">{subtitle}</p> : null}
-      </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-heading text-ink">{title}</h1>
+          {subtitle ? <p className="truncate text-caption text-muted">{subtitle}</p> : null}
+        </div>
 
-      {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+        {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
 
-      {/* Phone-only status cluster; on wider screens these live in the rail. */}
-      <div className="flex items-center gap-1 sm:hidden">
-        <ConnectionBadge />
-        <NotificationBell />
-        <UserMenu />
-      </div>
+        {/* Phone-only status cluster; on wider screens these live in the rail. */}
+        <div className="flex items-center gap-1 sm:hidden">
+          <ConnectionBadge />
+          <NotificationBell />
+          <UserMenu />
+        </div>
       </header>
+
       {tabs ? <div className="px-3 sm:px-4">{tabs}</div> : null}
     </div>
   );
