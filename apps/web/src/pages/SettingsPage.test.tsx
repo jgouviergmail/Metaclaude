@@ -93,3 +93,32 @@ describe('choosing the language', () => {
     expect(screen.getByText(/Metaclaude writes in this language too/)).toBeTruthy();
   });
 });
+
+/**
+ * The transcript preferences, named the way a reader hears them.
+ *
+ * `PreferenceToggle` nested its hint inside the `<label>`, which folds the
+ * whole sentence into the control's accessible *name* — the reader announces
+ * "Show the model's reasoning Collapsible blocks showing how the agent worked
+ * through the problem, checkbox, checked" on every focus, and voice control
+ * has no short phrase to target. `aria-describedby` does not undo that: the
+ * name is computed from the label's text content.
+ *
+ * That is precisely the defect `CheckboxField` was factored out to fix, three
+ * copies at a time — and a local component reintroduced it. So this asserts
+ * the name is exactly the label, and that the hint is still readable and still
+ * attached as a description.
+ */
+describe('the transcript preferences', () => {
+  it('names each toggle by its label alone, with the hint as a description', async () => {
+    // `AppearanceCard` rather than the whole page, for the reason the file's
+    // header gives: rendering SettingsPage drags a dozen API mocks in.
+    renderWithProviders(<AppearanceCard />);
+
+    const toggle = await screen.findByRole('checkbox', { name: "Show the model's reasoning" });
+    const hint = screen.getByText(/Collapsible blocks showing how the agent worked/);
+    expect(toggle.getAttribute('aria-describedby')).toBe(hint.id);
+    expect(hint.id).toBeTruthy();
+  });
+});
+

@@ -46,7 +46,7 @@ import {
   Stat,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { SegmentedControl } from '@/components/ui/controls';
+import { CheckboxField, SegmentedControl } from '@/components/ui/controls';
 import { useAuthStore, useUiStore, type Density, type ThemeMode } from '@/lib/store';
 import {
   cn,
@@ -592,7 +592,7 @@ function SessionsCard() {
           <Spinner />
         </div>
       ) : (
-        <ul className="divide-y divide-[var(--mc-border)]">
+        <ul className="divide-y divide-line">
           {sessions.map((session) => (
             <li key={session.id} className="flex items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
@@ -712,14 +712,14 @@ export function AppearanceCard() {
         </div>
 
         <div className="space-y-3">
-          <p className="text-[13px] font-medium text-ink">{t('Transcript')}</p>
-          <PreferenceToggle
+          <p className="text-body font-medium text-ink">{t('Transcript')}</p>
+          <CheckboxField
             checked={showThinking}
             onChange={setShowThinking}
             label={t("Show the model's reasoning")}
             hint={t('Collapsible blocks showing how the agent worked through the problem.')}
           />
-          <PreferenceToggle
+          <CheckboxField
             checked={expandTools}
             onChange={setExpandTools}
             label={t('Expand tool calls by default')}
@@ -728,33 +728,6 @@ export function AppearanceCard() {
         </div>
       </div>
     </Card>
-  );
-}
-
-function PreferenceToggle({
-  checked,
-  onChange,
-  label,
-  hint,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-start gap-3">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)]"
-      />
-      <span className="min-w-0">
-        <span className="block text-[13px] text-ink">{label}</span>
-        <span className="block text-[12px] leading-relaxed text-muted">{hint}</span>
-      </span>
-    </label>
   );
 }
 
@@ -840,16 +813,16 @@ function SystemCard() {
         <CardHeader title={t(
           'Claude CLI',
         )} description={t('Every agent run goes through this binary.')} />
-        <dl className="divide-y divide-[var(--mc-border)]">
-          <Row label={t('Available')}>
+        <dl className="divide-y divide-line">
+          <DefinitionRow label={t('Available')}>
             {data.claudeCli.available ? (
               <Badge tone="success">{t('yes')}</Badge>
             ) : (
               <Badge tone="danger">{t('not found')}</Badge>
             )}
-          </Row>
-          <Row label={t('Version')}>{data.claudeCli.version ?? '—'}</Row>
-          <Row label={t('Authentication')}>
+          </DefinitionRow>
+          <DefinitionRow label={t('Version')}>{data.claudeCli.version ?? '—'}</DefinitionRow>
+          <DefinitionRow label={t('Authentication')}>
             <div className="flex flex-wrap items-center gap-2">
               {data.claudeCli.authMode === 'subscription' ? (
                 <Badge tone="success">{t('subscription (Pro / Max)')}</Badge>
@@ -871,7 +844,7 @@ function SystemCard() {
                 </span>
               ) : null}
             </div>
-          </Row>
+          </DefinitionRow>
         </dl>
       </Card>
 
@@ -881,20 +854,20 @@ function SystemCard() {
 
       <Card>
         <CardHeader title={t('Kernel')} />
-        <dl className="divide-y divide-[var(--mc-border)]">
-          <Row label={t('Active runs')}>{data.activeRuns}</Row>
-          <Row label={t('Queued runs')}>{data.queuedRuns}</Row>
-          <Row label={t('Stored memories')}>{data.memoryCount}</Row>
-          <Row label={t('Retrieval')}>
+        <dl className="divide-y divide-line">
+          <DefinitionRow label={t('Active runs')}>{data.activeRuns}</DefinitionRow>
+          <DefinitionRow label={t('Queued runs')}>{data.queuedRuns}</DefinitionRow>
+          <DefinitionRow label={t('Stored memories')}>{data.memoryCount}</DefinitionRow>
+          <DefinitionRow label={t('Retrieval')}>
             <RetrievalStatus status={data.retrieval} />
-          </Row>
+          </DefinitionRow>
         </dl>
       </Card>
     </div>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function DefinitionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5">
       <dt className="text-[13px] text-muted">{label}</dt>
@@ -968,7 +941,7 @@ function AuditCard() {
         <EmptyState title={t('No entries')} />
       ) : (
         <div className="max-h-[28rem] overflow-y-auto">
-          <ul className="divide-y divide-[var(--mc-border)]">
+          <ul className="divide-y divide-line">
             {entries.map((entry) => (
               <li key={entry.id} className="flex items-start gap-3 px-4 py-2.5">
                 <Badge tone={entry.outcome === 'success' ? 'neutral' : 'danger'}>

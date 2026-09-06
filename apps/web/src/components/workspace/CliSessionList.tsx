@@ -40,7 +40,7 @@ export function CliSessionList({
   }
 
   return (
-    <ul className="divide-y divide-[var(--mc-border)]">
+    <ul className="divide-y divide-line">
       {sessions.map((session) => (
         <li key={session.sessionId} className="flex items-center gap-3 py-3">
           <div className="min-w-0 flex-1">

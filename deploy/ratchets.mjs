@@ -1053,6 +1053,31 @@ function countRawPalette() {
 }
 
 /**
+ * Arbitrary values reaching past a token utility that already exists.
+ *
+ * `divide-[var(--mc-border)]` was written seventeen times where `divide-line`
+ * says the same thing — the semantic utility this design system exposes for
+ * exactly that colour. The raw-palette ratchet cannot see it and was never
+ * meant to: this is not a palette class, it is the token reached through the
+ * back door, one arbitrary value at a time.
+ *
+ * Why it matters beyond tidiness: the utility is what a future change moves.
+ * Redefining what separates a list means editing one `@theme inline` line if
+ * every list says `divide-line`, and seventeen files if they do not. Arbitrary
+ * values remain right where no utility exists — `pb-[env(safe-area-inset-bottom)]`
+ * is the standing example — which is why this counts only `var(--mc-*)`.
+ */
+function countTokenBypass() {
+  const BYPASS = /\b(?:divide|border|bg|text|from|to|via|fill|stroke|ring|outline)-\[var\(--mc-[a-z-]+\)\]/g;
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!/\.tsx$/.test(file)) continue;
+    n += (read(file).match(BYPASS) ?? []).length;
+  }
+  return n;
+}
+
+/**
  * Screens reaching for Radix's tabs directly.
  *
  * Three did, and each carried its own copy of the trigger's appearance:
@@ -1179,6 +1204,12 @@ const METRICS = [
     measure: countDeployChecks,
   },
   { key: 'rawPaletteClasses', direction: 'down', label: 'raw Tailwind palette classes', measure: countRawPalette },
+  {
+    key: 'tokenBypass',
+    direction: 'down',
+    label: 'arbitrary values where a token utility exists',
+    measure: countTokenBypass,
+  },
   {
     key: 'adHocTabs',
     direction: 'down',

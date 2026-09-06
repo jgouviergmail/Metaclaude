@@ -178,7 +178,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         count={catalogue.models.length}
       >
         {catalogue.models.map((model) => (
-          <Row
+          <CatalogueRow
             key={model.value}
             name={model.displayName || model.value}
             description={model.description}
@@ -206,7 +206,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         count={catalogue.commands.length}
       >
         {catalogue.commands.map((command) => (
-          <Row
+          <CatalogueRow
             key={command.name}
             name={`/${command.name}`}
             mono
@@ -227,7 +227,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         count={catalogue.agents.length}
       >
         {catalogue.agents.map((agent) => (
-          <Row
+          <CatalogueRow
             key={agent.name}
             name={agent.name}
             mono
@@ -285,7 +285,7 @@ function CatalogueSection({
   );
 }
 
-function Row({
+function CatalogueRow({
   name,
   description,
   meta,

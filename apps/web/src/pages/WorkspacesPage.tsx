@@ -380,7 +380,7 @@ function CreateWorkspaceModal({
                 }}
                 aria-label={t('Use colour {swatch}', { swatch: swatch })}
                 aria-pressed={color === swatch}
-                className="size-7 rounded-lg ring-offset-2 ring-offset-[var(--mc-surface)] transition-all data-[active=true]:ring-2 data-[active=true]:ring-[var(--mc-accent)]"
+                className="size-7 rounded-lg ring-offset-2 ring-offset-surface transition-all data-[active=true]:ring-2 data-[active=true]:ring-accent"
                 data-active={color === swatch}
                 style={{ background: swatch }}
               />

@@ -274,7 +274,7 @@ export function WorkspacePage() {
                 description={t('One moment.')}
               />
             ) : (
-              <ul className="divide-y divide-[var(--mc-border)]">
+              <ul className="divide-y divide-line">
                 {sessions.map((session) => (
                   <li key={session.id}>
                     <Link

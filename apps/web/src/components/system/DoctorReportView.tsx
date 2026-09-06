@@ -28,7 +28,7 @@ export function DoctorReportView({ report }: { report: DoctorReport }) {
         {t(VERDICT[report.status])}
       </p>
 
-      <ul className="divide-y divide-[var(--mc-border)]">
+      <ul className="divide-y divide-line">
         {report.checks.map((check) => (
           <li key={check.name} className="flex items-start gap-3 py-2">
             <Badge tone={TONE[check.status]} className="mt-0.5 shrink-0">

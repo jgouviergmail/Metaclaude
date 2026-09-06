@@ -139,7 +139,7 @@ export function BriefView({ brief }: { brief: Brief }) {
       ) : null}
 
       {brief.failures.length > 0 ? (
-        <ul className="divide-y divide-[var(--mc-border)]">
+        <ul className="divide-y divide-line">
           {brief.failures.map((failure) => (
             <li key={failure.runId}>
               <Link

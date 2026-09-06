@@ -49,7 +49,7 @@ export function MarketplacePluginToggles({
   );
 
   return (
-    <ul className="divide-y divide-[var(--mc-border)]">
+    <ul className="divide-y divide-line">
       {available.map((plugin) =>
         row(
           plugin.key,

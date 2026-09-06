@@ -79,7 +79,7 @@ export function NotificationBell() {
                 className="py-10"
               />
             ) : (
-              <ul className="divide-y divide-[var(--mc-border)]">
+              <ul className="divide-y divide-line">
                 {items.map((item) => {
                   const body = (
                     <>

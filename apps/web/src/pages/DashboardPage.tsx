@@ -220,7 +220,7 @@ export function DashboardPage() {
                   )}
                 </h2>
               </div>
-              <ul className="divide-y divide-[var(--mc-border)]">
+              <ul className="divide-y divide-line">
                 {approvals.map((approval) => (
                   <li key={approval.id} className="flex items-center gap-3 px-4 py-2.5">
                     <Badge tone={approval.risk === 'high' ? 'danger' : 'warning'}>
@@ -329,7 +329,7 @@ export function DashboardPage() {
                 <Activity className="size-4 shrink-0 text-accent" aria-hidden />
                 <h2 className="text-sm font-semibold text-ink">{t('In flight')}</h2>
               </div>
-              <ul className="divide-y divide-[var(--mc-border)]">
+              <ul className="divide-y divide-line">
                 {activeRuns.map((run) => (
                   <RunRow key={run.id} run={run} live />
                 ))}
@@ -374,7 +374,7 @@ export function DashboardPage() {
                   }
                 />
               ) : (
-                <ul className="divide-y divide-[var(--mc-border)]">
+                <ul className="divide-y divide-line">
                   {workspaces.slice(0, 6).map((workspace) => (
                     <li key={workspace.id}>
                       <Link
@@ -425,7 +425,7 @@ export function DashboardPage() {
                   className="py-8"
                 />
               ) : (
-                <ul className="divide-y divide-[var(--mc-border)]">
+                <ul className="divide-y divide-line">
                   {learned.map((insight) => (
                     <li key={insight.id} className="px-4 py-3">
                       <div className="flex items-start gap-2">
@@ -461,7 +461,7 @@ export function DashboardPage() {
                 'No runs yet',
               )} description={t('Start a session to see history here.')} />
             ) : (
-              <ul className="divide-y divide-[var(--mc-border)]">
+              <ul className="divide-y divide-line">
                 {runs
                   .filter((run) => !activeRuns.includes(run))
                   .slice(0, 12)

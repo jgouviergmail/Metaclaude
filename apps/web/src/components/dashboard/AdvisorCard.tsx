@@ -125,7 +125,7 @@ export function AdvisorCard() {
           )}
         </p>
       ) : (
-        <ul className="divide-y divide-[var(--mc-border)]">
+        <ul className="divide-y divide-line">
           {proposals.map((proposal) => (
             <li key={proposal.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start">
               <div className="min-w-0 flex-1 space-y-1">

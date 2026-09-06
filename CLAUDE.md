@@ -188,6 +188,19 @@ restates the code is noise; one that records a decision or a trap is not.
   edge-schema trap: the test must first establish that the thing under test
   actually executed. The rehearsal now escalates via sudo or emits an explicit
   skip naming what was missing.
+- **A heredoc collapses \\ to \, so a JS regex written through one loses its
+  word boundary.** `const RE = /\bfoo/` written from a `python - <<'PY'` block
+  reaches the file as `/<0x08>foo/` — a *backspace*, invisible in every diff,
+  in a regex that then matches nothing and a ratchet that reports a
+  comfortable zero. It happened three times in one session while adding
+  measures to `deploy/ratchets.mjs`, and once more inside the entry written to
+  document it. A raw string does not save you: the collapse happens before
+  Python sees the source. Build the sequence from character codes instead —
+  `chr(92) + "b"`, or `bytes([92, 98])` — or edit the line with a tool that
+  does not go through a shell. What catches it after the fact is
+  `controlBytesInSource`, which is the second reason that ratchet earns its
+  place; and never trust a new measure that reads zero on its first run —
+  sabotage it and watch the number rise.
 - **A ratchet that greps text cannot tell code from prose.** Writing
   `bg-gray-800` inside a *comment* explaining the raw-palette rule trips the
   raw-palette ratchet. Say `bg-gray-<n>`.

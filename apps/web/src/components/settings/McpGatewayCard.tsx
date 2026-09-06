@@ -196,7 +196,7 @@ export function McpGatewayCard() {
           description={t('Nothing outside this deployment can reach the agent.')}
         />
       ) : (
-        <ul className="divide-y divide-[var(--mc-border)]">
+        <ul className="divide-y divide-line">
           {all.map((token) => {
             const state = tokenState(token);
             return (

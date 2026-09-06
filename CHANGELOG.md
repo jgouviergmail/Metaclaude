@@ -11,6 +11,32 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.12] — 2026-09-06
+
+### Fixed
+
+- The two transcript preferences reintroduced the exact accessibility defect
+  `CheckboxField` was factored out to fix: a local `PreferenceToggle` nested its
+  hint inside the `<label>`, so a reader announced "Show the model's reasoning
+  Collapsible blocks showing how the agent worked through the problem, checkbox,
+  checked" on every focus, and voice control had no short phrase to target. They
+  use the primitive now, and a test holds the name to the label alone.
+- Seventeen lists wrote `divide-[var(--mc-border)]` where `divide-line` says the
+  same thing, and one swatch reached past `ring-accent` the same way. An
+  arbitrary value pointing at a token is the token reached through the back
+  door: it works, and it is what stops a future change from being one line. A
+  `tokenBypass` ratchet keeps the count at zero.
+- Two different components were both called `Row`, in two files — the trap this
+  repository already records under another name. They say what they are:
+  `DefinitionRow` and `CatalogueRow`.
+
+### Changed
+
+- `DataList` was dropped from the redesign's plan rather than built. The
+  duplication behind it is a class string, not a structure, and wrapping a
+  `<ul>` in a component for one class adds indirection without removing a
+  decision. Normalising the class was the actual fix.
+
 ## [0.56.11] — 2026-09-06
 
 ### Changed
