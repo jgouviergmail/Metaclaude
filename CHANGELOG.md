@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.59.1] — 2026-09-06
+
+### Changed
+
+- The disclosure beside a setting is *described* by its label rather than named
+  by it. Eight settings called `Explain` is a poor list of buttons, and naming
+  each by its subject is what made every row answer twice to a search for its
+  own words. `aria-describedby` is the third answer and the one it exists for:
+  the name stays short, the description says what is being explained, and a
+  search for the setting still finds one control.
+- `Label` sets the id its own description points at *after* the caller's props,
+  so a caller passing one cannot leave that description pointing at nothing.
+  None does today.
+
 ## [0.59.0] — 2026-09-06
 
 ### Fixed

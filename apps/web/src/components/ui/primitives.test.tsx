@@ -249,6 +249,29 @@ describe('Label', () => {
    * configuration card went from passing to timing out on exactly that, and a
    * screen reader would have met the same pair.
    */
+  /*
+   * Eight settings, eight controls called `Explain`, is a poor list of buttons
+   * — and naming each by its subject is what made every row answer twice to a
+   * search for its own words. `aria-describedby` is the third answer and the
+   * one this is for: the *name* stays short and the *description* says what it
+   * explains, so a reader who lands on the button hears the setting and a
+   * search for the setting still finds one control.
+   */
+  it('is described by the label it explains, without being named by it', () => {
+    useUiStore.setState({ density: 'compact' });
+    render(
+      <Label htmlFor="idle" explanation="The ceiling that should normally do the stopping.">
+        Stop a run that goes quiet after
+      </Label>,
+    );
+    const trigger = screen.getByRole('button', { name: 'Explain' });
+    const describedBy = trigger.getAttribute('aria-describedby');
+    expect(describedBy).toBe('idle-label');
+    expect(document.getElementById(describedBy!)?.textContent).toBe(
+      'Stop a run that goes quiet after',
+    );
+  });
+
   it('does not answer to the label it sits beside', () => {
     useUiStore.setState({ density: 'compact' });
     render(

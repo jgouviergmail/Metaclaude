@@ -44,6 +44,15 @@ export function useDisclosedDescription(
    * label; there is nothing honest to build a name from.
    */
   subject?: string,
+  /**
+   * The id of an element that says what is being explained.
+   *
+   * The third answer to naming, and the right one where a label sits beside the
+   * control: eight settings named `Explain` make a poor list of buttons, and
+   * naming each by its subject made every row answer twice to a search for its
+   * own words. A *description* does neither.
+   */
+  describedBy?: string,
 ): DisclosedDescription {
   const t = useT();
   const density = useUiStore((state) => state.density);
@@ -66,6 +75,7 @@ export function useDisclosedDescription(
          * worse than an absent one.
          */
         aria-label={subject ? t('Explain {subject}', { subject }) : t('Explain')}
+        {...(describedBy ? { 'aria-describedby': describedBy } : {})}
         className={cn(
           // 20px painted, 36px under a thumb. It was 16px with no hit area at
           // all, which `scripts/browser.mjs` caught on /settings — four of

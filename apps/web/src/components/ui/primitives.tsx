@@ -211,11 +211,22 @@ export function Label({
    * Two controls with the same words is a worse answer than one short name
    * beside the label that already says what it is.
    */
-  const help = useDisclosedDescription(explanation);
+  const labelId = htmlFor ? `${htmlFor}-label` : undefined;
+  const help = useDisclosedDescription(explanation, undefined, labelId);
   return (
     <div className={cn('block space-y-1.5', className)}>
       <div className="flex items-center gap-2">
-        <label className="block text-body font-medium text-ink" htmlFor={htmlFor} {...props}>
+        <label
+          className="block text-body font-medium text-ink"
+          htmlFor={htmlFor}
+          {...props}
+          // After the spread, deliberately: the trigger's `aria-describedby`
+          // points here, and a caller's own `id` winning would leave it
+          // pointing at nothing — a description that silently says nothing is
+          // worse than none. No caller passes one today; this is so none can
+          // break it quietly tomorrow.
+          id={labelId}
+        >
           {children}
         </label>
         {help.trigger}
