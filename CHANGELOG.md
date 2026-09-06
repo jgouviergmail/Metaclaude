@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.10] — 2026-09-06
+
+### Added
+
+- One tab strip, replacing three. `TAB_CLASS` was declared byte-for-byte
+  identically in the settings and help screens, with a third variant inline in
+  agents — three places to change when the active underline moves. The wrapper
+  also owns the gap below the rule, which the three copies each carried
+  differently, and an `adHocTabs` ratchet keeps the count at zero.
+
+### Changed
+
+- `StatTile` and `Field` were dropped from the redesign's plan rather than
+  built: `Stat` already exists with 25 call sites, and `Label` already wraps a
+  control and carries a hint. Adding either would have put a duplicate in the
+  lot whose purpose is removing duplicates.
+
 ## [0.56.9] — 2026-09-06
 
 ### Added

@@ -1053,6 +1053,27 @@ function countRawPalette() {
 }
 
 /**
+ * Screens reaching for Radix's tabs directly.
+ *
+ * Three did, and each carried its own copy of the trigger's appearance:
+ * `TAB_CLASS` was declared byte-for-byte identically in SettingsPage and
+ * HelpPage, with a third variant inline in AgentsPage. Three places to change
+ * when the active underline moves, and three chances to forget one.
+ *
+ * Zero false positives are possible here: it counts an import specifier, not a
+ * shape guessed from text, and `components/ui/` is where the one wrapper lives.
+ */
+function countAdHocTabs() {
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!/\.tsx?$/.test(file) || file.includes('.test.')) continue;
+    if (file.includes('components/ui/')) continue;
+    if (read(file).includes('@radix-ui/react-tabs')) n += 1;
+  }
+  return n;
+}
+
+/**
  * Page width containers written outside the layout primitives.
  *
  * Ten screens carried ten independent choices — four different maximum widths
@@ -1158,6 +1179,12 @@ const METRICS = [
     measure: countDeployChecks,
   },
   { key: 'rawPaletteClasses', direction: 'down', label: 'raw Tailwind palette classes', measure: countRawPalette },
+  {
+    key: 'adHocTabs',
+    direction: 'down',
+    label: 'screens importing Radix tabs instead of the wrapper',
+    measure: countAdHocTabs,
+  },
   {
     key: 'pageWidths',
     direction: 'down',

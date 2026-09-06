@@ -14,7 +14,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, ChevronRight, History, Search, Send, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import * as Tabs from '@radix-ui/react-tabs';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
@@ -29,6 +28,7 @@ import {
 } from '@/lib/help';
 import { renderMarkdown } from '@/lib/markdown';
 import { Page } from '@/components/ui/layout';
+import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { APP_VERSION } from '@metaclaude/shared';
 import { useT } from '@/lib/i18n';
@@ -36,9 +36,6 @@ import { useT } from '@/lib/i18n';
 type Tab = 'guide' | 'changelog';
 
 // Same treatment as the Settings tabs, so the two screens read as one product.
-const TAB_CLASS =
-  'px-3 py-2 text-[13px] font-medium text-muted border-b-2 border-transparent transition-colors data-[state=active]:border-accent data-[state=active]:text-ink hover:text-ink';
-
 export function HelpPage() {
   const t = useT();
   const navigate = useNavigate();
@@ -149,21 +146,19 @@ export function HelpPage() {
           </Card>
 
           {/* Tabs ----------------------------------------------------------- */}
-          <Tabs.Root value={tab} onValueChange={(value) => setTab(value as Tab)}>
-            <Tabs.List className="mb-4 flex items-center gap-1 border-b border-line" aria-label={t(
-              'Help sections',
-            )}>
-              <Tabs.Trigger value="guide" className={TAB_CLASS}>
+          <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
+            <TabStrip label={t('Help sections',)}>
+              <TabTrigger value="guide">
                 <BookOpen className="mr-1.5 inline size-3.5" aria-hidden />
                 {t('User guide')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="changelog" className={TAB_CLASS}>
+              </TabTrigger>
+              <TabTrigger value="changelog">
                 <History className="mr-1.5 inline size-3.5" aria-hidden />
                 {t("What's new")}
-              </Tabs.Trigger>
-            </Tabs.List>
+              </TabTrigger>
+            </TabStrip>
 
-            <Tabs.Content value="guide">
+            <TabPanel value="guide">
               <div className="grid gap-4 md:grid-cols-[220px_1fr]">
                 {/* Chapters + search ----------------------------------------- */}
                 <div className="space-y-3">
@@ -249,9 +244,9 @@ export function HelpPage() {
                   )}
                 </Card>
               </div>
-            </Tabs.Content>
+            </TabPanel>
 
-            <Tabs.Content value="changelog">
+            <TabPanel value="changelog">
               <Card className="p-5">
                 {changelog.isLoading ? (
                   <div className="space-y-3">
@@ -265,8 +260,8 @@ export function HelpPage() {
                   />
                 )}
               </Card>
-            </Tabs.Content>
-          </Tabs.Root>
+            </TabPanel>
+          </Tabs>
       </Page>
     </AppShell>
   );

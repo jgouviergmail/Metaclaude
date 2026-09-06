@@ -4,6 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Page } from '@/components/ui/layout';
+import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import {
   Check,
   Copy,
@@ -18,7 +19,6 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { type Lang, type TranslateFn, useI18n, usePlural, useT } from '@/lib/i18n';
-import * as Tabs from '@radix-ui/react-tabs';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { TotpQr } from '@/components/auth/TotpQr';
@@ -56,9 +56,6 @@ import {
   formatRelative,
 } from '@/lib/utils';
 
-const TAB_CLASS =
-  'px-3 py-2 text-[13px] font-medium text-muted border-b-2 border-transparent transition-colors data-[state=active]:border-accent data-[state=active]:text-ink hover:text-ink';
-
 /**
  * Which tab the page opens on, from the URL's query string.
  *
@@ -89,81 +86,78 @@ export function SettingsPage() {
       />
 
       <Page width="prose" gap="none">
-          <Tabs.Root defaultValue={initialSettingsTab(window.location.search)}>
-            <Tabs.List
-              className="mb-5 flex gap-1 overflow-x-auto border-b border-line"
-              aria-label={t('Settings sections')}
-            >
-              <Tabs.Trigger value="security" className={TAB_CLASS}>
+          <Tabs defaultValue={initialSettingsTab(window.location.search)}>
+            <TabStrip label={t('Settings sections')}>
+              <TabTrigger value="security">
                 {t('Security')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="appearance" className={TAB_CLASS}>
+              </TabTrigger>
+              <TabTrigger value="appearance">
                 {t('Appearance')}
-              </Tabs.Trigger>
-              <Tabs.Trigger value="system" className={TAB_CLASS}>
+              </TabTrigger>
+              <TabTrigger value="system">
                 {t('System')}
-              </Tabs.Trigger>
+              </TabTrigger>
               {user?.role === 'owner' ? (
-                <Tabs.Trigger value="connections" className={TAB_CLASS}>
+                <TabTrigger value="connections">
                   {t('Connections')}
-                </Tabs.Trigger>
+                </TabTrigger>
               ) : null}
               {user?.role === 'owner' ? (
-                <Tabs.Trigger value="configuration" className={TAB_CLASS}>
+                <TabTrigger value="configuration">
                   {t('Configuration')}
-                </Tabs.Trigger>
+                </TabTrigger>
               ) : null}
               {user?.role === 'owner' ? (
-                <Tabs.Trigger value="audit" className={TAB_CLASS}>
+                <TabTrigger value="audit">
                   {t('Audit log')}
-                </Tabs.Trigger>
+                </TabTrigger>
               ) : null}
-            </Tabs.List>
+            </TabStrip>
 
-            <Tabs.Content value="security" className="space-y-4">
+            <TabPanel value="security" className="space-y-4">
               <PasswordCard />
               <TotpCard />
               <PasskeysCard />
               <SessionsCard />
-            </Tabs.Content>
+            </TabPanel>
 
-            <Tabs.Content value="appearance">
+            <TabPanel value="appearance">
               <AppearanceCard />
-            </Tabs.Content>
+            </TabPanel>
 
-            <Tabs.Content value="system" className="space-y-4">
+            <TabPanel value="system" className="space-y-4">
               <SystemCard />
               {user?.role === 'owner' ? <DoctorCard /> : null}
               {user?.role === 'owner' ? <UpdateCard /> : null}
-            </Tabs.Content>
+            </TabPanel>
 
             {/* Owner only: connecting Google stores a credential that reaches a
                 live mailbox, which is a wider blast radius than any other
                 registry write. */}
             {user?.role === 'owner' ? (
-              <Tabs.Content value="connections" className="space-y-4">
+              <TabPanel value="connections" className="space-y-4">
                 <GoogleConnectionCard />
                 {/* The other direction: what *reaches in*. Owner-only for the
                     same reason — a token that may start runs is a credential
                     for executing things here. */}
                 <McpGatewayCard />
-              </Tabs.Content>
+              </TabPanel>
             ) : null}
 
             {/* Owner only, exactly like the API behind it: how long a run may
                 take and how many may run at once is not an operator's call. */}
             {user?.role === 'owner' ? (
-              <Tabs.Content value="configuration">
+              <TabPanel value="configuration">
                 <ConfigurationCard />
-              </Tabs.Content>
+              </TabPanel>
             ) : null}
 
             {user?.role === 'owner' ? (
-              <Tabs.Content value="audit">
+              <TabPanel value="audit">
                 <AuditCard />
-              </Tabs.Content>
+              </TabPanel>
             ) : null}
-          </Tabs.Root>
+          </Tabs>
       </Page>
     </AppShell>
   );

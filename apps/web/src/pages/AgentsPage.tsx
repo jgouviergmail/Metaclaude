@@ -8,7 +8,6 @@
  * scoped either to one workspace or to every workspace at once.
  */
 
-import * as Tabs from '@radix-ui/react-tabs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -49,6 +48,7 @@ import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel
 import { CheckboxField, Switch } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { PageBody } from '@/components/ui/layout';
+import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
   Badge,
@@ -184,10 +184,10 @@ export function AgentsPage() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <Tabs.Root value={tab} onValueChange={(value) => setTab(value as TabKey)}>
-          <Tabs.List
-            aria-label={t('Extension type')}
-            className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-line bg-bg px-3 sm:px-6"
+        <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)}>
+          <TabStrip
+            label={t('Extension type')}
+            className="sticky top-0 z-10 mb-0 bg-bg px-3 sm:px-6"
           >
             {(
               [
@@ -203,7 +203,7 @@ export function AgentsPage() {
                 { value: 'claude', label: t('From Claude'), icon: <Wand2 className="size-4" /> },
               ] as const
             ).map((entry) => (
-              <Tabs.Trigger
+              <TabTrigger
                 key={entry.value}
                 value={entry.value}
                 className={cn(
@@ -214,37 +214,37 @@ export function AgentsPage() {
               >
                 {entry.icon}
                 {t(entry.label)}
-              </Tabs.Trigger>
+              </TabTrigger>
             ))}
-          </Tabs.List>
+          </TabStrip>
 
           <PageBody width="standard" gap="none">
-            <Tabs.Content value="skills" className="focus-visible:outline-none">
+            <TabPanel value="skills" className="focus-visible:outline-none">
               <SkillsTab workspaceId={workspaceId} onChanged={() => invalidate('skills')} />
-            </Tabs.Content>
+            </TabPanel>
 
-            <Tabs.Content value="agents" className="focus-visible:outline-none">
+            <TabPanel value="agents" className="focus-visible:outline-none">
               <AgentsTab workspaceId={workspaceId} onChanged={() => invalidate('agents')} />
-            </Tabs.Content>
+            </TabPanel>
 
-            <Tabs.Content value="mcp" className="focus-visible:outline-none">
+            <TabPanel value="mcp" className="focus-visible:outline-none">
               <McpTab workspaceId={workspaceId} onChanged={() => invalidate('mcp-servers')} />
-            </Tabs.Content>
+            </TabPanel>
 
-            <Tabs.Content value="library" className="focus-visible:outline-none">
+            <TabPanel value="library" className="focus-visible:outline-none">
               <LibraryTab
                 onInstalled={() => {
                   invalidate('skills');
                   invalidate('agents');
                 }}
               />
-            </Tabs.Content>
+            </TabPanel>
 
-            <Tabs.Content value="claude" className="focus-visible:outline-none">
+            <TabPanel value="claude" className="focus-visible:outline-none">
               <ClaudeTab workspaceId={workspaceId} />
-            </Tabs.Content>
+            </TabPanel>
           </PageBody>
-        </Tabs.Root>
+        </Tabs>
       </div>
     </AppShell>
   );
