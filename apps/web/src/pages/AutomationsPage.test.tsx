@@ -197,3 +197,44 @@ describe('the form', () => {
     );
   });
 });
+
+/**
+ * The editor edits a snapshot, and a snapshot is not the record.
+ *
+ * Reported from use on `Alerte échec`: its trigger had become
+ * `event/run_failed` — the card said so, and so did the server — while the
+ * open edit form still held the cron it was created with. The form sent every
+ * field it holds, so changing the prompt would have written `0 9 * * *` back
+ * over a trigger nobody had touched. A field this form has no opinion about
+ * must not be in what it sends.
+ */
+describe('editing an automation', () => {
+  const eventAutomation = automation({
+    description: '',
+    trigger: { type: 'event', event: 'run_failed' },
+    continuous: false,
+    maxConsecutiveFailures: 3,
+    policy: { permissionMode: 'default', notify: true },
+  });
+
+  it('sends only what was changed, leaving an untouched trigger alone', async () => {
+    apiMock.automations.mockResolvedValue({ automations: [eventAutomation] });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+
+    const promptField = await screen.findByLabelText(/Prompt/i);
+    fireEvent.change(promptField, { target: { value: 'Diagnose the failure.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(apiMock.updateAutomation).toHaveBeenCalledTimes(1));
+    expect(apiMock.updateAutomation).toHaveBeenCalledWith('aut_1', {
+      prompt: 'Diagnose the failure.',
+    });
+  });
+});
+

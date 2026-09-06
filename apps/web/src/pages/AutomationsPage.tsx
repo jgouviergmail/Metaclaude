@@ -394,6 +394,39 @@ function AutomationEditor({
   // field: eight o'clock on a UTC host is ten in Paris all summer.
   const { data: system } = useQuery({ queryKey: ['system'], queryFn: () => api.system(), staleTime: 60_000 });
 
+  /*
+   * Whether the automation moved under this form.
+   *
+   * The same query the list behind is drawn from — deduplicated, and kept
+   * current by the page's own poll — so this costs no request. The form is
+   * seeded once and never re-seeds on its own, which is right while somebody
+   * is typing and wrong as an account of what is stored: the operator has to
+   * be told that what they are reading is no longer it, and given the choice
+   * to take the new version.
+   */
+  const { data: live } = useQuery({ queryKey: ['automations'], queryFn: () => api.automations() });
+  const stored = automation ? live?.automations.find((one) => one.id === automation.id) : undefined;
+  const movedElsewhere = Boolean(stored && automation && stored.updatedAt !== automation.updatedAt);
+
+  const seed = (from: Automation): void => {
+    setName(from.name);
+    setDescription(from.description);
+    setPrompt(from.prompt);
+    setTriggerType(from.trigger.type);
+    if (from.trigger.type === 'cron') setExpression(from.trigger.expression);
+    if (from.trigger.type === 'interval') setEveryMinutes(Math.round(from.trigger.everyMs / 60_000));
+    if (from.trigger.type === 'event') {
+      if ((EMITTED_AUTOMATION_EVENTS as readonly string[]).includes(from.trigger.event)) {
+        setEventName(from.trigger.event as (typeof EMITTED_AUTOMATION_EVENTS)[number]);
+      }
+      setEventFilter(from.trigger.filter ?? '');
+    }
+    setContinuous(from.continuous);
+    setPermissionMode(from.policy.permissionMode);
+    setNotify(from.policy.notify);
+    setMaxFailures(from.maxConsecutiveFailures);
+  };
+
   const buildTrigger = (): AutomationTrigger => {
     if (triggerType === 'interval') return { type: 'interval', everyMs: everyMinutes * 60_000 };
     if (triggerType === 'manual') return { type: 'manual' };
@@ -404,9 +437,46 @@ function AutomationEditor({
     return { type: 'cron', expression };
   };
 
+  /**
+   * What this form actually changed, against the automation it was seeded
+   * from — not everything it holds.
+   *
+   * The form is a snapshot: it is filled when it opens and nothing re-seeds it
+   * while somebody types. Sending the whole object back therefore rewrote
+   * every field with what was true when the dialog opened, so a change made
+   * anywhere else in between — by the steward, from another device, through
+   * the API — was silently reverted by an unrelated edit. Measured on
+   * `Alerte échec`: its trigger had become `event/run_failed`, the open form
+   * still held the cron it was created with, and changing the prompt would
+   * have put `0 9 * * *` back. A field nobody touched is a field this form has
+   * no opinion about, and the route merges what it is given.
+   */
+  const changed = (): Record<string, unknown> => {
+    const patch: Record<string, unknown> = {};
+    if (!automation) return patch;
+    if (name.trim() !== automation.name) patch.name = name.trim();
+    if (description.trim() !== automation.description) patch.description = description.trim();
+    if (prompt.trim() !== automation.prompt) patch.prompt = prompt.trim();
+    const trigger = buildTrigger();
+    if (JSON.stringify(trigger) !== JSON.stringify(automation.trigger)) patch.trigger = trigger;
+    if (continuous !== automation.continuous) patch.continuous = continuous;
+    if (maxFailures !== automation.maxConsecutiveFailures) patch.maxConsecutiveFailures = maxFailures;
+    const policy: Record<string, unknown> = {};
+    if (permissionMode !== automation.policy.permissionMode) policy.permissionMode = permissionMode;
+    if (notify !== automation.policy.notify) policy.notify = notify;
+    if (Object.keys(policy).length > 0) patch.policy = policy;
+    return patch;
+  };
+
   const save = useMutation({
     mutationFn: () => {
-      const body = {
+      if (automation) {
+        const patch = changed();
+        // Nothing to say is not an error, and not a write either.
+        if (Object.keys(patch).length === 0) return Promise.resolve({ automation });
+        return api.updateAutomation(automation.id, patch);
+      }
+      return api.createAutomation({
         name: name.trim(),
         description: description.trim(),
         prompt: prompt.trim(),
@@ -414,10 +484,8 @@ function AutomationEditor({
         continuous,
         maxConsecutiveFailures: maxFailures,
         policy: { permissionMode, notify },
-      };
-      return automation
-        ? api.updateAutomation(automation.id, body)
-        : api.createAutomation({ ...body, workspaceId });
+        workspaceId,
+      });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['automations'] });
@@ -457,6 +525,20 @@ function AutomationEditor({
       }
     >
       <div className="space-y-4">
+        {/* Said, not silently reconciled: re-seeding under someone's hands
+            would discard what they are typing, and leaving them to read a
+            trigger that is no longer stored is how an unrelated edit came to
+            look like it reverted one. Only what is edited here is sent, so
+            reading on is safe — but it is not the truth, and the form says so. */}
+        {movedElsewhere && stored ? (
+          <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning">
+            {t('This automation changed elsewhere since this form opened. Only the fields you edit here are sent.')}
+            <Button variant="outline" size="sm" onClick={() => seed(stored)}>
+              {t('Load the new version')}
+            </Button>
+          </p>
+        ) : null}
+
         <Label htmlFor="auto-name">
           {t('Name')}
           <Input

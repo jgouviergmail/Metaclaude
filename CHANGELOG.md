@@ -11,6 +11,24 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.3] — 2026-09-06
+
+### Fixed
+
+- **Editing an automation no longer reverts what it did not show.** The form is
+  filled when it opens and never re-seeds while somebody types — which is
+  right — but it sent every field it holds, so a change made anywhere else in
+  between was silently written over by an unrelated edit. Reported on
+  `Alerte échec`: its trigger had become `event/run_failed`, the open form
+  still held the cron it was created with, and changing the prompt would have
+  put `0 9 * * *` back. The form now sends only the fields it actually
+  changed, against the automation it was seeded from; the route merges the
+  rest.
+- **And it says when it is out of date.** A form whose automation moved since
+  it opened carries a line saying so, with a button to load the new version —
+  re-seeding on its own would discard what the operator is typing, and saying
+  nothing is how an unrelated edit came to look like it reverted a trigger.
+
 ## [0.56.2] — 2026-09-05
 
 ### Fixed
