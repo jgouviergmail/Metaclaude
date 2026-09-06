@@ -30,6 +30,7 @@ import {
   type Automation,
   type AutomationTrigger,
   type PermissionMode,
+  type RunStatus,
 } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { SystemTabs } from '@/components/layout/SystemTabs';
@@ -54,6 +55,36 @@ import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
 
 /** Ready-made schedules, so nobody has to remember cron syntax to get started. */
+/**
+ * A run's status, named and coloured from one table each.
+ *
+ * The badge rendered `automation.lastStatus` raw, so a French screen said
+ * "succeeded" — found by the browser sweep, which only saw it once a run had
+ * actually finished. And the colour was a ternary chain, which `CLAUDE.md`
+ * names as the shape that silently gives a new case somebody else's colour:
+ * an exhaustive `Record` fails the build the day `RunStatus` gains a member.
+ *
+ * Copy held as data and translated at the render site, which is the documented
+ * pattern for a table evaluated at import time.
+ */
+const RUN_STATUS_LABEL: Record<RunStatus, string> = {
+  queued: 'queued',
+  running: 'running',
+  waiting_approval: 'waiting for approval',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  interrupted: 'interrupted',
+};
+
+const RUN_STATUS_TONE: Record<RunStatus, 'success' | 'danger' | 'warning' | 'info'> = {
+  queued: 'info',
+  running: 'info',
+  waiting_approval: 'warning',
+  succeeded: 'success',
+  failed: 'danger',
+  interrupted: 'warning',
+};
+
 const PRESETS: Array<{ label: string; expression: string }> = [
   { label: 'Every hour', expression: '0 * * * *' },
   { label: 'Every 4 hours', expression: '0 */4 * * *' },
@@ -214,16 +245,8 @@ export function AutomationsPage() {
                       ) : null}
                       {!automation.enabled ? <Badge tone="neutral">{t('paused')}</Badge> : null}
                       {automation.lastStatus ? (
-                        <Badge
-                          tone={
-                            automation.lastStatus === 'succeeded'
-                              ? 'success'
-                              : automation.lastStatus === 'failed'
-                                ? 'danger'
-                                : 'warning'
-                          }
-                        >
-                          {automation.lastStatus}
+                        <Badge tone={RUN_STATUS_TONE[automation.lastStatus] ?? 'warning'}>
+                          {t(RUN_STATUS_LABEL[automation.lastStatus] ?? automation.lastStatus)}
                         </Badge>
                       ) : null}
                     </div>
@@ -530,7 +553,7 @@ function AutomationEditor({
             disabled={!valid}
             onClick={() => save.mutate()}
           >
-            {automation ? 'Save' : 'Create'}
+            {automation ? t('Save') : t('Create')}
           </Button>
         </>
       }

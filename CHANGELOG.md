@@ -11,6 +11,45 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.58.0] — 2026-09-06
+
+### Fixed
+
+- Seven button labels that were never translated. `{automation ? 'Save' :
+  'Create'}` and six like it — the shape `CLAUDE.md` names as the one that
+  escapes every i18n measure, because the rule requires two words and a button
+  says one. They shipped in dialogs and on the transcript, in French.
+- A run's status was rendered raw, so a French screen said "succeeded". Its
+  colour was a ternary chain too, which silently gives a new case somebody
+  else's colour; both are exhaustive tables now, and the build fails the day
+  `RunStatus` gains a member.
+- A checkbox was a 16-pixel target. A pseudo-element does not render on a
+  replaced element, so the box itself cannot carry a hit area at all — the
+  label can, and pressing it toggles the box, which makes the row the target it
+  already looked like.
+- Rendered markdown links had none either: four failed at once on the
+  changelog, at 19 pixels.
+
+### Changed
+
+- The responsive guard visits every tab panel, opens menus on every route, and
+  finds dialogs instead of being told about them. It audited 1065 things and
+  now audits 1629: nineteen tab panels where it saw three, sixteen dialogs
+  where five were named, forty-five menus where it opened them on five routes
+  of twelve. Every defect above came out of that sweep, on panels and dialogs
+  nothing had ever looked at.
+- Animations are off during the sweep. A geometry probe measures the layout at
+  rest, and a control covered only mid-animation is not a defect an operator
+  meets — it was reporting a different subset at each width, which is a flaky
+  check, which is worse than no check.
+- The guard knows a closed `<details>` hides its contents, and asks the
+  platform rather than three hand-picked properties. It was measuring a Copy
+  button nobody could reach, inside a folded card, and reporting it covered.
+- Tool names render as code. `Write` and `Edit` are what the CLI calls them;
+  they are identifiers an operator matches, not words to translate — and the
+  sweep is right to report an untranslated word, so the markup has to say which
+  it is.
+
 ## [0.57.3] — 2026-09-06
 
 ### Fixed

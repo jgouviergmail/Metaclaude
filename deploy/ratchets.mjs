@@ -395,6 +395,48 @@ function countHardcodedUiText() {
           note('lit ', file, text);
         }
       }
+      /*
+       * The two arms of a choice, rendered as a JSX child.
+       *
+       * `SENTENCE` requires two words, and that is a deliberate defence:
+       * relaxing it surfaces seventy-odd Tailwind class strings that no cheap
+       * rule tells from prose. So `{automation ? 'Save' : 'Create'}` shipped
+       * untranslated in a dialog while every i18n measure agreed the catalogue
+       * was complete — the shape `CLAUDE.md` names as the one that escapes, and
+       * the browser sweep found it in French the day it started opening
+       * dialogs.
+       *
+       * Narrowed to exactly that shape rather than relaxed. A wider rule —
+       * every literal in a child position — reports 125 here, most of them
+       * identifiers an operator reads verbatim: `dontAsk`, `acceptEdits`,
+       * `runRetentionDays`. Those are lowercase because they are names, and a
+       * capitalised arm is a label because a person wrote it as one.
+       */
+      if (ts.isConditionalExpression(node)) {
+        const arms = [node.whenTrue, node.whenFalse].filter((arm) => ts.isStringLiteral(arm));
+        let rendered = false;
+        for (let p = node.parent; p; p = p.parent) {
+          if (ts.isJsxAttribute(p) || ts.isJsxAttributes(p)) break;
+          if (ts.isJsxExpression(p)) {
+            rendered =
+              p.parent &&
+              (ts.isJsxElement(p.parent) || ts.isJsxFragment(p.parent));
+            break;
+          }
+        }
+        if (rendered && !inTranslator(node)) {
+          for (const arm of arms) {
+            const text = arm.text.trim();
+            // A single letter is a symbol, not a label: the git panel's `M`
+            // and `U` are the status codes git itself prints.
+            if (text.length < 2) continue;
+            if (!/^[A-Z][A-Za-z0-9 ,.:!?’'-]*$/.test(text)) continue;
+            if (PRODUCT_NAMES.has(text) || VERBATIM.has(text)) continue;
+            n += 1;
+            note('arm ', file, text);
+          }
+        }
+      }
       if (ts.isTemplateExpression(node)) {
         const text = (node.head.text + node.templateSpans.map((s) => s.literal.text).join(' ')).trim();
         if (

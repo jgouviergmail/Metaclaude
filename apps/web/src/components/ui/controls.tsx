@@ -13,6 +13,7 @@
  */
 
 import { useId, type ReactNode } from 'react';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn } from '@/lib/utils';
 import { Tooltip } from './primitives';
 
@@ -71,7 +72,12 @@ export function Switch({ checked, onChange, label, tooltip, disabled, className 
 export interface CheckboxFieldProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
-  label: string;
+  /**
+   * Usually a sentence. A node where the label *is* an identifier — the exact
+   * name of a Claude Code tool — so it can be rendered as code and read as the
+   * literal string it is, rather than as a word somebody forgot to translate.
+   */
+  label: ReactNode;
   /** One line saying what turning it on actually does. */
   hint: ReactNode;
   disabled?: boolean;
@@ -116,6 +122,12 @@ export function CheckboxField({
           className={cn(
             'block text-body font-medium text-ink',
             !disabled && 'cursor-pointer',
+            // The box is 16px and a pseudo-element does not render on a
+            // replaced element, so the input cannot carry a hit area at all.
+            // The label can, and pressing it toggles the box — which makes the
+            // row the target it already looked like. One line of `text-body` is
+            // 20px, which is under the floor a thumb needs.
+            TOUCH_TARGET_Y,
           )}
         >
           {label}

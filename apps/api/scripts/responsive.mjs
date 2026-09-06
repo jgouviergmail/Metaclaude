@@ -263,6 +263,22 @@ const AUDIT = `
       if (rect.width === 0 || rect.height === 0) continue;
       const s = getComputedStyle(el);
       if (s.visibility === 'hidden' || s.display === 'none' || s.opacity === '0') continue;
+      /*
+       * Ask the platform whether it is visible, not three properties.
+       *
+       * The connections panel folds its Google card into a closed details, and
+       * Chrome hides those contents with content-visibility rather than with
+       * display — which none of the three checks above can see. The audit then
+       * measured a Copy button nobody could reach and reported it covered by
+       * the empty state painted over it, at a different subset per width. Not a
+       * defect of the app: a blind spot of the probe.
+       */
+      if (el.checkVisibility && !el.checkVisibility({
+        contentVisibilityAuto: true,
+        opacityProperty: true,
+        visibilityProperty: true,
+      })) continue;
+      if (el.closest('details:not([open])')) continue;
       out.counted += 1;
       if (!nameOf(el)) out.unnamed.push('<' + el.tagName.toLowerCase() + '> .' + String(el.className).slice(0, 44));
       if (rect.right > VW + 1 || rect.left < -1) {
@@ -349,10 +365,23 @@ const AUDIT = `
     };
     for (const el of small) {
       if (offered(el) >= 30) continue;
-      // A checkbox is 16px and its label is the target: pressing the words
-      // toggles it. That is a hit area, differently spelled.
-      const label = el.closest('label');
-      if (label && label.getBoundingClientRect().height >= 30) continue;
+      /*
+       * A checkbox is 16px and its label is the target: pressing the words
+       * toggles it. That is a hit area, differently spelled.
+       *
+       * el.labels and not only closest('label'), and the difference is a false
+       * positive this rule produced against itself. The app labels a checkbox
+       * with htmlFor, so the label is a *sibling*, not an ancestor — and the
+       * obvious fix, putting the inset pseudo-element on the input, does
+       * nothing at all: ::before does not render on a replaced element. The
+       * rule would have demanded a change that could not work, to a control
+       * whose whole row is already tappable.
+       */
+      const labels = [...(el.labels ?? []), el.closest('label')].filter(Boolean);
+      // Measured the same way as the control itself: a label is one line of
+      // text and grows with the same pseudo-element, so reading its painted
+      // box would reject the very fix the rule is asking for.
+      if (labels.some((label) => offered(label) >= 30)) continue;
       const box = el.getBoundingClientRect();
       out.tapTargets.push(
         short(el) + ' ' + Math.round(box.width) + 'x' + Math.round(box.height) +
@@ -481,7 +510,16 @@ const DIALOGS = [
  * Every route would be tidier and most carry the same three from the rail, so
  * this is the set that adds something: a screen with menus of its own.
  */
-const MENU_ROUTES = ['/', '/board', '/memory', '/automations', '/settings'];
+/*
+ * Menus are opened on every route, not on five of twelve.
+ *
+ * The cost is small because the loop already skips a name it has opened at
+ * this width: the rail's three appear everywhere and are opened once. What the
+ * five-route list actually excluded was every menu unique to the other seven —
+ * the workspace's, the session's, the plugin rows' — which is precisely the set
+ * no other check looks at.
+ */
+const MENU_ROUTES = ROUTES.map(([route]) => route);
 const WIDTHS = [
   { name: '390', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
   { name: '768', viewport: { width: 768, height: 1024 } },
@@ -507,7 +545,21 @@ for (const locale of LOCALES) {
     const browser = await launch();
     let page;
     try {
-      page = await browser.newPage({ locale, ...width });
+      /*
+       * Animations off, and not for speed.
+       *
+       * The tab sweep reported "nothing covered" against three controls of the
+       * connections panel — a different subset at each width, which is the
+       * signature of a race rather than of a defect: the empty state fading out
+       * still sat over the form the audit was measuring. A geometry probe
+       * measures the layout at rest, and a control covered only mid-animation
+       * is not a defect an operator can meet. The app honours the preference
+       * with `!important` overrides, so this genuinely stops the motion rather
+       * than merely asking.
+       *
+       * A flaky check is worse than no check: it teaches you to read past red.
+       */
+      page = await browser.newPage({ locale, reducedMotion: 'reduce', ...width });
     await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
     await page.fill('input[name="username"], #username', USERNAME);
     await page.fill('input[type="password"]', PASSWORD);
@@ -551,6 +603,49 @@ for (const locale of LOCALES) {
           english.length === 0,
           english.map((text) => `« ${text.slice(0, 48)} »`).join(' | '),
         );
+      }
+
+      /*
+       * Every tab panel, not only the one the screen opens on.
+       *
+       * Seventeen exist and this swept three — the default of each tabbed
+       * screen — so fourteen were audited by nobody. That is not a hypothetical
+       * gap: the agents screen's tab strip was full-bleed above a centred panel
+       * for six lots, its connector directory filled a phone with prose, and
+       * both were found by eye on a screenshot because the sweep only ever saw
+       * the Skills tab.
+       *
+       * Radix switches on `mousedown`, not on click; the triggers stay mounted
+       * across a switch, but they are re-queried each time rather than held,
+       * because a panel that re-renders its own strip would invalidate a handle
+       * and the loop would silently inspect nothing.
+       */
+      const tabCount = (await page.$$('[role="tab"]')).length;
+      for (let index = 0; index < tabCount; index += 1) {
+        const tab = (await page.$$('[role="tab"]'))[index];
+        if (!tab || !(await tab.isVisible())) continue;
+        if ((await tab.getAttribute('aria-selected')) === 'true') continue;
+        const name =
+          (await tab.getAttribute('aria-label')) ||
+          (await tab.textContent())?.trim().slice(0, 28) ||
+          `tab ${index}`;
+        await tab.scrollIntoViewIfNeeded().catch(() => {});
+        await tab.dispatchEvent('mousedown');
+        // A panel that fetches must have answered before it is measured, or the
+        // audit's two passes see two different pages.
+        await page.waitForLoadState('networkidle').catch(() => {});
+        await page.waitForTimeout(450);
+        if ((await tab.getAttribute('aria-selected')) !== 'true') continue;
+        const panelLabel = `${label} · onglet « ${name} »`;
+        await inspect(panelLabel);
+        if (locale === 'fr-FR' && route !== '/help') {
+          const english = await page.evaluate(UNTRANSLATED(FRENCH_KEYS));
+          results.check(
+            `${panelLabel}: nothing shows in English`,
+            english.length === 0,
+            english.map((text) => `« ${text.slice(0, 48)} »`).join(' | '),
+          );
+        }
       }
 
       // The witness: can this probe still fail on THIS page?
@@ -626,6 +721,95 @@ for (const locale of LOCALES) {
       await page.waitForTimeout(700);
       await inspect(`dialog “${opener}”`);
       await page.keyboard.press('Escape');
+    }
+
+    /*
+     * Every other dialog, found rather than named.
+     *
+     * Fifty-two exist and the list above names five. Naming the rest is not a
+     * list anyone would keep true — a dialog added next month would be
+     * unaudited and nothing would say so — so the openers are discovered: click
+     * a button, and if a dialog appeared, audit it and press Escape. A confirm
+     * dialog is a dialog too, and cancelling one is exactly what Escape does,
+     * so a "Delete" button is safe to press and worth pressing.
+     *
+     * At the phone width, in French, and once per name. That is where a dialog
+     * breaks: the widest copy in the narrowest frame, which is how the
+     * automation dialog was found with two of its presets behind the footer.
+     * Running the full matrix would multiply a seven-minute sweep by three for
+     * combinations that have never held a defect the phone did not.
+     *
+     * Discovery runs last, after the routes and the menus, so whatever a click
+     * changes on the seeded server cannot reach an audit that has not run yet.
+     */
+    if (width.name === '390' && locale === 'fr-FR') {
+      const seenDialogs = new Set();
+      for (const [route, label] of ROUTES) {
+        await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
+        await page.waitForTimeout(500);
+        const count = (await page.$$('button')).length;
+        for (let index = 0; index < count; index += 1) {
+          const button = (await page.$$('button'))[index];
+          if (!button) continue;
+          if (!(await button.isVisible()) || !(await button.isEnabled())) continue;
+          // A menu trigger opens a menu, which the loop above already audits.
+          if (await button.getAttribute('aria-haspopup')) continue;
+          if ((await button.getAttribute('role')) === 'tab') continue;
+          const name = (
+            (await button.getAttribute('aria-label')) ||
+            (await button.textContent())?.trim() ||
+            ''
+          )
+            .replace(/[\s]+/g, ' ')
+            .slice(0, 40);
+          if (!name || seenDialogs.has(name)) continue;
+
+          /*
+           * Dismiss whatever the previous click announced.
+           *
+           * A toast left over from one button was still on screen when the next
+           * one opened a dialog, and the audit reported its close button as
+           * covered — by the dialog that had just opened over it. That is an
+           * artefact of pressing every button in a row, not something an
+           * operator meets, and a check that reports it is reporting on the
+           * probe rather than on the app.
+           */
+          for (const close of await page.$$('[data-sonner-toast] button')) {
+            await close.click({ timeout: 500 }).catch(() => {});
+          }
+
+          const before = page.url();
+          await button.scrollIntoViewIfNeeded().catch(() => {});
+          await button.click({ timeout: 2000 }).catch(() => {});
+          await page.waitForTimeout(450);
+
+          const dialog = await page.$('[role="dialog"]');
+          if (dialog) {
+            seenDialogs.add(name);
+            await inspect(`${label} · dialogue « ${name} »`);
+            const english = await page.evaluate(UNTRANSLATED(FRENCH_KEYS));
+            results.check(
+              `${label} · dialogue « ${name} »: nothing shows in English`,
+              english.length === 0,
+              english.map((text) => `« ${text.slice(0, 48)} »`).join(' | '),
+            );
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(250);
+          }
+          // A button that navigated, or one that left a dialog open: put the
+          // page back where the loop expects it, or every button after this one
+          // is clicked on the wrong screen.
+          if (page.url() !== before || (await page.$('[role="dialog"]'))) {
+            await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
+            await page.waitForTimeout(400);
+          }
+        }
+      }
+      results.check(
+        'the dialog sweep found more than the five that are named',
+        seenDialogs.size > 5,
+        `found ${seenDialogs.size}`,
+      );
     }
 
     } catch (error) {

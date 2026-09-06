@@ -157,6 +157,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   text: string;
   streaming?: boolean;
 }) {
+  const t = useT();
   const showThinking = useUiStore((state) => state.showThinking);
   // While streaming, reasoning is the only sign of life — open it by default.
   const [expanded, setExpanded] = useState(streaming);
@@ -182,7 +183,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         />
         <Brain className="size-3.5 shrink-0 text-thinking" aria-hidden />
         <span className="shrink-0 text-[12px] font-medium text-thinking">
-          {streaming ? 'Thinking…' : 'Reasoning'}
+          {streaming ? t('Thinking…') : t('Reasoning')}
         </span>
         {!expanded ? (
           <span className="min-w-0 flex-1 truncate text-[12px] text-muted">{preview}</span>

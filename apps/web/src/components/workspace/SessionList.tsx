@@ -476,7 +476,7 @@ function SessionRow({
           icon={session.pinned ? <PinOff /> : <Pin />}
           onSelect={onTogglePin}
         >
-          {session.pinned ? 'Unpin' : t('Pin to top')}
+          {session.pinned ? t('Unpin') : t('Pin to top')}
         </MenuItem>
         <MenuItem icon={<Archive />} onSelect={onArchive}>
           {t('Archive')}

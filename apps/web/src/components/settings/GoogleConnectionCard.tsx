@@ -34,7 +34,7 @@ import { CopyableCode } from '@/components/ui/CopyableCode';
 import { Badge, Button, Input, Label } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import { TOUCH_TARGET_TEXT } from '@/components/ui/touch-target';
 import { cn, formatRelative } from '@/lib/utils';
 
 /** English labels as data; `t()` translates at render, as everywhere else. */
@@ -204,7 +204,7 @@ export function GoogleConnectionCard() {
               rel="noreferrer noopener"
               className={cn(
                 'inline-flex items-center gap-1 text-caption font-medium text-muted transition-colors hover:text-accent',
-                TOUCH_TARGET_Y,
+                TOUCH_TARGET_TEXT,
               )}
             >
               <ExternalLink className="size-3.5" aria-hidden />

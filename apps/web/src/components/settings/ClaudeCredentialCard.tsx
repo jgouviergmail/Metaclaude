@@ -288,7 +288,7 @@ export function ClaudeCredentialCard() {
             loading={save.isPending}
             onClick={() => save.mutate(value)}
           >
-            {stored ? 'Replace' : t('Save token')}
+            {stored ? t('Replace') : t('Save token')}
           </Button>
           {stored ? (
             <Button variant="ghost" size="sm" onClick={() => setConfirmClear(true)}>

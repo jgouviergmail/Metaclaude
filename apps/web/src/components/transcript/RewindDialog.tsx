@@ -101,7 +101,7 @@ export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindD
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            {outcome ? 'Close' : 'Cancel'}
+            {outcome ? t('Close') : t('Cancel')}
           </Button>
           {showConfirm ? (
             <Button

@@ -66,7 +66,7 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { interpolate, usePlural, useT } from '@/lib/i18n';
-import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import { TOUCH_TARGET_TEXT } from '@/components/ui/touch-target';
 import { cn, formatRelative } from '@/lib/utils';
 
 type TabKey = 'skills' | 'agents' | 'mcp' | 'library' | 'claude';
@@ -2121,7 +2121,7 @@ function ConnectorCard({
               rel="noreferrer noopener"
               className={cn(
                 'inline-flex items-center gap-1 text-caption font-medium text-muted transition-colors hover:text-accent',
-                TOUCH_TARGET_Y,
+                TOUCH_TARGET_TEXT,
               )}
             >
               <ExternalLink className="size-3.5" aria-hidden />

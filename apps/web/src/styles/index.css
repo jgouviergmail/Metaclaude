@@ -428,7 +428,21 @@
     @apply leading-[1.7];
   }
   .prose-mc a {
-    @apply text-[var(--mc-accent)] underline decoration-[var(--mc-accent)]/30 underline-offset-2 hover:decoration-[var(--mc-accent)];
+    @apply relative text-[var(--mc-accent)] underline decoration-[var(--mc-accent)]/30 underline-offset-2 hover:decoration-[var(--mc-accent)];
+  }
+  /*
+   * A rendered link is a line of text, 16 to 21 pixels tall, so a thumb gets
+   * half of what it needs. The same inset the app gives its own quiet links —
+   * `TOUCH_TARGET_TEXT`, 0.625rem each side — written in CSS because this
+   * markup comes from `lib/markdown.ts` and carries no classes of its own.
+   * Found on the changelog, where four links failed at once.
+   */
+  @media (pointer: coarse) {
+    .prose-mc a::before {
+      content: '';
+      position: absolute;
+      inset: -0.625rem 0;
+    }
   }
   .prose-mc strong {
     @apply font-semibold text-[var(--mc-text)];

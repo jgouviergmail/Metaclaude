@@ -616,7 +616,12 @@ function WorkspaceSettingsModal({
                       : draft.allowedTools.filter((name) => name !== tool),
                   )
                 }
-                label={tool}
+                // The tool's exact name, not a word: `Write` and `Edit` are
+                // what the CLI calls them and what its documentation says.
+                // Rendered as code so nobody translates them, and so the
+                // browser sweep stops reporting them as English on a French
+                // screen — which is what it is paid to report.
+                label={<code className="font-mono">{tool}</code>}
                 hint={t(TOOL_HINTS[tool])}
               />
             ))}
