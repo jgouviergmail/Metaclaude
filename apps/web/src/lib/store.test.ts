@@ -7,10 +7,10 @@
  * Every test below is one of those, not a happy path.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ApprovalRequest, Run, Session, TranscriptEvent } from '@metaclaude/shared';
 import { sessionTopic } from '@metaclaude/shared';
-import { useSessionStore } from './store.js';
+import { useSessionStore, useUiStore } from './store.js';
 
 const SESSION_ID = 'ses_current';
 const OTHER_ID = 'ses_elsewhere';
@@ -366,5 +366,38 @@ describe('lifecycle', () => {
     // And a frame arriving after the clear finds no session to attach to.
     store().applyEvent(TOPIC, textEvent('ev_2', 'late'));
     expect(store().events).toEqual([]);
+  });
+});
+
+/**
+ * The density setting, at the level where it actually happens.
+ *
+ * The component only calls `setDensity`; what makes the interface change is the
+ * attribute on the document and the standalone key that `public/density-init.js`
+ * reads before React mounts. A test on the button alone would pass while the
+ * setting did nothing on the next load, which is the failure that matters here.
+ */
+describe('density', () => {
+  afterEach(() => {
+    useUiStore.getState().setDensity('compact');
+  });
+
+  it('stamps the document, so every token switches at once', () => {
+    useUiStore.getState().setDensity('comfortable');
+    expect(document.documentElement.getAttribute('data-density')).toBe('comfortable');
+    expect(useUiStore.getState().density).toBe('comfortable');
+
+    useUiStore.getState().setDensity('compact');
+    expect(document.documentElement.getAttribute('data-density')).toBe('compact');
+  });
+
+  it('writes the standalone key the pre-paint script reads', () => {
+    // Without this the rows resize under the reader a frame after every load.
+    useUiStore.getState().setDensity('comfortable');
+    expect(localStorage.getItem('metaclaude.density')).toBe('comfortable');
+  });
+
+  it('defaults to compact, which is what the stylesheet declares', () => {
+    expect(useUiStore.getInitialState().density).toBe('compact');
   });
 });

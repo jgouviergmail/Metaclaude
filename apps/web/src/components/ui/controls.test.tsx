@@ -12,11 +12,11 @@
  * label association, and the touch target on a control that is 20px tall.
  */
 
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
-import { CheckboxField, Switch } from './controls';
+import { CheckboxField, SegmentedControl, Switch } from './controls';
 
 describe('Switch', () => {
   it('exposes itself as a switch with its state', () => {
@@ -135,5 +135,122 @@ describe('CheckboxField', () => {
 
     await userEvent.click(screen.getByRole('checkbox'));
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The segmented control, tested for the three things that go wrong with it.
+ *
+ * It replaces three hand-rolled button rows that sat in one card — language,
+ * theme and density — and it exists because that shape has cost this app a
+ * release already: four `flex-1` buttons in one row cannot shrink below their
+ * own text, so the fourth went off a 390px screen and an event trigger could
+ * not be chosen *or seen* on a phone. French is where it shows, being half
+ * again the English.
+ *
+ * happy-dom has no layout, so no test here can prove the row fits. What a test
+ * can hold is the contract that makes it fit: a grid with a column count, never
+ * a bare flex row. That is a class assertion and therefore a proxy — the real
+ * proof is `scripts/responsive.mjs`, which measures a live browser at 390px in
+ * both languages.
+ */
+
+const OPTIONS = [
+  { value: 'compact' as const, label: 'Compacte' },
+  { value: 'comfortable' as const, label: 'Confortable' },
+];
+
+describe('SegmentedControl', () => {
+  it('marks exactly one option as pressed, and reports the other when chosen', () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl label="Densité" value="compact" onChange={onChange} options={OPTIONS} />,
+    );
+
+    const compact = screen.getByRole('button', { name: /Compacte/ });
+    const comfortable = screen.getByRole('button', { name: /Confortable/ });
+    expect(compact.getAttribute('aria-pressed')).toBe('true');
+    expect(comfortable.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(comfortable);
+    expect(onChange).toHaveBeenCalledWith('comfortable');
+  });
+
+  it('names the group, so the options are not announced as loose buttons', () => {
+    render(<SegmentedControl label="Densité" value="compact" onChange={() => {}} options={OPTIONS} />);
+    expect(screen.getByRole('group', { name: 'Densité' })).toBeDefined();
+  });
+
+  it('lays the options out as a grid, never as a bare flex row', () => {
+    render(<SegmentedControl label="Densité" value="compact" onChange={() => {}} options={OPTIONS} />);
+    const group = screen.getByRole('group', { name: 'Densité' });
+    expect(group.className).toContain('grid');
+    expect(group.className).toContain('grid-cols-2');
+    // A `flex-1` child is the shape that cannot shrink below its own text.
+    expect(group.className).not.toContain('flex');
+    for (const button of screen.getAllByRole('button')) {
+      expect(button.className).not.toContain('flex-1');
+    }
+  });
+
+  it('keeps two columns on a phone and opens up above the breakpoint', () => {
+    render(
+      <SegmentedControl
+        label="Thème"
+        value="a"
+        onChange={() => {}}
+        options={[
+          { value: 'a', label: 'Clair' },
+          { value: 'b', label: 'Sombre' },
+          { value: 'c', label: 'Système' },
+        ]}
+      />,
+    );
+    const group = screen.getByRole('group', { name: 'Thème' });
+    expect(group.className).toContain('grid-cols-2');
+    expect(group.className).toContain('sm:grid-cols-3');
+  });
+
+  it('gives an odd last option the whole row on a phone, not a half-width orphan', () => {
+    render(
+      <SegmentedControl
+        label="Thème"
+        value="a"
+        onChange={() => {}}
+        options={[
+          { value: 'a', label: 'Clair' },
+          { value: 'b', label: 'Sombre' },
+          { value: 'c', label: 'Système' },
+        ]}
+      />,
+    );
+    const group = screen.getByRole('group', { name: 'Thème' });
+    expect(group.className).toContain('[&>*:last-child]:col-span-2');
+    expect(group.className).toContain('sm:[&>*:last-child]:col-span-1');
+  });
+
+  it('leaves an even count alone', () => {
+    render(<SegmentedControl label="Densité" value="compact" onChange={() => {}} options={OPTIONS} />);
+    expect(screen.getByRole('group', { name: 'Densité' }).className).not.toContain('col-span');
+  });
+
+  it('carries a hint under an option without folding it into the button name', () => {
+    render(
+      <SegmentedControl
+        label="Densité"
+        value="compact"
+        onChange={() => {}}
+        options={[
+          { value: 'compact', label: 'Compacte', hint: "Plus de lignes d'un coup d'œil." },
+          { value: 'comfortable', label: 'Confortable' },
+        ]}
+      />,
+    );
+    // The hint is readable on screen…
+    expect(screen.getByText("Plus de lignes d'un coup d'œil.")).toBeDefined();
+    // …and the button still answers to its short name, which is what voice
+    // control and a screen reader's list of controls both need.
+    const button = screen.getByRole('button', { name: 'Compacte' });
+    expect(button.getAttribute('aria-describedby')).toBeTruthy();
   });
 });

@@ -130,18 +130,16 @@
    * conditional in every row. What it also means, and the ratchet says so, is
    * that the setting only reaches a screen once that screen stops naming its
    * own sizes: `literalTextSizes` is the honest progress bar.
+   *
+   * Only two tokens, and deliberately: a token nothing consumes is dead code
+   * that a test then passes on. Row height and section rhythm arrive with the
+   * primitives that need them, not before.
    */
-  --mc-row-h: 2rem;
-  --mc-stack: 0.5rem;
-  --mc-section-gap: 1.5rem;
   --mc-text-body: 0.8125rem;
   --mc-pad-x: 1rem;
 }
 
 :root[data-density='comfortable'] {
-  --mc-row-h: 2.5rem;
-  --mc-stack: 0.875rem;
-  --mc-section-gap: 2.25rem;
   --mc-text-body: 0.875rem;
   --mc-pad-x: 1.25rem;
 }
@@ -232,10 +230,7 @@
   --text-caption: 0.71875rem;
   --text-caption--line-height: 1.4;
 
-  /* The rhythm, so `gap-stack`, `p-gutter`, `h-row` follow the density too. */
-  --spacing-stack: var(--mc-stack);
-  --spacing-section: var(--mc-section-gap);
-  --spacing-row: var(--mc-row-h);
+  /* The gutter, so `p-gutter` and `px-gutter` follow the density too. */
   --spacing-gutter: var(--mc-pad-x);
 }
 
@@ -314,10 +309,6 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* Figures line up in columns everywhere in this app — costs, tokens,
-       durations, quotas — and proportional digits make a live number shiver as
-       it updates. */
-    font-variant-numeric: tabular-nums;
     /* The chat view manages its own scrolling; the page itself never scrolls. */
     overflow: hidden;
     /* Respect the notch and the screen edges on iOS — top and sides ONLY.

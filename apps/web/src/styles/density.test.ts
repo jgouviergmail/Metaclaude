@@ -28,13 +28,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 const css = readFileSync('src/styles/index.css', 'utf8');
 
 /** The tokens density owns. Adding one here fails until it is declared twice. */
-const DENSITY_TOKENS = [
-  '--mc-row-h',
-  '--mc-stack',
-  '--mc-section-gap',
-  '--mc-text-body',
-  '--mc-pad-x',
-];
+const DENSITY_TOKENS = ['--mc-text-body', '--mc-pad-x'];
+
+/**
+ * A token nothing reads is dead code that this test would pass on, so the list
+ * above is held to what the app actually consumes. Row height and section
+ * rhythm arrive with the primitives that need them.
+ */
 
 /** Everything between `selector {` and its closing brace, at nesting depth 0. */
 function block(selector: string): string {

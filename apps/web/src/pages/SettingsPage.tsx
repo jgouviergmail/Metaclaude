@@ -45,6 +45,7 @@ import {
   Stat,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { SegmentedControl } from '@/components/ui/controls';
 import { useAuthStore, useUiStore, type Density, type ThemeMode } from '@/lib/store';
 import {
   cn,
@@ -660,9 +661,9 @@ export function AppearanceCard() {
   };
 
   const options: Array<{ value: ThemeMode; label: string; icon: React.ReactNode }> = [
-    { value: 'light', label: 'Light', icon: <Sun /> },
-    { value: 'dark', label: 'Dark', icon: <Moon /> },
-    { value: 'system', label: 'System', icon: <Monitor /> },
+    { value: 'light', label: t('Light'), icon: <Sun /> },
+    { value: 'dark', label: t('Dark'), icon: <Moon /> },
+    { value: 'system', label: t('System'), icon: <Monitor /> },
   ];
 
   // Translated here rather than at the render site: the table lives inside the
@@ -689,25 +690,12 @@ export function AppearanceCard() {
       />
       <div className="space-y-5 p-4">
         <div>
-          <p className="mb-2 text-[13px] font-medium text-ink">{t('Language')}</p>
-          <div className="flex gap-2">
-            {languages.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => chooseLanguage(option.value)}
-                aria-pressed={lang === option.value}
-                className={cn(
-                  'flex-1 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors',
-                  lang === option.value
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-raised',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={t('Language')}
+            value={lang}
+            onChange={chooseLanguage}
+            options={languages}
+          />
           <p className="mt-2 text-[12px] text-muted">
             {user?.role === 'owner'
               ? t(
@@ -718,56 +706,16 @@ export function AppearanceCard() {
         </div>
 
         <div>
-          <p className="mb-2 text-[13px] font-medium text-ink">{t('Theme')}</p>
-          <div className="flex gap-2">
-            {options.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setTheme(option.value)}
-                aria-pressed={theme === option.value}
-                className={cn(
-                  'flex flex-1 flex-col items-center gap-1.5 rounded-xl border px-3 py-3 transition-colors',
-                  '[&>svg]:size-5',
-                  theme === option.value
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-raised',
-                )}
-              >
-                {option.icon}
-                <span className="text-[12px] font-medium">{t(option.label)}</span>
-              </button>
-            ))}
-          </div>
+          <SegmentedControl label={t('Theme')} value={theme} onChange={setTheme} options={options} />
         </div>
 
         <div>
-          <p className="mb-2 text-body font-medium text-ink">{t('Density')}</p>
-          {/* A two-column grid rather than a flex row: a `flex-1` item cannot
-              shrink below its own text, and « Confortable » is half again the
-              English. */}
-          <div className="grid grid-cols-2 gap-2">
-            {densities.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setDensity(option.value)}
-                aria-pressed={density === option.value}
-                className={cn(
-                  'rounded-xl border px-3 py-2.5 text-left transition-colors',
-                  density === option.value
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-raised',
-                )}
-              >
-                {/* The first two call sites of the new type scale: a role, not
-                    a size. `text-body` follows the density token, so this very
-                    control grows when it is set to comfortable. */}
-                <span className="block text-body font-medium">{option.label}</span>
-                <span className="mt-0.5 block text-caption opacity-80">{option.hint}</span>
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={t('Density')}
+            value={density}
+            onChange={setDensity}
+            options={densities}
+          />
         </div>
 
         <div className="space-y-3">

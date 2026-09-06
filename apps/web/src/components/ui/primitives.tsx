@@ -267,7 +267,7 @@ export function CardHeader({
 }) {
   const Heading = `h${level}` as const;
   return (
-    <div className={cn('flex items-start justify-between gap-4 border-b border-line p-4', className)}>
+    <div className={cn('flex items-start justify-between gap-4 border-b border-line p-gutter', className)}>
       <div className="min-w-0 space-y-1">
         <Heading className="truncate text-sm font-semibold text-ink">{title}</Heading>
         {description ? <p className="text-xs leading-relaxed text-muted">{description}</p> : null}
@@ -385,7 +385,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-4 py-4 sm:px-6">
+    <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-gutter sm:px-6">
       <div className="min-w-0 space-y-1">
         <h1 className="truncate text-lg font-semibold tracking-tight text-ink">{title}</h1>
         {description ? (
@@ -465,7 +465,7 @@ export function Stat({
   icon?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-line bg-surface p-4">
+    <div className="rounded-xl border border-line bg-surface p-gutter">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-subtle">{label}</p>
         {icon ? <span className="text-subtle [&>svg]:size-4">{icon}</span> : null}

@@ -101,6 +101,27 @@ self.addEventListener('fetch', (event) => {
   // Never intercept the API or the WebSocket. Live state must be live.
   if (url.pathname.startsWith('/api/')) return;
 
+  // The embedded font is immutable in practice and its name is stable, so it
+  // is cache-first like a hashed asset rather than network-first like the
+  // shell: re-fetching 47 kB on every navigation buys nothing. The name has to
+  // change if the file ever does — there is no hash to do it for us.
+  if (url.pathname.startsWith('/fonts/')) {
+    event.respondWith(
+      caches.match(request).then(
+        (cached) =>
+          cached ??
+          fetch(request).then((response) => {
+            if (response.ok) {
+              const copy = response.clone();
+              void caches.open(ASSET_CACHE).then((cache) => cache.put(request, copy));
+            }
+            return response;
+          }),
+      ),
+    );
+    return;
+  }
+
   // Build assets carry a content hash, so a cache hit is always correct.
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(

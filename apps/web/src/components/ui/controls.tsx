@@ -127,3 +127,115 @@ export function CheckboxField({
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Segmented control                                                           */
+/* -------------------------------------------------------------------------- */
+
+export interface SegmentedOption<T extends string> {
+  value: T;
+  label: string;
+  /** One line under the label. Described, never folded into the name. */
+  hint?: string;
+  icon?: ReactNode;
+}
+
+export interface SegmentedControlProps<T extends string> {
+  /**
+   * Rendered above the options *and* used as the group's accessible name.
+   *
+   * The component owns it rather than leaving each caller to write its own
+   * paragraph: three call sites did, which meant the visible label and the
+   * group's name were two separate strings free to drift, and the visible one
+   * was associated with nothing.
+   */
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: Array<SegmentedOption<T>>;
+  className?: string;
+}
+
+/**
+ * One choice among a few, laid out as a grid.
+ *
+ * The grid is the whole point and it is not a style preference. A row of
+ * `flex-1` buttons cannot shrink below its own text, so the row overflows
+ * instead of wrapping: four trigger buttons went off a 390px screen here and an
+ * event trigger could not be chosen *or seen* on a phone. French is where it
+ * shows — `Planifié · Intervalle · Manuel · Événement` is half again the
+ * English. Two columns below the breakpoint, the natural count above it.
+ *
+ * This replaces three hand-rolled copies that sat in a single card: language,
+ * theme and density.
+ *
+ * The hint stays *inside* the button, because a hint you cannot click is a
+ * smaller target for no reason — but the button then carries an explicit
+ * `aria-label` of the short label alone. Text inside a control becomes part of
+ * its accessible *name*, and `aria-describedby` does not take it back out:
+ * without the label the reader announces "Compacte Plus de lignes d'un coup
+ * d'œil, pressed" on every focus, and voice control has no short phrase to
+ * target. The name still contains the visible label, which is what WCAG's
+ * label-in-name rule asks for.
+ */
+export function SegmentedControl<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+  className,
+}: SegmentedControlProps<T>) {
+  const id = useId();
+  const columns =
+    options.length <= 2
+      ? 'grid-cols-2'
+      : options.length === 3
+        ? 'grid-cols-2 sm:grid-cols-3'
+        : 'grid-cols-2 sm:grid-cols-4';
+  // An odd count leaves the last option alone in a half-width box on the phone,
+  // which reads as a mistake rather than as a choice. It takes the whole row
+  // instead, and goes back to one column once there is room for the real count.
+  const orphan =
+    options.length > 2 && options.length % 2 === 1
+      ? '[&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1'
+      : '';
+
+  return (
+    <div className={className}>
+      <p id={`${id}-label`} className="mb-2 text-body font-medium text-ink">
+        {label}
+      </p>
+      <div role="group" aria-labelledby={`${id}-label`} className={cn('grid gap-2', columns, orphan)}>
+        {options.map((option) => {
+          const hintId = option.hint ? `${id}-${option.value}` : undefined;
+          const selected = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              aria-pressed={selected}
+              aria-label={option.label}
+              aria-describedby={hintId}
+              className={cn(
+                'rounded-xl border px-3 py-2.5 text-left transition-colors',
+                option.icon && 'flex flex-col items-center gap-1.5 text-center [&>svg]:size-5',
+                selected
+                  ? 'border-accent bg-accent-soft text-accent'
+                  : 'border-line text-muted hover:bg-raised',
+              )}
+            >
+              {option.icon}
+              <span className="block text-body font-medium">{option.label}</span>
+              {option.hint ? (
+                <span id={hintId} className="mt-0.5 block text-caption opacity-80">
+                  {option.hint}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
