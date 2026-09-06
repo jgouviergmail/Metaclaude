@@ -349,7 +349,7 @@ export function KnowledgeSection({
             ) : (
               <ul className="space-y-2">
                 {preview.data!.results.map((hit) => (
-                  <li key={hit.chunkId} className="rounded-lg border border-line bg-canvas/40 p-3">
+                  <li key={hit.chunkId} className="rounded-lg border border-line bg-sunken/40 p-3">
                     <p className="text-[12px] font-medium text-accent">
                       {[hit.documentTitle, hit.heading].filter(Boolean).join(' › ')}
                       <span className="ml-2 font-mono text-[11px] text-subtle">

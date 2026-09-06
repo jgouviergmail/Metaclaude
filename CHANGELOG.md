@@ -11,6 +11,34 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.57.2] — 2026-09-06
+
+### Fixed
+
+- Two rows were drawn with no background at all. `bg-canvas/40` names a colour
+  the palette does not have, so Tailwind generated no rule and the class did
+  nothing — on a knowledge search hit and on an MCP credential block. Nothing
+  could see it: not the app, not the tests, not either browser guard, because a
+  missing background looks exactly like an intended one.
+- A ratchet that passed on a broken build. `initialJsGzipKb` skipped a
+  referenced asset that was not on disk, so an incomplete build measured
+  **zero** and passed under any ceiling. Found by deleting `dist/assets` to
+  check that the new measure beside it reported "not measurable", and watching
+  this one report 0 instead. It now reports rather than passes.
+
+### Changed
+
+- A ratchet for classes the stylesheet never defines — the third way a class
+  can fail to take effect, after tailwind-merge deleting it and a custom theme
+  namespace it did not recognise. It reads the built stylesheet and treats a
+  string as a class list only when at least two of its tokens are classes that
+  genuinely exist and they are at least half of it: 1470 lists recognised here,
+  one token reported, and that token was real.
+- A test that derives the custom theme namespaces from `styles/index.css` and
+  fails on any it has no assertion for. It found `ease-*`, which tailwind-merge
+  did not know either — harmless today, since those tokens are only read from
+  CSS, and declared anyway so the rule holds without an exception list.
+
 ## [0.57.1] — 2026-09-06
 
 ### Changed

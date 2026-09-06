@@ -354,13 +354,46 @@ par le banc à chaque lot et par la CI au lot 9.
 | **0** | `check:responsive` en CI + correction **ciblée** des défauts 1 à 5 | zéro défaut, témoins capturés, CI verte |
 | **1** | Tokens, échelle typographique, police (47 kB mesurés), densité, **correction des cinq pièges `CLAUDE.md` qui nomment jsdom** | `literalTextSizes` commence à baisser ; poids du bundle mesuré |
 | **2** | Les onze primitives + leurs tests | couverture des primitives, ratchets en place |
-| **3** | Contrat de routes, coquille, rail, onglets, palette | `hardcodedRoutes` → 0 ; **écran-témoin photographié et soumis** |
-| **4** | Système (6 onglets) | le plus gros gain de densité |
-| **5** | Accueil | — |
-| **6** | Mémoire et Board | — |
-| **7** | Espaces | — |
-| **8** | Session | prudence maximale : streaming, approbations, composeur |
-| **9** | Passe finale : banc, deux densités, deux thèmes, deux langues | matrice complète |
+| **3** | Coquille, rail, onglets, palette | écran-témoin photographié et soumis |
+| **4** | Mémoire | — |
+| **5** | Revue à froid de la Mémoire : la divulgation de densité | l'aide reste atteignable dans les deux densités |
+| **6** | Agents & compétences | l'échelle typographique s'applique enfin ; `literalTextSizes` 415 → 360 |
+
+### Révision après l'analyse systémique du lot 6
+
+Trois faits mesurés ont réordonné la suite, et le premier la précède.
+
+**La portée des gardes est le facteur limitant.** `scripts/responsive.mjs`
+ouvre **5 dialogues sur 52**, visite **3 panneaux d'onglets sur 17** et ouvre
+les menus sur 5 routes sur 12. Les douze routes sont couvertes, et c'est tout.
+Cela explique un motif que six lots ont répété : chaque défaut structurel — le
+bandeau désaligné, les neuf lignes de prose, la carte qui déborde — a été
+trouvé **à l'œil sur une capture**, jamais par le garde ; pendant que le garde
+trouvait ce qu'aucun œil ne voit (seize zones tactiles). Les deux sont
+complémentaires et un seul des deux passe à l'échelle. Étendre la portée après
+les lots restants reviendrait à les livrer comme le lot 6 a failli l'être.
+
+**Le contrat de routes de la spec n'a jamais été écrit.**
+`packages/shared/src/routes.ts` est absent et seize chaînes de route restent en
+dur côté web. L'engagement tient toujours.
+
+**La table ne couvrait pas l'application.** Automations, Plugins, Analytics,
+Réglages, Aide, Espaces et Session n'étaient nommés dans aucun lot exécuté.
+L'inventaire mesuré des 360 tailles littérales restantes : Automations 21,
+Espace 19, Réglages 17, Accueil 12, Analytics 10, Connexion 10, Plugins 9,
+Aide 7, Espaces 7, Board 3, Session 1 — plus 244 dans les composants, dont
+GitPanel 18, McpGatewayCard 14, TranscriptItem 11, ClaudeCredentialCard 11,
+ApprovalCard 10, KnowledgeSection 10, TaskDrawer 10.
+
+| Lot | Contenu | Porte de sortie |
+|---|---|---|
+| **7** | **La portée des gardes** : ouvrir tous les dialogues, visiter tous les panneaux d'onglets, ouvrir les menus sur toutes les routes — avec le temps d'exécution mesuré et borné | couverture ≥ 90 % des dialogues et 100 % des panneaux, durée mesurée et acceptable |
+| **8** | Système : Automations, Plugins, Analytics, Réglages, Aide | le plus gros gain de densité restant |
+| **9** | Accueil et Board | — |
+| **10** | Espaces (liste et espace) + contrat de routes `packages/shared` | `hardcodedRoutes` → 0 |
+| **11** | Session | prudence maximale : streaming, approbations, composeur |
+| **12** | Passe finale : banc, deux densités, deux thèmes, deux langues | matrice complète |
+
 
 **Correction ciblée contre refonte.** Le lot 0 corrige les cinq défauts par
 l'intervention la plus étroite possible — `min-width: 0` sur la grille,

@@ -34,6 +34,11 @@ const twMerge = extendTailwindMerge({
      */
     theme: {
       spacing: ['gutter', 'section', 'stack'],
+      // Used only from CSS today — `var(--ease-out-quint)` inside a keyframe,
+      // never as a utility. Declared anyway so the rule "every custom theme
+      // namespace is known to cn" holds without an exception list, which is
+      // what `theme-merge.test.ts` derives from the stylesheet and enforces.
+      ease: ['out-quint', 'spring'],
     },
   },
 });

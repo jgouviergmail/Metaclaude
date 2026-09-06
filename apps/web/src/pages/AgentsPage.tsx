@@ -2156,7 +2156,7 @@ function ConnectorCard({
         ) : null}
 
         {credential && asking ? (
-          <div className="space-y-1.5 rounded-lg border border-line bg-canvas/40 p-3">
+          <div className="space-y-1.5 rounded-lg border border-line bg-sunken/40 p-3">
             <Label htmlFor={fieldId}>
               <span className="inline-flex items-center gap-1.5">
                 <KeyRound className="size-3.5" aria-hidden />

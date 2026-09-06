@@ -24,10 +24,11 @@
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const BOUNDARY_JOIN = String.fromCharCode(10);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE = join(ROOT, 'deploy', 'ratchets.json');
 
@@ -1284,10 +1285,88 @@ async function measureInitialJs() {
   let total = 0;
   for (const name of names) {
     const path = join(dist, 'assets', name);
-    if (!existsSync(path)) continue;
+    // A referenced asset that is not on disk means the build is incomplete,
+    // not that it is small. Skipping it returned a comfortable **zero** that
+    // passed under any ceiling — found by deleting `dist/assets` to check the
+    // sibling measure reported "not measurable", and watching this one report
+    // 0 (ratchet 191) instead. Same family as the uninstall rehearsal that
+    // could not tell a guard holding from a script that never ran.
+    if (!existsSync(path)) return null;
     total += gzipSync(readFileSync(path), { level: 9 }).length;
   }
-  return Math.round(total / 1024);
+  return total === 0 ? null : Math.round(total / 1024);
+}
+
+/**
+ * Tailwind classes written in the source that the stylesheet never defines.
+ *
+ * The third way a class can fail to take effect, after the two that were
+ * already found: tailwind-merge deleting it, and a custom `@theme` namespace it
+ * did not recognise. This one is simpler and just as silent — the class is a
+ * typo, or a name Tailwind's scanner never saw, so no rule is generated and the
+ * element quietly renders without it. `bg-canvas/40` shipped twice on rows that
+ * were therefore drawn with no background at all, in a palette that has no
+ * `canvas`; nothing in the app, the tests or the two browser guards could tell
+ * a missing background from an intended one.
+ *
+ * The discriminator is what makes this measurable rather than noisy: a string
+ * counts as a class list only when at least two of its tokens are classes the
+ * stylesheet *does* define, and they are at least half of it. Measured on this
+ * tree that recognises 1470 class lists and reports one token — the real one —
+ * so the ceiling is zero rather than a tolerated pile.
+ *
+ * Requires a build, and reports rather than passes without one: a ceiling
+ * nobody measures is not a ceiling.
+ */
+function measureUndefinedClasses() {
+  const dist = join(ROOT, 'apps/web/dist', 'assets');
+  if (!existsSync(dist)) return null;
+  const sheets = readdirSync(dist).filter((name) => name.endsWith('.css'));
+  if (sheets.length === 0) return null;
+
+  // De-escaped once, so nothing below has to reason about CSS escaping.
+  const BS = String.fromCharCode(92);
+  const flat = sheets
+    .map((name) => readFileSync(join(dist, name), 'utf8'))
+    .join(BOUNDARY_JOIN)
+    .split(BS)
+    .join('');
+
+  const known = new Map();
+  const defined = (cls) => {
+    const cached = known.get(cls);
+    if (cached !== undefined) return cached;
+    let hit = false;
+    for (let at = flat.indexOf('.' + cls); at !== -1; at = flat.indexOf('.' + cls, at + 1)) {
+      const next = flat[at + cls.length + 1];
+      if (next === undefined || !/[a-zA-Z0-9_-]/.test(next)) {
+        hit = true;
+        break;
+      }
+    }
+    known.set(cls, hit);
+    return hit;
+  };
+
+  const STRINGS = new RegExp("'([^'" + BS + "n]*)'|" + '"([^"' + BS + 'n]*)"', 'g');
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!/\.tsx?$/.test(file) || file.includes('.test.')) continue;
+    for (const match of read(file).matchAll(STRINGS)) {
+      const body = (match[1] ?? match[2] ?? '').trim();
+      if (!body || body.length > 400) continue;
+      const tokens = body.split(' ').filter(Boolean);
+      if (tokens.length < 2) continue;
+      const hits = tokens.filter(defined);
+      if (hits.length < 2 || hits.length * 2 < tokens.length) continue;
+      for (const token of tokens) {
+        if (defined(token)) continue;
+        n += 1;
+        note('css ', file, token);
+      }
+    }
+  }
+  return n;
 }
 
 /** Source files with no test file beside them, in the subsystems that matter most. */
@@ -1426,6 +1505,14 @@ const METRICS = [
     direction: 'down',
     label: 'kernel/security/learning modules with no test file',
     measure: countUntestedCriticalModules,
+  },
+  {
+    key: 'undefinedClasses',
+    direction: 'down',
+    label: 'classes the stylesheet never defines',
+    measure: measureUndefinedClasses,
+    // Requires a build, like the bundle ceiling below.
+    optional: true,
   },
   {
     key: 'initialJsGzipKb',

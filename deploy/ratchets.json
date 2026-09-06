@@ -1,7 +1,7 @@
 {
   "metrics": {
-    "tests": 3119,
-    "testFiles": 222,
+    "tests": 3122,
+    "testFiles": 223,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
     "initialJsGzipKb": 191,
@@ -21,7 +21,8 @@
     "literalTextSizes": 360,
     "pageWidths": 2,
     "adHocTabs": 0,
-    "tokenBypass": 0
+    "tokenBypass": 0,
+    "undefinedClasses": 0
   },
   "updated": "2026-09-06"
 }
