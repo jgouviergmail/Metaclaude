@@ -198,7 +198,7 @@ export function DashboardPage() {
           {briefQuery.data ? (
             <Card>
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-                <h2 className="text-sm font-semibold text-ink">{t('The brief')}</h2>
+                <h2 className="text-body font-semibold text-ink">{t('The brief')}</h2>
                 <span className="text-[11.5px] text-subtle">{t('last 24 hours')}</span>
               </div>
               <div className="px-4 py-3">
@@ -212,7 +212,7 @@ export function DashboardPage() {
             <Card className="border-warning/40 bg-warning-soft/25">
               <div className="flex items-center gap-2 border-b border-warning/25 px-4 py-3">
                 <ShieldQuestion className="size-4 shrink-0 text-warning" aria-hidden />
-                <h2 className="text-sm font-semibold text-ink">
+                <h2 className="text-body font-semibold text-ink">
                   {plural(
                     approvals.length,
                     '{n} action waiting for you',
@@ -327,7 +327,7 @@ export function DashboardPage() {
             <Card>
               <div className="flex items-center gap-2 border-b border-line px-4 py-3">
                 <Activity className="size-4 shrink-0 text-accent" aria-hidden />
-                <h2 className="text-sm font-semibold text-ink">{t('In flight')}</h2>
+                <h2 className="text-body font-semibold text-ink">{t('In flight')}</h2>
               </div>
               <ul className="divide-y divide-line">
                 {activeRuns.map((run) => (
@@ -343,7 +343,7 @@ export function DashboardPage() {
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
                 <div className="flex items-center gap-2">
                   <FolderGit2 className="size-4 shrink-0 text-muted" aria-hidden />
-                  <h2 className="text-sm font-semibold text-ink">{t('Workspaces')}</h2>
+                  <h2 className="text-body font-semibold text-ink">{t('Workspaces')}</h2>
                 </div>
                 <Link to="/workspaces" className={cn('text-caption', QUIET_LINK)}>
                   {t('View all')}
@@ -409,7 +409,7 @@ export function DashboardPage() {
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Zap className="size-4 shrink-0 text-thinking" aria-hidden />
-                  <h2 className="text-sm font-semibold text-ink">{t('Recently learned')}</h2>
+                  <h2 className="text-body font-semibold text-ink">{t('Recently learned')}</h2>
                 </div>
                 <Link to="/memory" className={cn('text-caption', QUIET_LINK)}>
                   {t('Review')}
@@ -449,7 +449,7 @@ export function DashboardPage() {
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
               <div className="flex items-center gap-2">
                 <Timer className="size-4 shrink-0 text-muted" aria-hidden />
-                <h2 className="text-sm font-semibold text-ink">{t('Recent runs')}</h2>
+                <h2 className="text-body font-semibold text-ink">{t('Recent runs')}</h2>
               </div>
               <Link to="/analytics" className={cn('text-caption', QUIET_LINK)}>
                 {t('Analytics')}

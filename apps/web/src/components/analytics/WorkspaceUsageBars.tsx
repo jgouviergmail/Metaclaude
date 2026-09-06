@@ -28,7 +28,7 @@ export function WorkspaceUsageBars({ rows }: { rows: WorkspaceUsage[] }) {
   const t = useT();
   if (rows.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-subtle">
+      <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-caption text-subtle">
         {t('No usage in this period.')}
       </p>
     );
@@ -59,9 +59,9 @@ export function WorkspaceUsageBars({ rows }: { rows: WorkspaceUsage[] }) {
                   style={{ background: row.color }}
                   aria-hidden
                 />
-                <span className="truncate text-[13px] font-medium text-ink">{row.name}</span>
+                <span className="truncate text-body font-medium text-ink">{row.name}</span>
               </span>
-              <span className="flex shrink-0 items-baseline gap-2 text-[11.5px] tabular-nums text-muted">
+              <span className="flex shrink-0 items-baseline gap-2 text-caption tabular-nums text-muted">
                 <span>{formatTokens(tokens)}</span>
                 {/* Only where a cost was actually reported. A subscription
                     reports none, and "$0.00" on every row reads as "this was

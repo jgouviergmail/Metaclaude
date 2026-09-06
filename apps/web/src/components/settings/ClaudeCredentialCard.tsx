@@ -122,7 +122,7 @@ export function ClaudeCredentialCard() {
             tokens are managed, or removing a token looks like a downgrade
             when it is sometimes the upgrade. */}
         {status.data?.source === 'cli-login' ? (
-          <p className="rounded-lg bg-accent-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-ink">
+          <p className="rounded-lg bg-accent-soft px-3 py-2.5 text-caption leading-relaxed text-ink">
             {t(
               'The CLI is signed in with a Claude account{plan}{scope} — runs use that sign-in. Pairing a token below would override it.',
               {
@@ -136,7 +136,7 @@ export function ClaudeCredentialCard() {
             )}
           </p>
         ) : status.data?.cliLogin ? (
-          <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-[12.5px] leading-relaxed text-muted">
+          <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-caption leading-relaxed text-muted">
             {t(
               'A CLI account sign-in also exists{scope}, but the {source} token overrides it. Remove the token to let the account sign-in take over.',
               {
@@ -164,13 +164,13 @@ export function ClaudeCredentialCard() {
 
         {/* ------------------------- Guided pairing ------------------------- */}
         <div className="space-y-3">
-          <h3 className="text-[13px] font-semibold text-ink">{t(
+          <h3 className="text-body font-semibold text-ink">{t(
             'Pair with your Claude account',
           )}</h3>
 
           {start === null ? (
             <>
-              <p className="text-[12.5px] leading-relaxed text-muted">
+              <p className="text-caption leading-relaxed text-muted">
                 <Trans
                   template={t(
                     'Metaclaude runs the {command} flow for you: sign in at claude.ai, approve, paste back the code it shows. Works entirely from this device. Console (per-token) accounts paste their API key below instead.',
@@ -192,7 +192,7 @@ export function ClaudeCredentialCard() {
           ) : (
             <div className="space-y-3 rounded-lg border border-line bg-sunken p-3">
               <div className="space-y-2">
-                <p className="text-[13px] text-ink">
+                <p className="text-body text-ink">
                   <span className="font-semibold">1 ·</span> {t(
                     'Open the sign-in link and approve. Claude then displays a code.',
                   )}
@@ -206,7 +206,7 @@ export function ClaudeCredentialCard() {
                     <ExternalLink className="size-3.5" />
                     {t('Open claude.ai')}
                   </Button>
-                  <span className="text-[12px] text-subtle">{t(
+                  <span className="text-caption text-subtle">{t(
                     'or copy it to another device:',
                   )}</span>
                 </div>
@@ -243,7 +243,7 @@ export function ClaudeCredentialCard() {
                 <Button variant="ghost" size="sm" onClick={() => cancel.mutate()}>
                   {t('Cancel')}
                 </Button>
-                <span className="text-[12px] text-subtle">{t(
+                <span className="text-caption text-subtle">{t(
                   'The link stays valid for 10 minutes.',
                 )}</span>
               </div>
@@ -266,7 +266,7 @@ export function ClaudeCredentialCard() {
               if (event.key === 'Enter' && value.trim()) save.mutate(value);
             }}
           />
-          <p className="text-[12px] text-muted">
+          <p className="text-caption text-muted">
             <Trans
               template={t(
                 'A token beginning {oat} uses your Pro or Max subscription — {command} on any signed-in machine prints one. One beginning {api} bills per token instead. Metaclaude tells them apart on its own.',
@@ -298,10 +298,10 @@ export function ClaudeCredentialCard() {
         </div>
 
         <details className="rounded-lg border border-line bg-sunken p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-ink">
+          <summary className="cursor-pointer text-body font-medium text-ink">
             {t('No signed-in machine anywhere?')}
           </summary>
-          <div className="mt-3 space-y-2 text-[13px] text-muted">
+          <div className="mt-3 space-y-2 text-body text-muted">
             <p>
               {t(
                 'This server ships the CLI. Over SSH, or from the provider’s web console, the same flow works by hand:',
@@ -349,7 +349,7 @@ function SignInEnds({ endsAt }: { endsAt: number | null }) {
   return (
     <p
       className={cn(
-        'rounded-lg px-3 py-2.5 text-[12.5px] leading-relaxed',
+        'rounded-lg px-3 py-2.5 text-caption leading-relaxed',
         urgent ? 'bg-danger-soft text-danger' : 'text-muted',
       )}
     >

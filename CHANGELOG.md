@@ -11,6 +11,36 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.59.0] — 2026-09-06
+
+### Fixed
+
+- The automation card leaked the next line of its prompt. `line-clamp` limits
+  the *content* to two lines but `overflow: hidden` clips at the **padding**
+  box, so the six pixels below the second line were a window onto the third —
+  cut through the glyphs, outside the tinted background it belonged to. One
+  layer per concern: the box carries the padding, the paragraph carries the
+  clamp. A ratchet now refuses the pairing, and reads the whole `className`
+  value rather than only a plain string, because the sabotage that was meant to
+  prove it could fail found nothing until it did.
+
+### Changed
+
+- The configuration screen folds its explanations. Eight settings, three lines
+  each, is twenty-four lines of prose in front of the values you came to
+  change; on a phone it showed two settings, and now shows five. `Label` grew
+  an `explanation` — the essay, which follows the density — beside the `hint`
+  it already had, which never folds: a hint is the constraint you need *while*
+  filling the control, and hiding that in the density most people run is not
+  the trade the setting offers.
+- The whole System section moves onto the type scale: 129 literal sizes across
+  Automations, Plugins, Analytics, Settings, Help and their cards, in six
+  spellings, become three roles.
+- Tailwind's own named sizes count as literals now. The measure read
+  `text-[13px]` and walked past `text-sm`, which is the same decision spelled
+  the other way — forty-eight had survived five lots of burning the first
+  spelling down. Forty-two are converted; the ceiling counts what remains.
+
 ## [0.58.1] — 2026-09-06
 
 ### Fixed

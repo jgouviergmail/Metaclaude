@@ -201,7 +201,7 @@ export function AutomationsPage() {
                 ) : (
                   <Link
                     to="/workspaces"
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised px-3 text-[13px] font-medium text-ink hover:bg-line"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised px-3 text-body font-medium text-ink hover:bg-line"
                   >
                     {t('Go to workspaces')}
                   </Link>
@@ -233,7 +233,7 @@ export function AutomationsPage() {
                       {/* `h2`, not `h3`: PageHeader renders the page's h1 and
                           nothing sits between it and this list, so an h3 skipped
                           a level on every automation. */}
-                      <h2 className="text-[14px] font-semibold text-ink">{automation.name}</h2>
+                      <h2 className="text-body font-semibold text-ink">{automation.name}</h2>
                       {automation.continuous ? (
                         <Tooltip content={t(
                           'Each firing continues the same session, so context accumulates across runs.',
@@ -251,15 +251,26 @@ export function AutomationsPage() {
                       ) : null}
                     </div>
 
-                    <p className="mt-1 text-[12.5px] text-muted">
+                    <p className="mt-1 text-caption text-muted">
                       {workspaceName(automation.workspaceId)} · {describeTrigger(automation.trigger)}
                     </p>
 
-                    <p className="mt-2 line-clamp-2 rounded-lg bg-sunken px-2.5 py-1.5 font-mono text-[12px] leading-relaxed text-muted">
-                      {automation.prompt}
-                    </p>
+                    {/*
+                      * One layer per concern: the box carries the padding, the
+                      * paragraph carries the clamp. Both on one element leaks
+                      * the next line — `overflow: hidden` clips at the *padding*
+                      * box, so the six pixels below the second line showed the
+                      * top of the third, cut through the glyphs, outside the
+                      * tinted background. Same family as a fixed height and a
+                      * safe-area inset fighting over one element.
+                      */}
+                    <div className="mt-2 rounded-lg bg-sunken px-2.5 py-1.5">
+                      <p className="line-clamp-2 font-mono text-caption leading-relaxed text-muted">
+                        {automation.prompt}
+                      </p>
+                    </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-subtle">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-subtle">
                       <span>{automation.runCount} {t('runs')}</span>
                       {automation.lastRunAt ? (
                         <span>{t('last')} {formatRelative(automation.lastRunAt)}</span>
@@ -565,7 +576,7 @@ function AutomationEditor({
             look like it reverted one. Only what is edited here is sent, so
             reading on is safe — but it is not the truth, and the form says so. */}
         {movedElsewhere && stored ? (
-          <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning">
+          <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-caption leading-relaxed text-warning">
             {t('This automation changed elsewhere since this form opened. Only the fields you edit here are sent.')}
             <Button variant="outline" size="sm" onClick={() => seed(stored)}>
               {t('Load the new version')}
@@ -587,7 +598,7 @@ function AutomationEditor({
 
         {!automation ? (
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('Workspace')}</span>
+            <span className="mb-1.5 block text-body font-medium text-ink">{t('Workspace')}</span>
             <Menu
               side="bottom"
               trigger={
@@ -624,7 +635,7 @@ function AutomationEditor({
         </Label>
 
         <div>
-          <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('Trigger')}</span>
+          <span className="mb-1.5 block text-body font-medium text-ink">{t('Trigger')}</span>
           {/* Two by two on a phone, four across from `sm` up. A single flex row
               of four `flex-1` cells cannot shrink below its text, so it
               overflowed the dialog with no wrap and no scroll: on a 360px
@@ -639,7 +650,7 @@ function AutomationEditor({
                 onClick={() => setTriggerType(type)}
                 aria-pressed={triggerType === type}
                 className={cn(
-                  'rounded-lg border px-3 py-2 text-[12.5px] font-medium capitalize transition-colors',
+                  'rounded-lg border px-3 py-2 text-caption font-medium capitalize transition-colors',
                   triggerType === type
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-raised',
@@ -657,7 +668,7 @@ function AutomationEditor({
                 onChange={(event) => setExpression(event.target.value)}
                 placeholder="0 9 * * *"
                 aria-label={t('Cron expression')}
-                className="font-mono text-[13px]"
+                className="font-mono text-body"
               />
               <div className="flex flex-wrap gap-1.5">
                 {PRESETS.map((preset) => (
@@ -677,7 +688,7 @@ function AutomationEditor({
                   </button>
                 ))}
               </div>
-              <p className="text-[11.5px] text-subtle">
+              <p className="text-caption text-subtle">
                 {t("Standard 5-field cron, read in the server's timezone: {zone}.", {
                   zone: system?.timezone ?? '…',
                 })}
@@ -693,7 +704,7 @@ function AutomationEditor({
                     onClick={() => setEventName(event)}
                     aria-pressed={eventName === event}
                     className={cn(
-                      'rounded-lg border px-3 py-2 text-[12.5px] font-medium transition-colors',
+                      'rounded-lg border px-3 py-2 text-caption font-medium transition-colors',
                       eventName === event
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line text-muted hover:bg-raised',
@@ -709,7 +720,7 @@ function AutomationEditor({
                 placeholder={t('Filter (optional)')}
                 aria-label={t('Filter (optional)')}
               />
-              <p className="text-[11.5px] text-subtle">
+              <p className="text-caption text-subtle">
                 {t(
                   'Fires when a run you, a token or a delegation started in this workspace ends that way — never one another automation produced, which would chain. The filter is a word that must appear in the run’s category or prompt.',
                 )}
@@ -724,12 +735,12 @@ function AutomationEditor({
                 onChange={(event) => setEveryMinutes(Math.max(1, Number(event.target.value)))}
                 aria-label={t('Interval in minutes')}
               />
-              <p className="mt-1 text-[11.5px] text-subtle">{t(
+              <p className="mt-1 text-caption text-subtle">{t(
                 'Minutes between runs. Minimum 1.',
               )}</p>
             </div>
           ) : (
-            <p className="mt-2.5 text-[11.5px] text-subtle">
+            <p className="mt-2.5 text-caption text-subtle">
               {t('Runs only when you press "Run now".')}
             </p>
           )}
@@ -743,8 +754,8 @@ function AutomationEditor({
             className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)]"
           />
           <span className="min-w-0">
-            <span className="block text-[13px] font-medium text-ink">{t('Continuous loop')}</span>
-            <span className="block text-[12px] leading-relaxed text-muted">
+            <span className="block text-body font-medium text-ink">{t('Continuous loop')}</span>
+            <span className="block text-caption leading-relaxed text-muted">
               {t(
                 'Continue the same session on every firing instead of starting fresh. The agent keeps everything it has already learned in this loop, which is what makes long-running, self-directed work possible — and what makes its context grow over time.',
               )}
@@ -760,8 +771,8 @@ function AutomationEditor({
             className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)]"
           />
           <span className="min-w-0">
-            <span className="block text-[13px] font-medium text-ink">{t('Notify me when a firing ends')}</span>
-            <span className="block text-[12px] leading-relaxed text-muted">
+            <span className="block text-body font-medium text-ink">{t('Notify me when a firing ends')}</span>
+            <span className="block text-caption leading-relaxed text-muted">
               {t(
                 'Automations are silent by default so the machinery never wakes you. Tick this for the ones whose whole point is to be read — a morning brief computed at eight and read at six has ten hours.',
               )}
@@ -771,7 +782,7 @@ function AutomationEditor({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+            <span className="mb-1.5 block text-body font-medium text-ink">{t(
               'Permission mode',
             )}</span>
             <Menu
@@ -813,7 +824,7 @@ function AutomationEditor({
         </div>
 
         {permissionMode === 'default' ? (
-          <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/30 p-3 text-[12px] leading-relaxed text-ink">
+          <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/30 p-3 text-caption leading-relaxed text-ink">
             <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" aria-hidden />
             {t(
               'In "Ask" mode an unattended run will stall on the first prompt and be declined after ten minutes. For a schedule, prefer "Plan", "Accept edits" or "Auto".',

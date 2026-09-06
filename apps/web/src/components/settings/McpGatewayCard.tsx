@@ -168,16 +168,16 @@ export function McpGatewayCard() {
         {endpoint.isPending ? (
           <Skeleton className="h-[52px] rounded-lg" />
         ) : endpoint.isError ? (
-          <p className="rounded-lg border border-line bg-sunken px-3 py-2 text-[12px] leading-relaxed text-muted">
+          <p className="rounded-lg border border-line bg-sunken px-3 py-2 text-caption leading-relaxed text-muted">
             {t('The endpoint could not be read from the server. Reload to try again.')}
           </p>
         ) : endpoint.data?.url ? (
           <div className="space-y-1.5">
-            <p className="text-[12px] text-muted">{t('Endpoint to connect to')}</p>
+            <p className="text-caption text-muted">{t('Endpoint to connect to')}</p>
             <CopyableCode value={endpoint.data.url} label={t('Copy the endpoint')} />
           </div>
         ) : (
-          <p className="rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning">
+          <p className="rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-caption leading-relaxed text-warning">
             {t(
               'This deployment has no public address configured (METACLAUDE_PUBLIC_URL), so the endpoint cannot be shown here. Tokens still work — the address is your site’s, followed by /api/gateway/mcp.',
             )}
@@ -202,7 +202,7 @@ export function McpGatewayCard() {
             return (
               <li key={token.id} className="flex items-start gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1 space-y-1">
-                  <p className="flex flex-wrap items-center gap-2 text-[13px] text-ink">
+                  <p className="flex flex-wrap items-center gap-2 text-body text-ink">
                     <span className="truncate font-medium">{token.name}</span>
                     {state === 'revoked' ? (
                       <Badge tone="danger">{t('revoked')}</Badge>
@@ -215,7 +215,7 @@ export function McpGatewayCard() {
                       <Badge tone="neutral">{t('read only')}</Badge>
                     )}
                   </p>
-                  <p className="text-[11.5px] leading-relaxed text-subtle">
+                  <p className="text-caption leading-relaxed text-subtle">
                     {token.workspaceIds.length > 0
                       ? token.workspaceIds.map(nameOf).join(', ')
                       : t('no workspace')}{' '}
@@ -226,7 +226,7 @@ export function McpGatewayCard() {
                       deployment is empty" on the other side. Said here, where
                       it can be repaired, rather than left to be inferred. */}
                   {state === 'live' && token.workspaceIds.length === 0 ? (
-                    <p className="flex flex-wrap items-center gap-2 text-[11.5px] leading-relaxed text-warning">
+                    <p className="flex flex-wrap items-center gap-2 text-caption leading-relaxed text-warning">
                       {t('This token reaches no workspace — whatever holds it sees an empty deployment.')}
                       <Button
                         variant="outline"
@@ -240,7 +240,7 @@ export function McpGatewayCard() {
                       </Button>
                     </p>
                   ) : null}
-                  <p className="font-mono text-[11px] text-subtle">
+                  <p className="font-mono text-caption text-subtle">
                     {token.hint}… ·{' '}
                     {state === 'live'
                       ? t('expires {when}', { when: formatDateTime(token.expiresAt) })
@@ -315,7 +315,7 @@ export function McpGatewayCard() {
           </Label>
 
           <fieldset className="space-y-2">
-            <legend className="text-[12px] font-medium text-ink">{t('Workspaces it can reach')}</legend>
+            <legend className="text-caption font-medium text-ink">{t('Workspaces it can reach')}</legend>
             {/* No "all workspaces" option, deliberately: a token minted for one
                 integration would otherwise follow this deployment into every
                 workspace created afterwards. */}
@@ -335,7 +335,7 @@ export function McpGatewayCard() {
           </fieldset>
 
           <fieldset className="space-y-2">
-            <legend className="text-[12px] font-medium text-ink">{t('What it may do')}</legend>
+            <legend className="text-caption font-medium text-ink">{t('What it may do')}</legend>
             <CheckboxField
               checked={draft.scopes.includes('run')}
               onChange={() => setDraft({ ...draft, scopes: toggle(draft.scopes, 'run') })}
@@ -351,10 +351,10 @@ export function McpGatewayCard() {
           </fieldset>
 
           <fieldset className="space-y-2">
-            <legend className="text-[12px] font-medium text-ink">
+            <legend className="text-caption font-medium text-ink">
               {t('Ceiling on what a run may do')}
             </legend>
-            <p className="text-[11.5px] leading-relaxed text-muted">
+            <p className="text-caption leading-relaxed text-muted">
               {t(
                 'Nobody is watching these runs, so they never stop to ask. This is the most they may do on their own — a workspace set to less stays at less.',
               )}
@@ -363,7 +363,7 @@ export function McpGatewayCard() {
               {(['plan', 'dontAsk', 'acceptEdits'] as const).map((ceiling) => (
                 <label
                   key={ceiling}
-                  className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-line px-3 py-2 text-[12.5px] hover:border-accent/40"
+                  className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-line px-3 py-2 text-caption hover:border-accent/40"
                 >
                   <input
                     type="radio"
@@ -380,7 +380,7 @@ export function McpGatewayCard() {
                           ? t('Run what is already allowed')
                           : t('Run and edit files')}
                     </span>
-                    <span className="block text-[11.5px] text-muted">
+                    <span className="block text-caption text-muted">
                       {describeCeiling(ceiling, t)}
                     </span>
                   </span>
@@ -423,7 +423,7 @@ export function McpGatewayCard() {
       >
         <div className="space-y-3">
           <CopyableCode value={minted ?? ''} label={t('Copy the token')} />
-          <p className="rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning">
+          <p className="rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-caption leading-relaxed text-warning">
             {t(
               'Treat it like a password: anything holding it can ask this agent to work in the workspaces you named.',
             )}

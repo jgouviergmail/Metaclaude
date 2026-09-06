@@ -35,7 +35,7 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
   const t = useT();
   if (usage.unavailable.includes('rate_limits')) {
     return (
-      <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-subtle">
+      <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-caption text-subtle">
         {t(
           'Plan quota windows do not apply here — this credential is an API key or a third-party provider, billed per token instead.',
         )}
@@ -44,7 +44,7 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
   }
   if (usage.unavailable.includes('usage') || usage.unavailable.includes('session')) {
     return (
-      <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-subtle">
+      <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-caption text-subtle">
         {t(
           'The CLI could not report quota here — its usage endpoint is unavailable in this version.',
         )}
@@ -69,8 +69,8 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
         {usage.windows.map((window) => (
           <li key={window.key} className="space-y-1">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="truncate text-[13px] font-medium text-ink">{window.label}</span>
-              <span className="flex shrink-0 items-baseline gap-2 text-[11.5px] tabular-nums text-muted">
+              <span className="truncate text-body font-medium text-ink">{window.label}</span>
+              <span className="flex shrink-0 items-baseline gap-2 text-caption tabular-nums text-muted">
                 {window.resetsAt !== null ? <span>{untilLabel(window.resetsAt, now)}</span> : null}
                 <span className="w-9 text-right text-ink">
                   {window.utilization !== null ? `${Math.round(window.utilization)}%` : '—'}
@@ -94,7 +94,7 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
       </ul>
 
       {usage.extraUsage?.isEnabled ? (
-        <p className="text-[12px] tabular-nums text-muted">
+        <p className="text-caption tabular-nums text-muted">
           {t('Extra usage credits:')} {usage.extraUsage.usedCredits ?? 0}
           {usage.extraUsage.monthlyLimit !== null ? ` of ${usage.extraUsage.monthlyLimit}` : ''}
           {usage.extraUsage.utilization !== null ? ` (${Math.round(usage.extraUsage.utilization)}%)` : ''}
@@ -103,7 +103,7 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
 
       {day && attributions.length > 0 ? (
         <div className="space-y-1.5">
-          <p className="text-[12px] font-medium text-ink">
+          <p className="text-caption font-medium text-ink">
             {t('What consumed it today')}
             <span className="ml-2 font-normal text-subtle">
               {t('{requests} requests · {sessions} sessions', {
@@ -116,13 +116,13 @@ export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; no
             {attributions.map((share) => (
               <span
                 key={share.name}
-                className="rounded-full bg-raised px-2 py-0.5 font-mono text-[11.5px] text-muted"
+                className="rounded-full bg-raised px-2 py-0.5 font-mono text-caption text-muted"
               >
                 {share.name} {Math.round(share.pct)}%
               </span>
             ))}
           </div>
-          <p className="text-[11.5px] text-subtle">
+          <p className="text-caption text-subtle">
             {t(
               "Approximate — read from this machine's transcripts, so other devices and claude.ai are not counted. Categories overlap.",
             )}

@@ -234,11 +234,11 @@ function PasswordCard() {
           />
         </Label>
 
-        {mismatch ? <p className="text-[12.5px] text-danger">{t(
+        {mismatch ? <p className="text-caption text-danger">{t(
           'The passwords do not match.',
         )}</p> : null}
         {tooShort ? (
-          <p className="text-[12.5px] text-warning">{t('Use at least 12 characters.')}</p>
+          <p className="text-caption text-warning">{t('Use at least 12 characters.')}</p>
         ) : null}
 
         <Button
@@ -332,7 +332,7 @@ function TotpCard() {
       <div className="space-y-3 p-4">
         {user?.totpEnabled ? (
           <>
-            <p className="text-[13px] text-muted">
+            <p className="text-body text-muted">
               {plural(
                 recoveryCodesRemaining,
                 '{n} recovery code remaining.',
@@ -443,7 +443,7 @@ function TotpCard() {
             </div>
 
             <div>
-              <p className="mb-1.5 text-[13px] font-medium text-ink">
+              <p className="mb-1.5 text-body font-medium text-ink">
                 {t("Can't scan? Enter this setup key instead")}
               </p>
               <CopyableCode value={enrolling.secret} />
@@ -482,7 +482,7 @@ function TotpCard() {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-sunken p-3">
             {recoveryCodes?.map((recoveryCode) => (
-              <code key={recoveryCode} className="font-mono text-[13px] text-ink">
+              <code key={recoveryCode} className="font-mono text-body text-ink">
                 {recoveryCode}
               </code>
             ))}
@@ -598,11 +598,11 @@ function SessionsCard() {
           {sessions.map((session) => (
             <li key={session.id} className="flex items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 text-[13px] text-ink">
+                <p className="flex items-center gap-2 text-body text-ink">
                   <span className="truncate">{describeUserAgent(session.userAgent, t)}</span>
                   {session.current ? <Badge tone="accent">{t('this device')}</Badge> : null}
                 </p>
-                <p className="text-[11.5px] text-subtle">
+                <p className="text-caption text-subtle">
                   {session.ipAddress ?? t('unknown address')} · {t('active')}{' '}
                   {formatRelative(session.lastSeenAt)}
                 </p>
@@ -691,7 +691,7 @@ export function AppearanceCard() {
             onChange={chooseLanguage}
             options={languages}
           />
-          <p className="mt-2 text-[12px] text-muted">
+          <p className="mt-2 text-caption text-muted">
             {user?.role === 'owner'
               ? t(
                   'Metaclaude writes in this language too — memories, distilled lessons, what it proposes. A workspace can override it. The guide and the changelog stay in English for now.',
@@ -772,9 +772,9 @@ function DoctorCard() {
         {doctorQuery.data ? (
           <DoctorReportView report={doctorQuery.data} />
         ) : doctorQuery.isError ? (
-          <p className="text-[12.5px] text-muted">{t('The examination could not run.')}</p>
+          <p className="text-caption text-muted">{t('The examination could not run.')}</p>
         ) : (
-          <p className="text-[12.5px] text-subtle">{t('Not run yet.')}</p>
+          <p className="text-caption text-subtle">{t('Not run yet.')}</p>
         )}
       </div>
     </Card>
@@ -834,10 +834,10 @@ function SystemCard() {
                 <Badge tone="danger">{t('none configured')}</Badge>
               )}
               {data.claudeCli.authHint ? (
-                <code className="font-mono text-[12px] text-muted">{data.claudeCli.authHint}</code>
+                <code className="font-mono text-caption text-muted">{data.claudeCli.authHint}</code>
               ) : null}
               {data.claudeCli.authSource ? (
-                <span className="text-[12px] text-subtle">
+                <span className="text-caption text-subtle">
                   {data.claudeCli.authSource === 'stored'
                     ? t('paired here')
                     : data.claudeCli.authSource === 'cli-login'
@@ -872,8 +872,8 @@ function SystemCard() {
 function DefinitionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-      <dt className="text-[13px] text-muted">{label}</dt>
-      <dd className="text-[13px] font-medium text-ink">{children}</dd>
+      <dt className="text-body text-muted">{label}</dt>
+      <dd className="text-body font-medium text-ink">{children}</dd>
     </div>
   );
 }
@@ -955,17 +955,17 @@ function AuditCard() {
                 </Badge>
 
                 <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-baseline gap-x-2 text-[12.5px]">
+                  <p className="flex flex-wrap items-baseline gap-x-2 text-caption">
                     <code className="font-mono font-medium text-ink">{entry.action}</code>
                     <span className="text-muted">{entry.actor}</span>
                   </p>
                   {entry.detail ? (
-                    <p className="truncate text-[11.5px] text-subtle">{entry.detail}</p>
+                    <p className="truncate text-caption text-subtle">{entry.detail}</p>
                   ) : null}
                 </div>
 
                 <span
-                  className="shrink-0 text-[11px] text-subtle"
+                  className="shrink-0 text-caption text-subtle"
                   title={formatDateTime(entry.at)}
                 >
                   {formatRelative(entry.at)}

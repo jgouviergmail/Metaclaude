@@ -56,7 +56,7 @@ export function Modal({
         >
           <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
             <div className="min-w-0 space-y-1">
-              <Dialog.Title className="text-base font-semibold tracking-tight text-ink">
+              <Dialog.Title className="text-title font-semibold tracking-tight text-ink">
                 {title}
               </Dialog.Title>
               {description ? (

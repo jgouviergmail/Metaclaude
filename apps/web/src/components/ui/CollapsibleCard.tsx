@@ -75,7 +75,7 @@ export function CollapsibleCard({
         <summary
           className={cn(
             'flex cursor-pointer list-none items-center gap-2.5 rounded-xl p-4',
-            'text-sm font-semibold text-ink transition-colors hover:bg-raised',
+            'text-body font-semibold text-ink transition-colors hover:bg-raised',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
             'group-open:rounded-b-none group-open:border-b group-open:border-line',
           )}
@@ -91,7 +91,7 @@ export function CollapsibleCard({
         </summary>
 
         {description ? (
-          <p className="px-4 pt-3 text-xs leading-relaxed text-muted">{description}</p>
+          <p className="px-4 pt-3 text-caption leading-relaxed text-muted">{description}</p>
         ) : null}
         {children}
       </details>

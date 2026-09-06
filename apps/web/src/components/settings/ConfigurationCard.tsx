@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import type { RuntimeSettingRecord } from '@metaclaude/shared';
 
 import { Menu, MenuItem } from '@/components/ui/Menu';
-import { Badge, Button, Card, CardHeader, Input, Spinner } from '@/components/ui/primitives';
+import { Badge, Button, Card, CardHeader, Input, Label, Spinner } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { usePlural, useT } from '@/lib/i18n';
 import { formatRelative } from '@/lib/utils';
@@ -174,10 +174,21 @@ export function ConfigurationCard() {
               <div key={record.key} className="px-4 py-3.5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                   <div className="min-w-0 sm:flex-1">
-                    <label htmlFor={id} className="block text-[13px] font-medium text-ink">
+                    {/*
+                      * `Label`, not a hand-written pair: eight settings, three
+                      * lines of explanation each, is twenty-four lines of prose
+                      * on one screen — the densest thing in the app and exactly
+                      * what the compact density exists to fold.
+                      */}
+                    {/*
+                      * `Label`, not a hand-written pair: eight settings, three
+                      * lines of explanation each, is twenty-four lines of prose
+                      * on one screen — the densest thing in the app and exactly
+                      * what the compact density exists to fold.
+                      */}
+                    <Label htmlFor={id} explanation={t(copy.help)}>
                       {t(copy.label)}
-                    </label>
-                    <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{t(copy.help)}</p>
+                    </Label>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
@@ -225,7 +236,7 @@ export function ConfigurationCard() {
                             }))
                           }
                         />
-                        {unit ? <span className="text-[12px] text-muted">{unit}</span> : null}
+                        {unit ? <span className="text-caption text-muted">{unit}</span> : null}
                       </>
                     )}
                   </div>
@@ -240,7 +251,7 @@ export function ConfigurationCard() {
 
       <div className="flex items-center justify-end gap-3 border-t border-line px-4 py-3">
         {changed.length > 0 ? (
-          <span className="text-[12px] text-muted">
+          <span className="text-caption text-muted">
             {plural(changed.length, '{n} unsaved change', '{n} unsaved changes')}
           </span>
         ) : null}
@@ -284,7 +295,7 @@ function Provenance({
 
   if (record.source !== 'stored') {
     return (
-      <p className="mt-1.5 text-[11.5px] text-subtle">
+      <p className="mt-1.5 text-caption text-subtle">
         {record.source === 'environment'
           ? t('From this deployment’s environment.')
           : t('Built-in default.')}
@@ -302,7 +313,7 @@ function Provenance({
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
       <Badge tone="accent">{t('Saved here')}</Badge>
-      <span className="text-[11.5px] text-subtle">
+      <span className="text-caption text-subtle">
         {record.updatedBy
           ? record.updatedAt === null
             ? t('by {who}', { who: record.updatedBy })
@@ -313,7 +324,7 @@ function Provenance({
           : null}
         {fallback ? ` · ${t('the environment says {value}', { value: fallback })}` : null}
       </span>
-      <Button variant="ghost" size="sm" className="h-6 px-2 text-[11.5px]" onClick={onRevert}>
+      <Button variant="ghost" size="sm" className="h-6 px-2 text-caption" onClick={onRevert}>
         <RotateCcw className="size-3" aria-hidden />
         {t('Use the environment’s value')}
       </Button>

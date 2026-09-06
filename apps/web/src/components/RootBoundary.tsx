@@ -46,7 +46,7 @@ export class RootBoundary extends Component<{ children: ReactNode }, State> {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-surface p-6">
         <div className="w-full max-w-md space-y-4 rounded-xl border border-line bg-raised p-6 text-center shadow-[var(--mc-shadow)]">
-          <h1 className="text-base font-semibold text-ink">{copy.title}</h1>
+          <h1 className="text-title font-semibold text-ink">{copy.title}</h1>
           <p className="text-[13px] leading-relaxed text-muted">{copy.body}</p>
           <p className="rounded-md bg-sunken px-3 py-2 text-left font-mono text-[11.5px] text-subtle">
             {this.state.error.message || String(this.state.error)}

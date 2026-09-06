@@ -92,7 +92,7 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{t('Files')}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-body font-semibold text-ink">{t('Files')}</h2>
 
         <Tooltip content={t('Refresh')}>
           <Button variant="ghost" size="icon-sm" aria-label={t('Refresh files')} onClick={refresh}>

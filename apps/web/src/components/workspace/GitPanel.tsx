@@ -113,7 +113,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
 
   const header = (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
-      <h2 className="shrink-0 text-sm font-semibold text-ink">{t('Source control')}</h2>
+      <h2 className="shrink-0 text-body font-semibold text-ink">{t('Source control')}</h2>
 
       {data?.isRepo && data.branch ? (
         <Badge tone="accent" className="min-w-0">

@@ -1012,12 +1012,12 @@ export function MemoryPage() {
               <div className="space-y-1">
                 <h2
                   id="insights-heading"
-                  className="flex items-center gap-2 text-sm font-semibold text-ink"
+                  className="flex items-center gap-2 text-body font-semibold text-ink"
                 >
                   <Lightbulb className="size-4 text-warning" aria-hidden />
                   {t('Insights awaiting review')}
                 </h2>
-                <p className="text-xs leading-relaxed text-muted">
+                <p className="text-caption leading-relaxed text-muted">
                   {t(
                     "Distilled by the reflexion pass after a run. Proposals are never installed automatically — nothing here changes the agent's behaviour until you accept it.",
                   )}
@@ -1531,7 +1531,7 @@ function PanelHeading({
   return (
     <div>
       <div className="flex items-center gap-2">
-        <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink">
+        <h2 className="flex min-w-0 items-center gap-2 text-body font-semibold text-ink">
           {icon}
           {title}
         </h2>
@@ -1831,7 +1831,7 @@ function MemoryModal({
           />
           <span>
             {t('Pinned')}
-            <span className="mt-0.5 block text-xs text-muted">
+            <span className="mt-0.5 block text-caption text-muted">
               {t('Exempt from decay and garbage collection.')}
             </span>
           </span>

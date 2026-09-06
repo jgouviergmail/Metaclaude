@@ -321,7 +321,7 @@ export function SessionPage() {
     return (
       <AppShell sidebar={sidebar}>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="text-sm text-muted">{t('That session could not be loaded.')}</p>
+          <p className="text-body text-muted">{t('That session could not be loaded.')}</p>
           <Button variant="secondary" size="sm" onClick={() => navigate(`/w/${workspaceId}`)}>
             <ArrowLeft className="size-4" />
             {t('Back to the workspace')}

@@ -296,7 +296,7 @@ export function AnalyticsPage() {
               ) : usageQuery.data ? (
                 <QuotaPanel usage={usageQuery.data} />
               ) : (
-                <p className="text-[12.5px] text-subtle">{t('The quota could not be read.')}</p>
+                <p className="text-caption text-subtle">{t('The quota could not be read.')}</p>
               )}
             </div>
           </Card>
@@ -512,9 +512,9 @@ export function AnalyticsPage() {
                     description={t('Where the spend and the successes actually went.')}
                   />
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[22rem] text-[13px]">
+                    <table className="w-full min-w-[22rem] text-body">
                       <thead>
-                        <tr className="text-left text-[11px] uppercase tracking-wide text-subtle">
+                        <tr className="text-left text-caption uppercase tracking-wide text-subtle">
                           <th className="px-4 py-2 font-semibold">{t('Model')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Runs')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Cost')}</th>
@@ -524,7 +524,7 @@ export function AnalyticsPage() {
                       <tbody>
                         {summary.byModel.map((row) => (
                           <tr key={row.model} className="border-t border-line">
-                            <td className="px-4 py-2 font-mono text-[12.5px] text-ink">
+                            <td className="px-4 py-2 font-mono text-caption text-ink">
                               {row.model}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums text-muted">
@@ -551,9 +551,9 @@ export function AnalyticsPage() {
                     )}
                   />
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[22rem] text-[13px]">
+                    <table className="w-full min-w-[22rem] text-body">
                       <thead>
-                        <tr className="text-left text-[11px] uppercase tracking-wide text-subtle">
+                        <tr className="text-left text-caption uppercase tracking-wide text-subtle">
                           <th className="px-4 py-2 font-semibold">{t('Category')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Runs')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Avg reward')}</th>
@@ -670,9 +670,9 @@ function PolicyCard({
       />
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-[13px]">
+        <table className="w-full min-w-[34rem] text-body">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-subtle">
+            <tr className="text-left text-caption uppercase tracking-wide text-subtle">
               <th className="px-4 py-2 font-semibold">{t('Model')}</th>
               <th className="px-4 py-2 font-semibold">{t('Effort')}</th>
               <th className="px-4 py-2 text-right font-semibold">{t('Trials')}</th>
@@ -686,7 +686,7 @@ function PolicyCard({
               const mean = posteriorMean(arm);
               return (
                 <tr key={arm.id} className="border-t border-line">
-                  <td className="px-4 py-2 font-mono text-[12.5px] text-ink">{String(arm.model)}</td>
+                  <td className="px-4 py-2 font-mono text-caption text-ink">{String(arm.model)}</td>
                   <td className="px-4 py-2 text-muted">{arm.effort ?? '—'}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-muted">{arm.trials}</td>
                   <td className="px-4 py-2">
@@ -702,7 +702,7 @@ function PolicyCard({
                         tone={mean >= 0.7 ? 'success' : mean >= 0.4 ? 'warning' : 'danger'}
                         label={`Posterior: ${formatPercent(mean)} expected over ${arm.trials} trials`}
                       />
-                      <span className="tabular-nums text-[12px] text-muted">
+                      <span className="tabular-nums text-caption text-muted">
                         {formatPercent(mean)}
                       </span>
                     </div>
@@ -789,10 +789,10 @@ function ChartFrame({
     <Card className={cn('p-4', className)}>
       <figure aria-labelledby={`${id}-title`} className="space-y-3">
         <figcaption className="space-y-0.5">
-          <h3 id={`${id}-title`} className="text-sm font-semibold text-ink">
+          <h3 id={`${id}-title`} className="text-body font-semibold text-ink">
             {title}
           </h3>
-          <p className="text-xs text-muted">{description}</p>
+          <p className="text-caption text-muted">{description}</p>
         </figcaption>
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">

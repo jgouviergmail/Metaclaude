@@ -160,7 +160,7 @@ export function PluginsPage() {
       <Page width="list">
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+              <h2 className="flex items-center gap-2 text-body font-semibold text-ink">
                 <Store className="size-4 text-muted" aria-hidden />
                 {t('Marketplaces')}
               </h2>
@@ -169,7 +169,7 @@ export function PluginsPage() {
                 {t('Add marketplace')}
               </Button>
         </div>
-        <p className="text-[12.5px] leading-relaxed text-muted">
+        <p className="text-caption leading-relaxed text-muted">
           {t(
             'The CLI fetches these sources itself and installs from them at the start of a run. Which plugins actually run is chosen per workspace, under Workspace settings.',
           )}
@@ -188,7 +188,7 @@ export function PluginsPage() {
         )}
       </section>
 
-      <h2 className="flex items-center gap-2 pt-2 text-sm font-semibold text-ink">
+      <h2 className="flex items-center gap-2 pt-2 text-body font-semibold text-ink">
         <Plug className="size-4 text-muted" aria-hidden />
         {t('Installed by path')}
       </h2>
@@ -216,7 +216,7 @@ export function PluginsPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <code className="font-mono text-[13px] font-medium text-ink">{plugin.name}</code>
+                    <code className="font-mono text-body font-medium text-ink">{plugin.name}</code>
                     {plugin.version ? <Badge tone="neutral">v{plugin.version}</Badge> : null}
                     {!plugin.enabled ? <Badge tone="neutral">{t('disabled')}</Badge> : null}
                     {plugin.warnings.length > 0 ? (
@@ -229,7 +229,7 @@ export function PluginsPage() {
                   </div>
 
                   {plugin.description ? (
-                    <p className="text-[13px] leading-relaxed text-muted">{plugin.description}</p>
+                    <p className="text-body leading-relaxed text-muted">{plugin.description}</p>
                   ) : null}
 
                   {/* What it actually contributes. A plugin whose contents are
@@ -242,7 +242,7 @@ export function PluginsPage() {
                       // row rather than hidden by it.
                       <span
                         key={skill.name}
-                        className="inline-flex min-w-0 items-center gap-1.5 text-[12px] text-muted"
+                        className="inline-flex min-w-0 items-center gap-1.5 text-caption text-muted"
                       >
                         <Sparkles className="size-3 shrink-0 text-accent" aria-hidden />
                         <code className="shrink-0 font-mono">{skill.name}</code>
@@ -254,7 +254,7 @@ export function PluginsPage() {
                     {plugin.mcpServers.map((name) => (
                       <span
                         key={name}
-                        className="inline-flex items-center gap-1.5 text-[12px] text-muted"
+                        className="inline-flex items-center gap-1.5 text-caption text-muted"
                       >
                         <Server className="size-3 shrink-0 text-info" aria-hidden />
                         <code className="font-mono">{name}</code>
@@ -262,7 +262,7 @@ export function PluginsPage() {
                     ))}
                   </div>
 
-                  <p className="text-[11.5px] tabular-nums text-subtle">
+                  <p className="text-caption tabular-nums text-subtle">
                     {t('installed')} {formatRelative(plugin.installedAt)}
                     {plugin.license ? ` · ${plugin.license}` : ''}
                   </p>
@@ -270,7 +270,7 @@ export function PluginsPage() {
                   {plugin.warnings.length > 0 ? (
                     <ul className="space-y-1 rounded-lg bg-warning-soft px-3 py-2">
                       {plugin.warnings.map((warning) => (
-                        <li key={warning} className="flex gap-2 text-[12px] leading-relaxed text-ink">
+                        <li key={warning} className="flex gap-2 text-caption leading-relaxed text-ink">
                           <AlertTriangle
                             className="mt-0.5 size-3 shrink-0 text-warning"
                             aria-hidden
@@ -327,7 +327,7 @@ export function PluginsPage() {
                 if (event.key === 'Enter' && source.trim()) install.mutate(source.trim());
               }}
             />
-            <p className="text-[12px] text-muted">
+            <p className="text-caption text-muted">
               {t(
                 'The directory is copied, not linked, so the source can be deleted afterwards. Skills and MCP servers it declares become available to every workspace.',
               )}
@@ -440,7 +440,7 @@ function AddMarketplaceModal({
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
-          <p className="text-[12px] text-muted">
+          <p className="text-caption text-muted">
             {t(
               'Plugins are enabled as',
             )} <code className="font-mono">plugin@{name.trim() || 'name'}</code>.

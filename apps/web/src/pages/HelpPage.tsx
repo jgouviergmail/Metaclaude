@@ -117,11 +117,11 @@ export function HelpPage() {
       <Page width="standard">
           {/* Ask Metaclaude ------------------------------------------------- */}
           <Card className="p-4">
-            <div className="mb-2 flex items-center gap-2 text-[13px] font-medium text-ink">
+            <div className="mb-2 flex items-center gap-2 text-body font-medium text-ink">
               <Sparkles className="size-4 text-accent" aria-hidden />
               {t('Ask Metaclaude about itself')}
             </div>
-            <p className="mb-3 text-[12.5px] text-muted">
+            <p className="mb-3 text-caption text-muted">
               {t(
                 'Opens a plan-mode session in a workspace seeded with this guide — the assistant answers from these pages, with citations, and can execute nothing.',
               )}
@@ -179,7 +179,7 @@ export function HelpPage() {
                   {query.trim() ? (
                     <div className="space-y-1" aria-label={t('Search results')}>
                       {hits.length === 0 ? (
-                        <p className="px-1 text-[12.5px] text-subtle">
+                        <p className="px-1 text-caption text-subtle">
                           {t('Nothing in the guide matches all of those words.')}
                         </p>
                       ) : (
@@ -193,8 +193,8 @@ export function HelpPage() {
                             }}
                             className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-raised"
                           >
-                            <span className="block text-[13px] font-medium text-ink">{hit.title}</span>
-                            <span className="block truncate text-[12px] text-muted">{hit.excerpt}</span>
+                            <span className="block text-body font-medium text-ink">{hit.title}</span>
+                            <span className="block truncate text-caption text-muted">{hit.excerpt}</span>
                           </button>
                         ))
                       )}
@@ -208,7 +208,7 @@ export function HelpPage() {
                           aria-current={active === chapter.slug ? 'page' : undefined}
                           onClick={() => setActive(chapter.slug)}
                           className={cn(
-                            'flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[13px]',
+                            'flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-body',
                             active === chapter.slug
                               ? 'bg-accent-soft font-medium text-accent'
                               : 'text-muted hover:bg-raised hover:text-ink',
@@ -240,7 +240,7 @@ export function HelpPage() {
                       dangerouslySetInnerHTML={{ __html: activeHtml }}
                     />
                   ) : (
-                    <p className="text-[13px] text-muted">{t('The guide could not be loaded.')}</p>
+                    <p className="text-body text-muted">{t('The guide could not be loaded.')}</p>
                   )}
                 </Card>
               </div>

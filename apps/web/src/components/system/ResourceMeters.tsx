@@ -152,12 +152,12 @@ function ResourceMeter({
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-subtle">{label}</p>
+        <p className="text-caption font-medium uppercase tracking-wide text-subtle">{label}</p>
         <span className="text-subtle [&>svg]:size-4">{icon}</span>
       </div>
       <p
         className={cn(
-          'mt-2 text-2xl font-semibold tabular-nums tracking-tight',
+          'mt-2 text-display font-semibold tabular-nums tracking-tight',
           tone === 'warning' && 'text-warning',
           tone === 'danger' && 'text-danger',
           tone === 'accent' && 'text-ink',
@@ -169,8 +169,8 @@ function ResourceMeter({
       {/* Two lines at most, and the second is context rather than the reading
           itself — at 375px the card is 100% of the width and anything longer
           wraps into a third line that pushes the grid out of alignment. */}
-      {detail ? <p className="mt-2 truncate text-xs text-muted">{detail}</p> : null}
-      {hint ? <p className="truncate text-xs text-subtle">{hint}</p> : null}
+      {detail ? <p className="mt-2 truncate text-caption text-muted">{detail}</p> : null}
+      {hint ? <p className="truncate text-caption text-subtle">{hint}</p> : null}
     </div>
   );
 }

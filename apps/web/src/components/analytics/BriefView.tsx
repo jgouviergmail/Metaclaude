@@ -100,9 +100,9 @@ export function BriefView({ brief }: { brief: Brief }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-[14px] font-medium leading-relaxed text-ink">{headline}</p>
+      <p className="text-body font-medium leading-relaxed text-ink">{headline}</p>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted">
         <span>
           {formatTokens(brief.activity.totalInputTokens + brief.activity.totalOutputTokens)} {t('tokens')}
         </span>
@@ -157,8 +157,8 @@ export function BriefView({ brief }: { brief: Brief }) {
                   {t('failed')}
                 </Badge>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] text-ink">{failure.prompt}</span>
-                  <span className="block truncate text-[11.5px] text-muted">
+                  <span className="block truncate text-body text-ink">{failure.prompt}</span>
+                  <span className="block truncate text-caption text-muted">
                     <span className="text-ink">{failure.workspaceName}</span>
                     {failure.error ? ` — ${failure.error}` : ''} · {formatRelative(failure.at)}
                   </span>
@@ -174,7 +174,7 @@ export function BriefView({ brief }: { brief: Brief }) {
       ) : null}
 
       {brief.automations.disabledByGuard.length > 0 ? (
-        <p className="flex gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-ink">
+        <p className="flex gap-2 rounded-lg bg-warning-soft px-3 py-2 text-caption leading-relaxed text-ink">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
           <span>
             {t('Switched off by the failure guard:')}{' '}

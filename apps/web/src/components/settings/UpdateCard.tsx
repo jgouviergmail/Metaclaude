@@ -105,7 +105,7 @@ export function UpdateCard() {
           </div>
         }
       />
-      <div className="space-y-2 px-4 pb-4 text-[12.5px]">
+      <div className="space-y-2 px-4 pb-4 text-caption">
         {!result ? (
           <p className="text-subtle">{t('Not checked yet.')}</p>
         ) : 'disabled' in result ? (
@@ -155,7 +155,7 @@ export function UpdateCard() {
             )}
           </p>
         ) : status?.state === 'failed' ? (
-          <p className="flex items-start gap-2 text-[12px] text-warning">
+          <p className="flex items-start gap-2 text-caption text-warning">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
               {/* The version and the reason are both optional, so the sentence
@@ -170,7 +170,7 @@ export function UpdateCard() {
         ) : null}
 
         {check?.updateAvailable === true && status?.available === false ? (
-          <p className="text-[12px] text-muted">
+          <p className="text-caption text-muted">
             <Trans
               template={t(
                 'Applying from here needs the host updater — re-run {script} on the server to add it.',

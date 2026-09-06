@@ -171,7 +171,7 @@ export function ApprovalCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 id={`approval-${request.id}-title`} className="text-sm font-semibold text-ink">
+            <h3 id={`approval-${request.id}-title`} className="text-body font-semibold text-ink">
               {t('Permission needed')}
             </h3>
             <Badge

@@ -116,7 +116,7 @@ export function NotificationsCard() {
       />
       <div className="space-y-3 px-4 pb-4">
         {!supported ? (
-          <p className="text-[12.5px] leading-relaxed text-muted">
+          <p className="text-caption leading-relaxed text-muted">
             {t(
               'This browser cannot receive push notifications. On iPhone and iPad they need the app installed to the Home Screen (Share → Add to Home Screen), then enabled from here.',
             )}
@@ -149,7 +149,7 @@ export function NotificationsCard() {
                 </Button>
               )}
             </div>
-            <p className="text-[12px] text-subtle">
+            <p className="text-caption text-subtle">
               {status.data
                 ? plural(
                     status.data.devices,

@@ -10,8 +10,9 @@
 
 import { fireEvent, screen } from '@testing-library/react';
 import { createRef } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
+import { useUiStore } from '@/lib/store';
 import { CardHeader, Input, Label, Meter, Select, Textarea } from './primitives';
 
 describe('Label', () => {
@@ -197,5 +198,88 @@ describe('the form controls', () => {
       expect(className, name).toContain('text-body');
       expect(className, name).not.toContain('text-sm');
     }
+  });
+});
+
+/**
+ * Two kinds of help under a label, and only one of them folds.
+ *
+ * A `hint` is the constraint you need *while* filling the control —
+ * "lowercase and dashes; this is the directory name". Folding that away in the
+ * density most people run would hide the rule at the moment it is needed, which
+ * is not what the density setting promises to trade.
+ *
+ * An `explanation` is the essay: the configuration screen carries three lines
+ * per setting, eight settings deep, and reading them is a thing you do once.
+ * That is the prose the compact density exists to fold, exactly as `Section`
+ * and `CardHeader` already fold theirs.
+ */
+describe('Label', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-density');
+    useUiStore.setState({ density: 'compact' });
+  });
+
+  it('always shows a hint, whatever the density', () => {
+    useUiStore.setState({ density: 'compact' });
+    render(<Label htmlFor="x" hint="Lowercase and dashes.">Name</Label>);
+    expect(screen.getByText('Lowercase and dashes.')).toBeDefined();
+    expect(screen.queryByRole('button', { name: /explain/i })).toBeNull();
+  });
+
+  it('offers an explanation behind a control in the compact density', () => {
+    useUiStore.setState({ density: 'compact' });
+    render(
+      <Label htmlFor="x" explanation="The ceiling that should normally do the stopping.">
+        Stop a run
+      </Label>,
+    );
+    expect(screen.queryByText(/normally do the stopping/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Explain' }));
+    expect(screen.getByText(/normally do the stopping/)).toBeDefined();
+  });
+
+  /*
+   * The trigger does not answer to the label's own words.
+   *
+   * Naming it by its subject is right for a `Section`, whose heading is two
+   * words and may be far from its control. A setting's label is a sentence,
+   * and naming the trigger with it made every row answer to a search for its
+   * own words twice — the input and the button. Twelve tests of the
+   * configuration card went from passing to timing out on exactly that, and a
+   * screen reader would have met the same pair.
+   */
+  it('does not answer to the label it sits beside', () => {
+    useUiStore.setState({ density: 'compact' });
+    render(
+      <>
+        <Label htmlFor="x" explanation="The ceiling that should normally do the stopping.">
+          Stop a run that goes quiet after
+        </Label>
+        <input id="x" />
+      </>,
+    );
+    expect(screen.getAllByLabelText(/goes quiet/i)).toHaveLength(1);
+    expect(screen.getByLabelText(/goes quiet/i).tagName).toBe('INPUT');
+  });
+
+  it('shows the explanation outright where there is room', () => {
+    useUiStore.setState({ density: 'comfortable' });
+    render(
+      <Label htmlFor="x" explanation="The ceiling that should normally do the stopping.">
+        Stop a run
+      </Label>,
+    );
+    expect(screen.getByText(/normally do the stopping/)).toBeDefined();
+    expect(screen.queryByRole('button', { name: /explain/i })).toBeNull();
+  });
+
+  it('keeps the hint described rather than folded into the name', () => {
+    // `aria-describedby` does not take text *out* of a name, so the hint has to
+    // stay outside the label — the trap this component already exists to avoid.
+    render(<Label htmlFor="field" hint="Lowercase and dashes.">Name</Label>);
+    expect(screen.getByText('Name').tagName).toBe('LABEL');
+    expect(screen.getByText('Name').textContent).toBe('Name');
+    expect(screen.getByText('Lowercase and dashes.').id).toBe('field-hint');
   });
 });

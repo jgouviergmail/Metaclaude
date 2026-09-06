@@ -50,7 +50,7 @@ const BUTTON_SIZES: Record<ButtonSize, string> = {
   // `sm` carries most of this interface — 77 call sites against one for `md` —
   // so it is the size that decides whether the app is usable with a thumb.
   sm: `h-8 px-3 text-body gap-1.5 rounded-lg ${TOUCH_TARGET_Y}`,
-  md: `h-9 px-4 text-sm gap-2 rounded-lg ${TOUCH_TARGET_Y}`,
+  md: `h-9 px-4 text-body gap-2 rounded-lg ${TOUCH_TARGET_Y}`,
   lg: 'h-11 px-6 text-title gap-2 rounded-xl',
   icon: `h-9 w-9 rounded-lg ${TOUCH_TARGET}`,
   'icon-sm': `h-7 w-7 rounded-md ${TOUCH_TARGET}`,
@@ -180,22 +180,55 @@ export function Label({
   className,
   children,
   hint,
+  explanation,
   htmlFor,
   ...props
-}: HTMLAttributes<HTMLLabelElement> & { htmlFor?: string; hint?: ReactNode }) {
+}: HTMLAttributes<HTMLLabelElement> & {
+  htmlFor?: string;
+  /**
+   * The constraint you need *while* filling the control — "lowercase and
+   * dashes; this is the directory name". Always shown, in both densities:
+   * folding it away would hide the rule at the moment it is needed, which is
+   * not the trade the density setting offers.
+   */
+  hint?: ReactNode;
+  /**
+   * The essay. The configuration screen carries three lines per setting, eight
+   * settings deep, and reading them is something you do once — so it follows
+   * the density exactly as a `Section`'s description does.
+   */
+  explanation?: ReactNode;
+}) {
+  /*
+   * Not named by its subject, unlike a `Section`'s.
+   *
+   * There the heading may be far from its control and the title is two words;
+   * here the label is the immediately preceding sibling, and the title is a
+   * whole sentence. Naming the trigger `Explain Stop a run that goes quiet
+   * after` makes every setting answer to a search for its own words twice —
+   * measured, not supposed: `findByLabelText(/goes quiet/i)` began matching the
+   * input *and* the button, and twelve tests went from passing to timing out.
+   * Two controls with the same words is a worse answer than one short name
+   * beside the label that already says what it is.
+   */
+  const help = useDisclosedDescription(explanation);
   return (
     <div className={cn('block space-y-1.5', className)}>
-      <label className="block text-body font-medium text-ink" htmlFor={htmlFor} {...props}>
-        {children}
-      </label>
+      <div className="flex items-center gap-2">
+        <label className="block text-body font-medium text-ink" htmlFor={htmlFor} {...props}>
+          {children}
+        </label>
+        {help.trigger}
+      </div>
       {hint ? (
         <span
           {...(htmlFor ? { id: `${htmlFor}-hint` } : {})}
-          className="block text-xs leading-relaxed text-muted"
+          className="block text-caption leading-relaxed text-muted"
         >
           {hint}
         </span>
       ) : null}
+      {help.body}
     </div>
   );
 }
@@ -308,7 +341,7 @@ export function CardHeader({
     <div className={cn('flex items-start justify-between gap-4 border-b border-line p-gutter', className)}>
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
-          <Heading className="truncate text-sm font-semibold text-ink">{title}</Heading>
+          <Heading className="truncate text-body font-semibold text-ink">{title}</Heading>
           {help.trigger}
         </div>
         {help.body}
@@ -353,7 +386,7 @@ export function EmptyState({
     >
       {icon ? <div className="text-subtle [&>svg]:size-8" aria-hidden>{icon}</div> : null}
       <div className="space-y-1">
-        <p className="text-sm font-medium text-ink">{title}</p>
+        <p className="text-body font-medium text-ink">{title}</p>
         {description ? (
           <p className="mx-auto max-w-sm text-body leading-relaxed text-muted">{description}</p>
         ) : null}
@@ -401,7 +434,7 @@ export function Tooltip({
           collisionPadding={8}
           className={cn(
             'z-50 max-w-xs rounded-lg border border-line bg-raised px-2.5 py-1.5',
-            'text-xs leading-relaxed text-ink shadow-[var(--mc-shadow)]',
+            'text-caption leading-relaxed text-ink shadow-[var(--mc-shadow)]',
             'animate-in-up',
           )}
         >
@@ -508,12 +541,12 @@ export function Stat({
   return (
     <div className="rounded-xl border border-line bg-surface p-gutter">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-subtle">{label}</p>
+        <p className="text-caption font-medium uppercase tracking-wide text-subtle">{label}</p>
         {icon ? <span className="text-subtle [&>svg]:size-4">{icon}</span> : null}
       </div>
       <p
         className={cn(
-          'mt-2 text-2xl font-semibold tabular-nums tracking-tight',
+          'mt-2 text-display font-semibold tabular-nums tracking-tight',
           tone === 'success' && 'text-success',
           tone === 'warning' && 'text-warning',
           tone === 'danger' && 'text-danger',
@@ -522,7 +555,7 @@ export function Stat({
       >
         {value}
       </p>
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+      {hint ? <p className="mt-1 text-caption text-muted">{hint}</p> : null}
     </div>
   );
 }

@@ -1316,7 +1316,17 @@ function countPageWidths() {
  * — the trap `rawPaletteClasses` documents.
  */
 function countLiteralTextSizes() {
-  const LITERAL = /\btext-\[[0-9.]+px\]/g;
+  // Tailwind's own named steps are literals too, and the measure walked past
+  // them: it counted `text-[13px]` and not `text-sm`, which is the same
+  // decision spelled the other way. Forty-eight survived five lots of burning
+  // the first spelling down, on the reasonable-looking assumption that a
+  // measure named "literal text sizes" counted them.
+  // The trailing boundary belongs to the *named* branch only. After `]` there
+  // is no word boundary — `]` and the quote after it are both non-word — so a
+  // `\b` outside the alternation stops `text-[13px]` matching at all. It
+  // reported nine where there were two hundred and thirty-nine, and an
+  // `--update` would have written that into the baseline for good.
+  const LITERAL = /\btext-(?:\[[0-9.]+px\]|(?:xs|sm|base|lg|xl|2xl|3xl)\b)/g;
   let n = 0;
   for (const file of tracked('apps/web/src/*')) {
     if (!/\.tsx?$/.test(file)) continue;
@@ -1374,7 +1384,10 @@ async function measureInitialJs() {
  * so the ceiling is zero rather than a tolerated pile.
  *
  * Requires a build, and reports rather than passes without one: a ceiling
- * nobody measures is not a ceiling.
+ * nobody measures is not a ceiling. It compares the source against the *built*
+ * stylesheet, so a stale build reports classes that exist perfectly well in the
+ * source it has not seen — which is why `pnpm verify` builds before it
+ * measures, and why running this alone after an edit can lie.
  */
 function measureUndefinedClasses() {
   const dist = join(ROOT, 'apps/web/dist', 'assets');
@@ -1425,6 +1438,74 @@ function measureUndefinedClasses() {
     }
   }
   return n;
+}
+
+/**
+ * `line-clamp` and a vertical padding on one element.
+ *
+ * The clamp limits the *content* to N lines; `overflow: hidden` clips at the
+ * **padding** box. So the padding below the last line is a window onto the
+ * next one — the automation card showed the top six pixels of a third line,
+ * cut through the glyphs, outside its own tinted background. It reads as a
+ * rendering bug and it is a layering one: the box and the clamp want different
+ * elements.
+ *
+ * The same shape as a fixed height fighting a safe-area inset, and it hides
+ * the same way — perfect wherever the text happens to be short enough.
+ * Measured on the four other clamps in the app: none carried padding, so the
+ * ceiling is zero rather than a tolerated pile.
+ */
+const PADDED = new RegExp(String.fromCharCode(92) + "b(?:py|pb|pt)-");
+
+function countClampWithPadding() {
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    for (const value of classNameValues(read(file))) {
+      if (!value.includes('line-clamp')) continue;
+      if (PADDED.test(value)) {
+        n += 1;
+        note('clip', file, value);
+      }
+    }
+  }
+  return n;
+}
+
+/**
+ * The whole value of every `className`, string or expression.
+ *
+ * The first version read `className="…"` only, and the sabotage that was
+ * supposed to prove it could fail found nothing: the memory page writes its
+ * clamp inside a `cn(…)`, where the two halves of the defect can also sit in
+ * two different arguments. Reading to the balanced end of the attribute is the
+ * only form that sees both.
+ */
+function classNameValues(source) {
+  const values = [];
+  const KEY = 'className=';
+  for (let at = source.indexOf(KEY); at !== -1; at = source.indexOf(KEY, at + 1)) {
+    let i = at + KEY.length;
+    if (source[i] === '"' || source[i] === "'") {
+      const quote = source[i];
+      const end = source.indexOf(quote, i + 1);
+      if (end !== -1) values.push(source.slice(i + 1, end));
+      continue;
+    }
+    if (source[i] !== '{') continue;
+    let depth = 0;
+    for (let j = i; j < source.length; j += 1) {
+      if (source[j] === '{') depth += 1;
+      else if (source[j] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          values.push(source.slice(i + 1, j));
+          break;
+        }
+      }
+    }
+  }
+  return values;
 }
 
 /** Source files with no test file beside them, in the subsystems that matter most. */
@@ -1563,6 +1644,12 @@ const METRICS = [
     direction: 'down',
     label: 'kernel/security/learning modules with no test file',
     measure: countUntestedCriticalModules,
+  },
+  {
+    key: 'clampWithPadding',
+    direction: 'down',
+    label: 'line-clamp fighting a vertical padding',
+    measure: countClampWithPadding,
   },
   {
     key: 'undefinedClasses',

@@ -156,7 +156,7 @@ export function WorkspacesPage() {
                         aria-hidden
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                        <p className="flex items-center gap-1.5 text-body font-semibold text-ink">
                           <span className="min-w-0 truncate">{workspace.name}</span>
                           {/* One dot, whatever the count: the number of unread
                               sessions is not a decision this card is for. */}

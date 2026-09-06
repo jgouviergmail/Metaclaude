@@ -170,11 +170,11 @@ export function GoogleConnectionCard() {
               connected?" without opening anything. What belongs here is the
               part that needs the room: which account, and since when. */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-medium text-ink">
+            <span className="text-body font-medium text-ink">
               {connection.accountEmail ?? t('account unknown')}
             </span>
             {connection.connectedAt ? (
-              <span className="text-[12px] text-subtle">
+              <span className="text-caption text-subtle">
                 {formatRelative(connection.connectedAt)}
               </span>
             ) : null}
@@ -188,7 +188,7 @@ export function GoogleConnectionCard() {
             ))}
           </div>
 
-          <p className="text-[12.5px] leading-relaxed text-muted">
+          <p className="text-caption leading-relaxed text-muted">
             {t(
               'The tools live on the MCP server named “google”, under Agents & skills. It is created disabled; a server that is on is mounted into every run of every workspace.',
             )}
@@ -214,7 +214,7 @@ export function GoogleConnectionCard() {
         </div>
       ) : (
         <div className="space-y-4 p-4 pt-0">
-          <ol className="list-decimal space-y-2 pl-5 text-[12.5px] leading-relaxed text-muted">
+          <ol className="list-decimal space-y-2 pl-5 text-caption leading-relaxed text-muted">
             <li>
               {t(
                 'In the Google Cloud console, create a project and enable the Gmail, Calendar and Drive APIs you want.',
@@ -235,7 +235,7 @@ export function GoogleConnectionCard() {
           {state.data?.redirectUri ? (
             <CopyableCode value={state.data.redirectUri} />
           ) : (
-            <p className="text-[12.5px] text-warning">
+            <p className="text-caption text-warning">
               {t(
                 'This deployment’s address could not be determined, so the redirect URI cannot be shown.',
               )}
@@ -268,10 +268,10 @@ export function GoogleConnectionCard() {
           </div>
 
           <fieldset className="space-y-2">
-            <legend className="text-[13px] font-medium text-ink">
+            <legend className="text-body font-medium text-ink">
               {t('What the agent may do with your account')}
             </legend>
-            <p className="text-[12px] leading-relaxed text-muted">
+            <p className="text-caption leading-relaxed text-muted">
               {t(
                 'Each box is one Google scope. A capability you do not grant is not merely refused at run time — its tool is never registered, so the agent cannot try it.',
               )}
@@ -290,7 +290,7 @@ export function GoogleConnectionCard() {
           </fieldset>
 
           {picksRestricted ? (
-            <p className="flex gap-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning">
+            <p className="flex gap-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-caption leading-relaxed text-warning">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>
                 {t(

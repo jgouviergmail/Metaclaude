@@ -88,13 +88,13 @@ export function PasskeysCard() {
       />
       <div className="space-y-3 px-4 pb-4">
         {!supported ? (
-          <p className="text-[12.5px] leading-relaxed text-muted">
+          <p className="text-caption leading-relaxed text-muted">
             {t(
               'This browser does not support passkeys (WebAuthn). Password and authenticator-app sign-in are unaffected.',
             )}
           </p>
         ) : !domainOk ? (
-          <p className="text-[12.5px] leading-relaxed text-muted">
+          <p className="text-caption leading-relaxed text-muted">
             {t(
               'Passkeys need a domain name: the WebAuthn standard scopes a credential to a domain, and this deployment is being reached by IP address. Give the server a hostname (METACLAUDE_SITE — see the deployment guide) and enrol from there. Password and authenticator-app sign-in are unaffected.',
             )}
@@ -107,8 +107,8 @@ export function PasskeysCard() {
                   <li key={passkey.id} className="flex items-center gap-3 px-3 py-2">
                     <Fingerprint className="size-4 shrink-0 text-muted" aria-hidden />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium text-ink">{passkey.label}</p>
-                      <p className="truncate text-[11.5px] text-subtle">
+                      <p className="truncate text-body font-medium text-ink">{passkey.label}</p>
+                      <p className="truncate text-caption text-subtle">
                         {passkey.rpId}
                         {passkey.lastUsedAt
                           ? ` · ${t(
@@ -132,7 +132,7 @@ export function PasskeysCard() {
                 ))}
               </ul>
             ) : (
-              <p className="text-[12.5px] text-muted">
+              <p className="text-caption text-muted">
                 {t(
                   'No passkey yet. The password keeps working either way — a passkey is an addition, never a replacement.',
                 )}

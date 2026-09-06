@@ -128,7 +128,7 @@ export function WorkspacePage() {
     return (
       <AppShell>
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <p className="text-sm text-muted">{t('That workspace could not be loaded.')}</p>
+          <p className="text-body text-muted">{t('That workspace could not be loaded.')}</p>
           <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces')}>{t(
             'All workspaces',
           )}</Button>
@@ -201,7 +201,7 @@ export function WorkspacePage() {
             <Stat
               label={t('Permission mode')}
               value={
-                <span className="text-base">
+                <span className="text-title">
                   {t(PERMISSION_MODE_INFO[workspace.settings.defaultPermissionMode].label)}
                 </span>
               }
@@ -213,7 +213,7 @@ export function WorkspacePage() {
             />
             <Stat
               label={t('Branch')}
-              value={<span className="text-base">{git?.branch ?? '—'}</span>}
+              value={<span className="text-title">{git?.branch ?? '—'}</span>}
               hint={
                 git?.isRepo
                   ? `${plural(
@@ -234,7 +234,7 @@ export function WorkspacePage() {
             <Card>
               <div className="flex items-center gap-2 border-b border-line px-4 py-3">
                 <GitBranch className="size-4 shrink-0 text-muted" aria-hidden />
-                <h2 className="text-sm font-semibold text-ink">{t('Uncommitted changes')}</h2>
+                <h2 className="text-body font-semibold text-ink">{t('Uncommitted changes')}</h2>
                 <Badge tone="warning" className="ml-auto">
                   {git.modified.length + git.untracked.length}
                 </Badge>
@@ -259,7 +259,7 @@ export function WorkspacePage() {
 
           <Card>
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-              <h2 className="text-sm font-semibold text-ink">{t('Sessions')}</h2>
+              <h2 className="text-body font-semibold text-ink">{t('Sessions')}</h2>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setShowCliSessions(true)}>
                   <TerminalSquare className="size-4" aria-hidden />{t('From the CLI')}</Button>
@@ -764,7 +764,7 @@ function WorkspaceSettingsModal({
 
         <div>
           <p className="text-[13px] font-medium text-ink">{t('Answer language')}</p>
-          <p className="mb-1.5 text-xs leading-relaxed text-muted">
+          <p className="mb-1.5 text-caption leading-relaxed text-muted">
             {t(
               'Subagents carry English prompts, so delegated work comes back in English however you wrote the request. Pinning a language settles the whole run, delegations included. Code and command output are never translated.',
             )}
