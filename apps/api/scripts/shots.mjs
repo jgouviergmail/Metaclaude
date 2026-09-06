@@ -267,6 +267,7 @@ async function shoot(theme, viewport, suffix) {
     ['/memory', 'memory'],
     ['/analytics', 'analytics'],
     ['/board', 'board'],
+    ['/automations', 'automations'],
     ['/help', 'help'],
     ['/agents', 'connectors', 'MCP servers'],
     ['/settings', 'system-tab', 'System'],
@@ -299,9 +300,66 @@ async function shoot(theme, viewport, suffix) {
   await page.close();
 }
 
+/**
+ * The dialogs, on a phone.
+ *
+ * The pages were captured from the first day and the dialogs never were —
+ * which is where every setting an operator changes actually lives, and where
+ * a row of controls has the least room. It cost a real defect: four trigger
+ * buttons in one flex row overflowed the automation dialog at 390px, so the
+ * fourth was off-screen and an event trigger could not be chosen on a phone.
+ * Nothing here asserts; the output is for eyes, like the rest of this bench.
+ */
+async function shootDialogs(theme, viewport, suffix) {
+  const page = await browser.newPage({ viewport, colorScheme: theme, locale: 'en-US' });
+  await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[name="username"], #username', USERNAME);
+  await page.fill('input[type="password"]', PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
+
+  // [path, name, the control that opens it, and a tab to reach first]
+  const dialogs = [
+    ['/automations', 'dialog-automation', 'New automation'],
+    ['/memory', 'dialog-memory', 'Add memory'],
+    ['/board', 'dialog-task', 'New task'],
+  ];
+  for (const [path, name, opener] of dialogs) {
+    await page.goto(`${server.baseUrl}${path}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(700);
+    const button = page.getByRole('button', { name: opener }).first();
+    if ((await button.count()) === 0) {
+      console.warn(`shots: no "${opener}" on ${path} — dialog not captured`);
+      continue;
+    }
+    await button.click();
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: join(OUT, `${name}-${theme}${suffix}.png`) });
+
+    // A dialog scrolls inside itself; the settings that overflow are usually
+    // below the fold, which is the half a viewport shot never shows.
+    const scrolled = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const scroller = dialog?.querySelector('.overflow-y-auto') ?? dialog;
+      if (!scroller || scroller.scrollHeight <= scroller.clientHeight) return false;
+      scroller.scrollTop = scroller.scrollHeight;
+      return true;
+    });
+    if (scrolled) {
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(OUT, `${name}-${theme}${suffix}-end.png`) });
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+  }
+  await page.close();
+}
+
 await shoot('dark', { width: 1440, height: 900 }, '');
 await shoot('light', { width: 1440, height: 900 }, '');
 await shoot('dark', { width: 390, height: 844 }, '-mobile');
+await shootDialogs('dark', { width: 390, height: 844 }, '-mobile');
+await shootDialogs('dark', { width: 1440, height: 900 }, '');
 
 await browser.close();
 await server.stop();

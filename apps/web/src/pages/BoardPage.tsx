@@ -10,7 +10,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Play, SquareKanban } from 'lucide-react';
+import { ChevronDown, Play, Plus, SquareKanban } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { workspaceTopic, type BoardTask, type TaskKind, type TaskPriority, type TaskStatus } from '@metaclaude/shared';
@@ -197,18 +197,33 @@ export function BoardPage() {
                 </MenuItem>
               ))}
             </Menu>
+            {/* Both labels fold to their icon below `sm`: three full-width
+                controls plus the workspace picker overflowed a 390px header,
+                and the one that fell off the right edge was the primary
+                action. The `aria-label` is not decoration — a label hidden
+                with `display: none` is out of the accessible name, so without
+                it these become unnamed buttons on exactly the screens where
+                the text is gone. */}
             <Button
               variant="secondary"
               size="sm"
               disabled={!workspaceId}
               loading={workBoard.isPending}
+              aria-label={t('Work the board')}
               onClick={() => workBoard.mutate()}
             >
               <Play className="size-3.5" aria-hidden />
-              {t('Work the board')}
+              <span className="hidden sm:inline">{t('Work the board')}</span>
             </Button>
-            <Button variant="primary" size="sm" onClick={() => setCreating('todo')} disabled={!workspaceId}>
-              {t('New task')}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setCreating('todo')}
+              disabled={!workspaceId}
+              aria-label={t('New task')}
+            >
+              <Plus className="size-4" aria-hidden />
+              <span className="hidden sm:inline">{t('New task')}</span>
             </Button>
           </div>
         }

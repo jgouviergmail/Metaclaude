@@ -11,6 +11,27 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.5] — 2026-09-06
+
+### Fixed
+
+- **The board's header fits a phone.** The workspace picker plus two
+  full-width buttons overflowed a 390px header, and what fell off the right
+  edge was the primary action — **New task** was unreachable on the screen
+  where the board is most used. Both labels fold to their icon below `sm`,
+  the way every other header in the app already did, each with the
+  `aria-label` that a `display: none` label cannot provide.
+
+### Changed
+
+- **The design bench photographs the dialogs, and the automations page.** It
+  captured nine screens on a phone since the day it was written and never a
+  single dialog — which is where the settings an operator changes actually
+  live, and where a row of controls has the least room. It cost the event
+  trigger a release: `scripts/shots.mjs` now opens the automation, memory and
+  task dialogs at 390px and 1440px, scrolling each to its end, because a
+  dialog's overflowing half is usually below the fold.
+
 ## [0.56.4] — 2026-09-06
 
 ### Fixed
