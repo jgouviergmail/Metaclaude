@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { reviewAdditionalDirectories } from './directories.js';
+import { POSIX } from '../testing/platform.js';
 
 const POLICY = { workspacesDir: '/srv/metaclaude/workspaces', dataDir: '/srv/metaclaude/data' };
 
@@ -19,13 +20,13 @@ const reasons = (paths: string[]) =>
   reviewAdditionalDirectories(paths, POLICY).rejected.map((entry) => entry.reason);
 
 describe('reviewAdditionalDirectories', () => {
-  it('allows a sibling workspace', () => {
+  it.skipIf(!POSIX)('allows a sibling workspace', () => {
     const review = reviewAdditionalDirectories(['/srv/metaclaude/workspaces/other'], POLICY);
     expect(review.allowed).toEqual(['/srv/metaclaude/workspaces/other']);
     expect(review.rejected).toEqual([]);
   });
 
-  it('normalises and de-duplicates', () => {
+  it.skipIf(!POSIX)('normalises and de-duplicates', () => {
     const review = reviewAdditionalDirectories(
       [
         '/srv/metaclaude/workspaces/a',
@@ -68,7 +69,7 @@ describe('reviewAdditionalDirectories', () => {
     expect(review.rejected[0]?.reason).toMatch(/workspaces root/);
   });
 
-  it('refuses the data directory even when it is nested under the workspaces root', () => {
+  it.skipIf(!POSIX)('refuses the data directory even when it is nested under the workspaces root', () => {
     const nested = {
       workspacesDir: '/srv/mc/workspaces',
       dataDir: '/srv/mc/workspaces/.metaclaude',
@@ -88,7 +89,7 @@ describe('reviewAdditionalDirectories', () => {
     expect(review.rejected[0]?.reason).toMatch(/data directory/);
   });
 
-  it('works under the layout the image actually ships', () => {
+  it.skipIf(!POSIX)('works under the layout the image actually ships', () => {
     // `docker/Dockerfile`: METACLAUDE_DATA_DIR=/var/lib/metaclaude and
     // METACLAUDE_WORKSPACES_DIR=/srv/metaclaude/workspaces — two separate roots,
     // neither containing the other, which `loadConfig` now requires.
@@ -178,7 +179,7 @@ describe('reviewAdditionalDirectories', () => {
     expect(reviewAdditionalDirectories(['/srv/mc/inner'], nested).allowed).toEqual([]);
   });
 
-  it('rejects a NUL byte and skips blanks without failing the rest', () => {
+  it.skipIf(!POSIX)('rejects a NUL byte and skips blanks without failing the rest', () => {
     const review = reviewAdditionalDirectories(
       ['', '   ', '/srv/metaclaude/workspaces/ok\0/etc', '/srv/metaclaude/workspaces/ok'],
       POLICY,

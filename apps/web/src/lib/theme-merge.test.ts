@@ -28,8 +28,15 @@ const CSS = readFileSync('src/styles/index.css', 'utf8');
 /** The custom properties of every `@theme` block, by namespace. */
 function themeNamespaces(): Map<string, string[]> {
   const namespaces = new Map<string, string[]>();
-  for (const [, body] of CSS.matchAll(/@theme[^{]*\{([\s\S]*?)\n\}/g)) {
-    for (const [, property] of body.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)) {
+  for (const block of CSS.matchAll(/@theme[^{]*\{([\s\S]*?)\n\}/g)) {
+    // A capture is `string | undefined` to the compiler even where the pattern
+    // makes it certain. The guard is for `tsc`, which vitest never runs — the
+    // reason this file reached CI red on a green suite.
+    const body = block[1];
+    if (!body) continue;
+    for (const declaration of body.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)) {
+      const property = declaration[1];
+      if (!property) continue;
       // `--text-display--line-height` describes `--text-display`; it generates
       // no utility of its own.
       if (property.includes('--', 2)) continue;

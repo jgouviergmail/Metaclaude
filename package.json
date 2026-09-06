@@ -1,10 +1,10 @@
 {
   "name": "metaclaude",
-  "version": "0.57.2",
+  "version": "0.57.3",
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Metaclaude \u2014 a private, self-hosted agentic OS built on the Claude CLI",
+  "description": "Metaclaude — a private, self-hosted agentic OS built on the Claude CLI",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22.11.0"
@@ -15,6 +15,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:run": "pnpm -r test:run",
+    "verify": "pnpm typecheck && pnpm test:run && pnpm build && node deploy/ratchets.mjs",
     "clean": "pnpm -r exec rm -rf dist node_modules/.vite .tsbuildinfo",
     "docker:build": "docker build -f docker/Dockerfile -t metaclaude:latest .",
     "docker:up": "docker compose up -d",

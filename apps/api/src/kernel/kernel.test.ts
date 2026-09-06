@@ -30,6 +30,7 @@ import { delegationTimeoutFor, deriveTitle, Kernel, languageDirective } from './
 import { AttachmentService } from '../services/attachments.js';
 import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import type { RunOutcome, RunRequest, SupervisorCallbacks } from './supervisor.js';
+import { POSIX } from '../testing/platform.js';
 
 /* -------------------------------------------------------------------------- */
 /* The fixture                                                                 */
@@ -249,7 +250,7 @@ describe('admission', () => {
     expect(fixture.runs.get(run.id)?.servedModel).toBe('claude-opus-5');
   });
 
-  it('binds the message’s attachments to the run and hands them to the supervisor', async () => {
+  it.skipIf(!POSIX)('binds the message’s attachments to the run and hands them to the supervisor', async () => {
     const session = fixture.newSession();
     fixture.db
       .prepare(

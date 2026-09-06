@@ -79,12 +79,19 @@ function read(path) {
  * Counting `it(` and `test(` overstates nothing that matters: a skipped test is
  * `it.skip(` and does not match, and a test that is deleted stops counting. It
  * is a floor on intent, and it costs no seconds.
+ *
+ * `it.skipIf(…)(` does count, and the distinction is the point. A case that
+ * asserts a POSIX absolute path cannot be true on Windows and says so out
+ * loud; it still runs in CI, on the platform it describes. Excluding it made
+ * the floor drop by fourteen the day those cases stopped *failing* on a
+ * maintainer's machine — a measure punishing the fix. `it.skip(` stays
+ * excluded: that one runs nowhere.
  */
 function countTests() {
   let n = 0;
   for (const file of tracked('*.test.ts').concat(tracked('*.test.tsx'))) {
     const body = read(file);
-    n += (body.match(/^\s*(?:it|test)\(/gm) ?? []).length;
+    n += (body.match(/^\s*(?:it|test)(?:[.]skipIf[(][^)]*[)])?\(/gm) ?? []).length;
   }
   return n;
 }

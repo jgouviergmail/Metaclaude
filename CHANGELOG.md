@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.57.3] — 2026-09-06
+
+### Fixed
+
+- The typecheck error that took CI red. A new test destructured a regex capture
+  without guarding it; `vitest` strips types and never checks them, so the
+  suite was green here and `tsc` was red there. The repository already
+  documents that trap — the fix below is the one that makes it impossible
+  rather than remembered.
+- Fourteen tests that failed on Windows, permanently. They assert POSIX
+  absolute paths verbatim — `/srv/metaclaude/workspaces/a` — and they do it on
+  purpose, because what ships is a Linux container; `resolve()` turns those
+  into `D:\srv\…` and the assertion compares two different worlds. They now
+  declare themselves skipped and say why, so they still run in CI on the
+  platform they describe. A suite with a standing red block teaches you to read
+  past red, which is exactly how a real failure hides.
+- The test-count floor punished that fix: `it.skipIf(…)` did not match, so the
+  number fell by fourteen the day those cases stopped failing. A conditional
+  skip is still a test and still runs in CI; `it.skip(` stays excluded, since
+  that one runs nowhere.
+
+### Changed
+
+- `pnpm verify` runs typecheck, tests, build and the ratchets in the order CI
+  does. Remembering four commands is not a strategy, and until the fix above it
+  could not have passed on the maintainer's own machine.
+
 ## [0.57.2] — 2026-09-06
 
 ### Fixed

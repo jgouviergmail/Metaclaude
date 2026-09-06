@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PathEscapeError, isInside, resolveInside, slugify, toRelative } from './paths.js';
+import { POSIX } from '../testing/platform.js';
 
 let base: string;
 let jail: string;
@@ -80,7 +81,7 @@ describe('resolveInside', () => {
     expect(() => resolveInside(jail, '../ws-evil/steal.txt')).toThrow(PathEscapeError);
   });
 
-  it('treats a leading slash as jail-relative rather than filesystem-absolute', () => {
+  it.skipIf(!POSIX)('treats a leading slash as jail-relative rather than filesystem-absolute', () => {
     expect(resolveInside(jail, '/sub/file.txt')).toBe(join(jail, 'sub', 'file.txt'));
     // An absolute path pointing at a real system file stays trapped in the jail.
     expect(resolveInside(jail, '/etc/passwd')).toBe(join(jail, 'etc', 'passwd'));
@@ -203,7 +204,7 @@ describe('slugify', () => {
     expect(slugify('...', 'my-fallback')).toBe('my-fallback');
   });
 
-  it('always returns a single, safe path segment bounded to 48 characters', () => {
+  it.skipIf(!POSIX)('always returns a single, safe path segment bounded to 48 characters', () => {
     for (const input of ['../../etc/passwd', 'a/b/c', 'x'.repeat(200), 'Ne pas / casser']) {
       const slug = slugify(input);
       expect(slug.length).toBeGreaterThan(0);

@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GitError, GitService } from './git.js';
+import { POSIX } from '../testing/platform.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -118,7 +119,7 @@ describe('a repository cannot turn a file write into a command', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
-  it('sees a driver reached through an include.path directive', async () => {
+  it.skipIf(!POSIX)('sees a driver reached through an include.path directive', async () => {
     // The guard listed the config with `git config --local --list`, and for a
     // *specific scope* git defaults `--includes` to off. So a repository could
     // put the payload in any file it liked and pull it in with one innocuous
@@ -140,7 +141,7 @@ describe('a repository cannot turn a file write into a command', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
-  it('sees a driver in the worktree config, which --local also omits', async () => {
+  it.skipIf(!POSIX)('sees a driver in the worktree config, which --local also omits', async () => {
     // The second scope `--local` does not report. `extensions.worktreeConfig`
     // makes git read $GIT_DIR/config.worktree as well, and that file is not
     // part of the local scope — so it evaded the guard by a different route
@@ -158,7 +159,7 @@ describe('a repository cannot turn a file write into a command', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
-  it('still refuses when the include is itself nested one level deeper', async () => {
+  it.skipIf(!POSIX)('still refuses when the include is itself nested one level deeper', async () => {
     // Includes chain. A guard that expanded only the first level would be a
     // smaller version of the same hole.
     const script = join(dir, 'payload.sh');
@@ -252,7 +253,7 @@ describe('the child environment', () => {
 });
 
 describe('the fixture itself is sound', () => {
-  it('control: plain git DOES run the filter, so the refusals above mean something', async () => {
+  it.skipIf(!POSIX)('control: plain git DOES run the filter, so the refusals above mean something', async () => {
     await arm('filter');
     await writeFile(join(dir, 'f.txt'), 'changed\n');
     await raw(['add', '--', 'f.txt']);

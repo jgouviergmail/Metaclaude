@@ -11,6 +11,7 @@ pnpm --filter @metaclaude/shared build   # run first — the others depend on it
 pnpm build                               # shared → api → web
 pnpm typecheck
 pnpm test:run                            # 2440 tests, ~60s
+pnpm verify                              # the four above, in the order CI runs them
 ./deploy/check.sh                        # the deploy scripts, off-box
 node deploy/ratchets.mjs                 # the quality ratchets (also run by check.sh)
 ```
@@ -27,6 +28,13 @@ explains it, which is worth keeping whether or not a linter ever reads it.
 `deploy/ratchets.json` holds numbers that may only move the improving way.
 `--update` records improvements but **refuses to loosen a ceiling** — loosening
 one is a hand edit, and the commit must say why.
+
+`pnpm verify` exists because remembering the four is not a strategy: a green
+`vitest` run is not a green typecheck, and a test file that CI rejected on
+`tsc` had a green suite here — twice. It runs typecheck, tests, build and the
+ratchets in the order CI does, so the first thing that fails is the first thing
+CI would have failed on. The two browser guards stay separate: they need a
+build and a browser, and take minutes.
 
 **Write the changelog entry *into* the empty `[Unreleased]` section, never
 above it.** `bump.mjs` leaves a fresh empty `## [Unreleased]` at the top of the

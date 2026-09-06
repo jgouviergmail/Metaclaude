@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PLUGIN_MCP_SCHEMA_URL, PLUGIN_SCHEMA_URL } from '@metaclaude/shared';
 import { loadPlugin, PluginError } from './plugins.js';
+import { POSIX } from '../testing/platform.js';
 
 let root = '';
 
@@ -151,7 +152,7 @@ describe('MCP servers', () => {
     expect(Object.keys(plugin.mcpServers).sort()).toEqual(['legacy', 'local', 'remote']);
   });
 
-  it('expands PLUGIN_ROOT and PLUGIN_DATA in args, env and cwd', async () => {
+  it.skipIf(!POSIX)('expands PLUGIN_ROOT and PLUGIN_DATA in args, env and cwd', async () => {
     // "Expand `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` in args, env and cwd."
     await manifest();
     await mcp({
@@ -214,7 +215,7 @@ describe('MCP servers', () => {
     expect(plugin.warnings.join(' ')).toMatch(/outside the plugin root/i);
   });
 
-  it('does not follow a symlink out of the plugin root', async () => {
+  it.skipIf(!POSIX)('does not follow a symlink out of the plugin root', async () => {
     await manifest();
     await skill('deploy');
     await symlink('/usr/bin', join(root, 'escape'));
