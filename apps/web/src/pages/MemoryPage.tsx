@@ -90,6 +90,9 @@ const KIND_FILTERS: ReadonlyArray<{ value: KindFilter; label: string }> = [
 type ShelfFilter = 'all' | MemoryShelf;
 
 /** Copy for the shelf, translated at the render site. */
+/** The shelf filter's options, in the order they are shown. */
+const SHELF_FILTERS = ['all', 'standing', 'durable', 'volatile'] as const;
+
 const SHELF_LABELS: Record<MemoryShelf, string> = {
   standing: 'Standing',
   durable: 'Durable',
@@ -694,60 +697,24 @@ export function MemoryPage() {
                 aria-label={t('Filter memories by keyword')}
               />
 
-              <div
-                role="group"
-                aria-label={t('Filter by memory kind')}
-                className="inline-flex flex-wrap gap-0.5 rounded-lg border border-line bg-sunken p-0.5"
-              >
-                {KIND_FILTERS.map((entry) => (
-                  <button
-                    key={entry.value}
-                    type="button"
-                    aria-pressed={kind === entry.value}
-                    onClick={() => setKind(entry.value)}
-                    className={cn(
-                      // 24px painted, 36px under a thumb. It measured 29 until
-                      // `cn` stopped dropping the role, which is what a size
-                      // class silently failing to apply looks like from the
-                      // other side: the chips were the wrong size AND passed.
-                      'rounded-md px-2.5 py-1 text-label font-medium transition-colors',
-                      TOUCH_TARGET_Y,
-                      kind === entry.value
-                        ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
-                        : 'text-muted hover:text-ink',
-                    )}
-                  >
-                    {t(entry.label)}
-                  </button>
-                ))}
-              </div>
-              <div
-                role="group"
-                aria-label={t('Filter by shelf')}
-                className="inline-flex flex-wrap gap-0.5 rounded-lg border border-line bg-sunken p-0.5"
-              >
-                {(['all', 'standing', 'durable', 'volatile'] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={shelf === value}
-                    onClick={() => setShelf(value)}
-                    className={cn(
-                      // 24px painted, 36px under a thumb. It measured 29 until
-                      // `cn` stopped dropping the role, which is what a size
-                      // class silently failing to apply looks like from the
-                      // other side: the chips were the wrong size AND passed.
-                      'rounded-md px-2.5 py-1 text-label font-medium transition-colors',
-                      TOUCH_TARGET_Y,
-                      shelf === value
-                        ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
-                        : 'text-muted hover:text-ink',
-                    )}
-                  >
-                    {value === 'all' ? t('Every shelf') : t(SHELF_LABELS[value])}
-                  </button>
-                ))}
-              </div>
+              <FilterGroup
+                label={t('Filter by memory kind')}
+                value={kind}
+                onChange={setKind}
+                options={KIND_FILTERS.map((entry) => ({
+                  value: entry.value,
+                  label: t(entry.label),
+                }))}
+              />
+              <FilterGroup
+                label={t('Filter by shelf')}
+                value={shelf}
+                onChange={setShelf}
+                options={SHELF_FILTERS.map((value) => ({
+                  value,
+                  label: value === 'all' ? t('Every shelf') : t(SHELF_LABELS[value]),
+                }))}
+              />
             </Card>
 
             {/* Deliberately tinted: this box does something categorically
@@ -1571,6 +1538,62 @@ function PanelHeading({
         {help.trigger}
       </div>
       {help.body}
+    </div>
+  );
+}
+
+/**
+ * One inset group of filter chips.
+ *
+ * Two of these sit side by side, and they were the same forty lines twice —
+ * the state, the options and the label function differed, and nothing else,
+ * the comment included. It had already cost something: a hit area had to be
+ * added to both, and the chips were 24px painted with none at all, which only
+ * surfaced once `cn` stopped dropping their size class.
+ *
+ * Not `SegmentedControl`: that is a labelled grid of option cards with hints,
+ * a different register for a different decision. This is the quiet inset pill
+ * group, and it exists nowhere else in the app — so it stays here rather than
+ * becoming a primitive on the strength of two call sites.
+ */
+function FilterGroup<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="inline-flex flex-wrap gap-0.5 rounded-lg border border-line bg-sunken p-0.5"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={option.value === value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            // 24px painted, 36px under a thumb. It measured 29 until `cn`
+            // stopped dropping the role, which is what a size class silently
+            // failing to apply looks like from the other side: the chips were
+            // the wrong size AND passed the guard.
+            'rounded-md px-2.5 py-1 text-label font-medium transition-colors',
+            TOUCH_TARGET_Y,
+            option.value === value
+              ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
+              : 'text-muted hover:text-ink',
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }

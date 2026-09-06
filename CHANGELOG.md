@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.57.1] — 2026-09-06
+
+### Changed
+
+- The two filter groups on the memory screen were the same forty lines twice —
+  the state, the options and how a label is read differed, and nothing else,
+  the comment included. The duplication had already cost something: the hit
+  area they were missing had to be added to each. One local component, and
+  three tests that had to pass before and after it.
+- The ratchet that catches a tab trigger re-declaring its appearance reads the
+  tag by brace depth *and* by quote, so a `>` inside `icon={<Icon />}` or
+  inside `title="a > b"` no longer ends the tag early. Both were sabotaged and
+  caught before being trusted; the first version read a comfortable zero.
+
 ## [0.57.0] — 2026-09-06
 
 ### Fixed

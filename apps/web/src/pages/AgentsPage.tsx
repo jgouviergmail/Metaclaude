@@ -218,19 +218,19 @@ export function AgentsPage() {
           </TabStrip>
 
           <PageBody width="standard" gap="none">
-            <TabPanel value="skills" className="focus-visible:outline-none">
+            <TabPanel value="skills">
               <SkillsTab workspaceId={workspaceId} onChanged={() => invalidate('skills')} />
             </TabPanel>
 
-            <TabPanel value="agents" className="focus-visible:outline-none">
+            <TabPanel value="agents">
               <AgentsTab workspaceId={workspaceId} onChanged={() => invalidate('agents')} />
             </TabPanel>
 
-            <TabPanel value="mcp" className="focus-visible:outline-none">
+            <TabPanel value="mcp">
               <McpTab workspaceId={workspaceId} onChanged={() => invalidate('mcp-servers')} />
             </TabPanel>
 
-            <TabPanel value="library" className="focus-visible:outline-none">
+            <TabPanel value="library">
               <LibraryTab
                 onInstalled={() => {
                   invalidate('skills');
@@ -239,7 +239,7 @@ export function AgentsPage() {
               />
             </TabPanel>
 
-            <TabPanel value="claude" className="focus-visible:outline-none">
+            <TabPanel value="claude">
               <ClaudeTab workspaceId={workspaceId} />
             </TabPanel>
           </PageBody>

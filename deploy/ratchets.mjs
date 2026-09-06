@@ -1172,14 +1172,26 @@ const TAB_APPEARANCE = ['border-b-2', 'data-[state=active]', 'text-body', 'font-
  * comfortable zero under deliberate sabotage — which is why a new measure is
  * sabotaged before it is trusted.
  */
+// Built from its code point: written literally it would travel through a
+// heredoc and arrive as an unterminated string, or as a control byte.
+const BACKSLASH = String.fromCharCode(92);
+
 function triggerTags(source) {
   const tags = [];
   const OPEN = '<TabTrigger';
   for (let at = source.indexOf(OPEN); at !== -1; at = source.indexOf(OPEN, at + 1)) {
     let depth = 0;
+    let quote = null;
     for (let i = at + OPEN.length; i < source.length; i += 1) {
       const ch = source[i];
-      if (ch === '{') depth += 1;
+      if (quote) {
+        // A ">" inside `label="a > b"` is not the end of the tag either. Same
+        // family as the brace depth, one layer in.
+        if (ch === quote && source[i - 1] !== BACKSLASH) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+      else if (ch === '{') depth += 1;
       else if (ch === '}') depth -= 1;
       else if (ch === '>' && depth === 0) {
         tags.push(source.slice(at, i + 1));

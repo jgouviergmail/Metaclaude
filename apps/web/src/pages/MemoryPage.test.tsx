@@ -116,6 +116,58 @@ describe('the shelf', () => {
   });
 });
 
+/**
+ * The two filter groups, which were the same forty lines twice.
+ *
+ * They differ in three things — the state, the options and how a label is
+ * read — and in nothing else, comment included. What makes the duplication
+ * worth removing rather than tolerating is that it had already cost
+ * something: both carried a hit area that had to be added twice, and the
+ * chips had been 24px painted with none at all, which only surfaced once `cn`
+ * stopped dropping their size class.
+ */
+describe('the filter groups', () => {
+  it('filters by shelf, which had no test of its own', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    const group = screen.getByRole('group', { name: 'Filter by shelf' });
+    const standing = within(group).getByRole('button', { name: 'Standing' });
+    fireEvent.click(standing);
+
+    expect(standing.getAttribute('aria-pressed')).toBe('true');
+    // The shelf narrows what is already on screen; it must not go to the server.
+    expect(apiMock.searchMemory).not.toHaveBeenCalled();
+  });
+
+  it('marks exactly one chip per group as pressed', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    for (const name of ['Filter by memory kind', 'Filter by shelf']) {
+      const group = screen.getByRole('group', { name });
+      const pressed = within(group)
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-pressed') === 'true');
+      expect(pressed, name).toHaveLength(1);
+    }
+  });
+
+  it('gives every chip a hit area, in both groups', async () => {
+    // 24px painted. happy-dom lays nothing out, so what a test can hold is the
+    // class contract; `scripts/responsive.mjs` measures the result in a browser
+    // and named all eight of these the day the size class started applying.
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    for (const name of ['Filter by memory kind', 'Filter by shelf']) {
+      for (const chip of within(screen.getByRole('group', { name })).getAllByRole('button')) {
+        expect(chip.className, `${name} — ${chip.textContent}`).toContain('pointer-coarse:before:');
+      }
+    }
+  });
+});
+
 describe('filtering versus recalling', () => {
   it('filters the list without asking the server to search', async () => {
     // The keyword box narrows what is already on screen; sending it to the
