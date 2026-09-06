@@ -11,6 +11,27 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.14] — 2026-09-06
+
+### Added
+
+- The responsive check now opens the menus and two more dialogs. It covered
+  three dialogs out of forty-two and no menu at all, which is a large blind
+  spot for a check whose subject is what a control looks like once it is on
+  screen — the trigger defect that cost a release in 0.56.4 was inside a
+  dialog. Menus are found generically by `aria-haspopup="menu"`, so nothing
+  drifts as menus are added and nothing is mutated by opening one. The sweep
+  went from 432 assertions to 873.
+
+### Fixed
+
+- A memory's action menu came out 430px wide on a 390px phone: Radix sizes a
+  menu to its widest child, and several items carry an explanatory sentence
+  under the label, so every sentence ran off the right edge — on the one screen
+  where that menu is the only way to act on a memory. The menu's width is
+  bounded by the viewport now, and the items' existing `min-w-0` lets the
+  sentences wrap.
+
 ## [0.56.13] — 2026-09-06
 
 ### Added

@@ -129,3 +129,37 @@ describe('keepOpen', () => {
     expect(screen.getByRole('menuitemcheckbox', { name: 'Bash' })).toBeDefined();
   });
 });
+
+/**
+ * The menu's width, on a phone.
+ *
+ * Measured in a real browser before this existed: a memory's action menu came
+ * out 430px wide inside a 390px viewport, because Radix sizes the content to
+ * its widest child and several items carry an explanatory sentence under the
+ * label. The sentences ran off the right edge and were unreadable — on the one
+ * screen where the menu is the only way to act on a memory.
+ *
+ * happy-dom has no layout, so what a test can hold here is the contract that
+ * makes it fit: a maximum width bounded by the viewport, which is what lets
+ * the descriptions wrap instead of pushing. The proof it works is
+ * `scripts/responsive.mjs`, which opens every menu at 390px in both languages.
+ */
+describe('the menu never outgrows the screen', () => {
+  it('caps its width against the viewport', async () => {
+    renderWithProviders(
+      <Menu trigger={<button type="button">Actions</button>}>
+        <MenuItem onSelect={() => {}} description="Une phrase d'explication assez longue pour pousser.">
+          Volatile
+        </MenuItem>
+      </Menu>,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: 'Actions' }),
+      { button: 0, ctrlKey: false },
+    );
+    const menu = await screen.findByRole('menu');
+    expect(menu.className).toContain('max-w-[min(22rem,calc(100vw-1.5rem))]');
+  });
+});
+

@@ -383,7 +383,17 @@ const DIALOGS = [
   ['/automations', { 'en-US': 'New automation', 'fr-FR': 'Nouvelle automatisation' }],
   ['/memory', { 'en-US': 'Add memory', 'fr-FR': 'Ajouter une mémoire' }],
   ['/board', { 'en-US': 'New task', 'fr-FR': 'Nouvelle tâche' }],
+  ['/workspaces', { 'en-US': 'New workspace', 'fr-FR': 'Nouveau workspace' }],
+  ['/memory', { 'en-US': 'Memory maintenance', 'fr-FR': 'Maintenance de la mémoire' }],
 ];
+
+/**
+ * Where the menus are worth opening.
+ *
+ * Every route would be tidier and most carry the same three from the rail, so
+ * this is the set that adds something: a screen with menus of its own.
+ */
+const MENU_ROUTES = ['/', '/board', '/memory', '/automations', '/settings'];
 const WIDTHS = [
   { name: '390', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
   { name: '768', viewport: { width: 768, height: 1024 } },
@@ -456,6 +466,56 @@ for (const locale of LOCALES) {
         sabotaged.clipped.some((entry) => entry.includes('WITNESS')),
         'the injected positive control was not seen — the probe proves nothing here',
       );
+    }
+
+    /*
+     * Every menu on the page, opened one at a time.
+     *
+     * Generic on purpose: Radix marks its triggers `aria-haspopup="menu"`, so
+     * this needs no per-menu wiring and cannot drift as menus are added — and
+     * opening one mutates nothing, unlike clicking an arbitrary button. There
+     * are 29 of them and the sweep opened none, which is a large blind spot
+     * for a check whose whole subject is what a control looks like when it is
+     * actually on screen.
+     */
+    // One menu per distinct name and width: the rail's three appear on every
+    // route, and opening them five times over measures the same thing five
+    // times. 456 opens became 130 with no loss of coverage, which keeps the CI
+    // job inside its twenty minutes.
+    const seenMenus = new Set();
+    for (const route of MENU_ROUTES) {
+      await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(600);
+      const triggers = await page.$$('[aria-haspopup="menu"]');
+      for (let index = 0; index < triggers.length; index += 1) {
+        const trigger = triggers[index];
+        if (!(await trigger.isVisible())) continue;
+        const name =
+          (await trigger.getAttribute('aria-label')) ||
+          (await trigger.textContent())?.trim().slice(0, 24) ||
+          `menu ${index}`;
+        if (seenMenus.has(name)) continue;
+        seenMenus.add(name);
+        // Bring the trigger into view first. Radix positions a menu on its
+        // trigger, so opening one that is scrolled off — a card in the board's
+        // fourth column at 390px — puts the menu off-screen too, and the check
+        // then reports a defect no operator could ever meet: they would have
+        // scrolled to the card before reaching for its menu. Twenty failures
+        // came from exactly that, all on the board, none real.
+        await trigger.scrollIntoViewIfNeeded().catch(() => {});
+        await page.waitForTimeout(150);
+        if (!(await trigger.isVisible())) continue;
+
+        // Radix opens on pointerdown, and a click after it *toggles the menu
+        // shut* — which is how the first version of this loop inspected zero
+        // menus while reporting green. One event, and then check it opened.
+        await trigger.dispatchEvent('pointerdown');
+        await page.waitForTimeout(400);
+        if ((await page.$('[role="menu"]')) === null) continue;
+        await inspect(`${route} · menu « ${name} »`);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(200);
+      }
     }
 
     for (const [route, openers] of DIALOGS) {

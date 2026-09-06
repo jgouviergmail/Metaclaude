@@ -29,7 +29,14 @@ export function Menu({
           sideOffset={6}
           collisionPadding={12}
           className={cn(
+            // The maximum width is bounded by the viewport, not only by a
+            // comfortable reading measure. Radix sizes the content to its
+            // widest child, and several items carry an explanatory sentence
+            // under the label: a memory's action menu came out 430px wide on a
+            // 390px phone, with every sentence running off the right edge.
+            // Capped, the items' `min-w-0 flex-1` lets those sentences wrap.
             'animate-in-up z-50 max-h-[min(24rem,60vh)] min-w-52 overflow-y-auto',
+            'max-w-[min(22rem,calc(100vw-1.5rem))]',
             'rounded-xl border border-line bg-raised p-1 shadow-[var(--mc-shadow-lg)]',
           )}
         >

@@ -1,7 +1,7 @@
 /** Constants shared by the API and the web app. */
 
 export const APP_NAME = 'Metaclaude';
-export const APP_VERSION = '0.56.13';
+export const APP_VERSION = '0.56.14';
 
 /**
  * How long a machine token may live. A year is the outer bound, not a default.

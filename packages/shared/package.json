@@ -1,6 +1,6 @@
 {
   "name": "@metaclaude/shared",
-  "version": "0.56.13",
+  "version": "0.56.14",
   "private": true,
   "license": "MIT",
   "type": "module",
