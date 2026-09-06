@@ -565,7 +565,45 @@ describe('the recall box tells the truth about the regime', () => {
 
     expect(await screen.findByLabelText('Search memory by words')).toBeDefined();
     expect(screen.queryByText('Semantic recall')).toBeNull();
-    expect(screen.getByText(/matches words, not meaning/)).toBeDefined();
+    // The sentence is what actually names the regime, and in the compact
+    // density it sits behind the box's own disclosure — so open that one, not
+    // the filter box's, which is why this reaches through the card.
+    const card = screen
+      .getByRole('heading', { name: 'Recall', level: 2 })
+      .closest('.mc-card') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Explain Recall' }));
+    expect(within(card).getByText(/matches words, not meaning/)).toBeDefined();
+  });
+
+  /*
+   * Side by side, "Filter" and "Recall" are two search boxes with nothing
+   * saying which is which: the sentence under each is the distinction. A first
+   * pass hid both with a CSS rule keyed on the comfortable density — which is
+   * not the default — so in the shipped density the difference between the two
+   * halves of this screen was unreadable, with no control to reveal it. Both
+   * must offer it.
+   */
+  it('keeps what distinguishes the two boxes reachable in the compact density', async () => {
+    renderWithProviders(<MemoryPage />);
+
+    await screen.findByRole('heading', { name: 'Semantic recall', level: 2 });
+    const boxes = [
+      { heading: 'Filter', prose: /narrows the list below/ },
+      { heading: 'Semantic recall', prose: /ranked by meaning/ },
+    ];
+    for (const box of boxes) {
+      const card = screen
+        .getByRole('heading', { name: box.heading, level: 2 })
+        .closest('.mc-card') as HTMLElement;
+      expect(within(card).queryByText(box.prose)).toBeNull();
+      // Named by their subject, because side by side two controls called
+      // `Explain` are one entry twice in any list of the screen's buttons.
+      const explain = within(card).getByRole('button', { name: `Explain ${box.heading}` });
+      expect(explain.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(explain);
+      expect(explain.getAttribute('aria-expanded')).toBe('true');
+      expect(within(card).getByText(box.prose)).toBeDefined();
+    }
   });
 });
 

@@ -1753,6 +1753,8 @@ export const fr: Record<string, string> = {
   'Unpin {title}': 'Désépingler {title}',
   'Pin {title}': 'Épingler {title}',
   pinned: 'épinglée',
+  'Explain': 'Afficher l’explication',
+  'Explain {subject}': 'Afficher l’explication : {subject}',
   'Show less': 'Voir moins',
   'Show more': 'Voir plus',
   used: 'utilisée',

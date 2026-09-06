@@ -11,6 +11,28 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.18] — 2026-09-06
+
+### Fixed
+
+- The explanations on the memory screen are readable again in the compact
+  density. Making them follow the density was right; hiding them with a CSS
+  rule keyed on *comfortable* was not, because compact is the default — so in
+  the density everybody actually runs, the sentences that say what the filter
+  box does and what the recall box does were gone, with no control to bring
+  them back. Side by side those two boxes are otherwise indistinguishable, and
+  the sentence under each is the entire distinction. A description is now
+  disclosed rather than dropped: shown outright when there is room, offered
+  behind a small control when there is not. `Section` and `CardHeader` already
+  owned a description, so they carry the behaviour and no screen had to change.
+
+### Changed
+
+- The disclosure control names what it explains. Two of them sit side by side
+  on the memory screen, and named alike they were one entry twice in any list
+  of the screen's controls — the heading above each separates them on screen
+  and by arrow navigation, and not there.
+
 ## [0.56.17] — 2026-09-06
 
 ### Changed

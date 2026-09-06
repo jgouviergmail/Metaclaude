@@ -49,6 +49,7 @@ import {
 } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { RetrievalStatus } from '@/components/system/RetrievalStatus';
+import { useDisclosedDescription } from '@/components/ui/density';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
 import { KnowledgeSection } from '@/components/memory/KnowledgeSection';
 import { ConsolidationCard, readProposal } from '@/components/memory/ConsolidationCard';
@@ -65,7 +66,6 @@ import {
   Meter,
   Skeleton,
   Spinner,
-  Stat,
   Textarea,
   Tooltip,
 } from '@/components/ui/primitives';
@@ -675,17 +675,13 @@ export function MemoryPage() {
           {/* ---------------------------- Retrieval -------------------------- */}
           <div className="grid gap-3 lg:grid-cols-2">
             <Card className="space-y-3 p-4">
-              <div className="space-y-1">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <Search className="size-4 text-subtle" aria-hidden />
-                  {t('Filter')}
-                </h2>
-                <p className="help-comfortable text-caption leading-relaxed text-muted">
-                  {t(
-                    'Plain keyword matching over titles, bodies and tags. It narrows the list below and nothing more.',
-                  )}
-                </p>
-              </div>
+              <PanelHeading
+                icon={<Search className="size-4 text-subtle" aria-hidden />}
+                title={t('Filter')}
+                description={t(
+                  'Plain keyword matching over titles, bodies and tags. It narrows the list below and nothing more.',
+                )}
+              />
 
               <Input
                 id="memory-filter"
@@ -744,21 +740,17 @@ export function MemoryPage() {
             {/* Deliberately tinted: this box does something categorically
                 different from the one beside it. */}
             <Card className="space-y-3 border-accent/30 bg-accent-soft/30 p-4">
-              <div className="space-y-1">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <Sparkles className="size-4 text-accent" aria-hidden />
-                  {/* "Semantic" only while a model is loaded and answering: under the
-                      hashing embedder, or while a model loads, this box ranks by words. */}
-                  {t(retrieval.semantic ? 'Semantic recall' : 'Recall')}
-                </h2>
-                <p className="help-comfortable text-caption leading-relaxed text-muted">
-                  {t(
-                    retrieval.semantic
-                      ? 'Runs the same embedding search the agent runs before a prompt. Results are ranked by meaning, not wording — this is what would actually be injected into context.'
-                      : 'Runs the same retrieval the agent runs before a prompt. Right now it matches words, not meaning — this is what would actually be injected into context.',
-                  )}
-                </p>
-              </div>
+              <PanelHeading
+                icon={<Sparkles className="size-4 text-accent" aria-hidden />}
+                // "Semantic" only while a model is loaded and answering: under the
+                // hashing embedder, or while a model loads, this box ranks by words.
+                title={t(retrieval.semantic ? 'Semantic recall' : 'Recall')}
+                description={t(
+                  retrieval.semantic
+                    ? 'Runs the same embedding search the agent runs before a prompt. Results are ranked by meaning, not wording — this is what would actually be injected into context.'
+                    : 'Runs the same retrieval the agent runs before a prompt. Right now it matches words, not meaning — this is what would actually be injected into context.',
+                )}
+              />
 
               <form
                 className="flex gap-2"
@@ -1530,6 +1522,46 @@ function MemoryCard({
  * off: it is what the setting promises, and it is the honest answer to a line
  * that is useful the first week and noise the rest of the year.
  */
+/**
+ * The heading of one of the two retrieval boxes.
+ *
+ * Not `CardHeader`: these two sit inside a `Card` that already owns its
+ * padding and one of them is tinted, so the rule and gutter a card header
+ * draws would fight what is there. What they do share is the behaviour —
+ * hence `useDisclosedDescription` rather than a second spelling of it.
+ *
+ * Their prose is not ornament. Side by side, "Filtre" and "Rappel" are two
+ * search boxes with nothing saying which is which; the sentence under each is
+ * the only thing that distinguishes them, so it has to stay reachable in the
+ * compact density rather than disappear with it. The glosses under the counts
+ * above keep the CSS-only `.help-comfortable`: the label there already names
+ * the thing, and four `i` buttons on one line of four numbers would be worse
+ * than the noise they remove.
+ */
+function PanelHeading({
+  icon,
+  title,
+  description,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+}) {
+  const help = useDisclosedDescription(description, title);
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink">
+          {icon}
+          {title}
+        </h2>
+        {help.trigger}
+      </div>
+      {help.body}
+    </div>
+  );
+}
+
 function MemoryCount({
   value,
   label,

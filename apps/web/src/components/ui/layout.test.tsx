@@ -14,10 +14,19 @@
  * can shrink.
  */
 
-import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
+import { useUiStore } from '@/lib/store';
 import { Grid, Page, PageBody, Section } from './layout';
+
+// The density lives on the store and on the root element, and no render tears
+// either down: a case that sets one and walks away hands the next case a
+// density it never asked for. Same family as restoring `window.location`.
+afterEach(() => {
+  document.documentElement.removeAttribute('data-density');
+  useUiStore.setState({ density: 'compact' });
+});
 
 describe('Page', () => {
   it('owns the maximum width, so a screen never names its own', () => {
@@ -127,14 +136,20 @@ describe('Section', () => {
     expect(screen.getByTestId('icone').closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
-  it('shows a description and actions when given them', () => {
+  it('carries a description and actions when given them', () => {
+    // The description is reachable in either density; *how* it is reached is
+    // the subject of the density cases below. Here it only has to arrive, and
+    // the actions have to survive beside it — the disclosure control sits in
+    // the same header and an earlier draft put it in the actions slot, where
+    // it would have been one more button in a row of real ones.
     render(
       <Section title="Exécution" description="Prend effet au prochain run." actions={<button type="button">Ajouter</button>}>
         contenu
       </Section>,
     );
-    expect(screen.getByText('Prend effet au prochain run.')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Ajouter' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /explain/i }));
+    expect(screen.getByText('Prend effet au prochain run.')).toBeDefined();
   });
 });
 
@@ -187,3 +202,47 @@ describe('Grid', () => {
     expect((container.firstElementChild as HTMLElement).className).toContain('gap-');
   });
 });
+
+/**
+ * A description a compact reader can still reach.
+ *
+ * The comfortable density shows explanatory prose and the compact one hides
+ * it — which is what the setting promises, and which left a compact reader,
+ * the default, with no way at all to read it. That is a regression against
+ * what was there before, where the prose was simply always on.
+ *
+ * So it is disclosed rather than dropped: comfortable shows it, compact offers
+ * it. One behaviour, carried by the two components that already own a
+ * description, so no caller has to think about the density.
+ */
+describe('a section description follows the density', () => {
+  it('shows the prose outright when the density is comfortable', () => {
+    document.documentElement.setAttribute('data-density', 'comfortable');
+    useUiStore.setState({ density: 'comfortable' });
+    render(<Section title="Exécution" description="Prend effet au prochain run.">corps</Section>);
+    expect(screen.getByText('Prend effet au prochain run.')).toBeDefined();
+    expect(screen.queryByRole('button', { name: /explain/i })).toBeNull();
+  });
+
+  it('offers it behind a control when the density is compact', () => {
+    useUiStore.setState({ density: 'compact' });
+    render(<Section title="Exécution" description="Prend effet au prochain run.">corps</Section>);
+
+    expect(screen.queryByText('Prend effet au prochain run.')).toBeNull();
+    const explain = screen.getByRole('button', { name: /explain/i });
+    expect(explain.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(explain);
+    expect(screen.getByText('Prend effet au prochain run.')).toBeDefined();
+    expect(screen.getByRole('button', { name: /explain/i }).getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+  });
+
+  it('offers nothing when there is nothing to explain', () => {
+    useUiStore.setState({ density: 'compact' });
+    render(<Section title="Exécution">corps</Section>);
+    expect(screen.queryByRole('button', { name: /explain/i })).toBeNull();
+  });
+});
+

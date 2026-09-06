@@ -17,6 +17,7 @@ import {
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react';
+import { useDisclosedDescription } from '@/components/ui/density';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 
@@ -266,11 +267,21 @@ export function CardHeader({
   level?: 2 | 3 | 4;
 }) {
   const Heading = `h${level}` as const;
+  // Same behaviour as `Section`, from the same place: the description is shown
+  // outright in the comfortable density and offered behind a control in the
+  // compact one. `space-y-1` is gone from the wrapper because the disclosed
+  // prose carries its own top margin, and two rules setting `margin-top` on
+  // one element is a cascade collision waiting for a refactor to resolve it
+  // the wrong way.
+  const help = useDisclosedDescription(description, typeof title === 'string' ? title : undefined);
   return (
     <div className={cn('flex items-start justify-between gap-4 border-b border-line p-gutter', className)}>
-      <div className="min-w-0 space-y-1">
-        <Heading className="truncate text-sm font-semibold text-ink">{title}</Heading>
-        {description ? <p className="text-xs leading-relaxed text-muted">{description}</p> : null}
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2">
+          <Heading className="truncate text-sm font-semibold text-ink">{title}</Heading>
+          {help.trigger}
+        </div>
+        {help.body}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </div>

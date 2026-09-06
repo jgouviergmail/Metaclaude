@@ -16,6 +16,7 @@
 
 import type { HTMLAttributes, ReactNode } from 'react';
 import { useId } from 'react';
+import { useDisclosedDescription } from '@/components/ui/density';
 import { cn } from '@/lib/utils';
 
 /* -------------------------------------------------------------------------- */
@@ -149,6 +150,10 @@ export function Section({
 }: SectionProps) {
   const id = useId();
   const Heading = `h${level}` as const;
+  // The prose follows the density, and stays reachable in both — see
+  // `useDisclosedDescription`. The two halves cannot be one element: the
+  // control belongs on the title's baseline, the prose under it.
+  const help = useDisclosedDescription(description, typeof title === 'string' ? title : undefined);
   return (
     <section aria-labelledby={`${id}-title`} className={className}>
       <header className="flex items-start justify-between gap-4 border-b border-line pb-2">
@@ -162,8 +167,9 @@ export function Section({
             <Heading id={`${id}-title`} className="text-heading text-ink">
               {title}
             </Heading>
+            {help.trigger}
           </div>
-          {description ? <p className="mt-0.5 text-caption text-muted">{description}</p> : null}
+          {help.body}
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
       </header>
