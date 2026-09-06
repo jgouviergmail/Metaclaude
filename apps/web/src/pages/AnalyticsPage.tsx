@@ -30,6 +30,7 @@ import { QuotaPanel } from '@/components/analytics/QuotaPanel';
 import { WorkspaceUsageBars } from '@/components/analytics/WorkspaceUsageBars';
 import { BetaCurve } from '@/components/analytics/BetaCurve';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SystemTabs } from '@/components/layout/SystemTabs';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import {
@@ -196,6 +197,7 @@ export function AnalyticsPage() {
   return (
     <AppShell>
       <ContentHeader
+        tabs={<SystemTabs />}
         title={t('Analytics')}
         subtitle={`${periodLabel} · ${scopeLabel}`}
         showSidebarToggle={false}

@@ -17,6 +17,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SystemTabs } from '@/components/layout/SystemTabs';
 import { Button, Card, Input, Skeleton, Spinner } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import {
@@ -103,6 +104,7 @@ export function HelpPage() {
   return (
     <AppShell>
       <ContentHeader
+        tabs={<SystemTabs />}
         title={t('Help')}
         subtitle={t('You are on Metaclaude {version}. The guide below ships with it.', {
           version: APP_VERSION,

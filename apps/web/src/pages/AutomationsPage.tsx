@@ -32,6 +32,7 @@ import {
   type PermissionMode,
 } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SystemTabs } from '@/components/layout/SystemTabs';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
@@ -122,6 +123,7 @@ export function AutomationsPage() {
   return (
     <AppShell>
       <ContentHeader
+        tabs={<SystemTabs />}
         title={t('Automations')}
         subtitle={t('Scheduled and continuous agent loops.')}
         showSidebarToggle={false}

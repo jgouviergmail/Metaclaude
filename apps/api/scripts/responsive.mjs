@@ -313,6 +313,11 @@ const AUDIT = `
  * cannot indict a proper noun, a workspace name, a number, or a sentence
  * assembled from several translated fragments — none of those equal a key.
  *
+ * Accessible names count too, and for a reason this very lot demonstrated: the
+ * System strip shipped with an untranslated `aria-label` and the check said
+ * nothing, because it only walked text nodes. A name nobody sees is still copy
+ * — it is what a screen-reader user hears and what voice control listens for.
+ *
  * Three exclusions, each for a stated reason rather than to make the number
  * look better:
  *  - `.prose-mc` is rendered markdown: the agent's own words and the user's,
@@ -329,17 +334,28 @@ const UNTRANSLATED = (keys) => `
   (() => {
     const KEYS = new Set(${JSON.stringify(keys)});
     const found = new Set();
+    const shows = (el) => {
+      if (!el || el.closest('.prose-mc, code, pre')) return false;
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      return el.getBoundingClientRect().width > 0;
+    };
+
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const text = (node.textContent || '').trim();
       if (text.length < 2 || !KEYS.has(text)) continue;
-      const el = node.parentElement;
-      if (!el) continue;
-      if (el.closest('.prose-mc, code, pre')) continue;
-      const style = getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden') continue;
-      if (el.getBoundingClientRect().width === 0) continue;
-      found.add(text);
+      if (shows(node.parentElement)) found.add(text);
+    }
+
+    // The names nobody sees. An untranslated one is heard, not read — and it
+    // is what voice control listens for.
+    for (const el of document.querySelectorAll('[aria-label], [title]')) {
+      for (const attribute of ['aria-label', 'title']) {
+        const value = (el.getAttribute(attribute) || '').trim();
+        if (value.length < 2 || !KEYS.has(value)) continue;
+        if (shows(el)) found.add(attribute + '=' + value);
+      }
     }
     return [...found];
   })()

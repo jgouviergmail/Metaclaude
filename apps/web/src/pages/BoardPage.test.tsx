@@ -30,7 +30,9 @@ describe('BoardPage', () => {
 
     expect(await screen.findByText(/no workspace yet/i)).toBeDefined();
     expect(screen.getAllByRole('navigation', { name: 'Sections' })).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'More sections' })).toBeDefined();
+    // No « More » any more: the ten sections became five, so the tab bar holds
+    // all of them and nothing is hidden behind a sheet.
+    expect(screen.queryByRole('button', { name: 'More sections' })).toBeNull();
   });
 
   it('offers Work the board, disabled until a workspace exists', async () => {

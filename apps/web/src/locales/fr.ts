@@ -124,7 +124,6 @@ export const fr: Record<string, string> = {
   Analytics: 'Analytique',
   Help: 'Aide',
   Settings: 'Réglages',
-  More: 'Plus',
 
   /* Sign-in */
   'Sign in': 'Se connecter',
@@ -399,6 +398,7 @@ export const fr: Record<string, string> = {
   'API key': 'clé API',
   'No Claude credentials configured': 'Aucun identifiant Claude configuré',
   'New workspace': 'Nouveau workspace',
+  'System sections': 'Sections de Système',
   Density: 'Densité',
   Compact: 'Compacte',
   Comfortable: 'Confortable',
@@ -906,8 +906,6 @@ export const fr: Record<string, string> = {
   /* Coquille de l’application */
   Context: 'Contexte',
   'Close panel': 'Fermer le panneau',
-  'Close sections': 'Fermer les sections',
-  'More sections': 'Plus de sections',
   'Toggle panel': 'Afficher ou masquer le panneau',
   Loading: 'Chargement',
 

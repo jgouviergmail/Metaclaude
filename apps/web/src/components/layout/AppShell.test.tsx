@@ -9,42 +9,38 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderWithProviders } from '@/test/render';
+import { SystemTabs } from './SystemTabs';
 import { AppShell } from './AppShell';
 
-const SECONDARY = ['Memory', 'Agents & skills', 'Plugins', 'Analytics', 'Help'];
+/** The System screens the rail no longer carries: its strip does. */
+const SECONDARY = ['Automations', 'Agents & skills', 'Plugins', 'Analytics', 'Help'];
 
 describe('AppShell navigation', () => {
-  it('offers every primary section plus More in the phone tab bar', () => {
+  it('offers the same five sections in the rail and in the phone tab bar', () => {
+    // There is no sixth entry and no sheet: ten sections did not fit a tab bar,
+    // so four were hidden behind "More" by the available space rather than by
+    // meaning. Six of the ten are one section now.
     renderWithProviders(<AppShell>content</AppShell>);
 
     const bars = screen.getAllByRole('navigation', { name: 'Sections' });
     expect(bars).toHaveLength(2); // the rail and the tab bar
 
-    for (const label of ['Dashboard', 'Workspaces', 'Board', 'Automations', 'Settings']) {
+    for (const label of ['Dashboard', 'Workspaces', 'Board', 'Memory', 'System']) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
-    expect(screen.getByRole('button', { name: 'More sections' })).toBeDefined();
-  });
-
-  it('More opens a sheet carrying the sections the tab bar cannot hold', () => {
-    renderWithProviders(<AppShell>content</AppShell>);
-
-    fireEvent.click(screen.getByRole('button', { name: 'More sections' }));
-    // Scoped to the sheet: the rail carries the same labels (jsdom ignores
-    // the responsive `hidden`), and the point is that the sheet has them.
-    const sheet = within(screen.getByRole('menu', { name: 'More sections' }));
-    for (const label of SECONDARY) {
-      expect(sheet.getByRole('link', { name: label })).toBeDefined();
+    for (const bar of bars) {
+      expect(within(bar).getAllByRole('link').length).toBeLessThanOrEqual(6); // 5 + the logo
     }
   });
 
-  it('navigating from the sheet closes it', () => {
-    renderWithProviders(<AppShell>content</AppShell>);
-
-    fireEvent.click(screen.getByRole('button', { name: 'More sections' }));
-    const sheet = within(screen.getByRole('menu', { name: 'More sections' }));
-    fireEvent.click(sheet.getByRole('link', { name: 'Memory' }));
-    expect(screen.queryByRole('menu', { name: 'More sections' })).toBeNull();
+  it('reaches the six System screens from the section itself, not from the rail', () => {
+    // The rail no longer carries them, so the section's own strip has to — and
+    // it is the thing that makes them one section rather than six entries.
+    renderWithProviders(<SystemTabs />, { route: '/settings' });
+    const strip = within(screen.getByRole('navigation', { name: 'System sections' }));
+    for (const label of SECONDARY) {
+      expect(strip.getByRole('link', { name: new RegExp(label) })).toBeDefined();
+    }
   });
 
   it('holds platform tap-target metrics in the tab bar, safe area included', () => {
@@ -107,11 +103,15 @@ describe('AppShell navigation', () => {
     expect(css).toContain('env(safe-area-inset-top)');
   });
 
-  it('keeps the rail listing every section for wider screens', () => {
+  it('keeps the rail down to the five, on every screen width', () => {
     renderWithProviders(<AppShell>content</AppShell>);
+    const rail = screen
+      .getAllByRole('navigation', { name: 'Sections' })
+      .find((bar) => !bar.className.includes('fixed')) as HTMLElement;
+    // Five sections plus the logo, and nothing that used to be hidden.
+    expect(within(rail).getAllByRole('link')).toHaveLength(6);
     for (const label of SECONDARY) {
-      // Sheet closed: the rail's entry is the only one.
-      expect(screen.getAllByLabelText(label)).toHaveLength(1);
+      expect(within(rail).queryByLabelText(label)).toBeNull();
     }
   });
 });
@@ -141,6 +141,48 @@ describe('the current section', () => {
     renderWithProviders(<AppShell>content</AppShell>, { route: '/w/ws_1' });
     const board = screen.getAllByLabelText('Board');
     expect(board.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
+  });
+});
+
+/**
+ * Five sections, and no "More".
+ *
+ * Ten top-level entries did not fit a phone's tab bar, so four lived behind a
+ * sheet — and which four was decided by the available space rather than by
+ * meaning. Six of them were the same kind of thing: how the deployment is
+ * configured and inspected, not what an operator works in. They are one
+ * section now, so the rail and the tab bar hold the same five, in the same
+ * order, and nothing is one tap further away than anything else.
+ */
+describe('the five sections', () => {
+  it('shows five in the rail and the same five on the phone', () => {
+    renderWithProviders(<AppShell>content</AppShell>);
+    for (const label of ['Dashboard', 'Workspaces', 'Board', 'Memory', 'System']) {
+      expect(screen.getAllByLabelText(label).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('has no More sheet, because nothing is hidden any more', () => {
+    renderWithProviders(<AppShell>content</AppShell>);
+    expect(screen.queryByLabelText('More sections')).toBeNull();
+  });
+
+  it('marks System as current on each of its six screens', () => {
+    for (const route of ['/automations', '/agents', '/plugins', '/analytics', '/settings', '/help']) {
+      const { unmount } = renderWithProviders(<AppShell>content</AppShell>, { route });
+      const entries = screen.getAllByLabelText('System');
+      expect(
+        entries.some((el) => el.getAttribute('aria-current') === 'page'),
+        route,
+      ).toBe(true);
+      unmount();
+    }
+  });
+
+  it('does not claim System on a screen that is not one of them', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/board' });
+    const entries = screen.getAllByLabelText('System');
+    expect(entries.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
   });
 });
 

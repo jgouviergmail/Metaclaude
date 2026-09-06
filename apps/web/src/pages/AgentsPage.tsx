@@ -42,6 +42,7 @@ import type {
 } from '@metaclaude/shared';
 import { LIBRARY_CATEGORIES } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SystemTabs } from '@/components/layout/SystemTabs';
 import { BulkActions } from '@/components/registry/BulkActions';
 import { McpToolList } from '@/components/registry/McpToolList';
 import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel';
@@ -134,6 +135,7 @@ export function AgentsPage() {
   return (
     <AppShell>
       <ContentHeader
+        tabs={<SystemTabs />}
         title={t('Agents & skills')}
         subtitle={scopeLabel}
         showSidebarToggle={false}

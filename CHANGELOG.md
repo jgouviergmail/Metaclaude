@@ -11,6 +11,38 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.15] — 2026-09-06
+
+### Changed
+
+- Ten top-level sections became five, and the phone's "More" sheet is gone.
+  Automations, agents, plugins, analytics, settings and help are one section —
+  System — because none of them is something an operator *works in*: they are
+  how the deployment is configured and inspected. Ten entries never fitted a
+  tab bar, so four lived behind a sheet, and which four was decided by the
+  available space rather than by meaning. The rail and the tab bar now hold the
+  same five, in the same order, and nothing is one tap further away than
+  anything else.
+- **No URL moved.** The API builds links to `/settings` for the Google OAuth
+  return and to `/automations` for a scheduler notification, push notifications
+  carry their own paths, and an operator has bookmarks. The grouping is
+  navigational; every path is exactly what it was.
+- The section's own strip is drawn as chips, deliberately: Settings carries six
+  tabs of its own, and drawn in the same register the two stacked into
+  identical scrolling rows — ninety pixels of a phone's height, with nothing
+  saying which moved between screens and which moved within one.
+
+### Fixed
+
+- The section strip scrolls its current entry into view. Six French labels are
+  wider than a phone, so it scrolls from the left, which put the current chip
+  off-screen on every System screen at 390px — a strip that does not show your
+  position is a row of links, not navigation.
+- The untranslated-copy check now reads accessible names too. This very lot
+  shipped a `aria-label` in English and the check said nothing, because it only
+  walked text nodes: a name nobody sees is still copy, and it is what a screen
+  reader announces and what voice control listens for.
+
 ## [0.56.14] — 2026-09-06
 
 ### Added

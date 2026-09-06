@@ -529,7 +529,10 @@ describe('provenance', () => {
 describe('the retrieval line', () => {
   it('stays quiet while a model is loaded and nothing waits', async () => {
     renderWithProviders(<MemoryPage />);
-    await screen.findByText('Memory');
+    // The heading, not any text: « Memory » is also a tab-bar label now
+    // that the section is one of the five, and an ambiguous query makes
+    // `findBy` retry until it times out rather than fail on the spot.
+    await screen.findByRole('heading', { name: 'Memory' });
 
     expect(screen.queryByTestId('retrieval-line')).toBeNull();
   });

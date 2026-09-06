@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { type Lang, type TranslateFn, useI18n, usePlural, useT } from '@/lib/i18n';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SystemTabs } from '@/components/layout/SystemTabs';
 import { TotpQr } from '@/components/auth/TotpQr';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
@@ -77,6 +78,7 @@ export function SettingsPage() {
   return (
     <AppShell>
       <ContentHeader
+        tabs={<SystemTabs />}
         title={t('Settings')}
         subtitle={user ? t(
           'Signed in as {name} ({role})',

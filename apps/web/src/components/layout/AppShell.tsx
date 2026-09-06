@@ -12,22 +12,17 @@
  */
 
 import {
-  Plug,
-  Activity,
-  LifeBuoy,
-  Bot,
   Brain,
   FolderGit2,
   LayoutDashboard,
   Menu as MenuIcon,
   MessageSquare,
-  MoreHorizontal,
   Settings,
   SquareKanban,
-  Timer,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
+import { isSystemPath } from './SystemTabs';
 import { useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
@@ -67,6 +62,16 @@ function isCurrent(entry: NavEntry, pathname: string): boolean {
   return pathname === entry.to || pathname.startsWith(`${entry.to}/`);
 }
 
+/**
+ * Five sections, and every one of them on the phone.
+ *
+ * There were ten, which does not fit a tab bar, so four lived behind a "More"
+ * sheet — and *which* four was decided by the available space rather than by
+ * meaning. Six of the ten were the same kind of thing: how this deployment is
+ * configured and inspected, never what an operator works in. They are one
+ * section now, `SYSTEM_PATHS`, and the rail and the tab bar hold the same five
+ * in the same order. Nothing is one tap further away than anything else.
+ */
 const NAV: NavEntry[] = [
   { to: '/', label: 'Dashboard', icon: <LayoutDashboard />, primary: true },
   {
@@ -77,13 +82,16 @@ const NAV: NavEntry[] = [
     matches: (path) => path === '/workspaces' || path.startsWith('/w/'),
   },
   { to: '/board', label: 'Board', icon: <SquareKanban />, primary: true },
-  { to: '/memory', label: 'Memory', icon: <Brain /> },
-  { to: '/automations', label: 'Automations', icon: <Timer />, primary: true },
-  { to: '/agents', label: 'Agents & skills', icon: <Bot /> },
-  { to: '/plugins', label: 'Plugins', icon: <Plug /> },
-  { to: '/analytics', label: 'Analytics', icon: <Activity /> },
-  { to: '/help', label: 'Help', icon: <LifeBuoy /> },
-  { to: '/settings', label: 'Settings', icon: <Settings />, primary: true },
+  { to: '/memory', label: 'Memory', icon: <Brain />, primary: true },
+  {
+    // Points at Settings, which is where an operator most often means to go;
+    // the section's own strip carries the other five.
+    to: '/settings',
+    label: 'System',
+    icon: <Settings />,
+    primary: true,
+    matches: isSystemPath,
+  },
 ];
 
 export function AppShell({
@@ -95,20 +103,14 @@ export function AppShell({
 }) {
   const { sidebarOpen, setSidebar } = useUiStore();
   const location = useLocation();
-  const [moreOpen, setMoreOpen] = useState(false);
   const t = useT();
 
   // On a phone the sidebar is an overlay; navigating must dismiss it, or the
-  // user lands on a new screen still covered by the old panel. The More
-  // sheet follows the same rule for the same reason.
+  // user lands on a new screen still covered by the old panel.
   useEffect(() => {
     if (window.matchMedia('(max-width: 1023px)').matches) setSidebar(false);
-    setMoreOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
-
-  const secondary = NAV.filter((entry) => !entry.primary);
-  const onSecondary = secondary.some((entry) => location.pathname.startsWith(entry.to));
 
   return (
     <div className="flex h-full overflow-hidden bg-bg text-ink">
@@ -189,41 +191,6 @@ export function AppShell({
         {children}
       </main>
 
-      {/* The sections the tab bar cannot hold, one tap behind "More". */}
-      {moreOpen ? (
-        <div className="fixed inset-0 z-40 sm:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setMoreOpen(false)}
-            aria-label={t('Close sections')}
-          />
-          <div
-            className="animate-in-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-line bg-surface p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[var(--mc-shadow-lg)]"
-            role="menu"
-            aria-label={t('More sections')}
-          >
-            {secondary.map((entry) => (
-              <NavLink
-                key={entry.to}
-                to={entry.to}
-                onClick={() => setMoreOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-medium',
-                    '[&>svg]:size-[18px]',
-                    isActive ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-raised',
-                  )
-                }
-              >
-                {entry.icon}
-                {t(entry.label)}
-              </NavLink>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       {/* Phone tab bar.
 
           The safe-area padding and the fixed height live on SEPARATE
@@ -262,22 +229,6 @@ export function AppShell({
               </Link>
             );
           })}
-          <button
-            type="button"
-            onClick={() => setMoreOpen((current) => !current)}
-            aria-label={t('More sections')}
-            aria-expanded={moreOpen}
-            className={cn(
-              'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
-              '[&>svg]:size-6 [&>svg]:shrink-0',
-              // Standing on one of the sheet's sections tints the tab that leads
-              // to it, exactly as a primary tab would be tinted.
-              moreOpen || onSecondary ? 'text-accent' : 'text-subtle',
-            )}
-          >
-            <MoreHorizontal />
-            {t('More')}
-          </button>
         </div>
       </nav>
     </div>
@@ -310,15 +261,26 @@ export function ContentHeader({
   actions,
   showSidebarToggle = true,
   icon,
+  tabs,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
   showSidebarToggle?: boolean;
   icon?: ReactNode;
+  /**
+   * The section's own navigation, rendered under the header row.
+   *
+   * It lives here rather than in each page's body so that it sits above the
+   * scroll — a strip that scrolled away with the content would stop being
+   * navigation. Six screens pass the same `<SystemTabs />`, which is what
+   * makes them read as one section without moving a single URL.
+   */
+  tabs?: ReactNode;
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 sm:px-4">
+    <div className="shrink-0 border-b border-line bg-surface">
+    <header className="flex h-14 items-center gap-3 px-3 sm:px-4">
       {showSidebarToggle ? <SidebarToggle /> : null}
       {icon ? <span className="shrink-0 [&>svg]:size-4">{icon}</span> : null}
 
@@ -335,7 +297,9 @@ export function ContentHeader({
         <NotificationBell />
         <UserMenu />
       </div>
-    </header>
+      </header>
+      {tabs ? <div className="px-3 sm:px-4">{tabs}</div> : null}
+    </div>
   );
 }
 

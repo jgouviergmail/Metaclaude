@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import type { Marketplace, MarketplaceCatalogue, PluginRecord } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SystemTabs } from '@/components/layout/SystemTabs';
 import { MarketplaceList } from '@/components/registry/MarketplaceList';
 import { Switch } from '@/components/ui/controls';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -145,6 +146,7 @@ export function PluginsPage() {
   return (
     <AppShell>
       <ContentHeader
+        tabs={<SystemTabs />}
         title={t('Plugins')}
         subtitle={t('Marketplaces the CLI installs from, and Agent Plugins installed by path')}
         actions={
