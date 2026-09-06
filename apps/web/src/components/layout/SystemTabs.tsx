@@ -28,7 +28,7 @@
 import { Activity, Bot, LifeBuoy, Plug, Settings, Timer } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { TOUCH_TARGET_Y } from '@/components/ui/primitives';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

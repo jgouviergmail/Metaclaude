@@ -11,6 +11,7 @@ import { useState, type HTMLAttributes } from 'react';
 import type { BoardTask, TaskStatus } from '@metaclaude/shared';
 import type { DropTarget } from '@/lib/touch-drag';
 import { TaskCard } from './TaskCard';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 
@@ -69,7 +70,15 @@ export function BoardColumn({
             type="button"
             onClick={() => onQuickAdd(status)}
             aria-label={t('Add a task to {column}', { column: t(label) })}
-            className="ml-auto rounded-md p-1 text-muted transition-colors hover:bg-surface hover:text-ink"
+            className={cn(
+              'ml-auto rounded-md p-1 text-muted transition-colors hover:bg-surface hover:text-ink',
+              // Vertical only, and not for the usual neighbour reason: an
+              // inset pseudo-element on BOTH axes widens the header row's
+              // scrollWidth, so the overflow probe stops at that row instead of
+              // walking on to the board's genuinely scrollable container — and
+              // reports four clipped buttons on a board that scrolls fine.
+              TOUCH_TARGET_Y,
+            )}
           >
             <Plus className="size-4" aria-hidden />
           </button>

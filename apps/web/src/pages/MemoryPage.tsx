@@ -68,6 +68,7 @@ import {
   Spinner,
   Textarea,
   Tooltip,
+  QUIET_LINK,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { INSIGHT_TONE } from '@/lib/insights';
@@ -1470,7 +1471,7 @@ function MemoryCard({
           type="button"
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
-          className="mt-1 text-label font-medium text-accent hover:underline"
+          className={cn('mt-1 text-label font-medium', QUIET_LINK)}
         >
           {expanded ? t('Show less') : t('Show more')}
         </button>
@@ -1495,7 +1496,7 @@ function MemoryCard({
             a memory whose origin an operator can open is one they can judge,
             and judging is the whole point of this screen. */}
         {sourceHref ? (
-          <Link to={sourceHref} className="font-medium text-accent hover:underline">
+          <Link to={sourceHref} className={cn('font-medium', QUIET_LINK)}>
             {t('where this came from')}
           </Link>
         ) : null}

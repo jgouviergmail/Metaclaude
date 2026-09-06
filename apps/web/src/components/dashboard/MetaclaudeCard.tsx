@@ -15,11 +15,11 @@ import { ArrowRight, Bot, MessageSquare } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Badge, Button, Card, Textarea } from '@/components/ui/primitives';
+import { Badge, Button, Card, QUIET_LINK, Textarea } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuthStore } from '@/lib/store';
-import { formatRelative } from '@/lib/utils';
+import { cn, formatRelative } from '@/lib/utils';
 
 const sessionPath = (workspaceId: string, sessionId: string) => `/w/${workspaceId}/s/${sessionId}`;
 
@@ -91,7 +91,7 @@ export function MetaclaudeCard() {
         {conversation ? (
           <Link
             to={conversation.href}
-            className="inline-flex items-center gap-1 text-[12.5px] font-medium text-accent hover:underline"
+            className={cn('inline-flex items-center gap-1 text-caption font-medium', QUIET_LINK)}
           >
             <MessageSquare className="size-3.5" aria-hidden />
             {t('Open the conversation')}

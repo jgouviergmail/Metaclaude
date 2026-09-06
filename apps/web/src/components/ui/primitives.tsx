@@ -18,6 +18,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { useDisclosedDescription } from '@/components/ui/density';
+import { TOUCH_TARGET, TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 
@@ -38,31 +39,6 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   success: 'bg-success text-success-ink hover:brightness-110 active:scale-[0.98]',
 };
 
-/**
- * On a coarse pointer the smallest sizes get a hit area larger than their box.
- *
- * A 24–28px icon button is right for a dense desktop row and too small for a
- * thumb, and growing the box would loosen every row it appears in. An invisible
- * inset pseudo-element takes the press instead: the button still measures
- * 28×28, but 44×44 of screen responds to it. Applied only under
- * `pointer-coarse`, so a mouse keeps the precise target.
- */
-const TOUCH_TARGET =
-  "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']";
-
-/**
- * The same idea on one axis only.
- *
- * A labelled button is already wide enough for a thumb; it is the 32px height
- * that falls short of 44. Growing it sideways as well would be worse than
- * useless here: rows in this app go down to `gap-0.5`, so opposing hit areas
- * would overlap and the button later in the DOM would quietly take presses
- * meant for its neighbour. Vertical only reaches exactly 44px and cannot
- * collide with anything beside it.
- */
-export const TOUCH_TARGET_Y =
-  "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 " +
-  "pointer-coarse:before:inset-x-0 pointer-coarse:before:content-['']";
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
   xs: `h-6 px-2 text-caption gap-1 rounded-md ${TOUCH_TARGET}`,
@@ -231,6 +207,27 @@ export function Badge({
 /* -------------------------------------------------------------------------- */
 /* Card                                                                        */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * A quiet link out of a block — "View all", "Review", the source of a memory.
+ *
+ * Nine of these existed in five spellings and three type sizes, two of them
+ * arbitrary values. None had a hit area, so every one of them was a 19px target
+ * on a phone; `scripts/responsive.mjs` names them one by one. Colour, hover and
+ * the vertical hit area live here; the size stays with the caller, because two
+ * of the nine sit inside a sentence and have to match the text around them.
+ */
+export const QUIET_LINK = `text-accent hover:underline ${TOUCH_TARGET_Y}`;
+
+/**
+ * A toggle chip: a board filter, a task kind, a cron preset.
+ *
+ * Five hand-rolled copies of one shape, each 27–29px tall with no hit area.
+ * Not `Button size="xs"`, which is 24px and differently drawn — this is the
+ * chip the app already uses, spelled once. `aria-pressed` and the selected
+ * colours stay with the caller, which is the only part that differs.
+ */
+export const CHIP = `rounded-lg px-2.5 py-1 text-caption ${TOUCH_TARGET_Y}`;
 
 export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (

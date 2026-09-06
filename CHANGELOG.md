@@ -11,6 +11,35 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.19] — 2026-09-06
+
+### Fixed
+
+- Sixteen controls that were too small to press. The disclosure added in
+  0.56.18 shipped at 16×16 with no hit area, which the browser check caught on
+  the settings screen — and looking for its siblings found fifteen more, none
+  of them new: the composer's model, effort, permission and tool pills, the
+  board's filters and its quick-add buttons, the cron presets, the task kinds
+  and priorities, a workspace's colour swatches, and every quiet "View all" or
+  "Review" link out of a card. All between 19 and 29 pixels tall under a thumb,
+  and all of them perfect on a desktop, which is why they lasted. They now
+  carry the app's own hit area — invisible, applied only to a coarse pointer,
+  so the desktop keeps its dense rows unchanged.
+
+### Changed
+
+- The responsive guard measures hit areas. It visits twelve routes at three
+  widths in two languages and opens the dialogs and menus, and had no such rule
+  at all; the browser check, which has had one from the start, sees six routes
+  at one width. Two guards, one blind spot each — and the blind spot is where
+  those sixteen controls lived. It measures what a control *offers* rather than
+  what it wins when pressed, because adjacent hit areas overlap by design and a
+  probe cannot tell a missing area from one a neighbour took.
+- Five spellings of a "quiet link", five of a toggle chip and seven of the
+  composer's pill became one each. That is what made the fix above a handful of
+  lines rather than sixteen, and it moved twenty literal text sizes onto the
+  scale on the way.
+
 ## [0.56.18] — 2026-09-06
 
 ### Fixed

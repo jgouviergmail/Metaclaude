@@ -11,7 +11,8 @@ import { AlertTriangle, ArrowRight, Lightbulb, SquareKanban, Timer } from 'lucid
 import { Link } from 'react-router-dom';
 import type { Brief } from '@metaclaude/shared';
 import { Badge } from '@/components/ui/primitives';
-import { formatRelative, formatTokens } from '@/lib/utils';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import { cn, formatRelative, formatTokens } from '@/lib/utils';
 import { usePlural, useT, type PluralFn, type TranslateFn } from '@/lib/i18n';
 
 /**
@@ -127,7 +128,10 @@ export function BriefView({ brief }: { brief: Brief }) {
       {brief.board && boardParts(brief.board, t, plural).length > 0 ? (
         <Link
           to="/board"
-          className="group flex items-center gap-2 text-[12.5px] text-muted hover:text-ink"
+          className={cn(
+            'group flex items-center gap-2 text-caption text-muted hover:text-ink',
+            TOUCH_TARGET_Y,
+          )}
         >
           <SquareKanban className="size-3.5 shrink-0 text-accent" aria-hidden />
           <span>{t('Board:')} {boardParts(brief.board, t, plural).join(' · ')}</span>

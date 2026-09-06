@@ -20,7 +20,7 @@ import { TaskDrawer } from '@/components/board/TaskDrawer';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
-import { Button, EmptyState, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
+import { Button, CHIP, EmptyState, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { usePlural, useT } from '@/lib/i18n';
 import {
@@ -250,7 +250,7 @@ export function BoardPage() {
                   aria-pressed={who === filter.value}
                   onClick={() => setWho(filter.value)}
                   className={cn(
-                    'rounded-lg px-2.5 py-1 text-[12.5px]',
+                    CHIP,
                     who === filter.value
                       ? 'bg-accent-soft font-medium text-accent'
                       : 'border border-line text-muted hover:text-ink',
@@ -269,7 +269,7 @@ export function BoardPage() {
                   aria-pressed={kind === entry.kind}
                   onClick={() => setKind(entry.kind)}
                   className={cn(
-                    'rounded-lg px-2.5 py-1 text-[12.5px]',
+                    CHIP,
                     kind === entry.kind
                       ? 'bg-accent-soft font-medium text-accent'
                       : 'border border-line text-muted hover:text-ink',
@@ -397,11 +397,12 @@ export function BoardPage() {
                   aria-pressed={newKind === entry.kind}
                   title={t(entry.hint)}
                   onClick={() => setNewKind(entry.kind)}
-                  className={
+                  className={cn(
+                    CHIP,
                     newKind === entry.kind
-                      ? 'rounded-lg bg-accent-soft px-2.5 py-1 text-[12.5px] font-medium text-accent'
-                      : 'rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-muted hover:text-ink'
-                  }
+                      ? 'bg-accent-soft font-medium text-accent'
+                      : 'border border-line text-muted hover:text-ink',
+                  )}
                 >
                   {t(entry.label)}
                 </button>
@@ -417,11 +418,12 @@ export function BoardPage() {
                   type="button"
                   aria-pressed={newPriority === priority}
                   onClick={() => setNewPriority(priority)}
-                  className={
+                  className={cn(
+                    CHIP,
                     newPriority === priority
-                      ? 'rounded-lg bg-accent-soft px-2.5 py-1 text-[12.5px] font-medium text-accent'
-                      : 'rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-muted hover:text-ink'
-                  }
+                      ? 'bg-accent-soft font-medium text-accent'
+                      : 'border border-line text-muted hover:text-ink',
+                  )}
                 >
                   {t(priority)}
                 </button>

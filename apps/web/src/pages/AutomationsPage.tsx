@@ -45,8 +45,11 @@ import {
   Skeleton,
   Textarea,
   Tooltip,
+  CHIP,
+  QUIET_LINK,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { TOUCH_TARGET } from '@/components/ui/touch-target';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
 
@@ -258,7 +261,7 @@ export function AutomationsPage() {
                       {automation.sessionId ? (
                         <Link
                           to={`/w/${automation.workspaceId}/s/${automation.sessionId}`}
-                          className="text-accent hover:underline"
+                          className={QUIET_LINK}
                         >
                           {t('Open session')}
                         </Link>
@@ -301,7 +304,11 @@ export function AutomationsPage() {
                       trigger={
                         <button
                           type="button"
-                          className="flex size-7 items-center justify-center rounded-md text-subtle hover:bg-raised hover:text-ink"
+                          className={cn(
+                            'flex size-7 items-center justify-center rounded-md text-subtle',
+                            'hover:bg-raised hover:text-ink',
+                            TOUCH_TARGET,
+                          )}
                           aria-label={t('More actions for {name}', { name: automation.name })}
                         >
                           <MoreVertical className="size-4" />
@@ -636,7 +643,8 @@ function AutomationEditor({
                     type="button"
                     onClick={() => setExpression(preset.expression)}
                     className={cn(
-                      'rounded-full border px-2.5 py-1 text-[11.5px] transition-colors',
+                      CHIP,
+                      'rounded-full border transition-colors',
                       expression === preset.expression
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line text-muted hover:bg-raised',

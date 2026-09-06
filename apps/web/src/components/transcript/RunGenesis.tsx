@@ -22,6 +22,7 @@ import { BetaCurve } from '@/components/analytics/BetaCurve';
 import { Badge, Skeleton } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn, formatPercent } from '@/lib/utils';
 
 const SOURCE_PHRASE: Record<RunPolicy['source'], string> = {
@@ -84,6 +85,7 @@ export function RunGenesis({ run }: { run: Run }) {
         className={cn(
           'group flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-1.5 py-1 text-[11.5px]',
           'text-subtle transition-colors hover:bg-raised hover:text-muted',
+          TOUCH_TARGET_Y,
         )}
       >
         <Workflow

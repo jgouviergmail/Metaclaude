@@ -232,8 +232,12 @@ const AUDIT = `
       return { scrollable: false, who: '(html)' };
     };
 
-    const out = { counted: 0, clipped: [], excused: 0, unnamed: [], covered: [], headings: [] };
+    const out = { counted: 0, clipped: [], excused: 0, unnamed: [], covered: [], headings: [], tapTargets: [] };
     const candidates = [];
+    // Only under a coarse pointer, because that is the only place the inset
+    // pseudo-elements exist: a mouse keeps the precise 20px target.
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    const small = [];
 
     for (const el of document.querySelectorAll(SEL)) {
       if (inert(el)) continue;
@@ -249,6 +253,7 @@ const AUDIT = `
         else out.clipped.push(short(el) + ' [' + Math.round(rect.left) + '..' + Math.round(rect.right) + ']/' + VW + '  <- ' + v.who);
         continue;
       }
+      if (coarse && (rect.width < 32 || rect.height < 32)) small.push(el);
       if (rect.top < 0 || rect.bottom > VH) continue;
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
@@ -288,6 +293,55 @@ const AUDIT = `
         (hit && hit.closest('svg') ? ' (in svg)' : ''),
       );
     }
+    /*
+     * What a small control OFFERS a thumb, which is not what it wins.
+     *
+     * The app grows a control with an inset pseudo-element rather than with
+     * its box: a 28px button still measures 28 and 44px of screen answers to
+     * it. So the painted rectangle says nothing, and the first version of this
+     * asked the screen instead — elementFromPoint, 15px above and below the
+     * centre, the rule browser.mjs uses.
+     *
+     * That rule cannot be used here. It reported eighteen failures of which
+     * most were not defects: adjacent controls' hit areas OVERLAP by design,
+     * the later one in the DOM wins the contested point, and two swatches of a
+     * colour grid can no more both answer 15px apart than they can occupy the
+     * same pixel. The overlap is the documented reason TOUCH_TARGET_Y exists.
+     * browser.mjs gets away with it on six routes where no small control has a
+     * close neighbour; this guard opens the dialogs, where they all do.
+     *
+     * Reading the pseudo-element's own outward extension answers the question
+     * actually being asked — did anyone give this control a hit area — and a
+     * neighbour cannot change the answer. A label wrapping the control is the
+     * other honest way to be tappable, so a control inside one that is itself
+     * tall enough is excused.
+     */
+    const offered = (el) => {
+      const box = el.getBoundingClientRect();
+      const pseudo = getComputedStyle(el, '::before');
+      let height = box.height;
+      if (pseudo.content && pseudo.content !== 'none' && pseudo.position === 'absolute') {
+        const top = parseFloat(pseudo.top);
+        const bottom = parseFloat(pseudo.bottom);
+        // Negative insets reach outward; a positive one is decoration inside.
+        if (top < 0) height -= top;
+        if (bottom < 0) height -= bottom;
+      }
+      return height;
+    };
+    for (const el of small) {
+      if (offered(el) >= 30) continue;
+      // A checkbox is 16px and its label is the target: pressing the words
+      // toggles it. That is a hit area, differently spelled.
+      const label = el.closest('label');
+      if (label && label.getBoundingClientRect().height >= 30) continue;
+      const box = el.getBoundingClientRect();
+      out.tapTargets.push(
+        short(el) + ' ' + Math.round(box.width) + 'x' + Math.round(box.height) +
+        ' offers ' + Math.round(offered(el)),
+      );
+    }
+
     // Scrolling moved the page; put it back before reading the outline.
     window.scrollTo(0, 0);
 
@@ -457,6 +511,13 @@ for (const locale of LOCALES) {
         `${label}: no skipped heading level`,
         r.headings.length === 0,
         r.headings.join(' | '),
+      );
+      // Empty at the two pointer-fine widths: the rule only asks the question
+      // where the answer can differ from the painted box.
+      results.check(
+        `${label}: every small control answers a thumb`,
+        r.tapTargets.length === 0,
+        [...new Set(r.tapTargets)].join(' | '),
       );
     };
 

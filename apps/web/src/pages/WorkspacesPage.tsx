@@ -22,7 +22,8 @@ import {
   Textarea,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import { cn, colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
 import { Trans, usePlural, useT } from '@/lib/i18n';
 
 export function WorkspacesPage() {
@@ -380,7 +381,11 @@ function CreateWorkspaceModal({
                 }}
                 aria-label={t('Use colour {swatch}', { swatch: swatch })}
                 aria-pressed={color === swatch}
-                className="size-7 rounded-lg ring-offset-2 ring-offset-surface transition-all data-[active=true]:ring-2 data-[active=true]:ring-accent"
+                className={cn(
+                  'size-7 rounded-lg ring-offset-2 ring-offset-surface transition-all',
+                  'data-[active=true]:ring-2 data-[active=true]:ring-accent',
+                  TOUCH_TARGET_Y,
+                )}
                 data-active={color === swatch}
                 style={{ background: swatch }}
               />

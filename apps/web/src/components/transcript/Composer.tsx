@@ -35,6 +35,7 @@ import { Button, Tooltip } from '@/components/ui/primitives';
 import { ATTACHMENT_ACCEPT, type PendingAttachment } from '@/lib/attachments';
 import { completeSlash, slashMatches } from '@/lib/slash';
 import { cycleMcpServer, mcpServerState, steeredCount, toggleRequiredSkill } from '@/lib/tool-controls';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
 import { cn, formatBytes, isModifier } from '@/lib/utils';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
@@ -57,6 +58,17 @@ export interface ToolPickerOptions {
   skills: string[];
   mcpServers: string[];
 }
+
+/**
+ * The composer's own control: model, effort, permission mode, tools, ultracode.
+ *
+ * Seven copies of one 28px pill, four of them spelled out in full and three
+ * inside a `cn`. None had a hit area, so on a phone every control of the one
+ * surface an operator uses constantly was a 28px target — named one by one by
+ * `scripts/responsive.mjs`. The tone stays with each caller, which is the only
+ * part that genuinely differs.
+ */
+const PILL = `inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium ${TOUCH_TARGET_Y}`;
 
 export function Composer({
   value,
@@ -363,7 +375,7 @@ export function Composer({
                     onClick={() => fileInputRef.current?.click()}
                     disabled={disabled || attachments.length >= ATTACHMENT_LIMITS.maxPerMessage}
                     aria-label={t('Attach files')}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-raised hover:text-ink disabled:opacity-50"
+                    className={cn(PILL, 'text-muted hover:bg-raised hover:text-ink disabled:opacity-50')}
                   >
                     <Paperclip className="size-3.5" aria-hidden />
                     {attachments.length > 0 ? attachments.length : null}
@@ -377,7 +389,7 @@ export function Composer({
               trigger={
                 <button
                   type="button"
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-raised hover:text-ink"
+                  className={cn(PILL, 'text-muted hover:bg-raised hover:text-ink')}
                 >
                   <Wand2 className="size-3.5" aria-hidden />
                   {activeModel ? t(activeModel.label) : null}
@@ -402,7 +414,7 @@ export function Composer({
               trigger={
                 <button
                   type="button"
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted hover:bg-raised hover:text-ink"
+                  className={cn(PILL, 'text-muted hover:bg-raised hover:text-ink')}
                 >
                   <Gauge className="size-3.5" aria-hidden />
                   {activeEffort ? t(activeEffort.label) : null}
@@ -427,7 +439,7 @@ export function Composer({
                 <button
                   type="button"
                   className={cn(
-                    'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium',
+                    PILL,
                     value.permissionMode === 'bypassPermissions'
                       ? 'bg-danger-soft text-danger'
                       : value.permissionMode === 'plan'
@@ -464,7 +476,7 @@ export function Composer({
                   aria-pressed={value.ultracode}
                   onClick={() => onChange({ ...value, ultracode: !value.ultracode })}
                   className={cn(
-                    'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium',
+                    PILL,
                     value.ultracode
                       ? 'bg-accent-soft text-accent'
                       : 'text-muted hover:bg-raised hover:text-ink',
@@ -483,7 +495,7 @@ export function Composer({
                 <button
                   type="button"
                   aria-disabled="true"
-                  className="inline-flex h-7 cursor-not-allowed items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-subtle opacity-70"
+                  className={cn(PILL, 'cursor-not-allowed text-subtle opacity-70')}
                 >
                   <Network className="size-3.5" aria-hidden />
                   {t('Ultracode')}
@@ -499,7 +511,7 @@ export function Composer({
                     type="button"
                     aria-label={t('Tools')}
                     className={cn(
-                      'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium',
+                      PILL,
                       steered > 0
                         ? 'bg-accent-soft text-accent'
                         : 'text-muted hover:bg-raised hover:text-ink',

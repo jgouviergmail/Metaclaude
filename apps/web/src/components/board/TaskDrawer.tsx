@@ -18,7 +18,7 @@ import { api, ApiError } from '@/lib/api';
 import { columnLabel, TASK_KIND_LABEL, TASK_KINDS } from '@/lib/board';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
-import { Badge, Button, Input, Label, Spinner, Textarea } from '@/components/ui/primitives';
+import { Badge, Button, Input, Label, QUIET_LINK, Spinner, Textarea } from '@/components/ui/primitives';
 import { toast } from 'sonner';
 import { cn, formatRelative } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
@@ -300,7 +300,7 @@ export function TaskDrawer({
                   </span>
                   <Link
                     to={`/w/${task.workspaceId}/s/${run.sessionId}`}
-                    className="inline-flex items-center gap-1 text-[12.5px] text-accent hover:underline"
+                    className={cn('inline-flex items-center gap-1 text-caption', QUIET_LINK)}
                   >
                     {t('Watch the session')}
                     <ArrowRight className="size-3.5" aria-hidden />
@@ -323,7 +323,7 @@ export function TaskDrawer({
                   {run ? (
                     <Link
                       to={`/w/${task.workspaceId}/s/${run.sessionId}`}
-                      className="inline-flex items-center gap-1 text-[12.5px] text-accent hover:underline"
+                      className={cn('inline-flex items-center gap-1 text-caption', QUIET_LINK)}
                     >
                       {t('Last session')}
                       <ArrowRight className="size-3.5" aria-hidden />

@@ -664,6 +664,31 @@ restates the code is noise; one that records a decision or a trap is not.
   the production install. Its postinstall is skipped under pnpm's build
   allow-list and only fetched CUDA libraries anyway.
 
+- **A backtick in a comment inside `AUDIT` ends the probe.** `scripts/responsive.mjs`
+  ships its in-page audit as a template literal, so a comment naming
+  `` `browser.mjs` `` closes the string and node reports
+  `Unexpected identifier` at a line that looks structurally fine. Exactly the
+  migration trap one family up, on the other side of the repo. Write the
+  identifier bare inside that block.
+- **An inset pseudo-element on both axes widens an ancestor's `scrollWidth`.**
+  `TOUCH_TARGET` on the board's quick-add button made the column *header row*
+  overflow, so the overflow probe stopped walking there instead of reaching the
+  board's genuinely scrollable container, and reported four clipped buttons on a
+  board that scrolls perfectly. `TOUCH_TARGET_Y` cannot do this — a third reason
+  to prefer it, alongside the neighbour overlap it was written for.
+- **`elementFromPoint` cannot tell "no hit area" from "the neighbour's hit area
+  won".** Probing 15px out from a control's centre — the rule `browser.mjs`
+  uses — reported eighteen failures here of which most were not defects: two
+  28px swatches four pixels apart can no more both answer 15px to the side than
+  they can occupy the same pixel, and that overlap is *designed*. `browser.mjs`
+  gets away with it on six routes where no small control has a close neighbour;
+  a guard that opens the dialogs meets rows of them. Measure what the control
+  *offers* instead — `getComputedStyle(el, '::before')` and its negative insets
+  — which a neighbour cannot change. It found sixteen genuine defects: composer
+  pills, board filters, cron presets, colour swatches and every quiet link out
+  of a card, all of them 19–29px under a thumb and all of them perfect on a
+  desktop.
+
 - **The web tests run under happy-dom, not jsdom.** `apps/web/vite.config.ts`
   says so and only happy-dom is installed; five entries above named the wrong
   engine for months. Measured on 20.11.6, because a trap is only worth writing

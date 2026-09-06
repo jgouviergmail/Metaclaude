@@ -30,7 +30,7 @@ import { MetaclaudeCard } from '@/components/dashboard/MetaclaudeCard';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { SystemPulse } from '@/components/dashboard/SystemPulse';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
-import { Badge, Button, Card, EmptyState, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
+import { Badge, Button, Card, EmptyState, QUIET_LINK, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { INSIGHT_TONE, isLearned } from '@/lib/insights';
 import { describeRetrieval } from '@/lib/retrieval';
@@ -345,7 +345,7 @@ export function DashboardPage() {
                   <FolderGit2 className="size-4 shrink-0 text-muted" aria-hidden />
                   <h2 className="text-sm font-semibold text-ink">{t('Workspaces')}</h2>
                 </div>
-                <Link to="/workspaces" className="text-[12.5px] text-accent hover:underline">
+                <Link to="/workspaces" className={cn('text-caption', QUIET_LINK)}>
                   {t('View all')}
                 </Link>
               </div>
@@ -411,7 +411,7 @@ export function DashboardPage() {
                   <Zap className="size-4 shrink-0 text-thinking" aria-hidden />
                   <h2 className="text-sm font-semibold text-ink">{t('Recently learned')}</h2>
                 </div>
-                <Link to="/memory" className="text-[12.5px] text-accent hover:underline">
+                <Link to="/memory" className={cn('text-caption', QUIET_LINK)}>
                   {t('Review')}
                 </Link>
               </div>
@@ -451,7 +451,7 @@ export function DashboardPage() {
                 <Timer className="size-4 shrink-0 text-muted" aria-hidden />
                 <h2 className="text-sm font-semibold text-ink">{t('Recent runs')}</h2>
               </div>
-              <Link to="/analytics" className="text-[12.5px] text-accent hover:underline">
+              <Link to="/analytics" className={cn('text-caption', QUIET_LINK)}>
                 {t('Analytics')}
               </Link>
             </div>

@@ -22,6 +22,7 @@ import { Info } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useT } from '@/lib/i18n';
 import { useUiStore } from '@/lib/store';
+import { TOUCH_TARGET } from '@/components/ui/touch-target';
 import { cn } from '@/lib/utils';
 
 export interface DisclosedDescription {
@@ -66,12 +67,18 @@ export function useDisclosedDescription(
          */
         aria-label={subject ? t('Explain {subject}', { subject }) : t('Explain')}
         className={cn(
-          'grid size-4 shrink-0 place-items-center rounded-full border border-line-strong',
+          // 20px painted, 36px under a thumb. It was 16px with no hit area at
+          // all, which `scripts/browser.mjs` caught on /settings — four of
+          // these at 16x16 on a phone. 16 plus the 8px inset would have cleared
+          // the floor by a single pixel; 20 is an affordance rather than a
+          // near miss.
+          'grid size-5 shrink-0 place-items-center rounded-full border border-line-strong',
           'text-subtle transition-colors hover:border-accent hover:text-accent',
           'focus-visible:outline-2 focus-visible:outline-accent',
+          TOUCH_TARGET,
         )}
       >
-        <Info className="size-2.5" aria-hidden />
+        <Info className="size-3" aria-hidden />
       </button>
     ),
     body: shown ? (
