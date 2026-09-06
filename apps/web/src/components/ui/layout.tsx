@@ -107,6 +107,14 @@ export interface SectionProps {
   description?: ReactNode;
   actions?: ReactNode;
   /**
+   * An icon beside the title, hidden from assistive tech.
+   *
+   * It sits outside the heading deliberately: text inside a heading becomes
+   * part of the name a screen reader announces and part of what a document
+   * outline shows, and an icon has nothing to contribute to either.
+   */
+  icon?: ReactNode;
+  /**
    * The heading level, `h2` by default.
    *
    * A page's `h1` comes from its header, so a section sitting under it is a
@@ -134,6 +142,7 @@ export function Section({
   title,
   description,
   actions,
+  icon,
   level = 2,
   className,
   children,
@@ -144,9 +153,16 @@ export function Section({
     <section aria-labelledby={`${id}-title`} className={className}>
       <header className="flex items-start justify-between gap-4 border-b border-line pb-2">
         <div className="min-w-0">
-          <Heading id={`${id}-title`} className="text-heading text-ink">
-            {title}
-          </Heading>
+          <div className="flex items-baseline gap-2">
+            {icon ? (
+              <span className="shrink-0 translate-y-0.5 [&>svg]:size-4" aria-hidden>
+                {icon}
+              </span>
+            ) : null}
+            <Heading id={`${id}-title`} className="text-heading text-ink">
+              {title}
+            </Heading>
+          </div>
           {description ? <p className="mt-0.5 text-caption text-muted">{description}</p> : null}
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
@@ -160,14 +176,26 @@ export function Section({
 /* Grid                                                                        */
 /* -------------------------------------------------------------------------- */
 
-const COLUMNS = {
-  2: 'grid-cols-1 sm:grid-cols-2',
-  3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
-  4: 'grid-cols-2 lg:grid-cols-4',
+/**
+ * Where the columns appear, per breakpoint.
+ *
+ * The first version fixed the breakpoint per column count, and not one of the
+ * ten hand-written grids in the app matched it: two charts side by side need
+ * `xl`, two cards need `sm`, the dashboard needs `lg`. The number of columns is
+ * a property of the layout; the width at which they are worth having is a
+ * property of the *content*, and only the caller knows it.
+ */
+const AT = {
+  sm: { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' },
+  md: { 2: 'md:grid-cols-2', 3: 'md:grid-cols-3', 4: 'md:grid-cols-4' },
+  lg: { 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3', 4: 'lg:grid-cols-4' },
+  xl: { 2: 'xl:grid-cols-2', 3: 'xl:grid-cols-3', 4: 'xl:grid-cols-4' },
 } as const;
 
 export interface GridProps extends HTMLAttributes<HTMLDivElement> {
-  cols?: keyof typeof COLUMNS;
+  cols?: 2 | 3 | 4;
+  /** The width at which the columns are worth having. */
+  from?: keyof typeof AT;
 }
 
 /**
@@ -180,9 +208,12 @@ export interface GridProps extends HTMLAttributes<HTMLDivElement> {
  * `overflow-x: visible` nothing scrolled. The links were simply out of reach,
  * below the fold, where the screenshot bench never looked.
  */
-export function Grid({ cols = 3, className, children, ...props }: GridProps) {
+export function Grid({ cols = 3, from = 'lg', className, children, ...props }: GridProps) {
   return (
-    <div className={cn('grid gap-4 [&>*]:min-w-0', COLUMNS[cols], className)} {...props}>
+    <div
+      className={cn('grid grid-cols-1 gap-4 [&>*]:min-w-0', AT[from][cols], className)}
+      {...props}
+    >
       {children}
     </div>
   );

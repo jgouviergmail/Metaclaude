@@ -12,7 +12,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Page } from '@/components/ui/layout';
+import { Page, Section } from '@/components/ui/layout';
 import {
   Archive,
   Brain,
@@ -833,12 +833,10 @@ export function MemoryPage() {
           </div>
 
           {/* ----------------------------- The list -------------------------- */}
-          <section className="space-y-3" aria-labelledby="memory-list-heading">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 id="memory-list-heading" className="text-sm font-semibold text-ink">
-                {t('Stored memories')}
-              </h2>
-              <p className="text-xs tabular-nums text-muted">
+          <Section
+            title={t('Stored memories')}
+            actions={
+              <p className="text-caption tabular-nums text-muted">
                 {/* Counted over the cards actually rendered: `total` excludes
                     the retired ones, and so does every card below — the fold
                     has its own count. The denominator appears whenever fewer
@@ -848,7 +846,8 @@ export function MemoryPage() {
                   ? t('{shown} shown of {total}', { shown: live.length, total: memoryQuery.data.total })
                   : t('{shown} shown', { shown: live.length })}
               </p>
-            </div>
+            }
+          >
 
             {memoryQuery.isLoading ? (
               <div className="space-y-3">
@@ -993,7 +992,7 @@ export function MemoryPage() {
                 </ul>
               </details>
             ) : null}
-          </section>
+          </Section>
 
           {/* ----------------------------- Insights -------------------------- */}
           <section className="space-y-3" aria-labelledby="insights-heading">

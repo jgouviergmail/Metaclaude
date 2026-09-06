@@ -11,6 +11,34 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.11] — 2026-09-06
+
+### Changed
+
+- `Section` and `Grid` had no call site at all — components with tests and no
+  users, which is the same defect as the dead density tokens removed two
+  versions ago, made by the same hand. Both are now used where they belong: the
+  dashboard's grid, which carried a hand-written `min-w-0` patch since the
+  first lot, and the two list sections on Memory and Analytics that already
+  wrote a `<section>` with a heading and a count by hand.
+- `Grid` fixed the breakpoint per column count, and not one of the ten
+  hand-written grids in the app matched it: two charts want `xl`, two cards
+  want `sm`, the dashboard wants `lg`. How many columns is the layout's
+  business; the width at which they are worth having is the content's, and only
+  the caller knows it. It takes a `from` now.
+- The Claude catalogue declared its own `Section` — icon, title, subtitle,
+  count, four call sites — a duplicate of the primitive with one thing that is
+  genuinely local: a shelf reporting nothing says so. It delegates its header
+  and keeps its rule, and `Section` gained the icon slot it was missing.
+
+### Fixed
+
+- The bundle ceiling moves from 189 to 190 kB gzipped, by hand and for a
+  reason: the dashboard is deliberately eager, so the layout primitives it uses
+  land in the entry chunk. Declaring `sideEffects` on the web package was tried
+  first and measured no gain, so it was not kept — a change with no measured
+  benefit is not worth its risk.
+
 ## [0.56.10] — 2026-09-06
 
 ### Added

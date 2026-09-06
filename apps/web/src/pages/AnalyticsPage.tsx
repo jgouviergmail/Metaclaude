@@ -8,7 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Page } from '@/components/ui/layout';
+import { Page, Section } from '@/components/ui/layout';
 import { Activity, CalendarRange, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -578,24 +578,18 @@ export function AnalyticsPage() {
           )}
 
           {/* -------------------------- Learned policy ------------------------ */}
-          <section className="space-y-3" aria-labelledby="policy-heading">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 space-y-1">
-                <h2 id="policy-heading" className="text-sm font-semibold text-ink">
-                  {t('Learned policy')}
-                </h2>
-                <p className="max-w-2xl text-xs leading-relaxed text-muted">
-                  {t(
-                    "One Beta posterior per (category, model, effort) arm. The posterior mean is the learner's current belief that the arm succeeds; it samples from these rather than always taking the leader, which is why a weaker arm still gets occasional trials.",
-                  )}
-                </p>
-              </div>
-
+          <Section
+            title={t('Learned policy')}
+            description={t(
+              "One Beta posterior per (category, model, effort) arm. The posterior mean is the learner's current belief that the arm succeeds; it samples from these rather than always taking the leader, which is why a weaker arm still gets occasional trials.",
+            )}
+            actions={
               <Button variant="outline" size="sm" onClick={() => setResetting(true)}>
                 <RotateCcw className="size-4" />
                 {t('Reset learning')}
               </Button>
-            </div>
+            }
+          >
 
             {policyQuery.isLoading ? (
               <Skeleton className="h-40 rounded-xl" />
@@ -624,7 +618,7 @@ export function AnalyticsPage() {
                 ))}
               </div>
             )}
-          </section>
+          </Section>
       </Page>
 
       <ConfirmDialog

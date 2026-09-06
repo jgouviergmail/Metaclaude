@@ -116,6 +116,17 @@ describe('Section', () => {
     expect(region.querySelector('header')?.className).toContain('border-b');
   });
 
+  it('keeps an icon out of the heading, where it would join the name', () => {
+    render(
+      <Section title="Serveurs MCP" icon={<svg data-testid="icone" />}>
+        contenu
+      </Section>,
+    );
+    const heading = screen.getByRole('heading', { name: 'Serveurs MCP', level: 2 });
+    expect(heading.querySelector('[data-testid="icone"]')).toBeNull();
+    expect(screen.getByTestId('icone').closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
   it('shows a description and actions when given them', () => {
     render(
       <Section title="Exécution" description="Prend effet au prochain run." actions={<button type="button">Ajouter</button>}>
@@ -141,7 +152,11 @@ describe('Grid', () => {
     expect(grid.className).toContain('[&>*]:min-w-0');
   });
 
-  it('starts at one column and opens up above the breakpoint', () => {
+  it('starts at one column and opens up at the breakpoint the caller names', () => {
+    // The first version fixed the breakpoint per column count and matched none
+    // of the ten hand-written grids: two charts want `xl`, two cards want `sm`.
+    // How many columns is the layout's business; when they are worth having is
+    // the content's, and only the caller knows that.
     const { container } = render(
       <Grid cols={3}>
         <span>a</span>
@@ -150,6 +165,17 @@ describe('Grid', () => {
     const grid = container.firstElementChild as HTMLElement;
     expect(grid.className).toContain('grid-cols-1');
     expect(grid.className).toContain('lg:grid-cols-3');
+  });
+
+  it('honours a different breakpoint without changing the column count', () => {
+    const { container } = render(
+      <Grid cols={2} from="xl">
+        <span>a</span>
+      </Grid>,
+    );
+    const grid = container.firstElementChild as HTMLElement;
+    expect(grid.className).toContain('xl:grid-cols-2');
+    expect(grid.className).not.toContain('lg:grid-cols');
   });
 
   it('uses the density rhythm for its gutter', () => {

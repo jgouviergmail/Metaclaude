@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ClaudeCatalogue, ClaudeMcpServerStatus } from '@metaclaude/shared';
+import { Section } from '@/components/ui/layout';
 import { Badge, Button, Card, EmptyState, Spinner } from '@/components/ui/primitives';
 import { cn, formatRelative } from '@/lib/utils';
 import { McpToolList } from './McpToolList';
@@ -152,7 +153,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
       ) : null}
 
       {/* MCP first: the only part of this screen that can be wrong right now. */}
-      <Section
+      <CatalogueSection
         icon={<Server className="size-4 text-info" />}
         title={t('MCP servers')}
         subtitle={t(
@@ -163,14 +164,14 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
         {catalogue.mcpServers.map((server) => (
           <McpRow key={server.name} server={server} />
         ))}
-      </Section>
+      </CatalogueSection>
       <p className="rounded-lg border border-dashed border-line px-3 py-2 text-[12px] leading-relaxed text-subtle">
         {t(
           'Connectors from your claude.ai account never appear here: a server paired with a setup token authenticates for inference only, so the CLI cannot fetch them. To connect an external service, add its MCP server on the Agents screen — it is mounted into every run and reported above. Metaclaude’s own board and delegation tools ride along in-process and are always available.',
         )}
       </p>
 
-      <Section
+      <CatalogueSection
         icon={<Wand2 className="size-4 text-accent" />}
         title={t('Models')}
         subtitle={t('What this subscription grants, and which take an effort level')}
@@ -196,9 +197,9 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
             }
           />
         ))}
-      </Section>
+      </CatalogueSection>
 
-      <Section
+      <CatalogueSection
         icon={<SlashSquare className="size-4 text-accent" />}
         title={t('Slash commands')}
         subtitle={t('Built in, plus anything this workspace defines')}
@@ -217,9 +218,9 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
             }
           />
         ))}
-      </Section>
+      </CatalogueSection>
 
-      <Section
+      <CatalogueSection
         icon={<Bot className="size-4 text-accent" />}
         title={t('Subagents')}
         subtitle={t('Named agents the CLI can delegate to')}
@@ -234,14 +235,24 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
             meta={agent.model ? <Badge tone="neutral">{agent.model}</Badge> : null}
           />
         ))}
-      </Section>
+      </CatalogueSection>
     </div>
   );
 }
 
 /* -------------------------------------------------------------------------- */
 
-function Section({
+/**
+ * One shelf of the catalogue.
+ *
+ * The header — icon, title, subtitle, count, rule — was written by hand here
+ * and is exactly what `Section` is for, so it delegates. What stays local is
+ * the one thing that is not layout: a shelf reporting nothing says so rather
+ * than showing an empty space, and every shelf can be empty.
+ *
+ * `level={3}`: this sits inside a tab panel, under the page's own heading.
+ */
+function CatalogueSection({
   icon,
   title,
   subtitle,
@@ -256,21 +267,21 @@ function Section({
 }) {
   const t = useT();
   return (
-    <section className="space-y-2">
-      <div className="flex items-baseline gap-2">
-        <span className="translate-y-0.5">{icon}</span>
-        <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
-        <span className="text-[11.5px] tabular-nums text-subtle">{count}</span>
-      </div>
-      <p className="text-[12px] text-muted">{subtitle}</p>
+    <Section
+      level={3}
+      icon={icon}
+      title={title}
+      description={subtitle}
+      actions={<span className="text-caption tabular-nums text-subtle">{count}</span>}
+    >
       {count === 0 ? (
-        <p className="rounded-lg border border-dashed border-line px-3 py-3 text-[12.5px] text-subtle">
+        <p className="rounded-lg border border-dashed border-line px-3 py-3 text-caption text-subtle">
           {t('Nothing reported.')}
         </p>
       ) : (
         <div className="space-y-1.5">{children}</div>
       )}
-    </section>
+    </Section>
   );
 }
 
