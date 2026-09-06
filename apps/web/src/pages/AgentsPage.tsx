@@ -48,6 +48,7 @@ import { McpToolList } from '@/components/registry/McpToolList';
 import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel';
 import { CheckboxField, Switch } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
+import { PageBody } from '@/components/ui/layout';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
   Badge,
@@ -217,7 +218,7 @@ export function AgentsPage() {
             ))}
           </Tabs.List>
 
-          <div className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-6 sm:py-6">
+          <PageBody width="standard" gap="none">
             <Tabs.Content value="skills" className="focus-visible:outline-none">
               <SkillsTab workspaceId={workspaceId} onChanged={() => invalidate('skills')} />
             </Tabs.Content>
@@ -242,7 +243,7 @@ export function AgentsPage() {
             <Tabs.Content value="claude" className="focus-visible:outline-none">
               <ClaudeTab workspaceId={workspaceId} />
             </Tabs.Content>
-          </div>
+          </PageBody>
         </Tabs.Root>
       </div>
     </AppShell>

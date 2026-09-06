@@ -3,6 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import { Archive, FolderGit2, GitBranch, MoreVertical, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -118,8 +119,7 @@ export function WorkspacesPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl p-4 sm:p-6">
+      <Page width="wide" gap="none">
           {isLoading ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }, (_, i) => (
@@ -240,8 +240,7 @@ export function WorkspacesPage() {
               ))}
             </ul>
           )}
-        </div>
-      </div>
+      </Page>
 
       <CreateWorkspaceModal open={creating} onOpenChange={setCreating} />
 

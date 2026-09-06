@@ -8,6 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import { Activity, CalendarRange, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -271,8 +272,7 @@ export function AnalyticsPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-6xl space-y-6 px-3 py-4 sm:px-6 sm:py-6">
+      <Page width="wide">
           {/* Independent of the analytics query on purpose: the quota picture
               exists even in a period with no runs, and is most needed when the
               wall is close — which is not when someone is browsing history. */}
@@ -625,8 +625,7 @@ export function AnalyticsPage() {
               </div>
             )}
           </section>
-        </div>
-      </div>
+      </Page>
 
       <ConfirmDialog
         open={resetting}

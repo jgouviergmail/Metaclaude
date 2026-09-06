@@ -6,6 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import {
   Activity,
   AlertTriangle,
@@ -152,8 +153,7 @@ export function DashboardPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+      <Page width="wide">
           {/* The opening line: what the OS is doing right now, and its
               24-hour heartbeat — before anything else on the page. */}
           <SystemPulse
@@ -477,8 +477,7 @@ export function DashboardPage() {
               </ul>
             )}
           </Card>
-        </div>
-      </div>
+      </Page>
     </AppShell>
   );
 }

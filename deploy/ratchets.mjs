@@ -803,12 +803,56 @@ function countUntranslatedTableReads() {
     }
   };
 
+  /**
+   * The row a `.map` callback is handed is the table, under another name.
+   *
+   * This measure used to see only `TABLE[i].label` — a direct index — and that
+   * is not how any of this code is written. Every copy table in the app is
+   * rendered through `TABLE.map((entry) => … entry.label)`, where the property
+   * access is rooted at the *parameter*, so the measure walked past all of it
+   * and reported zero while the memory kind filters rendered « All / Episodic /
+   * Semantic / Procedural » in English on a French screen, with all four
+   * translations sitting in the catalogue.
+   *
+   * The alias is scoped to the callback rather than collected globally: a
+   * parameter named `entry` elsewhere, over something that is not a copy table,
+   * would otherwise be indicted by its name alone.
+   */
+  const ITERATORS = new Set(['map', 'forEach', 'filter', 'flatMap', 'find']);
+  const aliasFor = (node) => {
+    if (!ts.isCallExpression(node)) return null;
+    if (!ts.isPropertyAccessExpression(node.expression)) return null;
+    if (!ITERATORS.has(node.expression.name.text)) return null;
+    const root = rootOf(node.expression.expression);
+    if (!root || !copyTables.has(root)) return null;
+    const callback = node.arguments[0];
+    if (!callback) return null;
+    if (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback)) return null;
+    const parameter = callback.parameters[0];
+    if (!parameter || !ts.isIdentifier(parameter.name)) return null;
+    return { name: parameter.name.text, body: callback.body, root };
+  };
+
   let missing = 0;
   for (const { file, sf } of webComponents(ts)) {
-    const walk = (node) => {
+    const walk = (node, scope) => {
+      const alias = aliasFor(node);
+      if (alias) {
+        // Everything but the callback keeps the outer scope; the callback body
+        // gains the alias, and loses it again on the way out.
+        for (const child of node.getChildren(sf)) {
+          if (child !== alias.body && !child.getChildren(sf).includes(alias.body)) {
+            walk(child, scope);
+          }
+        }
+        walk(alias.body, new Map([...scope, [alias.name, alias.root]]));
+        return;
+      }
+
       if (ts.isPropertyAccessExpression(node) && COPY_PROPS.has(node.name.text)) {
         const root = rootOf(node.expression);
-        if (root && copyTables.has(root)) {
+        const table = root && (copyTables.has(root) ? root : scope.get(root));
+        if (table) {
           const parent = node.parent;
           const wrapped =
             parent &&
@@ -818,13 +862,13 @@ function countUntranslatedTableReads() {
             parent.arguments[0] === node;
           if (!wrapped) {
             missing += 1;
-            note('read', file, `${root}[…].${node.name.text}`);
+            note('read', file, `${table}[…].${node.name.text}`);
           }
         }
       }
-      ts.forEachChild(node, walk);
+      ts.forEachChild(node, (child) => walk(child, scope));
     };
-    ts.forEachChild(sf, walk);
+    ts.forEachChild(sf, (child) => walk(child, new Map()));
   }
   return missing;
 }
@@ -1009,6 +1053,32 @@ function countRawPalette() {
 }
 
 /**
+ * Page width containers written outside the layout primitives.
+ *
+ * Ten screens carried ten independent choices — four different maximum widths
+ * with no rule behind any of them, plus three paddings and four vertical
+ * rhythms for one repeated shape. `Page` owns the width now, named by intent,
+ * so a new screen picks a shape rather than a Tailwind step.
+ *
+ * Counted as a centred maximum width at a page-scale step — `mx-auto` and a
+ * `max-w-*xl` in the same class list. Both halves are needed: a bare max-width
+ * is a reading measure on a paragraph and stays legitimate, and `mx-auto
+ * max-w-sm` on an empty state's description is that same measure, centred.
+ * The two that remain are the session composer and the transcript column,
+ * which the session screen owns until lot 8 rewrites it.
+ */
+function countPageWidths() {
+  const CONTAINER = /className=["'`{][^"'`]*\bmx-auto\b[^"'`]*\bmax-w-\d?xl\b/g;
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!/\.tsx$/.test(file)) continue;
+    if (file.endsWith('components/ui/layout.tsx')) continue;
+    n += (read(file).match(CONTAINER) ?? []).length;
+  }
+  return n;
+}
+
+/**
  * Literal text sizes in the web app.
  *
  * This is the coverage measure of the typographic scale, and of the density
@@ -1088,6 +1158,12 @@ const METRICS = [
     measure: countDeployChecks,
   },
   { key: 'rawPaletteClasses', direction: 'down', label: 'raw Tailwind palette classes', measure: countRawPalette },
+  {
+    key: 'pageWidths',
+    direction: 'down',
+    label: 'page width containers outside the layout primitives',
+    measure: countPageWidths,
+  },
   {
     key: 'literalTextSizes',
     direction: 'down',

@@ -28,7 +28,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 const css = readFileSync('src/styles/index.css', 'utf8');
 
 /** The tokens density owns. Adding one here fails until it is declared twice. */
-const DENSITY_TOKENS = ['--mc-text-body', '--mc-pad-x'];
+const DENSITY_TOKENS = ['--mc-text-body', '--mc-pad-x', '--mc-section-gap', '--mc-stack'];
 
 /**
  * A token nothing reads is dead code that this test would pass on, so the list

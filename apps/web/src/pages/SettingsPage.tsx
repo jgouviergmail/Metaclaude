@@ -3,6 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import {
   Check,
   Copy,
@@ -87,8 +88,7 @@ export function SettingsPage() {
         showSidebarToggle={false}
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-4 sm:p-6">
+      <Page width="prose" gap="none">
           <Tabs.Root defaultValue={initialSettingsTab(window.location.search)}>
             <Tabs.List
               className="mb-5 flex gap-1 overflow-x-auto border-b border-line"
@@ -164,8 +164,7 @@ export function SettingsPage() {
               </Tabs.Content>
             ) : null}
           </Tabs.Root>
-        </div>
-      </div>
+      </Page>
     </AppShell>
   );
 }

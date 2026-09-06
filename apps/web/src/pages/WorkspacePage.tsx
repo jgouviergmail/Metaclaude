@@ -6,6 +6,7 @@
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import { GitBranch, Loader2, Plus, Settings2, TerminalSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -177,8 +178,7 @@ export function WorkspacePage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
+      <Page width="standard">
           {workspace.description ? (
             <p className="text-[13.5px] leading-relaxed text-muted">{workspace.description}</p>
           ) : null}
@@ -301,8 +301,7 @@ export function WorkspacePage() {
               </ul>
             )}
           </Card>
-        </div>
-      </div>
+      </Page>
 
       <WorkspaceSettingsModal
         open={showSettings}

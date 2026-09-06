@@ -8,6 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import {
   AlertTriangle,
   Clock,
@@ -137,8 +138,7 @@ export function AutomationsPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+      <Page width="list">
           {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }, (_, i) => (
@@ -321,8 +321,7 @@ export function AutomationsPage() {
               </Card>
             ))
           )}
-        </div>
-      </div>
+      </Page>
 
       {editing ? (
         <AutomationEditor

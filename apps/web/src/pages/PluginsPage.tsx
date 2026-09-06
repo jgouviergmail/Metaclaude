@@ -14,6 +14,7 @@
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import { AlertTriangle, Plug, Plus, Server, Sparkles, Store, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -154,8 +155,7 @@ export function PluginsPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-6">
+      <Page width="list">
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
@@ -301,8 +301,7 @@ export function PluginsPage() {
         </div>
       )}
 
-        </div>
-      </div>
+      </Page>
 
       <Modal
         open={installing}

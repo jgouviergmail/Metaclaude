@@ -137,11 +137,15 @@
    */
   --mc-text-body: 0.8125rem;
   --mc-pad-x: 1rem;
+  --mc-section-gap: 1.5rem;
+  --mc-stack: 0.5rem;
 }
 
 :root[data-density='comfortable'] {
   --mc-text-body: 0.875rem;
   --mc-pad-x: 1.25rem;
+  --mc-section-gap: 2.25rem;
+  --mc-stack: 0.875rem;
 }
 
 .dark {
@@ -230,8 +234,11 @@
   --text-caption: 0.71875rem;
   --text-caption--line-height: 1.4;
 
-  /* The gutter, so `p-gutter` and `px-gutter` follow the density too. */
+  /* The gutter and the rhythm, so `p-gutter` and `space-y-section` follow the
+     density too. */
   --spacing-gutter: var(--mc-pad-x);
+  --spacing-section: var(--mc-section-gap);
+  --spacing-stack: var(--mc-stack);
 }
 
 /* Expose the tokens as Tailwind colours so `bg-surface`, `text-muted` etc. work. */

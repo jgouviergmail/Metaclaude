@@ -12,6 +12,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Page } from '@/components/ui/layout';
 import {
   Archive,
   Brain,
@@ -622,8 +623,7 @@ export function MemoryPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-5xl space-y-6 px-3 py-4 sm:px-6 sm:py-6">
+      <Page width="standard">
           {/* What search is running on. Quiet when a model is loaded and
               nothing waits; a line the moment it is loading, absent, or a
               rebuild is behind — the states in which "semantic" would be a
@@ -695,7 +695,7 @@ export function MemoryPage() {
                         : 'text-muted hover:text-ink',
                     )}
                   >
-                    {entry.label}
+                    {t(entry.label)}
                   </button>
                 ))}
               </div>
@@ -1177,8 +1177,7 @@ export function MemoryPage() {
           </section>
 
           <KnowledgeSection embedder={systemQuery.data?.retrieval.embedder} scope={scope} workspaces={workspaces} />
-        </div>
-      </div>
+      </Page>
 
       {/* -------------------------------- Modals -------------------------------- */}
 

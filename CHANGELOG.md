@@ -11,6 +11,32 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.9] — 2026-09-06
+
+### Added
+
+- The layout primitives — `Page`, `PageBody`, `Section` and `Grid`. Ten screens
+  carried ten independent choices before them: four maximum widths, three
+  paddings and four vertical rhythms for one repeated shape. `Page` owns the
+  width, named by intent rather than by a Tailwind step, and no screen names
+  its own any more. `Grid` carries `min-width: 0` on its children, which is the
+  defect that clipped the dashboard on a phone. `Section` separates with a rule
+  instead of enclosing in a box, and owns its heading level.
+- A `pageWidths` ratchet, so a screen cannot go back to naming its own width.
+  Two remain, both in the session view, which lot 8 rewrites.
+
+### Fixed
+
+- The memory kind filters and the board's assignee filters rendered in English
+  on a French screen — « All / Episodic / Semantic / Procedural » and « All /
+  Yours / Agent » — with every translation already sitting in the catalogue.
+- The ratchet that exists to catch exactly that saw only a direct index,
+  `TABLE[i].label`, and no copy table in this app is read that way: they are
+  all rendered through `TABLE.map((entry) => … entry.label)`, where the
+  property access is rooted at the parameter. It now follows the row into the
+  callback, scoped to it, and found both defects above the moment it could see
+  them.
+
 ## [0.56.8] — 2026-09-06
 
 ### Added

@@ -256,7 +256,7 @@ export function BoardPage() {
                       : 'border border-line text-muted hover:text-ink',
                   )}
                 >
-                  {filter.label}
+                  {t(filter.label)}
                 </button>
               ))}
             </div>

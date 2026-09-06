@@ -28,6 +28,7 @@ import {
   titleOf,
 } from '@/lib/help';
 import { renderMarkdown } from '@/lib/markdown';
+import { Page } from '@/components/ui/layout';
 import { cn } from '@/lib/utils';
 import { APP_VERSION } from '@metaclaude/shared';
 import { useT } from '@/lib/i18n';
@@ -114,8 +115,7 @@ export function HelpPage() {
       {/* The standard page scroll container: without it the content column
           fights the AppShell's flex column instead of scrolling, and on a
           phone the bottom navigation covers the tail of the guide. */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-4 sm:px-6">
+      <Page width="standard">
           {/* Ask Metaclaude ------------------------------------------------- */}
           <Card className="p-4">
             <div className="mb-2 flex items-center gap-2 text-[13px] font-medium text-ink">
@@ -267,8 +267,7 @@ export function HelpPage() {
               </Card>
             </Tabs.Content>
           </Tabs.Root>
-        </div>
-      </div>
+      </Page>
     </AppShell>
   );
 }
