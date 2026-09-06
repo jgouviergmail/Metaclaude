@@ -254,3 +254,48 @@ describe('SegmentedControl', () => {
     expect(button.getAttribute('aria-describedby')).toBeTruthy();
   });
 });
+
+/**
+ * The checkbox row is the target, because the box cannot be.
+ *
+ * A pseudo-element does not render on a replaced element, so an
+ * `<input type="checkbox">` cannot carry a hit area however it is styled — the
+ * obvious fix does nothing at all, silently. The label can, and pressing it
+ * toggles the box, which makes the whole row what it already looked like.
+ * `scripts/responsive.mjs` measured eight of these at 16px the day it started
+ * auditing the panels they live on.
+ */
+describe('a checkbox field on a phone', () => {
+  it('puts the hit area on the label, which is what a thumb can reach', () => {
+    render(<CheckboxField checked={false} onChange={() => {}} label="Bash" hint="Runs a shell command." />);
+    const label = screen.getByText('Bash').closest('label') as HTMLElement;
+    expect(label.className).toContain('pointer-coarse:before:');
+  });
+
+  it('still toggles from the label, which is the whole point of putting it there', () => {
+    const onChange = vi.fn();
+    render(<CheckboxField checked={false} onChange={onChange} label="Bash" hint="Runs a shell command." />);
+    fireEvent.click(screen.getByLabelText('Bash'));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  /*
+   * A label that is an identifier rather than a word: `Write` and `Edit` are
+   * the exact names of Claude Code tools, so they render as code — nobody
+   * translates them, and the browser sweep stops reporting them as English on
+   * a French screen, which is what it is paid to report.
+   */
+  it('takes a node where the label is a name, not a sentence', () => {
+    render(
+      <CheckboxField
+        checked={false}
+        onChange={() => {}}
+        label={<code className="font-mono">Write</code>}
+        hint="Creates a file."
+      />,
+    );
+    expect(screen.getByText('Write').tagName).toBe('CODE');
+    // The accessible name survives the markup: it is still the tool's name.
+    expect(screen.getByLabelText('Write')).toBeDefined();
+  });
+});

@@ -412,8 +412,17 @@ function countHardcodedUiText() {
        * `runRetentionDays`. Those are lowercase because they are names, and a
        * capitalised arm is a label because a person wrote it as one.
        */
-      if (ts.isConditionalExpression(node)) {
-        const arms = [node.whenTrue, node.whenFalse].filter((arm) => ts.isStringLiteral(arm));
+      // `cond ? 'A' : 'B'` and `cond && 'A'`, which is the same decision with
+      // one arm. There are none of the second shape today; a rule that waits
+      // for the first is a rule that arrives after it shipped.
+      if (
+        ts.isConditionalExpression(node) ||
+        (ts.isBinaryExpression(node) &&
+          node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
+      ) {
+        const arms = (
+          ts.isConditionalExpression(node) ? [node.whenTrue, node.whenFalse] : [node.right]
+        ).filter((arm) => ts.isStringLiteral(arm));
         let rendered = false;
         for (let p = node.parent; p; p = p.parent) {
           if (ts.isJsxAttribute(p) || ts.isJsxAttributes(p)) break;

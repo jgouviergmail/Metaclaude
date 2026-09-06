@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.58.1] — 2026-09-06
+
+### Fixed
+
+- A teardown failure could take the whole report with it. The throwaway data
+  directory would not delete on Windows — the database file is held for a
+  moment after close — so a run whose every check had passed exited non-zero
+  and printed no tally at all. That is the exact failure the guard exists to
+  prevent, in the guard: a check that reports nothing is indistinguishable from
+  a check that passed. It retries, then says on stderr what it could not remove.
+- The dialog pass ran inside the sweep, in the fourth of six combinations, so
+  two of them audited a deployment it had modified — a run it started, a token
+  it issued. One real defect surfaced that way and a phantom could have. It has
+  its own pass now, after everything, and nothing follows it.
+- Two dead fallbacks on the run-status tables. `lastStatus` is narrowed to
+  `RunStatus` inside the guard that renders it, so `?? 'warning'` was
+  unreachable — and worse than noise: it invites the next reader to loosen the
+  exhaustive table instead of adding the case that failed the build.
+
+### Changed
+
+- The five invariants live in one `inspector(page)` rather than in a closure
+  the dialog pass would have had to copy.
+- The i18n rule covers `cond && 'Text'` as well as `cond ? 'A' : 'B'`. There
+  are none of the first shape today; a rule that waits for one arrives after it
+  ships.
+
 ## [0.58.0] — 2026-09-06
 
 ### Fixed

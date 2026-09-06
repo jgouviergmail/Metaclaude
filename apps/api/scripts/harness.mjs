@@ -121,7 +121,27 @@ export async function startServer(options = {}) {
     async stop() {
       await app.close();
       await context.shutdown?.();
-      rmSync(dataRoot, { recursive: true, force: true });
+      /*
+       * A throwaway directory that will not delete must not take the report
+       * with it.
+       *
+       * Windows holds the SQLite file open for a moment after close, so
+       * `rmSync` raised EPERM — after every check had passed, and before
+       * `finish()` could print the tally. A run whose checks were green then
+       * exited non-zero with no report at all, which is the exact failure this
+       * file's own comment forbids: a check that reports nothing is
+       * indistinguishable from a check that passed.
+       *
+       * `maxRetries` covers the ordinary case; the catch covers the rest, and
+       * says so on stderr rather than pretending the directory is gone. The
+       * operating system reclaims a temp directory anyway.
+       */
+      try {
+        rmSync(dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      } catch (error) {
+        process.stderr.write(`  note  could not remove ${dataRoot}: ${error?.code ?? error}
+`);
+      }
     },
   };
 }

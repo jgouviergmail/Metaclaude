@@ -245,8 +245,8 @@ export function AutomationsPage() {
                       ) : null}
                       {!automation.enabled ? <Badge tone="neutral">{t('paused')}</Badge> : null}
                       {automation.lastStatus ? (
-                        <Badge tone={RUN_STATUS_TONE[automation.lastStatus] ?? 'warning'}>
-                          {t(RUN_STATUS_LABEL[automation.lastStatus] ?? automation.lastStatus)}
+                        <Badge tone={RUN_STATUS_TONE[automation.lastStatus]}>
+                          {t(RUN_STATUS_LABEL[automation.lastStatus])}
                         </Badge>
                       ) : null}
                     </div>

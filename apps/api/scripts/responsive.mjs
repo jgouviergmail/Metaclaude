@@ -535,6 +535,37 @@ const LOCALES = ['en-US', 'fr-FR'];
  * loads every screen twice per combination and the memory adds up. Launching
  * costs about a second; a crash costs the whole run.
  */
+/**
+ * The five invariants, asked of whatever is on screen.
+ *
+ * Taken out of the sweep's loop because the dialog pass below runs outside it,
+ * and two copies of five checks is two chances for them to drift apart.
+ */
+function inspector(page) {
+  return async (label) => {
+    const r = await page.evaluate(AUDIT);
+    results.check(`${label}: nothing clipped`, r.clipped.length === 0, r.clipped.join(' | '));
+    results.check(`${label}: nothing covered`, r.covered.length === 0, r.covered.join(' | '));
+    results.check(
+      `${label}: every control is named`,
+      r.unnamed.length === 0,
+      [...new Set(r.unnamed)].join(' | '),
+    );
+    results.check(
+      `${label}: no skipped heading level`,
+      r.headings.length === 0,
+      r.headings.join(' | '),
+    );
+    // Empty at the two pointer-fine widths: the rule only asks the question
+    // where the answer can differ from the painted box.
+    results.check(
+      `${label}: every small control answers a thumb`,
+      r.tapTargets.length === 0,
+      [...new Set(r.tapTargets)].join(' | '),
+    );
+  };
+}
+
 const launch = () =>
   chromium.launch(
     process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {},
@@ -568,28 +599,7 @@ for (const locale of LOCALES) {
 
     results.section(`${locale} · ${width.name}px`);
 
-    const inspect = async (label) => {
-      const r = await page.evaluate(AUDIT);
-      results.check(`${label}: nothing clipped`, r.clipped.length === 0, r.clipped.join(' | '));
-      results.check(`${label}: nothing covered`, r.covered.length === 0, r.covered.join(' | '));
-      results.check(
-        `${label}: every control is named`,
-        r.unnamed.length === 0,
-        [...new Set(r.unnamed)].join(' | '),
-      );
-      results.check(
-        `${label}: no skipped heading level`,
-        r.headings.length === 0,
-        r.headings.join(' | '),
-      );
-      // Empty at the two pointer-fine widths: the rule only asks the question
-      // where the answer can differ from the painted box.
-      results.check(
-        `${label}: every small control answers a thumb`,
-        r.tapTargets.length === 0,
-        [...new Set(r.tapTargets)].join(' | '),
-      );
-    };
+    const inspect = inspector(page);
 
     for (const [route, label] of ROUTES) {
       await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
@@ -723,95 +733,6 @@ for (const locale of LOCALES) {
       await page.keyboard.press('Escape');
     }
 
-    /*
-     * Every other dialog, found rather than named.
-     *
-     * Fifty-two exist and the list above names five. Naming the rest is not a
-     * list anyone would keep true — a dialog added next month would be
-     * unaudited and nothing would say so — so the openers are discovered: click
-     * a button, and if a dialog appeared, audit it and press Escape. A confirm
-     * dialog is a dialog too, and cancelling one is exactly what Escape does,
-     * so a "Delete" button is safe to press and worth pressing.
-     *
-     * At the phone width, in French, and once per name. That is where a dialog
-     * breaks: the widest copy in the narrowest frame, which is how the
-     * automation dialog was found with two of its presets behind the footer.
-     * Running the full matrix would multiply a seven-minute sweep by three for
-     * combinations that have never held a defect the phone did not.
-     *
-     * Discovery runs last, after the routes and the menus, so whatever a click
-     * changes on the seeded server cannot reach an audit that has not run yet.
-     */
-    if (width.name === '390' && locale === 'fr-FR') {
-      const seenDialogs = new Set();
-      for (const [route, label] of ROUTES) {
-        await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
-        await page.waitForTimeout(500);
-        const count = (await page.$$('button')).length;
-        for (let index = 0; index < count; index += 1) {
-          const button = (await page.$$('button'))[index];
-          if (!button) continue;
-          if (!(await button.isVisible()) || !(await button.isEnabled())) continue;
-          // A menu trigger opens a menu, which the loop above already audits.
-          if (await button.getAttribute('aria-haspopup')) continue;
-          if ((await button.getAttribute('role')) === 'tab') continue;
-          const name = (
-            (await button.getAttribute('aria-label')) ||
-            (await button.textContent())?.trim() ||
-            ''
-          )
-            .replace(/[\s]+/g, ' ')
-            .slice(0, 40);
-          if (!name || seenDialogs.has(name)) continue;
-
-          /*
-           * Dismiss whatever the previous click announced.
-           *
-           * A toast left over from one button was still on screen when the next
-           * one opened a dialog, and the audit reported its close button as
-           * covered — by the dialog that had just opened over it. That is an
-           * artefact of pressing every button in a row, not something an
-           * operator meets, and a check that reports it is reporting on the
-           * probe rather than on the app.
-           */
-          for (const close of await page.$$('[data-sonner-toast] button')) {
-            await close.click({ timeout: 500 }).catch(() => {});
-          }
-
-          const before = page.url();
-          await button.scrollIntoViewIfNeeded().catch(() => {});
-          await button.click({ timeout: 2000 }).catch(() => {});
-          await page.waitForTimeout(450);
-
-          const dialog = await page.$('[role="dialog"]');
-          if (dialog) {
-            seenDialogs.add(name);
-            await inspect(`${label} · dialogue « ${name} »`);
-            const english = await page.evaluate(UNTRANSLATED(FRENCH_KEYS));
-            results.check(
-              `${label} · dialogue « ${name} »: nothing shows in English`,
-              english.length === 0,
-              english.map((text) => `« ${text.slice(0, 48)} »`).join(' | '),
-            );
-            await page.keyboard.press('Escape');
-            await page.waitForTimeout(250);
-          }
-          // A button that navigated, or one that left a dialog open: put the
-          // page back where the loop expects it, or every button after this one
-          // is clicked on the wrong screen.
-          if (page.url() !== before || (await page.$('[role="dialog"]'))) {
-            await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
-            await page.waitForTimeout(400);
-          }
-        }
-      }
-      results.check(
-        'the dialog sweep found more than the five that are named',
-        seenDialogs.size > 5,
-        `found ${seenDialogs.size}`,
-      );
-    }
-
     } catch (error) {
       // A renderer that dies mid-sweep must not take the report with it: a
       // check that reports nothing is indistinguishable from a check that
@@ -828,6 +749,139 @@ for (const locale of LOCALES) {
   }
 }
 
+
+/*
+ * The dialog pass, outside the sweep and after it.
+ *
+ * It runs inside the loop no longer, and the reason is determinism rather than
+ * tidiness: pressing every button on every route changes the seeded server —
+ * a run starts, a token is issued — and it used to run in the fourth of six
+ * combinations, so two of them audited a deployment the pass had modified. One
+ * real defect surfaced that way and it could as easily have been a phantom.
+ * Nothing follows it now.
+ *
+ * At the phone width, in French, once per name: that is where a dialog breaks,
+ * the widest copy in the narrowest frame. Running the full matrix would triple
+ * a nine-minute sweep for combinations that have never held a defect the phone
+ * did not.
+ */
+{
+  const browser = await launch();
+  try {
+    const page = await browser.newPage({
+      locale: 'fr-FR',
+      reducedMotion: 'reduce',
+      ...WIDTHS[0],
+    });
+    const inspect = inspector(page);
+    await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
+    await page.fill('input[name="username"], #username', USERNAME);
+    await page.fill('input[type="password"]', PASSWORD);
+    await page.click('button[type="submit"]');
+    await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 20_000 });
+    results.section('dialogues · fr-FR · 390px');
+
+/*
+ * Every other dialog, found rather than named.
+ *
+ * Fifty-two exist and the list above names five. Naming the rest is not a
+ * list anyone would keep true — a dialog added next month would be
+ * unaudited and nothing would say so — so the openers are discovered: click
+ * a button, and if a dialog appeared, audit it and press Escape. A confirm
+ * dialog is a dialog too, and cancelling one is exactly what Escape does,
+ * so a "Delete" button is safe to press and worth pressing.
+ *
+ * At the phone width, in French, and once per name. That is where a dialog
+ * breaks: the widest copy in the narrowest frame, which is how the
+ * automation dialog was found with two of its presets behind the footer.
+ * Running the full matrix would multiply a seven-minute sweep by three for
+ * combinations that have never held a defect the phone did not.
+ *
+ * Discovery runs last, after the routes and the menus, so whatever a click
+ * changes on the seeded server cannot reach an audit that has not run yet.
+ */
+  const seenDialogs = new Set();
+  for (const [route, label] of ROUTES) {
+    await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    const count = (await page.$$('button')).length;
+    for (let index = 0; index < count; index += 1) {
+      const button = (await page.$$('button'))[index];
+      if (!button) continue;
+      if (!(await button.isVisible()) || !(await button.isEnabled())) continue;
+      // A menu trigger opens a menu, which the loop above already audits.
+      if (await button.getAttribute('aria-haspopup')) continue;
+      if ((await button.getAttribute('role')) === 'tab') continue;
+      const name = (
+        (await button.getAttribute('aria-label')) ||
+        (await button.textContent())?.trim() ||
+        ''
+      )
+        .replace(/[\s]+/g, ' ')
+        .slice(0, 40);
+      if (!name || seenDialogs.has(name)) continue;
+
+      /*
+       * Dismiss whatever the previous click announced.
+       *
+       * A toast left over from one button was still on screen when the next
+       * one opened a dialog, and the audit reported its close button as
+       * covered — by the dialog that had just opened over it. That is an
+       * artefact of pressing every button in a row, not something an
+       * operator meets, and a check that reports it is reporting on the
+       * probe rather than on the app.
+       */
+      for (const close of await page.$$('[data-sonner-toast] button')) {
+        await close.click({ timeout: 500 }).catch(() => {});
+      }
+
+      const before = page.url();
+      await button.scrollIntoViewIfNeeded().catch(() => {});
+      await button.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(450);
+
+      const dialog = await page.$('[role="dialog"]');
+      if (dialog) {
+        seenDialogs.add(name);
+        await inspect(`${label} · dialogue « ${name} »`);
+        const english = await page.evaluate(UNTRANSLATED(FRENCH_KEYS));
+        results.check(
+          `${label} · dialogue « ${name} »: nothing shows in English`,
+          english.length === 0,
+          english.map((text) => `« ${text.slice(0, 48)} »`).join(' | '),
+        );
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(250);
+      }
+      // A button that navigated, or one that left a dialog open: put the
+      // page back where the loop expects it, or every button after this one
+      // is clicked on the wrong screen.
+      if (page.url() !== before || (await page.$('[role="dialog"]'))) {
+        await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
+        await page.waitForTimeout(400);
+      }
+    }
+  }
+  results.check(
+    'the dialog sweep found more than the five that are named',
+    seenDialogs.size > 5,
+    `found ${seenDialogs.size}`,
+  );
+
+
+  } catch (error) {
+    results.check(
+      'the dialog pass ran to the end',
+      false,
+      String(error?.message ?? error).slice(0, 140),
+    );
+  } finally {
+    await browser.close();
+  }
+}
+
+// The dialog pass above is the last thing that needs the server.
 await server.stop();
+
 // `finish()` prints the tally and already returns an exit code (0 or 1).
 process.exit(results.finish());
