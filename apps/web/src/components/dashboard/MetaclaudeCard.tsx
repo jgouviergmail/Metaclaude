@@ -111,7 +111,7 @@ export function MetaclaudeCard() {
           onKeyDown={onKeyDown}
         />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[12px] leading-relaxed text-muted">
+          <p className="text-caption leading-relaxed text-muted">
             {ready
               ? t('It reads everything, changes what is reversible, and asks before anything irreversible.')
               : t('The system workspace is not ready. See the server log.')}

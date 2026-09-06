@@ -86,7 +86,7 @@ export const TaskCard = memo(function TaskCard({
     >
       <div className="flex items-start gap-2">
         <GripVertical className="mt-0.5 size-3.5 shrink-0 text-subtle opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
-        <p className="min-w-0 flex-1 text-[13.5px] font-medium leading-snug text-ink">{task.title}</p>
+        <p className="min-w-0 flex-1 text-body font-medium leading-snug text-ink">{task.title}</p>
         <div onClick={(event) => event.stopPropagation()}>
           <Menu
             trigger={
@@ -109,7 +109,7 @@ export const TaskCard = memo(function TaskCard({
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 pl-5 text-[11.5px] text-muted">
+      <div className="mt-2 flex flex-wrap items-center gap-2 pl-5 text-caption text-muted">
         {/* What the card is, before how urgent it is: a bug and a wish read
             differently in the same column, and the icon says which without
             costing a line. */}

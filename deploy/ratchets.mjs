@@ -1508,6 +1508,40 @@ function classNameValues(source) {
   return values;
 }
 
+/**
+ * A display utility sharing an element with `help-comfortable`.
+ *
+ * The class hides prose the compact density does not show, and it cannot win
+ * against `block`, `flex` or `grid`: Tailwind emits its utilities in a *later*
+ * cascade layer, and a later layer beats any specificity — raising the
+ * selector's specificity changes nothing, which is what made this cost two
+ * attempts. The class was on the element, the density was compact, and the
+ * prose was on screen. A test asserting the class passed the whole time.
+ *
+ * So the constraint is on the element, not on the stylesheet: whatever carries
+ * `help-comfortable` lets it own the display.
+ */
+const DISPLAY_UTILITY = /\b(?:block|inline-block|flex|inline-flex|grid|inline-grid|hidden|contents)\b/;
+
+function countDisplayBesideDensityHelp() {
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    for (const value of classNameValues(read(file))) {
+      if (!value.includes('help-comfortable')) continue;
+      // Only what sits beside it, not a display in another arm of the same
+      // conditional — `next ? 'block' : 'help-comfortable'` is the fix, not the
+      // defect.
+      const beside = value.split(/['"`]/).filter((part) => part.includes('help-comfortable'));
+      if (beside.some((part) => DISPLAY_UTILITY.test(part))) {
+        n += 1;
+        note('lyr ', file, value);
+      }
+    }
+  }
+  return n;
+}
+
 /** Source files with no test file beside them, in the subsystems that matter most. */
 function countUntestedCriticalModules() {
   const CRITICAL = ['apps/api/src/kernel/', 'apps/api/src/security/', 'apps/api/src/learning/'];
@@ -1644,6 +1678,12 @@ const METRICS = [
     direction: 'down',
     label: 'kernel/security/learning modules with no test file',
     measure: countUntestedCriticalModules,
+  },
+  {
+    key: 'displayBesideDensityHelp',
+    direction: 'down',
+    label: 'a display utility sharing an element with help-comfortable',
+    measure: countDisplayBesideDensityHelp,
   },
   {
     key: 'clampWithPadding',

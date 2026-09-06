@@ -174,7 +174,7 @@ export function DashboardPage() {
           {system && !system.claudeCli.authenticated ? (
             <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning-soft/40 p-4">
               <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
-              <div className="min-w-0 space-y-1 text-[13px] leading-relaxed">
+              <div className="min-w-0 space-y-1 text-body leading-relaxed">
                 <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
                 <p className="text-muted">
                   {t('Pair it from')}{' '}
@@ -184,7 +184,7 @@ export function DashboardPage() {
                   {t(
                     ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from',
                   )}{' '}
-                  <code className="rounded bg-raised px-1 font-mono text-[12px]">{t(
+                  <code className="rounded bg-raised px-1 font-mono text-caption">{t(
                     'claude setup-token',
                   )}</code>{' '}
                   {t('can be pasted there too.')}
@@ -199,7 +199,7 @@ export function DashboardPage() {
             <Card>
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
                 <h2 className="text-body font-semibold text-ink">{t('The brief')}</h2>
-                <span className="text-[11.5px] text-subtle">{t('last 24 hours')}</span>
+                <span className="text-caption text-subtle">{t('last 24 hours')}</span>
               </div>
               <div className="px-4 py-3">
                 <BriefView brief={briefQuery.data} />
@@ -226,7 +226,7 @@ export function DashboardPage() {
                     <Badge tone={approval.risk === 'high' ? 'danger' : 'warning'}>
                       {approval.risk}
                     </Badge>
-                    <code className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-ink">
+                    <code className="min-w-0 flex-1 truncate font-mono text-caption text-ink">
                       {approval.summary}
                     </code>
                     <div className="flex shrink-0 gap-1.5">
@@ -387,14 +387,14 @@ export function DashboardPage() {
                           aria-hidden
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13.5px] font-medium text-ink">
+                          <p className="truncate text-body font-medium text-ink">
                             {workspace.name}
                           </p>
-                          <p className="truncate text-[12px] text-muted">
+                          <p className="truncate text-caption text-muted">
                             {workspace.description || workspace.slug}
                           </p>
                         </div>
-                        <span className="shrink-0 text-[11.5px] text-subtle">
+                        <span className="shrink-0 text-caption text-subtle">
                           {formatRelative(workspace.updatedAt)}
                         </span>
                       </Link>
@@ -433,8 +433,8 @@ export function DashboardPage() {
                           {insight.kind.replace('_', ' ')}
                         </Badge>
                       </div>
-                      <p className="mt-1.5 text-[13px] leading-snug text-ink">{insight.title}</p>
-                      <p className="mt-0.5 text-[11.5px] text-subtle">
+                      <p className="mt-1.5 text-body leading-snug text-ink">{insight.title}</p>
+                      <p className="mt-0.5 text-caption text-subtle">
                         {formatRelative(insight.createdAt)}
                       </p>
                     </li>
@@ -499,7 +499,7 @@ function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
           <Badge tone={tone}>{t(run.status)}</Badge>
         </span>
 
-        <p className="min-w-0 flex-1 truncate text-[13px] text-ink">
+        <p className="min-w-0 flex-1 truncate text-body text-ink">
           {run.prompt.split('\n')[0]}
         </p>
 
@@ -515,12 +515,12 @@ function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
         ) : null}
 
         {run.usage.costUsd > 0 ? (
-          <span className="hidden shrink-0 text-[11.5px] tabular-nums text-subtle sm:block">
+          <span className="hidden shrink-0 text-caption tabular-nums text-subtle sm:block">
             {formatCost(run.usage.costUsd)}
           </span>
         ) : null}
 
-        <span className="shrink-0 text-[11.5px] text-subtle">{formatRelative(run.startedAt)}</span>
+        <span className="shrink-0 text-caption text-subtle">{formatRelative(run.startedAt)}</span>
       </Link>
     </li>
   );

@@ -16,6 +16,7 @@ import { Button, Card, CardHeader } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { onboardingDone, onboardingSteps } from '@/lib/onboarding';
 import { useAuthStore } from '@/lib/store';
+import { cn } from '@/lib/utils';
 
 const DISMISS_KEY = 'mc-getting-started-dismissed';
 
@@ -104,7 +105,20 @@ export function GettingStartedCard() {
         }
       />
       <ul className="space-y-1 px-4 pb-4">
-        {steps.map((step) => (
+        {steps.map((step) => {
+          /*
+           * A checklist explains the step you are on.
+           *
+           * Six steps carrying two lines each filled four hundred and forty
+           * pixels of a phone, in front of everything the dashboard exists to
+           * show. The detail of a step you have not reached is not urgent.
+           *
+           * The trigger used everywhere else cannot go here: the row is a
+           * `<Link>`, and a button inside a link is invalid and unreachable by
+           * keyboard. `.help-comfortable` says the same thing with no control.
+           */
+          const next = step.key === steps.find((entry) => !entry.done)?.key;
+          return (
           <li key={step.key}>
             <Link
               to={step.href}
@@ -118,20 +132,32 @@ export function GettingStartedCard() {
               <span className="min-w-0">
                 <span
                   className={
-                    step.done ? 'text-[13px] text-muted line-through' : 'text-[13px] font-medium text-ink'
+                    step.done ? 'text-body text-muted line-through' : 'text-body font-medium text-ink'
                   }
                 >
                   {t(step.label)}
                 </span>
                 {!step.done ? (
-                  <span className="block text-[12px] leading-relaxed text-muted">{t(
-                    step.detail,
-                  )}</span>
+                  <span
+                    className={cn(
+                      'text-caption leading-relaxed text-muted',
+                      // `block` and `help-comfortable` cannot share an element:
+                      // Tailwind's utilities live in a *later* cascade layer,
+                      // and a later layer beats any specificity — so the class
+                      // was present, the density was compact, and the prose
+                      // showed anyway. `help-comfortable` supplies the display
+                      // it needs in the density that shows it.
+                      next ? 'block' : 'help-comfortable',
+                    )}
+                  >
+                    {t(step.detail)}
+                  </span>
                 ) : null}
               </span>
             </Link>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </Card>
   );

@@ -396,7 +396,18 @@
    * A class rather than a prop: no component has to know the density, and a
    * screen that wants the behaviour opts in by naming it.
    */
-  .help-comfortable {
+  /*
+   * Scoped to the root deliberately, and not written as a bare class.
+   *
+   * `.help-comfortable { display: none }` is one class, and so is `.block` —
+   * equal specificity, and Tailwind's utilities are emitted *after* this, so a
+   * single `block` beside it wins and the rule does nothing at all. Silently:
+   * the class is present, a test asserting it passes, and the prose is on
+   * screen anyway. Found on the dashboard's checklist, where the detail lines
+   * carried `block`. Two selectors' worth of specificity puts it beyond any
+   * one-class utility.
+   */
+  :root:not([data-density='comfortable']) .help-comfortable {
     display: none;
   }
   :root[data-density='comfortable'] .help-comfortable {

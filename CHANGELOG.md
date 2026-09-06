@@ -11,6 +11,29 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.60.0] — 2026-09-06
+
+### Fixed
+
+- `help-comfortable` did nothing wherever a display utility sat beside it. The
+  class hides prose the compact density does not show; Tailwind emits its
+  utilities in a *later cascade layer*, and a later layer beats any
+  specificity — so `block help-comfortable` showed the prose in every density.
+  Silently, and immune to the obvious fix: raising the selector's specificity
+  changed nothing on screen. A ratchet now refuses the pairing, sabotaged with
+  the exact shape that failed.
+
+### Changed
+
+- The dashboard's checklist explains the step you are on. Six steps carrying
+  two lines each filled four hundred and forty pixels of a phone, in front of
+  everything the dashboard exists to show; the detail of a step you have not
+  reached is not urgent. The composer below it now opens above the fold. The
+  disclosure used everywhere else cannot go here — the row is a link, and a
+  button inside a link is invalid and unreachable by keyboard.
+- Thirty-eight literal text sizes on the dashboard, the board and their cards
+  become scale roles.
+
 ## [0.59.1] — 2026-09-06
 
 ### Changed

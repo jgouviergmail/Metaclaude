@@ -18,12 +18,13 @@
     "defaultingPartials": 0,
     "untranslatedTableReads": 0,
     "controlBytesInSource": 0,
-    "literalTextSizes": 239,
+    "literalTextSizes": 200,
     "pageWidths": 2,
     "adHocTabs": 0,
     "tokenBypass": 0,
     "undefinedClasses": 0,
-    "clampWithPadding": 0
+    "clampWithPadding": 0,
+    "displayBesideDensityHelp": 0
   },
   "updated": "2026-09-06"
 }

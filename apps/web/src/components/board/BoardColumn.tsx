@@ -64,8 +64,8 @@ export function BoardColumn({
           works for everybody. */}
       <header className="px-3 pb-2 pt-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-[13px] font-semibold tracking-tight text-ink">{t(label)}</h2>
-          <span className="text-[12px] text-subtle">{tasks.length}</span>
+          <h2 className="text-body font-semibold tracking-tight text-ink">{t(label)}</h2>
+          <span className="text-caption text-subtle">{tasks.length}</span>
           <button
             type="button"
             onClick={() => onQuickAdd(status)}
@@ -83,7 +83,7 @@ export function BoardColumn({
             <Plus className="size-4" aria-hidden />
           </button>
         </div>
-        <p className="mt-0.5 text-[11.5px] leading-snug text-subtle">{t(hint)}</p>
+        <p className="mt-0.5 text-caption leading-snug text-subtle">{t(hint)}</p>
       </header>
 
       <div
@@ -118,7 +118,7 @@ export function BoardColumn({
             It moved to the header; what an empty column needs instead is to
             look like somewhere a card can land. */}
         {tasks.length === 0 ? (
-          <p className="px-1 py-3 text-center text-[12px] text-subtle">{t('Drop a card here')}</p>
+          <p className="px-1 py-3 text-center text-caption text-subtle">{t('Drop a card here')}</p>
         ) : null}
       </div>
     </section>

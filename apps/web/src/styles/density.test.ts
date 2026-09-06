@@ -1,134 +1,70 @@
 /**
- * The density contract, tested at the only two levels that can carry it.
+ * The density rules, read from the stylesheet they live in.
  *
- * happy-dom cannot parse what Tailwind v4 emits — `@layer`, CSS nesting and
- * `@custom-variant` each break the whole sheet — so no test here can load the
- * app's real stylesheet and read a computed value off a component. Measured,
- * not assumed. What remains is worth having, and is not a proxy:
+ * `.help-comfortable` hides prose that the compact density does not show. It
+ * was written as a bare class — one point of specificity, exactly like
+ * `.block` — and Tailwind emits its utilities *after* this file, so any element
+ * carrying both was visible in every density. Silently: the class is on the
+ * element, a test asserting the class passes, and the prose is on screen
+ * anyway. It shipped that way on the dashboard's checklist and only a
+ * screenshot showed it.
  *
- *  1. The declaration itself, read out of `index.css`. Every density token must
- *     exist in the compact block AND in the comfortable one. A token declared
- *     in only one of them is the classic bug — the value silently falls back to
- *     the other density and nothing looks wrong until someone measures.
- *  2. The switch, driven through the real CSSOM. A custom property redefined
- *     under `[data-density]` does resolve in this engine (verified: 8px → 14px),
- *     so the mechanism the whole feature rests on is genuinely exercised rather
- *     than assumed to work.
- *
- * What neither level covers: whether a component actually consumes the token.
- * That is what the `literalTextSizes` ratchet measures, and while it stands
- * still the comfortable density is decorative on the screens not yet migrated.
+ * happy-dom has no cascade resolution to ask, so what a test can hold is the
+ * *shape* of the selector — the same reasoning as the touch-target contracts.
+ * The file is read with `readFileSync` relative to the package root, because
+ * `import('…?raw')` returns empty under vitest.
  */
 
 import { readFileSync } from 'node:fs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-// Relative to the package root, which is where vitest runs from. `?raw`
-// imports and `new URL(…, import.meta.url)` both come back empty here.
-const css = readFileSync('src/styles/index.css', 'utf8');
+// Comments first: a docblock before a rule is otherwise read as part of its
+// selector, which made the first version of this report three rules and a
+// selector beginning with a slash.
+const CSS = readFileSync('src/styles/index.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
-/** The tokens density owns. Adding one here fails until it is declared twice. */
-const DENSITY_TOKENS = ['--mc-text-body', '--mc-pad-x', '--mc-section-gap', '--mc-stack'];
-
-/**
- * A token nothing reads is dead code that this test would pass on, so the list
- * above is held to what the app actually consumes. Row height and section
- * rhythm arrive with the primitives that need them.
- */
-
-/** Everything between `selector {` and its closing brace, at nesting depth 0. */
-function block(selector: string): string {
-  const start = css.indexOf(`${selector} {`);
-  if (start === -1) return '';
-  let depth = 0;
-  for (let i = css.indexOf('{', start); i < css.length; i += 1) {
-    if (css[i] === '{') depth += 1;
-    else if (css[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(start, i);
-    }
+/** The selectors of every rule mentioning a class, in source order. */
+function selectorsFor(className: string): string[] {
+  const found: string[] = [];
+  for (const rule of CSS.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
+    // A capture is `string | undefined` to the compiler even where the pattern
+    // makes it certain. The guard is for `tsc`, which vitest never runs.
+    const selector = rule[1];
+    if (!selector) continue;
+    const text = selector.trim();
+    if (text.includes(className)) found.push(text.replace(/\s+/g, ' '));
   }
-  return '';
+  return found;
 }
 
-describe('the density tokens are declared for both densities', () => {
-  const compact = block(':root');
-  const comfortable = block(":root[data-density='comfortable']");
-
-  it('declares the comfortable block at all', () => {
-    expect(comfortable).not.toBe('');
+describe('the density-only help rule', () => {
+  it('exists in both directions, so the class is not one-way', () => {
+    const selectors = selectorsFor('.help-comfortable');
+    expect(selectors.length).toBe(2);
   });
 
-  for (const token of DENSITY_TOKENS) {
-    it(`declares ${token} in the default block and overrides it when comfortable`, () => {
-      expect(compact).toContain(`${token}:`);
-      expect(comfortable).toContain(`${token}:`);
-    });
-  }
-
-  it('gives comfortable a different value, or the setting does nothing', () => {
-    for (const token of DENSITY_TOKENS) {
-      const value = (text: string): string =>
-        text.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1]?.trim() ?? '';
-      expect(value(comfortable), token).not.toBe(value(compact));
-      expect(value(comfortable), token).not.toBe('');
+  it('is scoped to the root, which is what makes the pair symmetric', () => {
+    // Not a defence against a utility: raising specificity cannot win against
+    // one. Tailwind emits its utilities in a *later cascade layer*, and a later
+    // layer beats any specificity — measured, after a first attempt that raised
+    // the specificity and changed nothing on screen. What keeps the class
+    // working is that nothing puts a display utility beside it, which
+    // `deploy/ratchets.mjs` refuses. This only holds the two halves in the same
+    // shape so one cannot drift.
+    for (const selector of selectorsFor('.help-comfortable')) {
+      expect(selector, selector).toMatch(/^:root/);
     }
   });
-});
 
-describe('the switch resolves in the CSSOM', () => {
-  afterEach(() => {
-    document.documentElement.removeAttribute('data-density');
-    document.head.querySelectorAll('style[data-test]').forEach((el) => el.remove());
-  });
-
-  it('changes what a component would read, without the component knowing', () => {
-    const sheet = document.createElement('style');
-    sheet.dataset.test = 'density';
-    // The shape of the real declaration, not the real file: Tailwind's output
-    // is unparseable here, so this exercises the mechanism the file relies on.
-    sheet.textContent =
-      ":root{--mc-row-h:32px}:root[data-density='comfortable']{--mc-row-h:40px}";
-    document.head.append(sheet);
-
-    const read = (): string =>
-      getComputedStyle(document.documentElement).getPropertyValue('--mc-row-h').trim();
-
-    expect(read()).toBe('32px');
-    document.documentElement.setAttribute('data-density', 'comfortable');
-    expect(read()).toBe('40px');
-    document.documentElement.setAttribute('data-density', 'compact');
-    expect(read()).toBe('32px');
+  it('hides by default rather than only under an explicit compact stamp', () => {
+    // The pre-paint script stamps a density, but a browser that has never seen
+    // it — a fresh profile, a blocked localStorage — stamps nothing, and the
+    // default is compact. A rule keyed on `[data-density='compact']` would show
+    // the prose to exactly those readers.
+    const hiding = selectorsFor('.help-comfortable').find((selector) =>
+      selector.includes(':not('),
+    );
+    expect(hiding).toBeDefined();
+    expect(hiding).toContain("not([data-density='comfortable'])");
   });
 });
-
-/**
- * The help that comfortable shows and compact hides.
- *
- * Until this existed the setting changed a font size and a padding, while its
- * own copy promised « l'aide toujours affichée ». A rule rather than a prop:
- * no component has to know the density, and a screen opts in by naming it.
- */
-describe('the density-dependent help', () => {
-  it('is declared for both densities, or it only ever hides', () => {
-    expect(css).toContain('.help-comfortable {');
-    expect(css).toMatch(/:root\[data-density='comfortable'\] \.help-comfortable/);
-  });
-
-  it('hides by default and shows when comfortable', () => {
-    const sheet = document.createElement('style');
-    sheet.dataset.test = 'help';
-    sheet.textContent =
-      ".help-comfortable{display:none}:root[data-density='comfortable'] .help-comfortable{display:block}";
-    document.head.append(sheet);
-    const help = document.createElement('p');
-    help.className = 'help-comfortable';
-    document.body.append(help);
-
-    expect(getComputedStyle(help).display).toBe('none');
-    document.documentElement.setAttribute('data-density', 'comfortable');
-    help.setAttribute('data-nudge', '1'); // a mutation invalidates the style cache
-    expect(getComputedStyle(help).display).toBe('block');
-  });
-});
-

@@ -119,7 +119,7 @@ export function AdvisorCard() {
       </div>
 
       {proposals.length === 0 ? (
-        <p className="px-4 py-3 text-[12.5px] leading-relaxed text-muted">
+        <p className="px-4 py-3 text-caption leading-relaxed text-muted">
           {t(
             'Nothing waiting. The advisor studies a workspace on request — or daily where you opt in — creates backlog tickets and disabled automations itself, and leaves anything that would act here for your decision.',
           )}
@@ -130,15 +130,15 @@ export function AdvisorCard() {
             <li key={proposal.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start">
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <code className="font-mono text-[13px] font-medium text-ink">{proposal.name}</code>
+                  <code className="font-mono text-body font-medium text-ink">{proposal.name}</code>
                   <Badge tone="thinking">{t(KIND_LABELS[proposal.kind])}</Badge>
                   <Badge tone="neutral">
                     {workspaces.find((entry) => entry.id === proposal.workspaceId)?.name ??
                       proposal.workspaceId}
                   </Badge>
                 </div>
-                <p className="text-[13px] leading-relaxed text-muted">{proposal.summary}</p>
-                <p className="text-[12px] leading-relaxed text-subtle">{proposal.rationale}</p>
+                <p className="text-body leading-relaxed text-muted">{proposal.summary}</p>
+                <p className="text-caption leading-relaxed text-subtle">{proposal.rationale}</p>
               </div>
               <div className="flex items-center gap-2 sm:shrink-0">
                 <Button

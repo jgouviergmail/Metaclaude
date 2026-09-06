@@ -82,3 +82,49 @@ describe('GettingStartedCard', () => {
     expect(container.textContent).toBe('');
   });
 });
+
+/**
+ * A checklist explains the step you are on.
+ *
+ * Six steps, each carrying two lines of explanation, filled four hundred and
+ * forty pixels of an eight-hundred-pixel phone — the largest single block on
+ * the dashboard, in front of everything the operator opened it to see. The
+ * detail of a step you have not reached yet is not urgent; the detail of the
+ * one you are about to do is.
+ *
+ * The trigger this app usually offers cannot be used here: the whole row is a
+ * `<Link>`, and a button inside a link is invalid markup and unreachable by
+ * keyboard. `.help-comfortable` — the CSS-only rule the memory counts already
+ * use — says the same thing without adding a control.
+ */
+describe('how much of itself the checklist explains', () => {
+  /*
+   * Selected by the role its size gives it, not by `block`: which steps carry a
+   * display utility is exactly what this contract decides, so a selector naming
+   * one would move with the implementation instead of holding it.
+   */
+  const details = () => [...document.querySelectorAll('li span.text-caption')];
+
+  it('explains the step you are on, and leaves the rest to the comfortable density', async () => {
+    renderWithProviders(<GettingStartedCard />);
+    await screen.findByRole('list');
+    const shown = details();
+    // Written structurally rather than by naming a step: which one is next
+    // depends on the fixture, and the contract does not.
+    expect(shown.length).toBeGreaterThan(1);
+    expect(shown[0]!.className).not.toContain('help-comfortable');
+    for (const later of shown.slice(1)) {
+      expect(later.className).toContain('help-comfortable');
+    }
+  });
+
+  it('says nothing at all about a step already done', async () => {
+    renderWithProviders(<GettingStartedCard />);
+    await screen.findByRole('list');
+    const done = [...document.querySelectorAll('li')].filter((row) =>
+      row.querySelector('.line-through'),
+    );
+    expect(done.length).toBeGreaterThan(0);
+    for (const row of done) expect(row.querySelector('span.text-caption')).toBeNull();
+  });
+});

@@ -180,7 +180,7 @@ export function BoardPage() {
               trigger={
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] text-ink hover:border-accent"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-body text-ink hover:border-accent"
                 >
                   {workspace?.name ?? t('Workspace')}
                   <ChevronDown className="size-3.5" aria-hidden />
@@ -280,7 +280,7 @@ export function BoardPage() {
               ))}
             </div>
 
-            <p className="ml-auto text-[12px] text-muted">
+            <p className="ml-auto text-caption text-muted">
               {plural(counts.total, '{n} card', '{n} cards')}
               {counts.working > 0 ? (
                 <span className="text-accent"> · {t(
@@ -323,7 +323,7 @@ export function BoardPage() {
 
       {touch.drag ? (
         <div
-          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full rounded-xl border border-accent bg-surface px-3 py-2 text-[13px] font-medium text-ink shadow-[var(--mc-shadow-lg)]"
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full rounded-xl border border-accent bg-surface px-3 py-2 text-body font-medium text-ink shadow-[var(--mc-shadow-lg)]"
           style={{ left: touch.drag.x, top: touch.drag.y - 8 }}
           aria-hidden
         >
