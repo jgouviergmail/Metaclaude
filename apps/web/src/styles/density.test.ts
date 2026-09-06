@@ -101,3 +101,34 @@ describe('the switch resolves in the CSSOM', () => {
     expect(read()).toBe('32px');
   });
 });
+
+/**
+ * The help that comfortable shows and compact hides.
+ *
+ * Until this existed the setting changed a font size and a padding, while its
+ * own copy promised « l'aide toujours affichée ». A rule rather than a prop:
+ * no component has to know the density, and a screen opts in by naming it.
+ */
+describe('the density-dependent help', () => {
+  it('is declared for both densities, or it only ever hides', () => {
+    expect(css).toContain('.help-comfortable {');
+    expect(css).toMatch(/:root\[data-density='comfortable'\] \.help-comfortable/);
+  });
+
+  it('hides by default and shows when comfortable', () => {
+    const sheet = document.createElement('style');
+    sheet.dataset.test = 'help';
+    sheet.textContent =
+      ".help-comfortable{display:none}:root[data-density='comfortable'] .help-comfortable{display:block}";
+    document.head.append(sheet);
+    const help = document.createElement('p');
+    help.className = 'help-comfortable';
+    document.body.append(help);
+
+    expect(getComputedStyle(help).display).toBe('none');
+    document.documentElement.setAttribute('data-density', 'comfortable');
+    help.setAttribute('data-nudge', '1'); // a mutation invalidates the style cache
+    expect(getComputedStyle(help).display).toBe('block');
+  });
+});
+

@@ -34,7 +34,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -249,6 +249,15 @@ export function MemoryPage() {
   const [deleting, setDeleting] = useState<Memory | null>(null);
   /** The memory whose tier is being changed, and where it would go. */
   const [moving, setMoving] = useState<{ memory: Memory; to: string | null } | null>(null);
+  /*
+   * The sky is revealed, not imposed.
+   *
+   * It sat above the shelves, so the answer to « what do I remember » was a
+   * picture and the memories themselves were below the fold — several screens
+   * below it on a phone. It is a good picture and it is not what this screen
+   * is for. Not persisted: the default is the list, every time.
+   */
+  const [showConstellation, setShowConstellation] = useState(false);
 
   // Typing should not fire a request per keystroke; 250ms is below the point
   // where the list feels detached from the box.
@@ -634,22 +643,31 @@ export function MemoryPage() {
             </div>
           ) : null}
 
-          {/* ------------------------------ Stats ---------------------------- */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {/* ------------------------------ Stats ----------------------------
+
+              One line, not four tiles. On a 390px phone the tiles filled the
+              whole screen — two hundred and sixty pixels for four numbers —
+              so the memories, which are what this screen is for, began below
+              the fold. The counts are context; the shelves are the subject.
+              Their explanations follow the density: useful the first week,
+              noise the rest of the year. */}
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
             {memoryQuery.isLoading || !stats ? (
-              Array.from({ length: 4 }, (_, index) => (
-                <Skeleton key={index} className="h-[92px] rounded-xl" />
-              ))
+              <Skeleton className="h-6 w-64 rounded-lg" />
             ) : (
               <>
-                <Stat label={t('Total')} value={memoryQuery.data?.total ?? 0} icon={<Brain />} />
-                <Stat label={t(
-                  'Episodic',
-                )} value={stats.episodic} hint={t('What happened in a run')} />
-                <Stat label={t('Semantic')} value={stats.semantic} hint={t('Durable facts')} />
-                <Stat label={t(
-                  'Procedural',
-                )} value={stats.procedural} hint={t('How to do something')} />
+                <MemoryCount
+                  value={memoryQuery.data?.total ?? 0}
+                  label={t('Total')}
+                  icon={<Brain className="size-3.5" aria-hidden />}
+                />
+                <MemoryCount value={stats.episodic} label={t('Episodic')} hint={t('What happened in a run')} />
+                <MemoryCount value={stats.semantic} label={t('Semantic')} hint={t('Durable facts')} />
+                <MemoryCount
+                  value={stats.procedural}
+                  label={t('Procedural')}
+                  hint={t('How to do something')}
+                />
               </>
             )}
           </div>
@@ -662,7 +680,7 @@ export function MemoryPage() {
                   <Search className="size-4 text-subtle" aria-hidden />
                   {t('Filter')}
                 </h2>
-                <p className="text-xs leading-relaxed text-muted">
+                <p className="help-comfortable text-caption leading-relaxed text-muted">
                   {t(
                     'Plain keyword matching over titles, bodies and tags. It narrows the list below and nothing more.',
                   )}
@@ -689,7 +707,7 @@ export function MemoryPage() {
                     aria-pressed={kind === entry.value}
                     onClick={() => setKind(entry.value)}
                     className={cn(
-                      'rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors',
+                      'rounded-md px-2.5 py-1 text-label font-medium transition-colors',
                       kind === entry.value
                         ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
                         : 'text-muted hover:text-ink',
@@ -711,7 +729,7 @@ export function MemoryPage() {
                     aria-pressed={shelf === value}
                     onClick={() => setShelf(value)}
                     className={cn(
-                      'rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors',
+                      'rounded-md px-2.5 py-1 text-label font-medium transition-colors',
                       shelf === value
                         ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
                         : 'text-muted hover:text-ink',
@@ -733,7 +751,7 @@ export function MemoryPage() {
                       hashing embedder, or while a model loads, this box ranks by words. */}
                   {t(retrieval.semantic ? 'Semantic recall' : 'Recall')}
                 </h2>
-                <p className="text-xs leading-relaxed text-muted">
+                <p className="help-comfortable text-caption leading-relaxed text-muted">
                   {t(
                     retrieval.semantic
                       ? 'Runs the same embedding search the agent runs before a prompt. Results are ranked by meaning, not wording — this is what would actually be injected into context.'
@@ -765,7 +783,7 @@ export function MemoryPage() {
               {recallQuery ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
+                    <p className="text-caption font-semibold uppercase tracking-wide text-subtle">
                       {t('Top matches')}
                     </p>
                     <button
@@ -774,7 +792,7 @@ export function MemoryPage() {
                         setRecallQuery('');
                         setRecallInput('');
                       }}
-                      className="text-[11.5px] text-muted hover:text-ink"
+                      className="text-caption text-muted hover:text-ink"
                     >
                       {t('Clear')}
                     </button>
@@ -783,7 +801,7 @@ export function MemoryPage() {
                   {recall.isLoading ? (
                     <Spinner />
                   ) : (recall.data?.results.length ?? 0) === 0 ? (
-                    <p className="text-[13px] text-muted">
+                    <p className="text-body text-muted">
                       {t(
                         'Nothing scored high enough. The agent would run this prompt with no recalled memory.',
                       )}
@@ -796,7 +814,7 @@ export function MemoryPage() {
                           className="flex items-start gap-2 rounded-lg border border-line bg-surface px-2.5 py-2"
                         >
                           <span
-                            className="mt-0.5 shrink-0 rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-accent"
+                            className="mt-0.5 shrink-0 rounded-md bg-accent-soft px-1.5 py-0.5 text-caption font-semibold tabular-nums text-accent"
                             aria-label={t(
                               'Similarity score {score}',
                               { score: result.score.toFixed(2) },
@@ -805,10 +823,10 @@ export function MemoryPage() {
                             {result.score.toFixed(2)}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-medium text-ink">
+                            <span className="block truncate text-body font-medium text-ink">
                               {result.memory.title}
                             </span>
-                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-caption text-muted">
                               {/* The one list on this screen that is not
                                   grouped, and the only place a tier is
                                   otherwise unknowable: recall answers with the
@@ -836,7 +854,26 @@ export function MemoryPage() {
           <Section
             title={t('Stored memories')}
             actions={
-              <p className="text-caption tabular-nums text-muted">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setShowConstellation((current) => !current)}
+                  aria-expanded={showConstellation}
+                  // The label folds to the icon below `sm`, and a label in
+                  // `display: none` is out of the accessible name — so the
+                  // button would be nameless on the one screen where it is
+                  // only an icon.
+                  aria-label={
+                    showConstellation ? t('Hide the constellation') : t('Show the constellation')
+                  }
+                >
+                  <Sparkles className="size-3.5" aria-hidden />
+                  <span className="hidden sm:inline">
+                    {showConstellation ? t('Hide the constellation') : t('Show the constellation')}
+                  </span>
+                </Button>
+                <p className="text-caption tabular-nums text-muted">
                 {/* Counted over the cards actually rendered: `total` excludes
                     the retired ones, and so does every card below — the fold
                     has its own count. The denominator appears whenever fewer
@@ -845,7 +882,8 @@ export function MemoryPage() {
                 {memoryQuery.data && memoryQuery.data.total > live.length
                   ? t('{shown} shown of {total}', { shown: live.length, total: memoryQuery.data.total })
                   : t('{shown} shown', { shown: live.length })}
-              </p>
+                </p>
+              </div>
             }
           >
 
@@ -892,7 +930,8 @@ export function MemoryPage() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {/* The sky above the shelves: tap a star to land on its card. */}
+                {/* The sky, once asked for: tap a star to land on its card. */}
+                {showConstellation ? (
                 <Card className="p-3">
                   <MemoryConstellation
                     memories={live}
@@ -904,6 +943,7 @@ export function MemoryPage() {
                     }}
                   />
                 </Card>
+                ) : null}
                 {/* Grouped by tier rather than sorted into one pile. Retrieval
                     hands a run its own workspace's memories *and* every global
                     one, so the list has always shown the union — but sorted by
@@ -919,7 +959,7 @@ export function MemoryPage() {
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-line pb-1.5">
                       <h3
                         id={`tier-${tier.workspaceId ?? 'global'}`}
-                        className="flex items-center gap-1.5 text-[13px] font-semibold text-ink"
+                        className="flex items-center gap-1.5 text-body font-semibold text-ink"
                       >
                         {tier.workspaceId === null ? (
                           <Globe className="size-3.5 text-info" aria-hidden />
@@ -928,10 +968,10 @@ export function MemoryPage() {
                         )}
                         {tier.name}
                       </h3>
-                      <span className="text-[11.5px] tabular-nums text-subtle">
+                      <span className="text-caption tabular-nums text-subtle">
                         {tier.memories.length}
                       </span>
-                      <span className="ml-auto hidden text-[11.5px] text-subtle sm:inline">
+                      <span className="ml-auto hidden text-caption text-subtle sm:inline">
                         {tier.workspaceId === null
                           ? t('Recalled in every workspace')
                           : t('Recalled only here')}
@@ -963,15 +1003,15 @@ export function MemoryPage() {
               // Folded by default, and asserted on `open` in tests: jsdom does
               // not hide the children of a closed <details>.
               <details data-testid="retired-memories" className="rounded-lg border border-line bg-sunken/40 px-3 py-2">
-                <summary className="cursor-pointer text-[12.5px] font-medium text-muted">
+                <summary className="cursor-pointer text-label font-medium text-muted">
                   {plural(retired.length, 'Retired memory ({n})', 'Retired memories ({n})')}
                 </summary>
-                <p className="mt-1 text-[11.5px] leading-relaxed text-subtle">
+                <p className="mt-1 text-caption leading-relaxed text-subtle">
                   {t('Collected thirty days after retirement. Restore one to bring it back into recall.')}
                 </p>
                 <ul className="mt-2 space-y-1.5">
                   {retired.map((memory) => (
-                    <li key={memory.id} className="flex items-center gap-2 text-[12.5px]">
+                    <li key={memory.id} className="flex items-center gap-2 text-label">
                       <span className="min-w-0 flex-1 truncate text-muted">
                         {memory.title}
                         {memory.supersededBy ? (
@@ -1072,37 +1112,37 @@ export function MemoryPage() {
                       <Badge tone={INSIGHT_TONE[insight.kind]}>
                         {insight.kind.replace('_', ' ')}
                       </Badge>
-                      <span className="text-[11.5px] text-muted">
+                      <span className="text-caption text-muted">
                         {t('confidence')} {formatPercent(insight.confidence)}
                       </span>
-                      <span className="text-[11.5px] text-subtle">
+                      <span className="text-caption text-subtle">
                         {formatRelative(insight.createdAt)}
                       </span>
                     </div>
 
                     <div className="space-y-1">
-                      <h3 className="break-words text-[13.5px] font-medium text-ink">
+                      <h3 className="break-words text-heading font-medium text-ink">
                         {insight.title}
                       </h3>
                       {(() => {
                         const gate = readDecisions(insight.payload);
                         if (!gate) {
                           return (
-                            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
+                            <p className="whitespace-pre-wrap text-body leading-relaxed text-muted">
                               {insight.body}
                             </p>
                           );
                         }
                         return (
                           <div className="space-y-2">
-                            <p className="text-[11.5px] text-subtle">
+                            <p className="text-caption text-subtle">
                               {t('What the memory gate made of each note this run proposed. A refused note can still be kept.')}
                             </p>
                             <ul className="space-y-2">
                               {gate.decisions.map((decision, index) => (
-                                <li key={index} className="flex flex-wrap items-start gap-2 text-[13px]">
+                                <li key={index} className="flex flex-wrap items-start gap-2 text-body">
                                   <Badge tone={OUTCOME_TONE[decision.outcome]}>{t(decision.outcome)}</Badge>
-                                  <span className="text-[11.5px] text-subtle">{t(decision.level)}</span>
+                                  <span className="text-caption text-subtle">{t(decision.level)}</span>
                                   <span className="min-w-0 flex-1 text-muted">
                                     <span className="font-medium text-ink">{decision.title}</span>
                                     {decision.reason ? <span className="text-subtle"> — {decision.reason}</span> : null}
@@ -1326,7 +1366,7 @@ function MemoryCard({
             {/* `break-words`: a memory's title is often an identifier or a
                 URL — one word nothing can break. Measured at +300px outside the
                 frame at 390px, with no ellipsis to say so. */}
-            <h3 className="min-w-0 break-words text-[13.5px] font-medium text-ink">
+            <h3 className="min-w-0 break-words text-heading font-medium text-ink">
               {memory.title}
             </h3>
           </div>
@@ -1426,7 +1466,7 @@ function MemoryCard({
 
       <p
         className={cn(
-          'mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-muted',
+          'mt-3 whitespace-pre-wrap text-body leading-relaxed text-muted',
           !expanded && 'line-clamp-3',
         )}
       >
@@ -1438,13 +1478,13 @@ function MemoryCard({
           type="button"
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
-          className="mt-1 text-[12px] font-medium text-accent hover:underline"
+          className="mt-1 text-label font-medium text-accent hover:underline"
         >
           {expanded ? t('Show less') : t('Show more')}
         </button>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line pt-3 text-[11.5px] text-subtle">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line pt-3 text-caption text-subtle">
         {memory.tags.length > 0 ? (
           <span className="flex flex-wrap gap-1">
             {memory.tags.map((tag) => (
@@ -1478,6 +1518,39 @@ function MemoryCard({
  * Higher is better here, which is why the tone is decided at the call site:
  * the same bar draws memory pressure, where higher is worse.
  */
+/**
+ * One count, on one line.
+ *
+ * Four `Stat` tiles filled a 390px phone — two hundred and sixty pixels for
+ * four numbers, pushing the shelves below the fold on the screen whose subject
+ * is the shelves. The tiles are right where a figure *is* the point, which is
+ * the dashboard and the analytics; here the counts are context.
+ *
+ * The explanation follows the density rather than being always on or always
+ * off: it is what the setting promises, and it is the honest answer to a line
+ * that is useful the first week and noise the rest of the year.
+ */
+function MemoryCount({
+  value,
+  label,
+  hint,
+  icon,
+}: {
+  value: number;
+  label: string;
+  hint?: string;
+  icon?: ReactNode;
+}) {
+  return (
+    <span className="flex items-baseline gap-1.5">
+      {icon ? <span className="self-center text-subtle">{icon}</span> : null}
+      <span className="text-title tabular-nums text-ink">{value}</span>
+      <span className="text-label text-muted">{label}</span>
+      {hint ? <span className="help-comfortable text-caption text-subtle">{hint}</span> : null}
+    </span>
+  );
+}
+
 function ConfidenceBar({ value }: { value: number }) {
   const t = useT();
   const tone = value >= 0.7 ? 'success' : value >= 0.4 ? 'warning' : 'danger';
@@ -1488,7 +1561,7 @@ function ConfidenceBar({ value }: { value: number }) {
         'Confidence {value}',
         { value: formatPercent(value) },
       )} className="w-20" />
-      <span className="text-[11px] tabular-nums text-muted">{formatPercent(value)}</span>
+      <span className="text-caption tabular-nums text-muted">{formatPercent(value)}</span>
     </div>
   );
 }
@@ -1681,7 +1754,7 @@ function MemoryModal({
           />
         </Label>
 
-        <label className="flex items-start gap-2.5 text-[13px] text-ink">
+        <label className="flex items-start gap-2.5 text-body text-ink">
           <input
             type="checkbox"
             checked={draft.pinned}

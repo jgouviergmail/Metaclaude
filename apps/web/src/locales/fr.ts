@@ -399,6 +399,8 @@ export const fr: Record<string, string> = {
   'No Claude credentials configured': 'Aucun identifiant Claude configuré',
   'New workspace': 'Nouveau workspace',
   'System sections': 'Sections de Système',
+  'Show the constellation': 'Voir la constellation',
+  'Hide the constellation': 'Masquer la constellation',
   Density: 'Densité',
   Compact: 'Compacte',
   Comfortable: 'Confortable',

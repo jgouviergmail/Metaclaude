@@ -382,6 +382,27 @@
 /* -------------------------------------------------------------------------- */
 
 @layer components {
+  /*
+   * Explanatory prose that the comfortable density shows and the compact one
+   * hides.
+   *
+   * This is what makes the setting keep its own promise. « Confortable » says
+   * "plus d'air, et l'aide toujours affichée", and until now it changed a font
+   * size and a padding: the help was always there, in both. A line of prose
+   * under every control is right the first week and noise the rest of the
+   * year, and which of the two it is depends on the reader — which is exactly
+   * the kind of thing a preference is for.
+   *
+   * A class rather than a prop: no component has to know the density, and a
+   * screen that wants the behaviour opts in by naming it.
+   */
+  .help-comfortable {
+    display: none;
+  }
+  :root[data-density='comfortable'] .help-comfortable {
+    display: block;
+  }
+
   /* Rendered markdown from the assistant. */
   .prose-mc {
     @apply text-[15px] leading-[1.7];

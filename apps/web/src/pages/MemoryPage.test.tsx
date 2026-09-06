@@ -701,3 +701,40 @@ describe('the gate’s decisions on an insight', () => {
     expect(await screen.findByText('the body')).toBeTruthy();
   });
 });
+
+/**
+ * The list comes first; the sky is one tap away.
+ *
+ * The constellation sat above the shelves, so the answer to « what do I
+ * remember » was a picture and the memories themselves were below the fold —
+ * on a phone, several screens below it. It is a lovely picture and it is not
+ * what the screen is for. It is revealed on request now, and the request is
+ * remembered nowhere: the default is the list.
+ */
+describe('the constellation is revealed, not imposed', () => {
+  it('shows the shelves first and no sky', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByRole('heading', { name: 'Memory' });
+
+    expect(screen.queryByRole('img', { name: /constellation/i })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /show the constellation/i }),
+    ).toBeDefined();
+  });
+
+  it('reveals it when asked, and says so to a screen reader', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByRole('heading', { name: 'Memory' });
+
+    const toggle = screen.getByRole('button', { name: /show the constellation/i });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    // Named explicitly: the visible label folds to the icon below `sm`, and a
+    // label in `display: none` leaves the accessible name empty.
+    expect(toggle.getAttribute('aria-label')).toBe('Show the constellation');
+
+    fireEvent.click(toggle);
+    const shown = screen.getByRole('button', { name: /hide the constellation/i });
+    expect(shown.getAttribute('aria-expanded')).toBe('true');
+  });
+});
+

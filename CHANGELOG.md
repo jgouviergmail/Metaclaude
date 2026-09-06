@@ -11,6 +11,32 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.17] — 2026-09-06
+
+### Changed
+
+- The memory screen shows its memories first. The constellation sat above the
+  shelves, so the answer to "what do I remember" was a picture and the memories
+  themselves began below the fold — several screens below it on a phone. It is
+  a good picture and it is not what the screen is for; it is revealed on
+  request now, and the default is the list.
+- Four statistic tiles became one line. On a 390px phone they filled the whole
+  screen — two hundred and sixty pixels for four numbers. `Stat` is right where
+  a figure *is* the point, which is the dashboard and the analytics; here the
+  counts are context and the shelves are the subject.
+- Every literal text size on that screen — twenty-seven of them — now names a
+  role from the scale. The ratchet moves from 469 to 442.
+
+### Added
+
+- The comfortable density finally keeps its own promise. Its copy says "plus
+  d'air, et l'aide toujours affichée", and until now it changed a font size and
+  a padding while the help was permanently on in both. A `.help-comfortable`
+  rule shows explanatory prose in comfortable and hides it in compact — a
+  class rather than a prop, so no component has to know the density. Measured
+  on the memory screen: nothing shown in compact, five paragraphs in
+  comfortable, and the list starts 173px lower for it.
+
 ## [0.56.16] — 2026-09-06
 
 ### Changed
