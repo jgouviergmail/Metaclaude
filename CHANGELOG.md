@@ -11,6 +11,39 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.8] — 2026-09-06
+
+### Added
+
+- `SegmentedControl`, replacing three hand-rolled button rows that sat in one
+  card — language, theme and density. Two of them were bare `flex` rows whose
+  items could not shrink below their own text, which is the shape that put a
+  trigger button off a 390px screen in 0.56.4. It is a grid, it owns its own
+  label so the visible text and the group's accessible name cannot drift, and
+  an odd last option takes the whole row rather than sitting alone in a
+  half-width box.
+
+### Fixed
+
+- `font-variant-numeric: tabular-nums` was applied to the whole document. The
+  convention here is targeted — ten call sites put it exactly where columns of
+  figures line up, `Stat` among them — and applying it globally also reached
+  the assistant's prose, where fixed-width digits are simply wrong.
+- Three of the five density tokens were declared and consumed by nothing, and
+  the test passed on them. Only the two the app reads are left; row height and
+  section rhythm arrive with the primitives that need them. The gutter is now
+  live in `CardHeader`, `PageHeader` and `Stat`, so comfortable widens the
+  padding of every card in the app rather than only enlarging text.
+- The embedded font was served network-first by the service worker. It is
+  immutable and its name is stable, so it is cache-first like a hashed asset.
+
+### Changed
+
+- The density setting is covered where it actually happens: the attribute on
+  the document and the standalone key `density-init.js` reads before React
+  mounts. A test on the button alone would have passed while the setting did
+  nothing on the next load.
+
 ## [0.56.7] — 2026-09-06
 
 ### Added
