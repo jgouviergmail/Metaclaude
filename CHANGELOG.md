@@ -11,6 +11,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.60.1] — 2026-09-06
+
+### Fixed
+
+- The ratchet added yesterday could not see the defect it was written for. It
+  read the string literal the help class sat in, so `cn('help-comfortable',
+  'block')` — the two classes in two *arguments*, which is the defect exactly —
+  read zero. It now excuses only the fix's own shape, the two on opposite arms
+  of one choice, and counts everything else. Three arrangements sabotaged: two
+  arguments, one string, and the fix itself.
+
 ## [0.60.0] — 2026-09-06
 
 ### Fixed

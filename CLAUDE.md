@@ -672,6 +672,21 @@ restates the code is noise; one that records a decision or a trap is not.
   the production install. Its postinstall is skipped under pnpm's build
   allow-list and only fetched CUDA libraries anyway.
 
+- **A cascade layer beats specificity, so a custom class cannot outrank a
+  utility.** `.help-comfortable` hides prose the compact density does not show,
+  and `block help-comfortable` showed it in every density. The obvious fix —
+  raising the selector to `:root:not([data-density='comfortable'])
+  .help-comfortable`, three points of specificity against one — **changed
+  nothing on screen**, which is the fact worth remembering: Tailwind emits its
+  utilities in a later `@layer`, and a later layer wins whatever the
+  specificity. The constraint therefore belongs on the element, not on the
+  stylesheet: nothing may put a display utility beside that class, and
+  `deploy/ratchets.mjs` refuses it. Enumerated afterwards, nine layered rules
+  set a property a utility could also set, and only this one was at risk — the
+  other eight are pseudo-elements no utility can reach, or a background a
+  caller is entitled to override. **A new class whose job is to control a
+  property callers also set has this problem**; a pseudo-element does not.
+
 - **tailwind-merge deletes a class it does not recognise as a size.** The six
   type roles live in an `@theme` block; tailwind-merge knows nothing of it, so
   it classified `text-caption` as a text *colour* and dropped it as conflicting

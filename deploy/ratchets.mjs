@@ -1529,17 +1529,32 @@ function countDisplayBesideDensityHelp() {
     if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
     for (const value of classNameValues(read(file))) {
       if (!value.includes('help-comfortable')) continue;
-      // Only what sits beside it, not a display in another arm of the same
-      // conditional — `next ? 'block' : 'help-comfortable'` is the fix, not the
-      // defect.
-      const beside = value.split(/['"`]/).filter((part) => part.includes('help-comfortable'));
-      if (beside.some((part) => DISPLAY_UTILITY.test(part))) {
-        n += 1;
-        note('lyr ', file, value);
-      }
+      if (!DISPLAY_UTILITY.test(value)) continue;
+      if (onOppositeArms(value)) continue;
+      n += 1;
+      note('lyr ', file, value);
     }
   }
   return n;
+}
+
+/**
+ * The one arrangement where both may appear: opposite arms of one choice.
+ *
+ * `next ? 'block' : 'help-comfortable'` never applies them together, and it is
+ * the fix rather than the defect. Everything else counts — including the two
+ * living in two *arguments* of one `cn`, which the first version of this
+ * excused by looking only at the string literal the help class sat in. That
+ * form is the defect exactly, and it read zero: found by sabotaging the
+ * measure with it, which is why a new measure is sabotaged before it is
+ * trusted.
+ */
+function onOppositeArms(value) {
+  const display = DISPLAY_UTILITY.source;
+  const arm = "['\"`][^'\"`]*";
+  const helpFirst = new RegExp(`[?]${arm}help-comfortable[^:]*:[^,)]*${display}`);
+  const displayFirst = new RegExp(`[?][^:]*${display}[^:]*:[^,)]*help-comfortable`);
+  return helpFirst.test(value) || displayFirst.test(value);
 }
 
 /** Source files with no test file beside them, in the subsystems that matter most. */
