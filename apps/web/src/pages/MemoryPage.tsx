@@ -605,7 +605,16 @@ export function MemoryPage() {
               ))}
             </Menu>
 
-            <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
+            {/* The label is `display: none` below `sm`, and hidden text is out
+                of the accessible name — so on a phone this was an unnamed
+                button with a plus in it. Every other control on this row
+                already carried the label twice for that reason. */}
+            <Button
+              variant="primary"
+              size="sm"
+              aria-label={t('Add memory')}
+              onClick={() => setAdding(true)}
+            >
               <Plus className="size-4" />
               <span className="hidden sm:inline">{t('Add memory')}</span>
             </Button>

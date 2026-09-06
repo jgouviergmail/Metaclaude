@@ -8,7 +8,7 @@
  * this screen has to prevent.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -215,6 +215,34 @@ describe('editing an automation', () => {
     continuous: false,
     maxConsecutiveFailures: 3,
     policy: { permissionMode: 'default', notify: true },
+  });
+
+  /**
+   * The four trigger buttons must fit a phone.
+   *
+   * Reported from a phone: the event trigger could not be seen or chosen. Four
+   * `flex-1` cells in one flex row cannot shrink below their own text, so the
+   * row overflowed the dialog with no wrap and no scroll — in French, where
+   * the labels are longest, the fourth was off-screen. jsdom has no layout, so
+   * what can be asserted is the contract that prevents it: the row wraps to
+   * two columns before it reaches four.
+   */
+  it('lays the trigger buttons out two by two before four across', async () => {
+    apiMock.automations.mockResolvedValue({ automations: [eventAutomation] });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+
+    const row = await screen.findByRole('group', { name: 'Trigger' });
+    expect(row.className).toMatch(/grid-cols-2/);
+    expect(row.className).not.toMatch(/^flex /);
+    // All four reachable, and the event one selected because that is what is stored.
+    expect(within(row).getAllByRole('button')).toHaveLength(4);
+    expect(within(row).getByRole('button', { name: 'Event' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('sends only what was changed, leaving an untouched trigger alone', async () => {

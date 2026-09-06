@@ -395,7 +395,7 @@ export function BoardPage() {
           </div>
           <div className="space-y-2">
             <Label>{t('Priority')}</Label>
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {(['low', 'normal', 'high', 'urgent'] as TaskPriority[]).map((priority) => (
                 <button
                   key={priority}

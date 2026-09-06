@@ -416,6 +416,19 @@ restates the code is noise; one that records a decision or a trap is not.
   `canUseTool` can be reached; every other mode goes through
   `PermissionBroker`, which is what keeps the decision and its transcript line
   inside Metaclaude. `plan` pre-approves nothing at all.
+- **A row of `flex-1` buttons cannot shrink below its own text.** Four trigger
+  buttons in one `flex` row overflowed the automation dialog on a 360px screen
+  — no wrap, no scroll — so the fourth was off-screen and an event trigger
+  could not be chosen *or seen* on a phone. It read as a missing feature, and
+  was first diagnosed as stale data. French is where it shows:
+  `Planifié · Intervalle · Manuel · Événement` is half again the English. A
+  segmented row gets `grid grid-cols-2 … sm:grid-cols-N`, never a bare `flex`.
+  jsdom has no layout, so what a test can hold is the class contract on the
+  row — the same reasoning as the `env()` trap. And the label inside such a
+  button is `hidden sm:inline`, which is `display: none`: hidden text is out
+  of the accessible name, so every one of those buttons needs its own
+  `aria-label` or it is unnamed on the phone where the label is gone.
+
 - **A JSON list of ids is a foreign key nothing enforces.** A gateway token's
   `workspace_ids` kept naming a workspace that had been deleted, so the
   gateway — which filters the workspace list by exactly those ids — answered

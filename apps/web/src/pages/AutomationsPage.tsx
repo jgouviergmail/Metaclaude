@@ -591,7 +591,13 @@ function AutomationEditor({
 
         <div>
           <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('Trigger')}</span>
-          <div className="flex gap-1.5">
+          {/* Two by two on a phone, four across from `sm` up. A single flex row
+              of four `flex-1` cells cannot shrink below its text, so it
+              overflowed the dialog with no wrap and no scroll: on a 360px
+              screen in French — Planifié · Intervalle · Manuel · Événement —
+              the fourth button was simply off-screen, and an event trigger
+              could not be chosen or even seen on a phone. */}
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4" role="group" aria-label={t('Trigger')}>
             {(['cron', 'interval', 'manual', 'event'] as const).map((type) => (
               <button
                 key={type}
@@ -599,7 +605,7 @@ function AutomationEditor({
                 onClick={() => setTriggerType(type)}
                 aria-pressed={triggerType === type}
                 className={cn(
-                  'flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-medium capitalize transition-colors',
+                  'rounded-lg border px-3 py-2 text-[12.5px] font-medium capitalize transition-colors',
                   triggerType === type
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line text-muted hover:bg-raised',
@@ -644,7 +650,7 @@ function AutomationEditor({
             </div>
           ) : triggerType === 'event' ? (
             <div className="mt-2.5 space-y-2">
-              <div className="flex gap-1.5" role="group" aria-label={t('Event')}>
+              <div className="grid grid-cols-2 gap-1.5" role="group" aria-label={t('Event')}>
                 {EMITTED_AUTOMATION_EVENTS.map((event) => (
                   <button
                     key={event}
@@ -652,7 +658,7 @@ function AutomationEditor({
                     onClick={() => setEventName(event)}
                     aria-pressed={eventName === event}
                     className={cn(
-                      'flex-1 rounded-lg border px-3 py-2 text-[12.5px] font-medium transition-colors',
+                      'rounded-lg border px-3 py-2 text-[12.5px] font-medium transition-colors',
                       eventName === event
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line text-muted hover:bg-raised',

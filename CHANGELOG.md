@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.4] — 2026-09-06
+
+### Fixed
+
+- **The event trigger can be chosen on a phone.** Four trigger buttons in one
+  flex row cannot shrink below their own text, so the row overflowed the
+  dialog with no wrap and no scroll: on a 360px screen in French — Planifié ·
+  Intervalle · Manuel · Événement — the fourth was simply off-screen, and an
+  event trigger could neither be seen nor chosen. Two by two on a phone, four
+  across from `sm` up. The priority row on the board wraps for the same
+  reason, and the Memory page's **Add memory** button carries its own
+  `aria-label`: its text label is `display: none` below `sm`, which takes it
+  out of the accessible name and left an unnamed button on the phone.
+
 ## [0.56.3] — 2026-09-06
 
 ### Fixed
