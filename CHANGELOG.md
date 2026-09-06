@@ -11,6 +11,40 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.6] — 2026-09-06
+
+### Added
+
+- A permanent responsive check (`check:responsive`), wired into CI: twelve
+  routes, three widths, two languages, dialogs open, against a deployment
+  seeded with adversarial content — long French, unbreakable tokens, a URL.
+  Every route injects a positive control, without which "zero defects" would be
+  indistinguishable from a broken probe. The check the app already had could
+  not see the two phone defects that shipped this month: this app's clipper is
+  the AppShell's `overflow-hidden` div, which stops the overflow from ever
+  reaching the document, and under mobile emulation `window.innerWidth` widens
+  with the overflowing content, so the worse a defect is the better it hides.
+
+### Fixed
+
+- The dashboard clipped three controls on a phone. A grid item's `min-width` is
+  `auto`, so it refuses to shrink below its content: the workspaces card blew
+  out to 542px — 697 in French — inside a 358px column, and since the grid is
+  `overflow-x: visible`, nothing scrolled. The links were simply out of reach.
+- The account menu fell off the workspaces header in French, where the labels
+  run half again as long as in English. The header's buttons now fold to their
+  icon below `sm`, each keeping an explicit accessible name.
+- A memory whose title is a URL or an identifier now wraps instead of being cut
+  off with no ellipsis to say so.
+- A card renders a level-2 heading rather than a level-3 one. `PageHeader`
+  renders the page's `h1`, so every screen skipped a level — 24 skips measured
+  across both languages and all three widths, which makes the heading outline
+  wrong for anyone navigating by it.
+- The workspace and session screens mark Workspaces as the current section;
+  neither marked any. `NavLink` derives `aria-current` from its own path and
+  overwrites what it is handed, so the two screens an operator spends the most
+  time in announced no active section at all.
+
 ## [0.56.5] — 2026-09-06
 
 ### Fixed

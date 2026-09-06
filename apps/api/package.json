@@ -1,6 +1,6 @@
 {
   "name": "@metaclaude/api",
-  "version": "0.56.5",
+  "version": "0.56.6",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -13,7 +13,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "check:e2e": "node scripts/e2e.mjs",
-    "check:browser": "node scripts/browser.mjs"
+    "check:browser": "node scripts/browser.mjs",
+    "check:responsive": "node scripts/responsive.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.247",

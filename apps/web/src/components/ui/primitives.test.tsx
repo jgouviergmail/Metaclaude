@@ -11,7 +11,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
-import { Input, Label, Meter } from './primitives';
+import { CardHeader, Input, Label, Meter } from './primitives';
 
 describe('Label', () => {
   it('keeps the hint out of the field name', () => {
@@ -99,5 +99,25 @@ describe('Meter', () => {
 
     rerender(<Meter value={0.9} tone="danger" label="a" />);
     expect(container.querySelector('.bg-danger')).not.toBeNull();
+  });
+});
+
+/**
+ * The heading level of a card.
+ *
+ * `PageHeader` renders the page's `h1`; a card sitting directly under it is
+ * therefore a first-rank section. Rendering an `h3` skipped a level on every
+ * screen at once — measured at 24 skips across both languages and all three
+ * widths, which is a wrong outline for anyone navigating by headings.
+ */
+describe('the heading level of a card', () => {
+  it('is h2 by default, so a card under the page h1 skips nothing', () => {
+    render(<CardHeader title="Configuration" />);
+    expect(screen.getByRole('heading', { name: 'Configuration', level: 2 })).toBeDefined();
+  });
+
+  it('steps down when the card really is nested under a section', () => {
+    render(<CardHeader title="Password" level={3} />);
+    expect(screen.getByRole('heading', { name: 'Password', level: 3 })).toBeDefined();
   });
 });

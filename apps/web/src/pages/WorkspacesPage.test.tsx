@@ -195,7 +195,10 @@ describe('creating a workspace', () => {
     renderWithProviders(<WorkspacesPage />);
     await screen.findByText('Alpha');
 
-    fireEvent.click(screen.getByRole('button', { name: /^New$/ }));
+    // The visible label is still « New »; the accessible name is now
+    // « New workspace », because the label folds to its icon below `sm`
+    // and a label in `display: none` is out of the accessible name.
+    fireEvent.click(screen.getByRole('button', { name: 'New workspace' }));
     fireEvent.change(await screen.findByPlaceholderText('Payments service'), {
       target: { value: 'Gamma' },
     });

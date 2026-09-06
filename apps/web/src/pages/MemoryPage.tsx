@@ -1082,7 +1082,9 @@ export function MemoryPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <h3 className="text-[13.5px] font-medium text-ink">{insight.title}</h3>
+                      <h3 className="break-words text-[13.5px] font-medium text-ink">
+                        {insight.title}
+                      </h3>
                       {(() => {
                         const gate = readDecisions(insight.payload);
                         if (!gate) {
@@ -1323,7 +1325,12 @@ function MemoryCard({
             {memory.shelf !== 'durable' ? (
               <Badge tone={SHELF_TONE[memory.shelf]}>{t(memory.shelf)}</Badge>
             ) : null}
-            <h3 className="min-w-0 text-[13.5px] font-medium text-ink">{memory.title}</h3>
+            {/* `break-words`: a memory's title is often an identifier or a
+                URL — one word nothing can break. Measured at +300px outside the
+                frame at 390px, with no ellipsis to say so. */}
+            <h3 className="min-w-0 break-words text-[13.5px] font-medium text-ink">
+              {memory.title}
+            </h3>
           </div>
 
           <ConfidenceBar value={memory.confidence} />

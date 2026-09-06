@@ -115,3 +115,32 @@ describe('AppShell navigation', () => {
     }
   });
 });
+
+/**
+ * Which section is announced as current.
+ *
+ * `NavLink` marks itself current by comparing the location to its own `to`, so
+ * `/w/:id` and `/w/:id/s/:id` matched nothing at all: the two screens an
+ * operator spends the most time in announced no active section, and the rail
+ * showed none highlighted either.
+ */
+describe('the current section', () => {
+  it('stays Workspaces inside a workspace', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/w/ws_1' });
+    const entries = screen.getAllByLabelText('Workspaces');
+    expect(entries.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+  });
+
+  it('stays Workspaces inside a session', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/w/ws_1/s/ses_1' });
+    const entries = screen.getAllByLabelText('Workspaces');
+    expect(entries.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+  });
+
+  it('does not claim a section the route does not belong to', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/w/ws_1' });
+    const board = screen.getAllByLabelText('Board');
+    expect(board.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
+  });
+});
+

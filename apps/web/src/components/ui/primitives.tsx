@@ -247,16 +247,29 @@ export function CardHeader({
   description,
   actions,
   className,
+  level = 2,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
   className?: string;
+  /**
+   * The heading level, `h2` by default.
+   *
+   * `PageHeader` renders the page's `h1`, so a card sitting directly under it
+   * is a first-rank section. Rendering an `h3` skipped a level on every screen
+   * at once — 24 skips measured across both languages and all three widths —
+   * and a skipped level makes the heading outline wrong for anyone navigating
+   * by it. Step down to 3 only where the card is genuinely nested under a
+   * section that already carries an `h2`.
+   */
+  level?: 2 | 3 | 4;
 }) {
+  const Heading = `h${level}` as const;
   return (
     <div className={cn('flex items-start justify-between gap-4 border-b border-line p-4', className)}>
       <div className="min-w-0 space-y-1">
-        <h3 className="truncate text-sm font-semibold text-ink">{title}</h3>
+        <Heading className="truncate text-sm font-semibold text-ink">{title}</Heading>
         {description ? <p className="text-xs leading-relaxed text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}

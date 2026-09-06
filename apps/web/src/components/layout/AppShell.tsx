@@ -27,7 +27,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
@@ -42,11 +42,40 @@ interface NavEntry {
   icon: ReactNode;
   /** Shown in the phone tab bar. Space is limited, so not everything qualifies. */
   primary?: boolean;
+  /**
+   * Routes this entry owns beyond its own path.
+   *
+   * `NavLink` decides it is current by comparing the location to its own `to`,
+   * so `/w/:id` and `/w/:id/s/:id` matched nothing: the two screens an
+   * operator spends the most time in announced no active section at all, and
+   * the rail highlighted none.
+   */
+  matches?: (pathname: string) => boolean;
+}
+
+/**
+ * Whether an entry owns the current route.
+ *
+ * Computed here rather than left to `NavLink`, and that is the whole point:
+ * `NavLink` derives `aria-current` from its own `isActive` and *overwrites*
+ * whatever it is handed, so an entry cannot claim a route outside its `to`.
+ * One source of truth, used for both the attribute and the tint.
+ */
+function isCurrent(entry: NavEntry, pathname: string): boolean {
+  if (entry.matches) return entry.matches(pathname);
+  if (entry.to === '/') return pathname === '/';
+  return pathname === entry.to || pathname.startsWith(`${entry.to}/`);
 }
 
 const NAV: NavEntry[] = [
   { to: '/', label: 'Dashboard', icon: <LayoutDashboard />, primary: true },
-  { to: '/workspaces', label: 'Workspaces', icon: <FolderGit2 />, primary: true },
+  {
+    to: '/workspaces',
+    label: 'Workspaces',
+    icon: <FolderGit2 />,
+    primary: true,
+    matches: (path) => path === '/workspaces' || path.startsWith('/w/'),
+  },
   { to: '/board', label: 'Board', icon: <SquareKanban />, primary: true },
   { to: '/memory', label: 'Memory', icon: <Brain /> },
   { to: '/automations', label: 'Automations', icon: <Timer />, primary: true },
@@ -92,26 +121,27 @@ export function AppShell({
           <Logo />
         </NavLink>
 
-        {NAV.map((entry) => (
-          <Tooltip key={entry.to} content={t(entry.label)} side="right">
-            <NavLink
-              to={entry.to}
-              end={entry.to === '/'}
-              className={({ isActive }) =>
-                cn(
+        {NAV.map((entry) => {
+          const current = isCurrent(entry, location.pathname);
+          return (
+            <Tooltip key={entry.to} content={t(entry.label)} side="right">
+              <Link
+                to={entry.to}
+                aria-current={current ? 'page' : undefined}
+                className={cn(
                   'flex size-9 items-center justify-center rounded-lg transition-colors',
                   '[&>svg]:size-[18px]',
-                  isActive
+                  current
                     ? 'bg-accent-soft text-accent'
                     : 'text-subtle hover:bg-raised hover:text-ink',
-                )
-              }
-              aria-label={t(entry.label)}
-            >
-              {entry.icon}
-            </NavLink>
-          </Tooltip>
-        ))}
+                )}
+                aria-label={t(entry.label)}
+              >
+                {entry.icon}
+              </Link>
+            </Tooltip>
+          );
+        })}
 
         <div className="mt-auto flex flex-col items-center gap-2">
           <ConnectionBadge />
@@ -210,27 +240,28 @@ export function AppShell({
         aria-label={t('Sections')}
       >
         <div className="flex h-14 items-stretch">
-          {NAV.filter((entry) => entry.primary).map((entry) => (
-            <NavLink
-              key={entry.to}
-              to={entry.to}
-              end={entry.to === '/'}
-              className={({ isActive }) =>
-                cn(
+          {NAV.filter((entry) => entry.primary).map((entry) => {
+            const current = isCurrent(entry, location.pathname);
+            return (
+              <Link
+                key={entry.to}
+                to={entry.to}
+                aria-current={current ? 'page' : undefined}
+                className={cn(
                   // Platform floor for a bottom bar: 24px icons, 11px labels.
                   // An installed PWA renders these raw — no browser text
                   // scaling rescues smaller metrics there. shrink-0 so no
                   // future height squeeze can crush the icon again.
                   'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
                   '[&>svg]:size-6 [&>svg]:shrink-0',
-                  isActive ? 'text-accent' : 'text-subtle',
-                )
-              }
-            >
-              {entry.icon}
-              {t(entry.label).split(' ')[0]}
-            </NavLink>
-          ))}
+                  current ? 'text-accent' : 'text-subtle',
+                )}
+              >
+                {entry.icon}
+                {t(entry.label).split(' ')[0]}
+              </Link>
+            );
+          })}
           <button
             type="button"
             onClick={() => setMoreOpen((current) => !current)}

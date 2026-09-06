@@ -86,18 +86,33 @@ export function WorkspacesPage() {
         showSidebarToggle={false}
         actions={
           <>
+            {/* The labels fold to their icon below `sm`. This header also
+                carries the phone-only status cluster, and in French — where the
+                labels run half again as long — the row overflowed and the last
+                item went off-screen: the account menu, at [376..408]/390. Each
+                button keeps an explicit `aria-label`, because a label in
+                `hidden sm:inline` is `display: none` and therefore out of the
+                accessible name, exactly on the screen where it disappears. */}
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowArchived((value) => !value)}
               aria-pressed={showArchived}
+              aria-label={showArchived ? t('Hide archived') : t('Show archived')}
             >
               <Archive className="size-4" aria-hidden />
-              {showArchived ? t('Hide archived') : t('Show archived')}
+              <span className="hidden sm:inline">
+                {showArchived ? t('Hide archived') : t('Show archived')}
+              </span>
             </Button>
-            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setCreating(true)}
+              aria-label={t('New workspace')}
+            >
               <Plus className="size-4" aria-hidden />
-              {t('New')}
+              <span className="hidden sm:inline">{t('New')}</span>
             </Button>
           </>
         }

@@ -1658,8 +1658,14 @@ seen = []
 # decide what the pattern means: `|` is an alternation under -E and a literal
 # pipe character under the default BRE.
 call = re.compile(r"\bgrep\s+((?:-[A-Za-z]+\s+)*)'([^']+)'")
+# `docs/superpowers/` is excluded, and the reason is the check's own intent:
+# it asserts that documentation telling a *reader* to grep the API source stays
+# true. That directory holds design specs and implementation plans — working
+# documents written for an engineer, whose shell examples target apps/web, the
+# scripts, or the locale catalogue. Asserting those against apps/api/src makes
+# the check fail on a document that never claimed anything about it.
 for doc in sorted((root / "docs").rglob("*.md")) + [root / "README.md"]:
-    if not doc.exists():
+    if not doc.exists() or "superpowers" in doc.parts:
         continue
     for flags, pattern in call.findall(doc.read_text(encoding="utf-8")):
         # A backslash means the author is writing a regex — `\|` for BRE

@@ -194,7 +194,10 @@ export function AutomationsPage() {
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-[14px] font-semibold text-ink">{automation.name}</h3>
+                      {/* `h2`, not `h3`: PageHeader renders the page's h1 and
+                          nothing sits between it and this list, so an h3 skipped
+                          a level on every automation. */}
+                      <h2 className="text-[14px] font-semibold text-ink">{automation.name}</h2>
                       {automation.continuous ? (
                         <Tooltip content={t(
                           'Each firing continues the same session, so context accumulates across runs.',

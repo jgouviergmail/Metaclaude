@@ -179,6 +179,17 @@ jobs:
           METACLAUDE_E2E_NO_AGENT: '1'
         run: pnpm --filter @metaclaude/api check:browser
 
+      # Twelve routes, three widths, two languages, dialogs open, on a
+      # deployment seeded with adversarial content — long French, unbreakable
+      # tokens, a URL. Every route injects a positive control: without it,
+      # "zero defects" is indistinguishable from a broken probe, which is
+      # exactly how the previous overflow check passed for months while two
+      # phone defects shipped.
+      - name: Responsive check
+        env:
+          METACLAUDE_E2E_NO_AGENT: '1'
+        run: pnpm --filter @metaclaude/api check:responsive
+
   image:
     name: Container image
     needs: verify

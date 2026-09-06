@@ -337,7 +337,13 @@ export function DashboardPage() {
             </Card>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          {/* `min-w-0` on the children, because a grid item's `min-width` is
+              `auto`: it refuses to shrink below its content's minimum width.
+              Without it the workspaces card blew out to 542px — 697 in French
+              — inside a 358px column on a phone, and since the grid is
+              `overflow-x: visible`, nothing scrolled: the links were simply
+              out of reach. Measured by scripts/responsive.mjs. */}
+          <div className="grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
             {/* Workspaces */}
             <Card className="lg:col-span-2">
               <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
