@@ -253,9 +253,21 @@ export const useSessionStore = create<SessionState>((set) => ({
 /* -------------------------------------------------------------------------- */
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type Density = 'compact' | 'comfortable';
 
 interface UiState {
   theme: ThemeMode;
+  /**
+   * How much room a row takes.
+   *
+   * Compact by default: this is a tool people leave open beside an editor, and
+   * the question it answers most often is how many rows fit at once. The
+   * setting is carried entirely by CSS custom properties switched on
+   * `data-density` — no component branches on it — so what a screen actually
+   * gains depends on that screen consuming the tokens rather than naming its
+   * own sizes.
+   */
+  density: Density;
   sidebarOpen: boolean;
   /** Collapse reasoning blocks by default; some people find them noisy. */
   showThinking: boolean;
@@ -265,6 +277,7 @@ interface UiState {
   lastWorkspaceId: string | null;
 
   setTheme: (theme: ThemeMode) => void;
+  setDensity: (density: Density) => void;
   toggleSidebar: () => void;
   setSidebar: (open: boolean) => void;
   setShowThinking: (value: boolean) => void;
@@ -276,6 +289,7 @@ export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
       theme: 'system',
+      density: 'compact',
       sidebarOpen: true,
       showThinking: true,
       expandTools: false,
@@ -284,6 +298,10 @@ export const useUiStore = create<UiState>()(
       setTheme: (theme) => {
         applyTheme(theme);
         set({ theme });
+      },
+      setDensity: (density) => {
+        applyDensity(density);
+        set({ density });
       },
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebar: (sidebarOpen) => set({ sidebarOpen }),
@@ -297,11 +315,34 @@ export const useUiStore = create<UiState>()(
       // `theme` is also written to a standalone key by the inline script in
       // index.html, which runs before this store hydrates.
       onRehydrateStorage: () => (state) => {
-        if (state) applyTheme(state.theme);
+        if (state) {
+          applyTheme(state.theme);
+          // `density` is absent from a store persisted before this shipped, and
+          // `persist` merges rather than defaults on rehydrate — so read it
+          // through the default rather than trusting the stored object.
+          applyDensity(state.density ?? 'compact');
+        }
       },
     },
   ),
 );
+
+/**
+ * Reflect the density onto the document and the pre-paint storage key.
+ *
+ * Same two writes as the theme, for the same reason: `public/density-init.js`
+ * reads the standalone key before React mounts, so the rows do not resize
+ * under the reader on every load.
+ */
+export function applyDensity(density: Density): void {
+  document.documentElement.setAttribute('data-density', density);
+  try {
+    localStorage.setItem('metaclaude.density', density);
+  } catch {
+    // Private mode or blocked storage: the attribute still applies for this
+    // session, and the default survives a reload.
+  }
+}
 
 /** Reflect the theme choice onto the document and the pre-paint storage key. */
 export function applyTheme(theme: ThemeMode): void {

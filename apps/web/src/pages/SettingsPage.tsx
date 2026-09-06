@@ -45,7 +45,7 @@ import {
   Stat,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { useAuthStore, useUiStore, type ThemeMode } from '@/lib/store';
+import { useAuthStore, useUiStore, type Density, type ThemeMode } from '@/lib/store';
 import {
   cn,
   copyToClipboard,
@@ -634,7 +634,7 @@ function SessionsCard() {
 /* -------------------------------------------------------------------------- */
 
 export function AppearanceCard() {
-  const { theme, setTheme, showThinking, setShowThinking, expandTools, setExpandTools } =
+  const { theme, setTheme, density, setDensity, showThinking, setShowThinking, expandTools, setExpandTools } =
     useUiStore();
   const { lang, setLang, t } = useI18n();
   const user = useAuthStore((state) => state.user);
@@ -663,6 +663,14 @@ export function AppearanceCard() {
     { value: 'light', label: 'Light', icon: <Sun /> },
     { value: 'dark', label: 'Dark', icon: <Moon /> },
     { value: 'system', label: 'System', icon: <Monitor /> },
+  ];
+
+  // Translated here rather than at the render site: the table lives inside the
+  // component, so `t` is in scope, and a literal sentence sitting in a constant
+  // is exactly what the untranslated-copy ratchet is built to catch.
+  const densities: Array<{ value: Density; label: string; hint: string }> = [
+    { value: 'compact', label: t('Compact'), hint: t('More rows at a glance.') },
+    { value: 'comfortable', label: t('Comfortable'), hint: t('More room, and help always shown.') },
   ];
 
   // Each language names itself in itself — the one string a switch must
@@ -728,6 +736,35 @@ export function AppearanceCard() {
               >
                 {option.icon}
                 <span className="text-[12px] font-medium">{t(option.label)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-body font-medium text-ink">{t('Density')}</p>
+          {/* A two-column grid rather than a flex row: a `flex-1` item cannot
+              shrink below its own text, and « Confortable » is half again the
+              English. */}
+          <div className="grid grid-cols-2 gap-2">
+            {densities.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setDensity(option.value)}
+                aria-pressed={density === option.value}
+                className={cn(
+                  'rounded-xl border px-3 py-2.5 text-left transition-colors',
+                  density === option.value
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line text-muted hover:bg-raised',
+                )}
+              >
+                {/* The first two call sites of the new type scale: a role, not
+                    a size. `text-body` follows the density token, so this very
+                    control grows when it is set to comfortable. */}
+                <span className="block text-body font-medium">{option.label}</span>
+                <span className="mt-0.5 block text-caption opacity-80">{option.hint}</span>
               </button>
             ))}
           </div>

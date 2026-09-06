@@ -27,7 +27,15 @@
       colour scheme. An external file rather than an inline script, because the
       app's CSP is `script-src 'self'`.
     -->
+    <link
+      rel="preload"
+      href="/fonts/inter-latin-variable.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <script src="/theme-init.js"></script>
+    <script src="/density-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,7 +1,7 @@
 {
   "metrics": {
-    "tests": 3016,
-    "testFiles": 215,
+    "tests": 3025,
+    "testFiles": 216,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
     "initialJsGzipKb": 189,
@@ -17,7 +17,8 @@
     "uncalledClientMethods": 8,
     "defaultingPartials": 0,
     "untranslatedTableReads": 0,
-    "controlBytesInSource": 0
+    "controlBytesInSource": 0,
+    "literalTextSizes": 485
   },
   "updated": "2026-09-06"
 }

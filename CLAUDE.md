@@ -242,7 +242,7 @@ restates the code is noise; one that records a decision or a trap is not.
   the total, and `body` pads only the notch and the sides. `AppShell.test.tsx`
   pins both halves. A symptom that appears only in the installed app is nearly
   always an inset that is 0 everywhere you tested.
-- **jsdom's CSSOM silently drops `env()`.** `style={{ paddingBottom:
+- **happy-dom's CSSOM silently drops `env()`.** `style={{ paddingBottom:
   'env(safe-area-inset-bottom)' }}` renders correctly in a browser and reads
   back as `''` in a test, so the invariant cannot be asserted — which is how
   the trap above survived a test suite. Express such values as Tailwind
@@ -252,7 +252,7 @@ restates the code is noise; one that records a decision or a trap is not.
   file with `readFileSync('src/…')`, relative to the package root.
 - **Radix activates on the pointer event, not on click.** Menus open on
   `pointerdown`, tabs switch on `mousedown`. `fireEvent.click` alone does
-  nothing in jsdom; fire the pointer event first. Costs a red test that looks
+  nothing in happy-dom; fire the pointer event first. Costs a red test that looks
   like a broken component every single time.
 - **Capping a list before sorting it keeps an arbitrary subset, not the first
   one.** `FileService.list` caps a directory at `MAX_DIRECTORY_ENTRIES`, and the
@@ -321,13 +321,13 @@ restates the code is noise; one that records a decision or a trap is not.
   directly and never touch this file. `api.test.ts` now reads the source for a
   second `JSON.stringify` and drives one call to parse what reaches the wire.
 - **A test that replaces `window.location` must put it back.** One case swaps
-  it for a stub to intercept `assign` — jsdom cannot navigate — and without an
+  it for a stub to intercept `assign` — happy-dom cannot navigate — and without an
   `afterEach` restore, every case after it runs against a frozen object. Worse
   than flaky: the callback test asserting the query string gets *cleared*
   passed on a stub whose `search` was already `''`, so it proved nothing for
   releases. Capture the descriptor at module level and restore it; and make a
   test establish the state exists before asserting it goes away.
-- **jsdom does not implement `<details>` hiding.** Children of a *closed*
+- **happy-dom does not implement `<details>` hiding.** Children of a *closed*
   `<details>` are findable, visible and clickable in a test, so `toBeVisible()`
   passes just as happily on a card that never folds. Assert the element's own
   `open`. Same family as the `env()` trap below: assert what the DOM actually
@@ -423,7 +423,7 @@ restates the code is noise; one that records a decision or a trap is not.
   was first diagnosed as stale data. French is where it shows:
   `Planifié · Intervalle · Manuel · Événement` is half again the English. A
   segmented row gets `grid grid-cols-2 … sm:grid-cols-N`, never a bare `flex`.
-  jsdom has no layout, so what a test can hold is the class contract on the
+  happy-dom has no layout, so what a test can hold is the class contract on the
   row — the same reasoning as the `env()` trap. And the label inside such a
   button is `hidden sm:inline`, which is `display: none`: hidden text is out
   of the accessible name, so every one of those buttons needs its own
@@ -650,6 +650,32 @@ restates the code is noise; one that records a decision or a trap is not.
   and 35 MB of macOS in a Linux image; the Dockerfile removes them after
   the production install. Its postinstall is skipped under pnpm's build
   allow-list and only fetched CUDA libraries anyway.
+
+- **The web tests run under happy-dom, not jsdom.** `apps/web/vite.config.ts`
+  says so and only happy-dom is installed; five entries above named the wrong
+  engine for months. Measured on 20.11.6, because a trap is only worth writing
+  once it has been checked against the engine that actually runs:
+  `getBoundingClientRect()` returns **0×0**, so no unit test can see a
+  geometry — an overflow, a clipped control, a tap target — and every
+  responsive claim in a unit test is a proxy on a class string.
+  `@layer`, CSS nesting and `@custom-variant` each break the **whole**
+  stylesheet, so Tailwind v4's real output cannot be loaded here at all; the
+  range syntax `@media (width >= 40rem)`, `oklch()`, `@property`, `:where()`
+  and `@supports` all parse. A custom property redefined under an attribute
+  selector **does** resolve, which is what makes the density contract testable.
+  `env()` survives in `getAttribute('style')` even though the CSSOM drops it.
+  `ResizeObserver` and `IntersectionObserver` are native — no mock needed.
+- **happy-dom caches the computed style per element, and only a DOM mutation
+  invalidates it.** `happyDOM.setViewport()` changes `innerWidth` and flips
+  `matchMedia`, but a value read *before* the resize stays frozen until
+  something mutates the DOM — proved by four crossed cases. So a responsive
+  test passes or fails depending on whether React happened to re-render in
+  between. Set the width **before** the render, never after.
+- **`window.innerWidth` lies under mobile emulation.** It reports the *visual*
+  viewport, which widens with the content that overflows: measured at 530 for a
+  `documentElement.clientWidth` of 390. The worse the defect, the better it
+  hides. Any probe — in a test or in Playwright — compares against
+  `document.documentElement.clientWidth`, never `innerWidth`.
 
 ## Testing
 

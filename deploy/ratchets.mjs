@@ -1009,6 +1009,35 @@ function countRawPalette() {
 }
 
 /**
+ * Literal text sizes in the web app.
+ *
+ * This is the coverage measure of the typographic scale, and of the density
+ * setting that rides on it. Seventeen distinct sizes exist today — eleven
+ * written as an arbitrary pixel value and six Tailwind steps — with no rule
+ * saying which belongs where, and that is a large part of why the interface
+ * reads as dense and unstructured.
+ *
+ * A component that names a size cannot follow a scale, and cannot answer to a
+ * density token either: switching the token changes nothing on a screen whose
+ * sizes are hard-coded. So this number IS the honest progress bar of the
+ * redesign — while it stands still, the comfortable density is decorative on
+ * every screen that has not been migrated.
+ *
+ * Written here as an escaped pattern rather than as the literal, because the
+ * measure greps the source and a comment quoting the class would count itself
+ * — the trap `rawPaletteClasses` documents.
+ */
+function countLiteralTextSizes() {
+  const LITERAL = /\btext-\[[0-9.]+px\]/g;
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!/\.tsx?$/.test(file)) continue;
+    n += (read(file).match(LITERAL) ?? []).length;
+  }
+  return n;
+}
+
+/**
  * Bytes of JavaScript a browser must fetch before it can paint the sign-in
  * screen — the entry script plus everything index.html preloads, gzipped.
  *
@@ -1059,6 +1088,12 @@ const METRICS = [
     measure: countDeployChecks,
   },
   { key: 'rawPaletteClasses', direction: 'down', label: 'raw Tailwind palette classes', measure: countRawPalette },
+  {
+    key: 'literalTextSizes',
+    direction: 'down',
+    label: 'literal text sizes instead of a scale role',
+    measure: countLiteralTextSizes,
+  },
   {
     key: 'untranslatedStrings',
     direction: 'down',

@@ -114,13 +114,13 @@ export function CheckboxField({
         <label
           htmlFor={id}
           className={cn(
-            'block text-[13px] font-medium text-ink',
+            'block text-body font-medium text-ink',
             !disabled && 'cursor-pointer',
           )}
         >
           {label}
         </label>
-        <span id={hintId} className="block text-[12px] leading-relaxed text-muted">
+        <span id={hintId} className="block text-caption leading-relaxed text-muted">
           {hint}
         </span>
       </div>

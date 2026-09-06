@@ -64,12 +64,12 @@ const TOUCH_TARGET_Y =
   "pointer-coarse:before:inset-x-0 pointer-coarse:before:content-['']";
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  xs: `h-6 px-2 text-[11px] gap-1 rounded-md ${TOUCH_TARGET}`,
+  xs: `h-6 px-2 text-caption gap-1 rounded-md ${TOUCH_TARGET}`,
   // `sm` carries most of this interface — 77 call sites against one for `md` —
   // so it is the size that decides whether the app is usable with a thumb.
-  sm: `h-8 px-3 text-[13px] gap-1.5 rounded-lg ${TOUCH_TARGET_Y}`,
+  sm: `h-8 px-3 text-body gap-1.5 rounded-lg ${TOUCH_TARGET_Y}`,
   md: `h-9 px-4 text-sm gap-2 rounded-lg ${TOUCH_TARGET_Y}`,
-  lg: 'h-11 px-6 text-[15px] gap-2 rounded-xl',
+  lg: 'h-11 px-6 text-title gap-2 rounded-xl',
   icon: `h-9 w-9 rounded-lg ${TOUCH_TARGET}`,
   'icon-sm': `h-7 w-7 rounded-md ${TOUCH_TARGET}`,
 };
@@ -175,7 +175,7 @@ export function Label({
 }: HTMLAttributes<HTMLLabelElement> & { htmlFor?: string; hint?: ReactNode }) {
   return (
     <div className={cn('block space-y-1.5', className)}>
-      <label className="block text-[13px] font-medium text-ink" htmlFor={htmlFor} {...props}>
+      <label className="block text-body font-medium text-ink" htmlFor={htmlFor} {...props}>
         {children}
       </label>
       {hint ? (
@@ -216,7 +216,7 @@ export function Badge({
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5',
-        'text-[11px] font-medium leading-none whitespace-nowrap',
+        'text-caption font-medium leading-none whitespace-nowrap',
         BADGE_TONES[tone],
         className,
       )}
@@ -314,7 +314,7 @@ export function EmptyState({
       <div className="space-y-1">
         <p className="text-sm font-medium text-ink">{title}</p>
         {description ? (
-          <p className="mx-auto max-w-sm text-[13px] leading-relaxed text-muted">{description}</p>
+          <p className="mx-auto max-w-sm text-body leading-relaxed text-muted">{description}</p>
         ) : null}
       </div>
       {action}
@@ -389,7 +389,7 @@ export function PageHeader({
       <div className="min-w-0 space-y-1">
         <h1 className="truncate text-lg font-semibold tracking-tight text-ink">{title}</h1>
         {description ? (
-          <p className="text-[13px] leading-relaxed text-muted">{description}</p>
+          <p className="text-body leading-relaxed text-muted">{description}</p>
         ) : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}

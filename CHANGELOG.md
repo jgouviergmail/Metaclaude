@@ -11,6 +11,38 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.7] — 2026-09-06
+
+### Added
+
+- A type scale with six roles — `text-display`, `text-title`, `text-heading`,
+  `text-body`, `text-label`, `text-caption` — replacing seventeen distinct
+  sizes named in fourteen different ways with no rule saying which belonged
+  where. A component now chooses a role, not a size.
+- A density setting, compact by default, comfortable on request, in
+  Settings → Appearance. It lives entirely in CSS custom properties switched on
+  `data-density`: no component branches on it, which is what keeps its cost
+  near zero. What a screen actually gains depends on that screen consuming the
+  tokens rather than naming its own sizes, and the new `literalTextSizes`
+  ratchet is the honest measure of that — 494 when it was introduced, 485 now.
+- Inter, served from this deployment. The `latin` subset alone, 47 kB measured:
+  `latin-ext` costs 83 kB more and French needs none of it, `Œ`/`œ` sitting at
+  U+0152-0153 inside the range shipped. Chosen for what this interface is — a
+  console full of counters and small labels — and paired with `tabular-nums`,
+  so a column of live figures stops shivering as it updates. Self-hosted
+  because the CSP is `font-src 'self'`, and because it is one fewer party who
+  learns when someone opens the app.
+
+### Changed
+
+- `CLAUDE.md` said the web tests run under jsdom. They run under happy-dom, and
+  have for a long time — five documented traps named the wrong engine. They are
+  corrected, and three measurements taken against 20.11.6 are recorded beside
+  them: no layout at all (`getBoundingClientRect` is 0×0), Tailwind v4's output
+  is unparseable here, the computed-style cache is invalidated by a DOM
+  mutation rather than by a resize, and `window.innerWidth` widens with the
+  overflow under mobile emulation.
+
 ## [0.56.6] — 2026-09-06
 
 ### Added
