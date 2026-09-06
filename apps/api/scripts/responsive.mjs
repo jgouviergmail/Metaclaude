@@ -28,6 +28,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from '@playwright/test';
@@ -86,6 +87,23 @@ function frenchCatalogue() {
 const FRENCH_KEYS = frenchCatalogue();
 
 const results = new Results();
+/*
+ * Pin the Claude credential state, because the screens depend on it.
+ *
+ * `readCliLogin` reads CLAUDE_CONFIG_DIR, falling back to the *host's* home
+ * directory — so on a developer machine that is signed in, the dashboard's
+ * "Claude is not authenticated" panel never renders, and everything inside it
+ * goes unaudited. That is not hypothetical: a link in that panel shipped with
+ * no hit area, this guard passed locally with 1065 checks, and CI — which has
+ * no credentials — failed on it. The local run was answering a smaller
+ * question than the one that gates a push.
+ *
+ * Pointed at a directory that does not exist, so both machines audit the same
+ * screen. Nothing here ever runs an agent; the seed writes to the database
+ * directly.
+ */
+process.env.CLAUDE_CONFIG_DIR = join(tmpdir(), 'metaclaude-responsive-no-credentials');
+
 const server = await startServer({ webDir: WEB_DIST, env: { NODE_ENV: 'production' } });
 const { context } = server;
 const now = Date.now();

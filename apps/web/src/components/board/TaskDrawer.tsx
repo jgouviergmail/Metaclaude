@@ -18,7 +18,16 @@ import { api, ApiError } from '@/lib/api';
 import { columnLabel, TASK_KIND_LABEL, TASK_KINDS } from '@/lib/board';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 import { Modal } from '@/components/ui/Modal';
-import { Badge, Button, Input, Label, QUIET_LINK, Spinner, Textarea } from '@/components/ui/primitives';
+import {
+  Badge,
+  Button,
+  CHIP,
+  Input,
+  Label,
+  QUIET_LINK,
+  Spinner,
+  Textarea,
+} from '@/components/ui/primitives';
 import { toast } from 'sonner';
 import { cn, formatRelative } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
@@ -197,7 +206,10 @@ export function TaskDrawer({
           <div className="flex flex-wrap items-center gap-2">
             <Menu
               trigger={
-                <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
+                <button
+                  type="button"
+                  className={cn(CHIP, 'border border-line text-muted hover:border-accent hover:text-ink')}
+                >
                   {t('Kind')}: <span className="font-medium text-ink">{t(TASK_KIND_LABEL[task.kind])}</span>
                 </button>
               }
@@ -216,7 +228,10 @@ export function TaskDrawer({
 
             <Menu
               trigger={
-                <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
+                <button
+                  type="button"
+                  className={cn(CHIP, 'border border-line text-muted hover:border-accent hover:text-ink')}
+                >
                   {t('Priority')}: <span className="font-medium text-ink">{t(task.priority)}</span>
                 </button>
               }
@@ -234,7 +249,10 @@ export function TaskDrawer({
 
             <Menu
               trigger={
-                <button type="button" className="rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] text-muted hover:border-accent hover:text-ink">
+                <button
+                  type="button"
+                  className={cn(CHIP, 'border border-line text-muted hover:border-accent hover:text-ink')}
+                >
                   {task.assignee === 'agent' ? (
                     <span className="inline-flex items-center gap-1"><Bot className="size-3.5" aria-hidden /> {t(
                       'Agent',

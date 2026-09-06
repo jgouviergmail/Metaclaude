@@ -13,7 +13,8 @@ import { ArrowUpCircle, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/Modal';
-import { Badge, Button, Card, CardHeader, Spinner } from '@/components/ui/primitives';
+import { Badge, Button, Card, CardHeader, QUIET_LINK, Spinner } from '@/components/ui/primitives';
+import { cn } from '@/lib/utils';
 import { api, ApiError } from '@/lib/api';
 import { nextUpdateWatch, type UpdateWatch } from '@/lib/update-watch';
 import { Trans, useT } from '@/lib/i18n';
@@ -124,7 +125,7 @@ export function UpdateCard() {
             })}{' '}
             {result.releaseUrl ? (
               <a
-                className="text-accent underline"
+                className={cn('underline', QUIET_LINK)}
                 href={result.releaseUrl}
                 target="_blank"
                 rel="noreferrer"

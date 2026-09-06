@@ -1,6 +1,6 @@
 {
   "metrics": {
-    "tests": 3091,
+    "tests": 3092,
     "testFiles": 221,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
@@ -18,7 +18,7 @@
     "defaultingPartials": 0,
     "untranslatedTableReads": 0,
     "controlBytesInSource": 0,
-    "literalTextSizes": 422,
+    "literalTextSizes": 415,
     "pageWidths": 2,
     "adHocTabs": 0,
     "tokenBypass": 0

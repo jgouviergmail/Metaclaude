@@ -17,11 +17,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { CHIP, QUIET_LINK } from './primitives';
-import { TOUCH_TARGET, TOUCH_TARGET_Y } from './touch-target';
+import { TOUCH_TARGET, TOUCH_TARGET_TEXT, TOUCH_TARGET_Y } from './touch-target';
 
 describe('the hit areas', () => {
   it('apply only to a coarse pointer, so a mouse keeps the precise target', () => {
-    for (const spelling of [TOUCH_TARGET, TOUCH_TARGET_Y]) {
+    for (const spelling of [TOUCH_TARGET, TOUCH_TARGET_Y, TOUCH_TARGET_TEXT]) {
       for (const token of spelling.split(/\s+/).filter((t) => t.includes('before:'))) {
         expect(token, spelling).toMatch(/^pointer-coarse:/);
       }
@@ -31,7 +31,7 @@ describe('the hit areas', () => {
   it('positions the pseudo-element, which needs a positioned ancestor', () => {
     // `absolute` inside a static parent resolves against the page, and the hit
     // area lands somewhere else entirely — silently, since nothing paints.
-    for (const spelling of [TOUCH_TARGET, TOUCH_TARGET_Y]) {
+    for (const spelling of [TOUCH_TARGET, TOUCH_TARGET_Y, TOUCH_TARGET_TEXT]) {
       expect(spelling).toContain('relative');
       expect(spelling).toContain('pointer-coarse:before:absolute');
     }
@@ -55,9 +55,16 @@ describe('the hit areas', () => {
    * container from the overflow probe and reports four clipped buttons.
    */
   it('gives the shared control spellings a vertical hit area', () => {
-    for (const spelling of [QUIET_LINK, CHIP]) {
-      expect(spelling).toContain(TOUCH_TARGET_Y);
-    }
+    expect(CHIP).toContain(TOUCH_TARGET_Y);
+    // A quiet link is a line of text, not a box: 6px each side leaves a 16px
+    // line at 28, under the floor. Measured on the dashboard's link out to
+    // the settings screen, which failed the guard at exactly that.
+    expect(QUIET_LINK).toContain(TOUCH_TARGET_TEXT);
+  });
+
+  it('grows a line of text further than a control with a box', () => {
+    expect(TOUCH_TARGET_TEXT).toContain('-inset-y-2.5');
+    expect(TOUCH_TARGET_Y).toContain('-inset-y-1.5');
   });
 
   it('gives the chip a scale role rather than a literal size', () => {

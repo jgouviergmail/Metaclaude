@@ -11,6 +11,31 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.56.20] — 2026-09-06
+
+### Fixed
+
+- Nine more controls too small to press, and the reason the last release
+  missed them. The sweep that found sixteen searched for one spelling of a
+  quiet link; there were four. Searching by *structure* instead — every link
+  and button whose classes say "small text" and which carries no hit area —
+  found the rest: the card drawer's two menu triggers, the library's category
+  chips, two external "Docs" links, an archived session's row, the release
+  notes link, and the dashboard's link out to the settings screen.
+- A quiet link inside a sentence is 16 pixels tall, and the hit area written
+  for a 32-pixel button left it at 28 — under the floor. Lines of text now grow
+  further than boxes do. Measured, not guessed: this is the one the browser
+  check failed on.
+
+### Changed
+
+- The responsive guard no longer depends on the machine it runs on. It read the
+  host's Claude credentials, so on a signed-in developer machine the dashboard's
+  "not authenticated" panel never rendered and everything inside it went
+  unaudited — which is exactly where the link above was hiding. It passed
+  locally with 1065 checks and CI failed on that panel. Both now audit the same
+  screen.
+
 ## [0.56.19] — 2026-09-06
 
 ### Fixed

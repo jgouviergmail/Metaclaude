@@ -34,7 +34,8 @@ import { CopyableCode } from '@/components/ui/CopyableCode';
 import { Badge, Button, Input, Label } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { formatRelative } from '@/lib/utils';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import { cn, formatRelative } from '@/lib/utils';
 
 /** English labels as data; `t()` translates at render, as everywhere else. */
 const GRANT_LABELS: Record<GoogleGrant, string> = {
@@ -201,7 +202,10 @@ export function GoogleConnectionCard() {
               href="https://myaccount.google.com/permissions"
               target="_blank"
               rel="noreferrer noopener"
-              className="inline-flex items-center gap-1 text-[12px] font-medium text-muted transition-colors hover:text-accent"
+              className={cn(
+                'inline-flex items-center gap-1 text-caption font-medium text-muted transition-colors hover:text-accent',
+                TOUCH_TARGET_Y,
+              )}
             >
               <ExternalLink className="size-3.5" aria-hidden />
               {t('Revoke at Google')}

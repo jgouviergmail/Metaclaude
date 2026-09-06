@@ -18,7 +18,11 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { useDisclosedDescription } from '@/components/ui/density';
-import { TOUCH_TARGET, TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import {
+  TOUCH_TARGET,
+  TOUCH_TARGET_TEXT,
+  TOUCH_TARGET_Y,
+} from '@/components/ui/touch-target';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 
@@ -217,7 +221,7 @@ export function Badge({
  * the vertical hit area live here; the size stays with the caller, because two
  * of the nine sit inside a sentence and have to match the text around them.
  */
-export const QUIET_LINK = `text-accent hover:underline ${TOUCH_TARGET_Y}`;
+export const QUIET_LINK = `text-accent hover:underline ${TOUCH_TARGET_TEXT}`;
 
 /**
  * A toggle chip: a board filter, a task kind, a cron preset.

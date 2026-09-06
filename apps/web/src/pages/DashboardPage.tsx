@@ -178,7 +178,7 @@ export function DashboardPage() {
                 <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
                 <p className="text-muted">
                   {t('Pair it from')}{' '}
-                  <Link to="/settings" className="font-medium text-accent underline-offset-2 hover:underline">
+                  <Link to="/settings" className={cn('font-medium underline-offset-2', QUIET_LINK)}>
                     {t('Settings → System')}
                   </Link>
                   {t(

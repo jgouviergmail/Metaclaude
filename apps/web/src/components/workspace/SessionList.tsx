@@ -30,6 +30,7 @@ import { Menu, MenuItem, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { Button, EmptyState, Input, Label, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn, formatRelative } from '@/lib/utils';
 import { usePlural, useT, type TranslateFn } from '@/lib/i18n';
 
@@ -225,7 +226,10 @@ export function SessionList({
                   <li key={archivedSession.id} className="flex items-center gap-1">
                     <Link
                       to={`/w/${workspaceId}/s/${archivedSession.id}`}
-                      className="min-w-0 flex-1 truncate rounded px-1 py-1 text-[12px] text-muted hover:text-ink"
+                      className={cn(
+                        'min-w-0 flex-1 truncate rounded px-1 py-1 text-caption text-muted hover:text-ink',
+                        TOUCH_TARGET_Y,
+                      )}
                     >
                       {sessionTitle(archivedSession, t)}
                     </Link>

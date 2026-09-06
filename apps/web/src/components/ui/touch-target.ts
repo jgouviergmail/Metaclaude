@@ -41,3 +41,19 @@ export const TOUCH_TARGET =
 export const TOUCH_TARGET_Y =
   "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 " +
   "pointer-coarse:before:inset-x-0 pointer-coarse:before:content-['']";
+
+/**
+ * The same idea again, for a line of text rather than a control with a box.
+ *
+ * A quiet link inside a sentence is as tall as its line — 16px — and the 6px
+ * of `TOUCH_TARGET_Y` leaves it at 28, under the floor. Measured, not guessed:
+ * the dashboard's "Settings → System" link failed the guard at exactly that.
+ * 10px each side puts a 16px line at 36.
+ *
+ * It can reach into the line above or below, and that is acceptable here in a
+ * way it would not be between two buttons: what sits there is prose, which
+ * takes no presses of its own, so nothing is stolen from anything.
+ */
+export const TOUCH_TARGET_TEXT =
+  "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-y-2.5 " +
+  "pointer-coarse:before:inset-x-0 pointer-coarse:before:content-['']";
