@@ -8,10 +8,11 @@
  * target. Nothing about that shows up in a screenshot, and `Label` had no test.
  */
 
-import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
+import { createRef } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
-import { CardHeader, Input, Label, Meter } from './primitives';
+import { CardHeader, Input, Label, Meter, Select, Textarea } from './primitives';
 
 describe('Label', () => {
   it('keeps the hint out of the field name', () => {
@@ -119,5 +120,82 @@ describe('the heading level of a card', () => {
   it('steps down when the card really is nested under a section', () => {
     render(<CardHeader title="Password" level={3} />);
     expect(screen.getByRole('heading', { name: 'Password', level: 3 })).toBeDefined();
+  });
+});
+
+/**
+ * The native select, which the app had rewritten eight times.
+ *
+ * Three files carried the same class string —
+ * `h-9 w-full rounded-lg border border-line bg-surface px-3 …` — beside an
+ * `Input` that already said exactly that. Eight places to change when the
+ * focus ring moves, and eight chances to forget one; the form family is one
+ * shape and belongs in one place.
+ */
+describe('Select', () => {
+  it('is the same box as an Input, so a form does not look assembled', () => {
+    render(
+      <>
+        <Input aria-label="texte" />
+        <Select aria-label="choix">
+          <option value="a">A</option>
+        </Select>
+      </>,
+    );
+    const input = screen.getByLabelText('texte').className;
+    const select = screen.getByLabelText('choix').className;
+    for (const token of ['h-9', 'w-full', 'rounded-lg', 'border-line', 'bg-surface', 'px-3']) {
+      expect(select, token).toContain(token);
+      expect(input, token).toContain(token);
+    }
+  });
+
+  it('behaves like a select, not merely like a box', () => {
+    const onChange = vi.fn();
+    render(
+      <Select aria-label="choix" value="a" onChange={onChange}>
+        <option value="a">A</option>
+        <option value="b">B</option>
+      </Select>,
+    );
+    fireEvent.change(screen.getByLabelText('choix'), { target: { value: 'b' } });
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it('takes a ref, since a form may need to focus it', () => {
+    const ref = createRef<HTMLSelectElement>();
+    render(
+      <Select aria-label="choix" ref={ref}>
+        <option value="a">A</option>
+      </Select>,
+    );
+    expect(ref.current?.tagName).toBe('SELECT');
+  });
+});
+
+/**
+ * The form family sits on the scale, not on a literal.
+ *
+ * `text-sm` is 14px whatever the density, so an operator who asked for a
+ * compact interface still got a comfortable form. The role follows the
+ * setting — 13px compact, 14px comfortable — which is the whole point of
+ * having roles.
+ */
+describe('the form controls', () => {
+  it('take their size from the scale', () => {
+    render(
+      <>
+        <Input aria-label="texte" />
+        <Textarea aria-label="paragraphe" />
+        <Select aria-label="choix">
+          <option value="a">A</option>
+        </Select>
+      </>,
+    );
+    for (const name of ['texte', 'paragraphe', 'choix']) {
+      const className = screen.getByLabelText(name).className;
+      expect(className, name).toContain('text-body');
+      expect(className, name).not.toContain('text-sm');
+    }
   });
 });

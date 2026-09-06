@@ -11,7 +11,7 @@ import { AlertTriangle, ArrowRight, Lightbulb, SquareKanban, Timer } from 'lucid
 import { Link } from 'react-router-dom';
 import type { Brief } from '@metaclaude/shared';
 import { Badge } from '@/components/ui/primitives';
-import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import { TOUCH_TARGET_TEXT } from '@/components/ui/touch-target';
 import { cn, formatRelative, formatTokens } from '@/lib/utils';
 import { usePlural, useT, type PluralFn, type TranslateFn } from '@/lib/i18n';
 
@@ -130,7 +130,10 @@ export function BriefView({ brief }: { brief: Brief }) {
           to="/board"
           className={cn(
             'group flex items-center gap-2 text-caption text-muted hover:text-ink',
-            TOUCH_TARGET_Y,
+            // A line of text, not a box: its height is the line's, and the
+            // box-sized inset leaves it at 28. It read 19px until `cn` stopped
+            // dropping the role.
+            TOUCH_TARGET_TEXT,
           )}
         >
           <SquareKanban className="size-3.5 shrink-0 text-accent" aria-hidden />

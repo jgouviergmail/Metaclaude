@@ -664,6 +664,21 @@ restates the code is noise; one that records a decision or a trap is not.
   the production install. Its postinstall is skipped under pnpm's build
   allow-list and only fetched CUDA libraries anyway.
 
+- **tailwind-merge deletes a class it does not recognise as a size.** The six
+  type roles live in an `@theme` block; tailwind-merge knows nothing of it, so
+  it classified `text-caption` as a text *colour* and dropped it as conflicting
+  with the `text-muted` beside it. `cn('text-caption leading-relaxed
+  text-muted')` returned `leading-relaxed text-muted` — the size never reached
+  the DOM, anywhere a colour followed a role in one class list, which is nearly
+  everywhere since prose is muted. Nothing could see it: the `literalTextSizes`
+  ratchet counts roles in the *source* and reported a steadily improving number
+  while none of them applied, no test asserted a size and a colour on the same
+  element, and a paragraph that inherits its size still looks like a paragraph.
+  `cn` now extends the merge with the scale, and `lib/utils.test.ts` pins it.
+  **Any new `@theme` utility whose name collides with a Tailwind group needs
+  the same declaration** — a shadow of this is waiting for the next custom
+  spacing or radius token.
+
 - **A backtick in a comment inside `AUDIT` ends the probe.** `scripts/responsive.mjs`
   ships its in-page audit as a template literal, so a comment naming
   `` `browser.mjs` `` closes the string and node reports

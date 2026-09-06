@@ -150,12 +150,10 @@ export function HelpPage() {
           {/* Tabs ----------------------------------------------------------- */}
           <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)}>
             <TabStrip label={t('Help sections',)}>
-              <TabTrigger value="guide">
-                <BookOpen className="mr-1.5 inline size-3.5" aria-hidden />
+              <TabTrigger value="guide" icon={<BookOpen />}>
                 {t('User guide')}
               </TabTrigger>
-              <TabTrigger value="changelog">
-                <History className="mr-1.5 inline size-3.5" aria-hidden />
+              <TabTrigger value="changelog" icon={<History />}>
                 {t("What's new")}
               </TabTrigger>
             </TabStrip>

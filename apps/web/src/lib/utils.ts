@@ -1,8 +1,42 @@
 /** Small presentation helpers shared across the app. */
 
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
 import { currentLang } from './lang';
+
+/**
+ * The six roles of the type scale, taught to tailwind-merge.
+ *
+ * Without this it classifies `text-caption` as a text *colour* — it knows
+ * nothing of the `@theme` block that defines it — and then drops it as
+ * conflicting with the `text-muted` that follows in the same class list.
+ * Silently: `cn('text-caption leading-relaxed text-muted')` returned
+ * `leading-relaxed text-muted`, so the size never reached the DOM at all.
+ *
+ * Nothing could see it. The ratchet counts roles in the *source* and reported
+ * an improving number; the tests assert on rendered classes and none of them
+ * happened to assert a size beside a colour; and on screen a paragraph that
+ * inherits its size looks like a paragraph. It was found by writing the first
+ * test that did assert both, on a control primitive.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [{ text: ['display', 'title', 'heading', 'body', 'label', 'caption'] }],
+    },
+    /*
+     * The density spacing tokens, for a different reason than the sizes above.
+     * `p-gutter` is not misclassified — it is not classified at all, so
+     * `cn('p-gutter', 'p-4')` emits both and the stylesheet's order decides
+     * which wins. That is not yet a bug anywhere here, and it is the same trap
+     * one step behind: named once, every padding, margin and gap group learns
+     * them together.
+     */
+    theme: {
+      spacing: ['gutter', 'section', 'stack'],
+    },
+  },
+});
 
 /** Merge Tailwind classes, letting later conditional classes win. */
 export function cn(...inputs: ClassValue[]): string {

@@ -26,7 +26,18 @@ import type { KnowledgeDocumentMeta, Workspace } from '@metaclaude/shared';
 import { ScopeBadge } from '@/components/memory/ScopeBadge';
 import { Switch } from '@/components/ui/controls';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
-import { Badge, Button, Card, EmptyState, Input, Label, Skeleton, Textarea, Tooltip } from '@/components/ui/primitives';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  Label,
+  Select,
+  Skeleton,
+  Textarea,
+  Tooltip,
+} from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { formatBytes, formatRelative } from '@/lib/utils';
@@ -383,13 +394,12 @@ export function KnowledgeSection({
 
             <div className="space-y-1.5">
               <Label htmlFor="knowledge-scope">{t('Scope')}</Label>
-              <select
+              <Select
                 id="knowledge-scope"
                 value={editing.workspaceId ?? ''}
                 onChange={(event) =>
                   setEditing({ ...editing, workspaceId: event.target.value || null })
                 }
-                className="h-9 w-full rounded-lg border border-line bg-surface px-3 text-[13px] text-ink"
               >
                 <option value="">{t('Global — every workspace')}</option>
                 {workspaces.map((workspace) => (
@@ -397,7 +407,7 @@ export function KnowledgeSection({
                     {workspace.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div className="space-y-1.5">

@@ -1,10 +1,10 @@
 {
   "metrics": {
-    "tests": 3092,
-    "testFiles": 221,
+    "tests": 3116,
+    "testFiles": 222,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
-    "initialJsGzipKb": 190,
+    "initialJsGzipKb": 191,
     "deployChecks": 169,
     "untranslatedStrings": 0,
     "untestedComponents": 0,
@@ -18,7 +18,7 @@
     "defaultingPartials": 0,
     "untranslatedTableReads": 0,
     "controlBytesInSource": 0,
-    "literalTextSizes": 415,
+    "literalTextSizes": 360,
     "pageWidths": 2,
     "adHocTabs": 0,
     "tokenBypass": 0

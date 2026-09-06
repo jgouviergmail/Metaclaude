@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils';
  * choice reviewable: "is this a reading column or a dashboard" is a question
  * with an answer, "is this 4xl or 5xl" is not.
  */
-const WIDTHS = {
+export const PAGE_WIDTHS = {
   /** One column of text and settings. */
   prose: 'max-w-3xl',
   /** A list of things, each a row. */
@@ -42,7 +42,7 @@ const WIDTHS = {
   wide: 'max-w-6xl',
 } as const;
 
-export type PageWidth = keyof typeof WIDTHS;
+export type PageWidth = keyof typeof PAGE_WIDTHS;
 
 export interface PageProps extends HTMLAttributes<HTMLDivElement> {
   width?: PageWidth;
@@ -70,7 +70,7 @@ export function PageBody({ width = 'standard', gap = 'section', className, child
     <div
       className={cn(
         'mx-auto w-full p-gutter sm:p-6',
-        WIDTHS[width],
+        PAGE_WIDTHS[width],
         gap === 'section' && 'space-y-section',
         className,
       )}

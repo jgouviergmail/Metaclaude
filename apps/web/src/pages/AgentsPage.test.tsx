@@ -5,9 +5,10 @@
  * the button, and what the operator pastes reaches the API once.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
+import { useUiStore } from '@/lib/store';
 import { AgentsPage, withDescriptions } from './AgentsPage';
 
 const { apiMock, toastMock } = vi.hoisted(() => ({
@@ -288,6 +289,44 @@ describe('the connector directory', () => {
  * A global server is mounted in every workspace, so "which one" has a real
  * answer. The button asks it.
  */
+/**
+ * The one wall of prose on this screen, folded away where there is no room.
+ *
+ * Five sentences explaining what the directory is, always shown, filled a
+ * phone's remaining screen entirely — the "dense and hard to read" complaint,
+ * in one block. It is not the panel's opening sentence, which stays: it is a
+ * second explanation under a heading of its own, which is exactly the shape
+ * `Section` already knows how to disclose.
+ */
+describe('the connector directory reads as a section of the screen', () => {
+  it('offers its explanation rather than filling the phone with it', async () => {
+    useUiStore.setState({ density: 'compact' });
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+
+    const heading = screen.getByRole('heading', { name: 'Connector directory' });
+    expect(screen.queryByText(/read the documentation for/)).toBeNull();
+    const region = heading.closest('section') as HTMLElement;
+    fireEvent.click(within(region).getByRole('button', { name: 'Explain Connector directory' }));
+    expect(screen.getByText(/read the documentation for/)).toBeDefined();
+  });
+
+  it('shows it outright where there is room', async () => {
+    useUiStore.setState({ density: 'comfortable' });
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+    expect(screen.getByText(/read the documentation for/)).toBeDefined();
+  });
+
+  it('names the section at a level the page outline can follow', async () => {
+    // A hand-written h3 under the page's h1 skips a level, and a screen
+    // reader's outline of the page is then simply wrong.
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+    expect(screen.getByRole('heading', { name: 'Connector directory', level: 2 })).toBeDefined();
+  });
+});
+
 describe('the MCP tab: testing connections', () => {
   it('asks which workspace, rather than refusing, when the scope is global', async () => {
     apiMock.workspaces.mockResolvedValue({

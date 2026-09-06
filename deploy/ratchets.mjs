@@ -1141,7 +1141,60 @@ function countAdHocTabs() {
   for (const file of tracked('apps/web/src/*')) {
     if (!/\.tsx?$/.test(file) || file.includes('.test.')) continue;
     if (file.includes('components/ui/')) continue;
-    if (read(file).includes('@radix-ui/react-tabs')) n += 1;
+    const source = read(file);
+    if (source.includes('@radix-ui/react-tabs')) n += 1;
+    n += tabAppearanceOverrides(source);
+  }
+  return n;
+}
+
+/**
+ * A `TabTrigger` that re-declares the appearance the wrapper owns.
+ *
+ * Importing Radix directly is the loud way to end up with a third tab strip;
+ * this is the quiet one, and it is what actually happened. AgentsPage used the
+ * shared component and handed it a className carrying the border, the padding,
+ * the type size and the active state — so its tabs had a different height, a
+ * different type size and a different active colour from every other tab in
+ * the app, while the wrapper's own docblock claimed the duplication was over.
+ *
+ * Judged on the class names the wrapper itself sets. A caller may still pass a
+ * className — a width, a margin — without re-deciding how a tab looks.
+ */
+const TAB_APPEARANCE = ['border-b-2', 'data-[state=active]', 'text-body', 'font-medium'];
+
+/**
+ * The opening tags of `<TabTrigger …>`, read by brace depth rather than by regex.
+ *
+ * The first version stopped at the first ">" and was therefore blind to the
+ * exact case that motivated it: `icon={<BookOpen />}` closes a ">" inside the
+ * attributes, so the match ended before ever reaching `className`. It read a
+ * comfortable zero under deliberate sabotage — which is why a new measure is
+ * sabotaged before it is trusted.
+ */
+function triggerTags(source) {
+  const tags = [];
+  const OPEN = '<TabTrigger';
+  for (let at = source.indexOf(OPEN); at !== -1; at = source.indexOf(OPEN, at + 1)) {
+    let depth = 0;
+    for (let i = at + OPEN.length; i < source.length; i += 1) {
+      const ch = source[i];
+      if (ch === '{') depth += 1;
+      else if (ch === '}') depth -= 1;
+      else if (ch === '>' && depth === 0) {
+        tags.push(source.slice(at, i + 1));
+        break;
+      }
+    }
+  }
+  return tags;
+}
+
+function tabAppearanceOverrides(source) {
+  let n = 0;
+  for (const tag of triggerTags(source)) {
+    if (!tag.includes('className')) continue;
+    if (TAB_APPEARANCE.some((token) => tag.includes(token))) n += 1;
   }
   return n;
 }

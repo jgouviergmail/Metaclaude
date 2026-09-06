@@ -50,6 +50,7 @@ import {
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { RetrievalStatus } from '@/components/system/RetrievalStatus';
 import { useDisclosedDescription } from '@/components/ui/density';
+import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
 import { KnowledgeSection } from '@/components/memory/KnowledgeSection';
 import { ConsolidationCard, readProposal } from '@/components/memory/ConsolidationCard';
@@ -69,6 +70,7 @@ import {
   Textarea,
   Tooltip,
   QUIET_LINK,
+  Select,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { INSIGHT_TONE } from '@/lib/insights';
@@ -704,7 +706,12 @@ export function MemoryPage() {
                     aria-pressed={kind === entry.value}
                     onClick={() => setKind(entry.value)}
                     className={cn(
+                      // 24px painted, 36px under a thumb. It measured 29 until
+                      // `cn` stopped dropping the role, which is what a size
+                      // class silently failing to apply looks like from the
+                      // other side: the chips were the wrong size AND passed.
                       'rounded-md px-2.5 py-1 text-label font-medium transition-colors',
+                      TOUCH_TARGET_Y,
                       kind === entry.value
                         ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
                         : 'text-muted hover:text-ink',
@@ -726,7 +733,12 @@ export function MemoryPage() {
                     aria-pressed={shelf === value}
                     onClick={() => setShelf(value)}
                     className={cn(
+                      // 24px painted, 36px under a thumb. It measured 29 until
+                      // `cn` stopped dropping the role, which is what a size
+                      // class silently failing to apply looks like from the
+                      // other side: the chips were the wrong size AND passed.
                       'rounded-md px-2.5 py-1 text-label font-medium transition-colors',
+                      TOUCH_TARGET_Y,
                       shelf === value
                         ? 'bg-surface text-ink shadow-[var(--mc-shadow-sm)]'
                         : 'text-muted hover:text-ink',
@@ -1703,32 +1715,32 @@ function MemoryModal({
           'Chooses how the retriever weights this against a prompt.',
         )}>
           {t('Kind')}
-          <select
+          <Select
             id="memory-kind"
             value={draft.kind}
             onChange={(event) => setDraft({ ...draft, kind: event.target.value as MemoryKind })}
-            className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
+            className="mt-1.5"
           >
             <option value="episodic">{t('Episodic — what happened in a run')}</option>
             <option value="semantic">{t('Semantic — a durable fact')}</option>
             <option value="procedural">{t('Procedural — how to do something')}</option>
-          </select>
+          </Select>
         </Label>
 
         <Label htmlFor="memory-shelf" hint={t(
           'How long this is meant to hold. A convention applies whatever the request is about.',
         )}>
           {t('Shelf')}
-          <select
+          <Select
             id="memory-shelf"
             value={draft.shelf}
             onChange={(event) => setDraft({ ...draft, shelf: event.target.value as MemoryShelf })}
-            className="mt-1.5 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
+            className="mt-1.5"
           >
             {(['durable', 'standing', 'volatile'] as const).map((value) => (
               <option key={value} value={value}>{t(SHELF_HINTS[value])}</option>
             ))}
-          </select>
+          </Select>
         </Label>
 
         <Label htmlFor="memory-title" hint={t('The retrieval key. One sentence works best.')}>

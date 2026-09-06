@@ -94,8 +94,8 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold text-ink">{t('What Claude offers here')}</h2>
-          <p className="text-[12.5px] text-muted">
+          <h2 className="text-title font-semibold text-ink">{t('What Claude offers here')}</h2>
+          <p className="text-caption text-muted">
             {t('Read from the CLI itself')} {formatRelative(catalogue.fetchedAt)}
           </p>
           {/* Which account the CLI is actually signed in as. Metaclaude can
@@ -105,7 +105,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
               wire, so the parts are joined rather than templated — otherwise a
               missing one leaves a separator with nothing after it. */}
           {catalogue.account ? (
-            <p className="text-[12.5px] text-muted">
+            <p className="text-caption text-muted">
               {[
                 catalogue.account.email,
                 catalogue.account.organization,
@@ -137,7 +137,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
       ) : null}
 
       {missing.length > 0 ? (
-        <p className="rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] leading-relaxed text-ink">
+        <p className="rounded-lg bg-warning-soft px-3 py-2 text-caption leading-relaxed text-ink">
           {t(
             'This CLI could not answer about {questions}. Those sections are empty because the question failed, not because there is nothing there.',
             {
@@ -165,7 +165,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
           <McpRow key={server.name} server={server} />
         ))}
       </CatalogueSection>
-      <p className="rounded-lg border border-dashed border-line px-3 py-2 text-[12px] leading-relaxed text-subtle">
+      <p className="rounded-lg border border-dashed border-line px-3 py-2 text-caption leading-relaxed text-subtle">
         {t(
           'Connectors from your claude.ai account never appear here: a server paired with a setup token authenticates for inference only, so the CLI cannot fetch them. To connect an external service, add its MCP server on the Agents screen — it is mounted into every run and reported above. Metaclaude’s own board and delegation tools ride along in-process and are always available.',
         )}
@@ -184,9 +184,9 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
             description={model.description}
             meta={
               <>
-                <code className="font-mono text-[11.5px] text-subtle">{model.value}</code>
+                <code className="font-mono text-caption text-subtle">{model.value}</code>
                 {model.resolvedModel ? (
-                  <code className="font-mono text-[11.5px] text-subtle">{model.resolvedModel}</code>
+                  <code className="font-mono text-caption text-subtle">{model.resolvedModel}</code>
                 ) : null}
                 {model.supportedEffortLevels.map((level) => (
                   <Badge key={level} tone="neutral">
@@ -213,7 +213,7 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
             description={command.description}
             meta={
               command.argumentHint ? (
-                <code className="font-mono text-[11.5px] text-subtle">{command.argumentHint}</code>
+                <code className="font-mono text-caption text-subtle">{command.argumentHint}</code>
               ) : null
             }
           />
@@ -300,14 +300,14 @@ function CatalogueRow({
     <Card className="flex flex-col gap-1 p-3 sm:flex-row sm:items-baseline sm:gap-3">
       <span
         className={cn(
-          'shrink-0 text-[13px] font-medium text-ink',
-          mono && 'font-mono text-[12.5px]',
+          'shrink-0 text-body font-medium text-ink',
+          mono && 'font-mono text-caption',
         )}
       >
         {name}
       </span>
       {description ? (
-        <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-muted">{description}</span>
+        <span className="min-w-0 flex-1 text-caption leading-relaxed text-muted">{description}</span>
       ) : (
         <span className="flex-1" />
       )}
@@ -329,13 +329,13 @@ function McpRow({ server }: { server: ClaudeMcpServerStatus }) {
       className={cn('space-y-2 p-3', broken && 'border-danger/30 bg-danger-soft/30')}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <code className="font-mono text-[13px] font-medium text-ink">{server.name}</code>
+        <code className="font-mono text-body font-medium text-ink">{server.name}</code>
         <Badge tone={status.tone}>
           {status.icon}
           {t(status.label)}
         </Badge>
         {server.serverName ? (
-          <span className="text-[11.5px] text-subtle">
+          <span className="text-caption text-subtle">
             {server.serverName}
             {server.serverVersion ? ` ${server.serverVersion}` : ''}
           </span>
@@ -344,7 +344,7 @@ function McpRow({ server }: { server: ClaudeMcpServerStatus }) {
       </div>
 
       {server.error ? (
-        <p className="break-words rounded-md bg-danger-soft/60 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-ink">
+        <p className="break-words rounded-md bg-danger-soft/60 px-2.5 py-1.5 font-mono text-caption leading-relaxed text-ink">
           {server.error}
         </p>
       ) : null}

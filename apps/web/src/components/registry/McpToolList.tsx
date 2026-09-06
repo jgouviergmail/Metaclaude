@@ -44,7 +44,7 @@ export function McpToolList({
   return (
     <details className="group rounded-lg border border-line bg-sunken/40" open={defaultOpen}>
       <summary
-        className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-caption text-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         <ChevronRight
           className="size-3.5 shrink-0 transition-transform group-open:rotate-90"
@@ -52,7 +52,7 @@ export function McpToolList({
         />
         {plural(tools.length, '{n} tool exposed', '{n} tools exposed')}
         {learnedAt ? (
-          <span className="text-[11px] text-muted/80">
+          <span className="text-caption text-muted/80">
             {t('· last test: {when}', { when: formatRelative(learnedAt) })}
           </span>
         ) : null}
@@ -62,7 +62,7 @@ export function McpToolList({
         {tools.map((tool) => (
           <li key={tool.name} className="space-y-0.5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <code className="break-all font-mono text-[11.5px] text-ink">{tool.name}</code>
+              <code className="break-all font-mono text-caption text-ink">{tool.name}</code>
               {/* The server's own advertised hints. Shown to inform, never used
                   to decide anything — a server that mislabels a destructive
                   tool must not be trusted by that. */}
@@ -79,7 +79,7 @@ export function McpToolList({
               ) : null}
             </div>
             {tool.description ? (
-              <p className="text-[11.5px] leading-relaxed text-muted">{tool.description}</p>
+              <p className="text-caption leading-relaxed text-muted">{tool.description}</p>
             ) : null}
           </li>
         ))}

@@ -11,6 +11,46 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.57.0] — 2026-09-06
+
+### Fixed
+
+- **The type scale was never applied.** The six roles live in an `@theme`
+  block, and tailwind-merge — which knows nothing of that block — classified
+  `text-caption` as a text *colour* and deleted it as conflicting with the
+  `text-muted` beside it. Every role in the app was being dropped before it
+  reached the DOM wherever a colour followed it in one class list, which is
+  nearly everywhere since prose is muted. Nothing could see it: the ratchet
+  counts roles in the *source* and had been reporting a steadily improving
+  number while none of them applied, no test asserted a size and a colour on
+  one element, and a paragraph that silently inherits its size still looks like
+  a paragraph. Now that it applies, the memory filters fit one row per group on
+  a phone instead of two.
+- Tabs sit above the panel they label. The agents screen draws a sticky strip,
+  which cannot live inside the scrolling body — so it was full-bleed while its
+  panel was centred, and the triggers began a hundred and eighty pixels to the
+  left of the content they named. It read as a band of chrome.
+
+### Changed
+
+- The agents screen stops opting out of the shared tab strip. It used the
+  component while overriding its stickiness, its margin, its gutter and the
+  entire appearance of a trigger — so its tabs had a different height, type
+  size and active colour from every other tab in the app, while the wrapper's
+  own comment claimed the duplication was over. Two props replace the four
+  overrides, an `icon` slot replaces the two spellings of a tab icon, and the
+  ratchet now counts a trigger that re-declares the appearance rather than only
+  a screen that imports Radix directly.
+- The directory of connectors is a section like any other, so its five
+  sentences of explanation fold away in the compact density instead of filling
+  a phone's screen — and its heading no longer skips a level under the page's.
+- A `Select` primitive, which the app had rewritten by hand eight times across
+  three files beside the `Input` that already said exactly it. The whole form
+  family — input, textarea, select — moves off `text-sm` onto the scale, so a
+  compact interface finally has compact forms.
+- Sixty-one literal text sizes on the agents screen and its panels became scale
+  roles: six spellings for what the scale expresses in three.
+
 ## [0.56.20] — 2026-09-06
 
 ### Fixed

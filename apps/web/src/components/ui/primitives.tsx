@@ -14,6 +14,7 @@ import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
+  type SelectHTMLAttributes,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react';
@@ -96,7 +97,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       <input
         ref={ref}
         className={cn(
-          'h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink',
+          'h-9 w-full rounded-lg border border-line bg-surface px-3 text-body text-ink',
           'placeholder:text-subtle',
           'transition-colors focus:border-accent focus:outline-none',
           'disabled:cursor-not-allowed disabled:opacity-60',
@@ -114,7 +115,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
       <textarea
         ref={ref}
         className={cn(
-          'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink',
+          'w-full rounded-lg border border-line bg-surface px-3 py-2 text-body text-ink',
           'placeholder:text-subtle resize-y',
           'transition-colors focus:border-accent focus:outline-none',
           'disabled:cursor-not-allowed disabled:opacity-60',
@@ -122,6 +123,34 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
         )}
         {...props}
       />
+    );
+  },
+);
+
+/**
+ * The native select, in the same box as an Input.
+ *
+ * Three files carried this class string by hand, eight times over, beside an
+ * `Input` that already said exactly it. The appearance stays native — no
+ * `appearance-none` and no drawn chevron — because that is what those eight
+ * copies did and a select the platform draws is a select the platform's own
+ * assistive tech and its mobile picker already understand.
+ */
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function Select({ className, children, ...props }, ref) {
+    return (
+      <select
+        ref={ref}
+        className={cn(
+          'h-9 w-full rounded-lg border border-line bg-surface px-3 text-body text-ink',
+          'transition-colors focus:border-accent focus:outline-none',
+          'disabled:cursor-not-allowed disabled:opacity-60',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </select>
     );
   },
 );
