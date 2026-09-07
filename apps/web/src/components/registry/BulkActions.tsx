@@ -32,7 +32,7 @@ export function BulkActions({
   workspaceId,
   onChanged,
 }: {
-  kind: 'skill' | 'agent';
+  kind: 'skill' | 'agent' | 'automation';
   items: BulkItem[];
   /** Absent for every scope; null for global only; an id for that workspace. */
   workspaceId?: string | null;
@@ -43,8 +43,16 @@ export function BulkActions({
   const [confirming, setConfirming] = useState(false);
 
   const run = useMutation({
-    mutationFn: (body: BulkRegistryInput) =>
-      kind === 'skill' ? api.bulkSkills(body) : api.bulkAgents(body),
+    mutationFn: (body: BulkRegistryInput) => {
+      if (kind === 'skill') return api.bulkSkills(body);
+      if (kind === 'agent') return api.bulkAgents(body);
+      // Narrower on purpose: this route takes no `delete` and no null scope.
+      return api.bulkAutomations({
+        action: body.action as 'enable' | 'disable',
+        ids: body.ids,
+        ...(typeof body.workspaceId === 'string' ? { workspaceId: body.workspaceId } : {}),
+      });
+    },
     onSuccess: (result) => {
       onChanged();
       // Two distinct English keys, because the English string *is* the key:
@@ -91,16 +99,21 @@ export function BulkActions({
           <CircleSlash className="size-4" aria-hidden />
           {t('Disable all')}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-danger hover:bg-danger-soft"
-          disabled={run.isPending}
-          onClick={() => setConfirming(true)}
-        >
-          <Trash2 className="size-4" aria-hidden />
-          {t('Delete all')}
-        </Button>
+        {/* No bulk delete for automations: a cron expression somebody thought
+            about is a bigger loss than a listing row, and the route refuses it
+            anyway — a button that can only 400 is worse than an absent one. */}
+        {kind === 'automation' ? null : (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-danger hover:bg-danger-soft"
+            disabled={run.isPending}
+            onClick={() => setConfirming(true)}
+          >
+            <Trash2 className="size-4" aria-hidden />
+            {t('Delete all')}
+          </Button>
+        )}
       </div>
 
       <ConfirmDialog

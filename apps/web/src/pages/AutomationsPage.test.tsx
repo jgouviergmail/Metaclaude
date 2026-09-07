@@ -23,6 +23,7 @@ const { apiMock } = vi.hoisted(() => ({
     fireAutomation: vi.fn(),
     deleteAutomation: vi.fn(),
     createAutomation: vi.fn(),
+    bulkAutomations: vi.fn(),
     system: vi.fn(),
     claudeCatalogue: vi.fn(),
   },
@@ -418,3 +419,115 @@ describe('editing an automation', () => {
   });
 });
 
+/**
+ * Filtering, and switching a screenful at once.
+ *
+ * The bulk buttons act on the rows *on screen*, never on a scope the server
+ * would widen on its own — so what is pinned here is the arithmetic between
+ * the two filters and the ids that leave: a "disable all" that sent the
+ * unfiltered list would switch off automations the operator had deliberately
+ * filtered away, from a button whose label says "all" and means "these".
+ */
+describe('filtering and switching many at once', () => {
+  const two = () => [
+    automation({ id: 'aut_a', name: 'Alpha nightly', workspaceId: 'ws_a', enabled: true }),
+    automation({ id: 'aut_b', name: 'Beta hourly', workspaceId: 'ws_b', enabled: false }),
+  ];
+
+  const bothWorkspaces = () => ({
+    workspaces: [
+      { id: 'ws_a', name: 'Alpha', slug: 'alpha', color: '#6366f1' },
+      { id: 'ws_b', name: 'Beta', slug: 'beta', color: '#6366f1' },
+    ],
+  });
+
+  beforeEach(() => {
+    apiMock.automations.mockResolvedValue({ automations: two() });
+    apiMock.workspaces.mockResolvedValue(bothWorkspaces());
+    apiMock.bulkAutomations.mockResolvedValue({ changed: 1 });
+  });
+
+  const pick = async (label: RegExp) => {
+    // Radix opens on the pointer event, not on click: `fireEvent.click` alone
+    // does nothing in happy-dom and reads as a menu that never opened.
+    const trigger = screen.getByRole('button', { name: /all workspaces/i });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+    const item = await screen.findByRole('menuitemcheckbox', { name: label });
+    fireEvent.click(item);
+  };
+
+  it('narrows the list to one workspace', async () => {
+    renderWithProviders(<AutomationsPage />);
+    expect(await screen.findByText('Alpha nightly')).toBeTruthy();
+
+    await pick(/^Beta$/);
+
+    await waitFor(() => expect(screen.queryByText('Alpha nightly')).toBeNull());
+    expect(screen.getByText('Beta hourly')).toBeTruthy();
+  });
+
+  it('narrows the list to what is switched off', async () => {
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Alpha nightly');
+
+    fireEvent.click(screen.getByRole('button', { name: /^inactive/i }));
+
+    await waitFor(() => expect(screen.queryByText('Alpha nightly')).toBeNull());
+    expect(screen.getByText('Beta hourly')).toBeTruthy();
+  });
+
+  /**
+   * Which emptiness it is. "Nothing here" cannot tell "there are none" from
+   * "none match", and the operator picks the wrong one — the gateway told an
+   * operator their deployment had no workspaces for exactly this reason.
+   */
+  it('says how many its filters are hiding, and offers them back', async () => {
+    apiMock.automations.mockResolvedValue({
+      automations: [automation({ id: 'aut_a', name: 'Alpha nightly', enabled: true })],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Alpha nightly');
+
+    fireEvent.click(screen.getByRole('button', { name: /^inactive/i }));
+
+    expect(await screen.findByText(/nothing matches these filters/i)).toBeTruthy();
+    expect(screen.getByText(/1 automation is hidden/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /clear filters/i }));
+    expect(await screen.findByText('Alpha nightly')).toBeTruthy();
+  });
+
+  it('switches off only the rows on screen, and says which workspace', async () => {
+    // Both enabled, and in different workspaces. With one of each the two
+    // filters pick the same row by coincidence, and a bulk action wired to the
+    // *unfiltered* list passes the test it was written to catch — measured:
+    // that sabotage stayed green until this fixture separated the two axes.
+    apiMock.automations.mockResolvedValue({
+      automations: [
+        automation({ id: 'aut_a', name: 'Alpha nightly', workspaceId: 'ws_a', enabled: true }),
+        automation({ id: 'aut_b', name: 'Beta hourly', workspaceId: 'ws_b', enabled: true }),
+      ],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Alpha nightly');
+    await pick(/^Alpha$/);
+    await waitFor(() => expect(screen.queryByText('Beta hourly')).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: /disable all/i }));
+
+    await waitFor(() => expect(apiMock.bulkAutomations).toHaveBeenCalled());
+    expect(apiMock.bulkAutomations).toHaveBeenCalledWith({
+      action: 'disable',
+      ids: ['aut_a'],
+      workspaceId: 'ws_a',
+    });
+  });
+
+  it('offers no bulk delete for a schedule somebody wrote', async () => {
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Alpha nightly');
+
+    expect(screen.queryByRole('button', { name: /delete all/i })).toBeNull();
+  });
+});

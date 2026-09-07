@@ -74,7 +74,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
   const auditBulk = (
     request: Parameters<typeof requestIp>[1],
     actor: string,
-    kind: 'skill' | 'agent',
+    kind: 'skill' | 'agent' | 'automation',
     action: string,
     changed: number,
   ) =>
@@ -595,6 +595,36 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       detail: automation.name,
     });
     return reply.status(201).send({ automation });
+  });
+
+  /**
+   * Switch many automations at once.
+   *
+   * Its own schema rather than the `BulkInput` above, and the two differences
+   * are both deliberate. There is no `delete`: the operator asked to be able
+   * to switch a screenful off, and a cron expression somebody thought about is
+   * a bigger loss than a row in a listing — deleting stays one at a time,
+   * where the confirmation names what goes. And `workspaceId` is a plain
+   * optional string, not the three-way `null` the registry uses: an automation
+   * belongs to exactly one workspace by schema, so "global only" names an
+   * empty set and offering it would be a filter that always answers nothing.
+   */
+  const AutomationBulkInput = z.object({
+    action: z.enum(['enable', 'disable']),
+    ids: z.array(z.string().min(1).max(64)).min(1).max(500),
+    workspaceId: z.string().min(1).optional(),
+  });
+
+  app.post('/api/automations/bulk', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = AutomationBulkInput.safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+
+    const { action, ids, workspaceId } = parsed.data;
+    const changed = context.scheduler.setEnabled(ids, action === 'enable', workspaceId);
+
+    auditBulk(request, actor.username, 'automation', action, changed);
+    return reply.send({ changed });
   });
 
   app.patch<{ Params: { id: string } }>('/api/automations/:id', async (request, reply) => {

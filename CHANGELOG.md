@@ -11,6 +11,42 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.72.0] — 2026-09-07
+
+### Added
+
+- **The automations screen filters, and switches many at once.** By workspace,
+  by all/active/inactive with a count on each chip, and *Enable all* / *Disable
+  all* over the rows on screen. The three other extension listings — skills,
+  subagents, MCP servers — have had `AvailabilityFilter` and `BulkActions`
+  since they shipped; automations were the one type left out, on the screen
+  where switching a whole workspace's schedules off is most often what an
+  operator wants. Both components are the existing ones, one kind wider.
+- A filtered list that comes back empty says **which** emptiness it is, and how
+  many rows the filters are hiding. "Nothing here" cannot tell "there are none"
+  from "none match", and the operator picks the wrong one — the gateway told
+  an operator their deployment had no workspaces for exactly this reason.
+
+### Fixed
+
+- **A bulk switch that only wrote `enabled` would have left automations
+  enabled and never firing.** Enabling one is three coupled writes, not one:
+  `enabled` is the visible half, `next_run_at` is what the sweep actually
+  selects on — `enabled = 1 AND next_run_at IS NOT NULL` — and re-enabling
+  clears `consecutive_failures`, or an automation the failure ceiling switched
+  off switches itself off again on its very next failure. So the bulk verb is
+  the single verb, once per row in one transaction, rather than the registry's
+  one `UPDATE … WHERE id IN (…)`: the two cannot drift because there is only
+  one. The cost is N statements where the registry pays one, which is the
+  registry's own trade in reverse — a skill's row carries up to 200 000
+  characters and an automation's carries a cron expression. Verified end to
+  end on a live server: nine disabled and rescheduled, nine `next_run_at`
+  present afterwards.
+- `POST /api/automations/bulk` takes no `delete`, deliberately, and no
+  three-way `null` scope: a cron expression somebody thought about is a bigger
+  loss than a listing row, and an automation belongs to exactly one workspace
+  by schema, so "global only" would name an empty set.
+
 ## [0.71.0] — 2026-09-07
 
 ### Added

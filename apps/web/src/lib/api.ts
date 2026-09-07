@@ -824,6 +824,14 @@ export const api = {
   bulkAgents: (body: BulkRegistryInput) =>
     request<{ changed: number }>('/api/agents/bulk', { method: 'POST', body }),
 
+  /**
+   * Switch many automations at once. Enable and disable only: deleting a
+   * schedule somebody wrote stays one at a time, where the confirmation can
+   * name what goes.
+   */
+  bulkAutomations: (body: { action: 'enable' | 'disable'; ids: string[]; workspaceId?: string }) =>
+    request<{ changed: number }>('/api/automations/bulk', { method: 'POST', body }),
+
   library: () => request<{ entries: LibraryListingEntry[] }>('/api/library'),
   installLibraryEntry: (name: string) =>
     request<{ id: string; entry: LibraryListingEntry }>('/api/library/install', {

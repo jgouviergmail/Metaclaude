@@ -331,6 +331,11 @@ export const fr: Record<string, string> = {
   'Characters of the directory of other workspaces injected into every run that may delegate, so the agent knows who it can consult and what for. Around twenty workspaces all keep their description at this size; past that the names remain and the descriptions go together. 0 switches delegation between workspaces off.':
     'Nombre de caractères de l’annuaire des autres workspaces injectés dans chaque run pouvant déléguer, pour que l’agent sache qui il peut consulter et à quel sujet. À cette taille une vingtaine de workspaces gardent tous leur description ; au-delà les noms restent et les descriptions disparaissent ensemble. 0 désactive la délégation entre workspaces.',
   '{ticked} of {total}': '{ticked} sur {total}',
+  'Automation availability': 'Disponibilité des automatisations',
+  'Nothing matches these filters': 'Rien ne correspond à ces filtres',
+  '{n} automation is hidden by them.': '{n} automatisation est masquée par eux.',
+  '{n} automations are hidden by them.': '{n} automatisations sont masquées par eux.',
+  'Clear filters': 'Réinitialiser les filtres',
   'built in': 'intégré',
   'tools unknown': 'outils inconnus',
   '{n} tool, none pre-approved': '{n} outil, aucun pré-approuvé',

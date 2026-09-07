@@ -982,3 +982,128 @@ describe('notifying', () => {
     expect(scheduler.notifying('ses_nobody')).toBeNull();
   });
 });
+
+/**
+ * Switching many automations at once.
+ *
+ * The reason this is not one `UPDATE … WHERE id IN (…)`, which is how the
+ * skills and subagents do it: enabling an automation is three coupled writes,
+ * not one. `enabled` is the visible half; `next_run_at` is what the sweep
+ * actually selects on (`enabled = 1 AND next_run_at IS NOT NULL`), and
+ * disabling sets it to null; and re-enabling clears `consecutive_failures`,
+ * because an automation the failure ceiling switched off would otherwise
+ * switch itself off again on its very next failure.
+ *
+ * A second statement doing two of the three would produce automations that are
+ * *enabled and never fire* — the worst possible outcome for a button called
+ * "enable all", because the screen would agree with the operator and nothing
+ * would happen. So the bulk verb is the single verb, once per row, in one
+ * transaction: the two cannot drift because there is only one.
+ */
+describe('switching many automations at once', () => {
+  const many = (count: number, workspaceId?: string) =>
+    Array.from({ length: count }, (_, index) =>
+      make({
+        name: `Automation ${index}`,
+        trigger: { type: 'interval', everyMs: 30 * 60_000 },
+        ...(workspaceId ? { workspaceId } : {}),
+      }),
+    );
+
+  /** A second workspace, so the scope check has something to refuse. */
+  const otherWorkspace = () =>
+    workspaces.create({
+      name: 'Beta',
+      slug: 'beta',
+      description: '',
+      path: '/tmp/beta',
+      color: '#6366f1',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+
+  it('enables what it was given, and schedules each one', () => {
+    const made = many(3);
+    scheduler.setEnabled(
+      made.map((one) => one.id),
+      false,
+    );
+
+    const changed = scheduler.setEnabled(
+      made.map((one) => one.id),
+      true,
+    );
+
+    expect(changed).toBe(3);
+    for (const one of made) {
+      const now = scheduler.get(one.id)!;
+      expect(now.enabled).toBe(true);
+      // The half a second statement would have forgotten. Without it the sweep
+      // never selects the row and the automation is enabled for ever, silently.
+      expect(now.nextRunAt).not.toBeNull();
+    }
+  });
+
+  it('disabling clears the schedule, so the sweep stops selecting it', () => {
+    const made = many(2);
+
+    scheduler.setEnabled(
+      made.map((one) => one.id),
+      false,
+    );
+
+    for (const one of made) {
+      const now = scheduler.get(one.id)!;
+      expect(now.enabled).toBe(false);
+      expect(now.nextRunAt).toBeNull();
+    }
+  });
+
+  /**
+   * The failure ceiling switches an automation off after N failures. Turning it
+   * back on without clearing the counter means it disables itself again on the
+   * next one — the operator presses "enable all", watches it work once, and
+   * finds it off again tomorrow with no explanation.
+   */
+  it('clears the failure counter it was switched off by', () => {
+    const [one] = many(1);
+    scheduler.update(one!.id, { enabled: false, consecutiveFailures: 3 });
+
+    scheduler.setEnabled([one!.id], true);
+
+    expect(scheduler.get(one!.id)!.consecutiveFailures).toBe(0);
+  });
+
+  it('counts what actually changed, not what it was asked about', () => {
+    const made = many(3);
+    scheduler.setEnabled([made[0]!.id], false);
+
+    // Two are already enabled; only one can change.
+    expect(
+      scheduler.setEnabled(
+        made.map((one) => one.id),
+        true,
+      ),
+    ).toBe(1);
+  });
+
+  /**
+   * The ids are what the operator was shown, and the scope is checked again
+   * underneath — so a screen filtered to one workspace cannot switch off
+   * another's by naming its ids.
+   */
+  it('refuses an id outside the workspace it was scoped to', () => {
+    const [mine] = many(1);
+    const [theirs] = many(1, otherWorkspace().id);
+
+    const changed = scheduler.setEnabled([mine!.id, theirs!.id], false, workspace.id);
+
+    expect(changed).toBe(1);
+    expect(scheduler.get(mine!.id)!.enabled).toBe(false);
+    expect(scheduler.get(theirs!.id)!.enabled).toBe(true);
+  });
+
+  it('ignores an id that names nothing', () => {
+    expect(scheduler.setEnabled(['aut_nope'], false)).toBe(0);
+  });
+});

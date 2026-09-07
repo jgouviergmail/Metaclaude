@@ -20,7 +20,7 @@
 import type { Automation, AutomationTrigger, Run, RunStatus } from '@metaclaude/shared';
 import { AutomationPolicy, EMITTED_AUTOMATION_EVENTS, newId, workspaceTopic } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
-import { parseJson, toBool, toInt } from '../db/index.js';
+import { parseJson, toBool, toInt, tx } from '../db/index.js';
 import type { EventBus } from '../kernel/bus.js';
 import type { Kernel } from '../kernel/kernel.js';
 import type { SessionRepo, WorkspaceRepo } from '../kernel/repositories.js';
@@ -195,6 +195,47 @@ export class Scheduler {
     const automation = this.get(id) as Automation;
     this.publish(automation);
     return automation;
+  }
+
+  /**
+   * Switch many automations on or off in one transaction.
+   *
+   * Deliberately *not* one `UPDATE … WHERE id IN (…)`, which is how the skills
+   * and subagents do it and would be the obvious thing here. Enabling an
+   * automation is three coupled writes: `enabled` is the visible half,
+   * `next_run_at` is what the sweep actually selects on — `enabled = 1 AND
+   * next_run_at IS NOT NULL` — and re-enabling clears `consecutive_failures`,
+   * or an automation the failure ceiling switched off switches itself off
+   * again on its very next failure.
+   *
+   * A second statement doing two of the three would leave automations
+   * *enabled and never firing*, which is the worst answer a button called
+   * "enable all" can give: the screen agrees with the operator and nothing
+   * happens. So the bulk verb is the single verb, once per row. The cost is N
+   * statements where the registry pays one, and it is the right trade here for
+   * the reason the registry's own note gives in reverse: a skill's row carries
+   * up to 200 000 characters and an automation's carries a cron expression.
+   *
+   * The scope is checked per row rather than in the SQL: the ids are what the
+   * operator was shown, and a screen filtered to one workspace must not be
+   * able to switch off another's by naming its ids.
+   */
+  setEnabled(ids: readonly string[], enabled: boolean, workspaceId?: string): number {
+    if (ids.length === 0) return 0;
+
+    return tx(this.deps.db, () => {
+      let changed = 0;
+      for (const id of ids) {
+        const current = this.get(id);
+        if (!current) continue;
+        if (workspaceId !== undefined && current.workspaceId !== workspaceId) continue;
+        // Counted on the value, not on the statement: "3 changed" has to mean
+        // three were switched, or the toast overstates what the press did.
+        if (current.enabled === enabled) continue;
+        if (this.update(id, { enabled })) changed += 1;
+      }
+      return changed;
+    });
   }
 
   /**

@@ -11,7 +11,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Page } from '@/components/ui/layout';
 import {
   AlertTriangle,
+  ChevronDown,
   Clock,
+  Filter,
   MoreVertical,
   Pause,
   Play,
@@ -22,6 +24,9 @@ import {
   Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AvailabilityFilter, filterByAvailability, type Availability } from '@/components/registry/AvailabilityFilter';
+import { BulkActions } from '@/components/registry/BulkActions';
+import { FILTER_ROW } from '@/components/ui/layout';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -151,10 +156,29 @@ export function AutomationsPage() {
     },
   });
 
+  /*
+   * Two filters and the bulk switch, on a screen that had neither.
+   *
+   * The scope is `all` or one workspace id — not the registry's three-way
+   * convention, because an automation belongs to exactly one workspace by
+   * schema and there is no global tier for "global only" to name.
+   */
+  const [scope, setScope] = useState<string>('all');
+  const [availability, setAvailability] = useState<Availability>('all');
+
   const automations = data?.automations ?? [];
   const workspaces = workspaceData?.workspaces ?? [];
   const workspaceName = (id: string): string =>
     workspaces.find((workspace) => workspace.id === id)?.name ?? t('Unknown workspace');
+
+  const inScope =
+    scope === 'all'
+      ? automations
+      : automations.filter((automation) => automation.workspaceId === scope);
+  // The counts on the availability chips are of the scoped list, so "Inactive 0"
+  // answers the question actually being asked: none *here*.
+  const shown = filterByAvailability(inScope, availability);
+  const filtering = scope !== 'all' || availability !== 'all';
 
   return (
     <AppShell>
@@ -177,6 +201,64 @@ export function AutomationsPage() {
       />
 
       <Page width="list">
+          {automations.length > 0 ? (
+            <div className="mb-4 space-y-3">
+              {/*
+                Scrolls, never wraps. A wrapping filter bar sits above the list
+                and steals a row from it every time it grows — measured at 237px
+                of chrome on the board before `FILTER_ROW` existed, and French
+                is where it shows, `Toutes · Actives · Inactives` being half
+                again the English.
+              */}
+              <div className={cn(FILTER_ROW, 'gap-2')}>
+                <Menu
+                  side="bottom"
+                  trigger={
+                    <Button variant="secondary" size="sm">
+                      <Filter className="size-4" aria-hidden />
+                      <span className="max-w-40 truncate">
+                        {scope === 'all' ? t('All workspaces') : workspaceName(scope)}
+                      </span>
+                      <ChevronDown className="size-3.5" aria-hidden />
+                    </Button>
+                  }
+                >
+                  <MenuLabel>{t('Workspace')}</MenuLabel>
+                  <MenuItem selected={scope === 'all'} onSelect={() => setScope('all')}>
+                    {t('All workspaces')}
+                  </MenuItem>
+                  {workspaces.length > 0 ? <MenuSeparator /> : null}
+                  {workspaces.map((workspace) => (
+                    <MenuItem
+                      key={workspace.id}
+                      selected={scope === workspace.id}
+                      onSelect={() => setScope(workspace.id)}
+                    >
+                      {workspace.name}
+                    </MenuItem>
+                  ))}
+                </Menu>
+
+                <AvailabilityFilter
+                  value={availability}
+                  onChange={setAvailability}
+                  items={inScope}
+                  label={t('Automation availability')}
+                />
+              </div>
+
+              {/* Acts on the rows on screen, never on a scope the server would
+                  widen on its own — and it is handed the workspace when one is
+                  chosen, so the server checks the reach a second time. */}
+              <BulkActions
+                kind="automation"
+                items={shown}
+                {...(scope === 'all' ? {} : { workspaceId: scope })}
+                onChanged={() => void queryClient.invalidateQueries({ queryKey: ['automations'] })}
+              />
+            </div>
+          ) : null}
+
           {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }, (_, i) => (
@@ -210,8 +292,37 @@ export function AutomationsPage() {
                 )
               }
             />
+          ) : shown.length === 0 ? (
+            /*
+             * Which emptiness this is. A filtered list that comes back empty
+             * and says only "nothing here" leaves the operator unable to tell
+             * "there are none" from "none match" — the gateway answered an
+             * empty workspace list the same way once, and its operator was
+             * told the deployment had no workspaces.
+             */
+            <EmptyState
+              icon={<Timer />}
+              title={t('Nothing matches these filters')}
+              description={plural(
+                automations.length,
+                '{n} automation is hidden by them.',
+                '{n} automations are hidden by them.',
+              )}
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setScope('all');
+                    setAvailability('all');
+                  }}
+                >
+                  {t('Clear filters')}
+                </Button>
+              }
+            />
           ) : (
-            automations.map((automation) => (
+            shown.map((automation) => (
               <Card key={automation.id} className={cn(!automation.enabled && 'opacity-65')}>
                 <div className="flex items-start gap-3 p-4">
                   <span

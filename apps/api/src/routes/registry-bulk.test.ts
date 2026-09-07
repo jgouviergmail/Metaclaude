@@ -241,3 +241,92 @@ describe('POST /api/agents/bulk', () => {
     expect(await gone.json()).toEqual({ changed: 1 });
   });
 });
+
+/**
+ * `POST /api/automations/bulk` — the edge, not the scheduler underneath.
+ *
+ * `scheduler.test.ts` proves the three coupled writes; what lives only here is
+ * what the route *accepts*. Two of its decisions differ from the registry's on
+ * purpose, and both are the kind a later reader would "fix" without a test
+ * saying otherwise: `delete` is refused, because a cron expression somebody
+ * thought about is a bigger loss than a listing row; and the scope is a plain
+ * optional id, because an automation belongs to exactly one workspace by
+ * schema and "global only" would name an empty set.
+ */
+describe('POST /api/automations/bulk', () => {
+  const makeAutomation = async (name: string, scope: string): Promise<string> => {
+    const response = await post('/api/automations', {
+      workspaceId: scope,
+      name,
+      prompt: 'do the thing',
+      trigger: { type: 'interval', everyMs: 30 * 60_000 },
+    });
+    expect(response.status).toBe(201);
+    return ((await response.json()) as { automation: { id: string } }).automation.id;
+  };
+
+  const automationsIn = async (
+    scope: string,
+  ): Promise<Array<{ id: string; enabled: boolean; nextRunAt: number | null }>> => {
+    const response = await fetch(`${baseUrl}/api/automations?workspaceId=${scope}`, {
+      headers: { cookie: cookies },
+    });
+    return (
+      (await response.json()) as {
+        automations: Array<{ id: string; enabled: boolean; nextRunAt: number | null }>;
+      }
+    ).automations;
+  };
+
+  it('switches a whole screenful off, and back on with a schedule', async () => {
+    const ids = [
+      await makeAutomation('Bulk one', workspaceId),
+      await makeAutomation('Bulk two', workspaceId),
+    ];
+
+    const off = await post('/api/automations/bulk', { action: 'disable', ids });
+    expect(off.status).toBe(200);
+    expect(((await off.json()) as { changed: number }).changed).toBe(2);
+    for (const one of (await automationsIn(workspaceId)).filter((a) => ids.includes(a.id))) {
+      expect(one.enabled).toBe(false);
+      expect(one.nextRunAt).toBeNull();
+    }
+
+    const on = await post('/api/automations/bulk', { action: 'enable', ids });
+    expect(((await on.json()) as { changed: number }).changed).toBe(2);
+    for (const one of (await automationsIn(workspaceId)).filter((a) => ids.includes(a.id))) {
+      expect(one.enabled).toBe(true);
+      // The half a single UPDATE would drop: the sweep selects on this, so an
+      // enabled automation without it is one that never fires.
+      expect(one.nextRunAt).not.toBeNull();
+    }
+  });
+
+  it('refuses to delete, which is not a bulk action here', async () => {
+    const id = await makeAutomation('Bulk keeper', workspaceId);
+
+    const response = await post('/api/automations/bulk', { action: 'delete', ids: [id] });
+
+    expect(response.status).toBe(400);
+    expect((await automationsIn(workspaceId)).some((one) => one.id === id)).toBe(true);
+  });
+
+  it('refuses an empty list rather than reporting nothing changed', async () => {
+    expect((await post('/api/automations/bulk', { action: 'disable', ids: [] })).status).toBe(400);
+  });
+
+  it('will not reach an automation outside the workspace it was scoped to', async () => {
+    const other = await post('/api/workspaces', { name: 'Bulk elsewhere' });
+    const otherId = ((await other.json()) as { workspace: { id: string } }).workspace.id;
+    const theirs = await makeAutomation('Bulk theirs', otherId);
+
+    const response = await post('/api/automations/bulk', {
+      action: 'disable',
+      ids: [theirs],
+      workspaceId,
+    });
+
+    expect(((await response.json()) as { changed: number }).changed).toBe(0);
+    expect((await automationsIn(otherId)).find((one) => one.id === theirs)!.enabled).toBe(true);
+  });
+});
