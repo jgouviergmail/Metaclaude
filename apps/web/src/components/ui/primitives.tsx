@@ -364,7 +364,14 @@ export function CardHeader({
   // the wrong way.
   const help = useDisclosedDescription(description, typeof title === 'string' ? title : undefined);
   return (
-    <div className={cn('flex items-start justify-between gap-4 border-b border-line p-gutter', className)}>
+    <div
+      className={cn(
+        // The same tinted band a `Section` carries, so a card's heading and a
+        // section's read as one idea rather than two conventions.
+        'flex items-start justify-between gap-4 rounded-t-xl border-b border-section-line bg-section p-gutter',
+        className,
+      )}
+    >
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
           <Heading className="truncate text-body font-semibold text-ink">{title}</Heading>

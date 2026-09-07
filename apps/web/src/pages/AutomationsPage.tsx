@@ -21,7 +21,7 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -53,8 +53,8 @@ import { api, ApiError } from '@/lib/api';
 import { TOUCH_TARGET } from '@/components/ui/touch-target';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
-import { modelOptions } from '@/lib/claude-catalogue';
-import { routes, type ModelSelector } from '@metaclaude/shared';
+import { effortOptions, modelOptions } from '@/lib/claude-catalogue';
+import { routes, type EffortLevel, type ModelSelector } from '@metaclaude/shared';
 
 /** Ready-made schedules, so nobody has to remember cron syntax to get started. */
 /**
@@ -446,6 +446,7 @@ function AutomationEditor({
    * same catalogue: a model this deployment cannot reach is not offered.
    */
   const [model, setModel] = useState<ModelSelector>(automation?.policy.model ?? 'default');
+  const [effort, setEffort] = useState<EffortLevel | null>(automation?.policy.effort ?? null);
 
   /*
    * The catalogue of the workspace this automation runs in — not a fixed list.
@@ -463,6 +464,33 @@ function AutomationEditor({
   });
   const models = useMemo(() => modelOptions(catalogueQuery.data), [catalogueQuery.data]);
   const activeModel = models.find((entry) => entry.value === model);
+
+  /*
+   * Which efforts this model actually offers.
+   *
+   * Not a fixed list: a model that does not support effort offers only
+   * "default", and under `Auto` the learner picks the model at submit time so
+   * nothing can be ruled out. Same function the composer uses, so the two
+   * cannot disagree about what a model can do.
+   */
+  const efforts = useMemo(
+    () => effortOptions(catalogueQuery.data, String(model)),
+    [catalogueQuery.data, model],
+  );
+  const activeEffort = efforts.find((entry) => entry.value === effort);
+
+  /*
+   * An effort the new model does not offer is dropped, not merely hidden.
+   *
+   * Changing the model changes the list, and the composer's own picker shows
+   * the first entry while leaving the stored value alone — display and payload
+   * disagreeing, which is the defect the model button above was fixed for. An
+   * automation fires unattended, so it must not carry a setting nobody can see
+   * they chose.
+   */
+  useEffect(() => {
+    if (effort !== null && !efforts.some((entry) => entry.value === effort)) setEffort(null);
+  }, [efforts, effort]);
   const [maxFailures, setMaxFailures] = useState(automation?.maxConsecutiveFailures ?? 3);
   // The zone the server reads every cron expression in, shown beside the
   // field: eight o'clock on a UTC host is ten in Paris all summer.
@@ -499,6 +527,7 @@ function AutomationEditor({
     setPermissionMode(from.policy.permissionMode);
     setNotify(from.policy.notify);
     setModel(from.policy.model);
+    setEffort(from.policy.effort);
     setMaxFailures(from.maxConsecutiveFailures);
   };
 
@@ -540,6 +569,7 @@ function AutomationEditor({
     if (permissionMode !== automation.policy.permissionMode) policy.permissionMode = permissionMode;
     if (notify !== automation.policy.notify) policy.notify = notify;
     if (model !== automation.policy.model) policy.model = model;
+    if (effort !== automation.policy.effort) policy.effort = effort;
     if (Object.keys(policy).length > 0) patch.policy = policy;
     return patch;
   };
@@ -559,7 +589,7 @@ function AutomationEditor({
         trigger: buildTrigger(),
         continuous,
         maxConsecutiveFailures: maxFailures,
-        policy: { permissionMode, notify, model },
+        policy: { permissionMode, notify, model, effort },
         workspaceId,
       });
     },
@@ -817,7 +847,18 @@ function AutomationEditor({
             <Menu
               side="bottom"
               trigger={
-                <Button variant="secondary" size="sm" className="w-full justify-between">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full justify-between"
+                  // Both pickers default to the label `Auto`, so that name
+                  // alone identifies neither — for a screen reader, for voice
+                  // control, or for a test. The visible text stays short; the
+                  // name says which setting it is.
+                  aria-label={t('Model: {value}', {
+                    value: activeModel ? t(activeModel.label) : String(model),
+                  })}
+                >
                   {/*
                     * Three cases, and the middle one is why this is not a
                     * `??` chain on a label.
@@ -842,6 +883,37 @@ function AutomationEditor({
                   selected={entry.value === model}
                   onSelect={() => setModel(entry.value)}
                   description={entry.hint}
+                >
+                  {t(entry.label)}
+                </MenuItem>
+              ))}
+            </Menu>
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-body font-medium text-ink">{t('Effort')}</span>
+            <Menu
+              side="bottom"
+              trigger={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full justify-between"
+                  disabled={efforts.length <= 1}
+                  aria-label={t('Effort: {value}', {
+                    value: t(activeEffort?.label ?? efforts[0]?.label ?? 'Auto'),
+                  })}
+                >
+                  {t(activeEffort?.label ?? efforts[0]?.label ?? 'Default')}
+                </Button>
+              }
+            >
+              <MenuLabel>{t('How hard it thinks before answering')}</MenuLabel>
+              {efforts.map((entry) => (
+                <MenuItem
+                  key={entry.value ?? 'default'}
+                  selected={entry.value === effort}
+                  onSelect={() => setEffort(entry.value)}
                 >
                   {t(entry.label)}
                 </MenuItem>

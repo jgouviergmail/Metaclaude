@@ -11,6 +11,59 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.67.0] — 2026-09-07
+
+### Added
+
+- **A tinted band behind every section heading.** The rule alone separates a
+  section from the one above it; it does not say where a section *starts*,
+  which is the question on a settings screen carrying eight of them. Hue 250
+  rather than the accent's 275, deliberately: the accent is a blue-violet, and
+  a heading in it reads as "this section is selected" — the signal the current
+  nav chip already uses. Opaque, never an alpha over the surface: a translucent
+  band changes colour with whatever it sits on, and a heading that shifts hue
+  down the page is worse than no tint at all. Both themes, one token each.
+- **A workspace's settings, from inside a session of it.** A session runs
+  *under* those settings — the model, the permission mode, whether files are
+  checkpointed — and reaching them meant leaving the session for the workspace
+  screen and coming back. The dialog was a local function of that screen, so it
+  could not be offered anywhere else; it is a component now, with two callers.
+- **An automation chooses its effort, beside its model.** Same shape as the
+  model last release: `AutomationPolicy.effort` has been in the schema since
+  the feature shipped, the scheduler has always forwarded it, and no form ever
+  set it. It offers what the chosen model supports — under `Auto` the learner
+  picks the model at submit time, so nothing can be ruled out — and drops a
+  level the newly chosen model does not offer, rather than keeping a value
+  nobody can see they chose.
+
+### Fixed
+
+- **The memory gate could only be disagreed with in one direction.** A refused
+  note could be kept; a kept one could not be undone — and the note that
+  matters most is a wrong *keep*, already in the corpus and already being
+  recalled. `Forget` deletes the memory the keep created, and the row then
+  offers `Keep` again, so the decision is reversible either way.
+- **A decision, once made, left the screen for good.** The insight list asked
+  the server for `new` only, so what the system learned and what it was refused
+  — the two things the review exists for — could never be looked at again, and
+  "did I already reject this?" had no answer here. Three filters now, and the
+  heading follows: `Insights awaiting review` over a list of rejected ones is a
+  lie the eye reads before the chips.
+- **A failed language write was swallowed**, under a comment claiming the
+  interface changing had already reported it. Backwards: the interface changes
+  whatever happens, so a failure left the app in French and the deployment
+  still writing English with nothing on screen to say the two had come apart.
+  Reported from use — twenty-two memories in English under a French interface.
+  It says so now, and names the setting to fix.
+- The workspace settings dialog **crashed on a partial settings object**. It
+  read `settings.defaultPermissionMode` straight into a lookup table, which is
+  safe only while every caller hands over a complete one — true of its single
+  caller, false the moment a second appeared. It parses through the contract
+  now, so it survives any caller, which is what a shared component has to do.
+- Both automation pickers defaulted to the label `Auto`, so neither could be
+  named — by a screen reader, by voice control, or by a test. Each carries its
+  own name: `Model: Auto`, `Effort: Auto`.
+
 ## [0.66.0] — 2026-09-07
 
 ### Changed

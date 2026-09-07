@@ -44,7 +44,7 @@ const automation = (over: Record<string, unknown> = {}) => ({
   nextRunAt: 1_700_000_600_000,
   consecutiveFailures: 0,
   sessionId: null,
-  policy: { permissionMode: 'default', notify: false, model: 'claude-sonnet-5' },
+  policy: { permissionMode: 'default', notify: false, model: 'claude-sonnet-5', effort: 'high' },
   createdAt: 0,
   updatedAt: 0,
   ...over,
@@ -65,8 +65,20 @@ beforeEach(() => {
   // what that is — an empty catalogue would offer nothing to choose.
   apiMock.claudeCatalogue.mockResolvedValue({
     models: [
-      { value: 'claude-opus-5', displayName: 'Opus 5', description: 'The deep one' },
-      { value: 'claude-sonnet-5', displayName: 'Sonnet 5', description: 'The quick one' },
+      {
+        value: 'claude-opus-5',
+        displayName: 'Opus 5',
+        description: 'The deep one',
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+      },
+      {
+        value: 'claude-sonnet-5',
+        displayName: 'Sonnet 5',
+        description: 'The quick one',
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium'],
+      },
     ],
     efforts: [],
   });
@@ -203,7 +215,7 @@ describe('the form', () => {
     expect(apiMock.createAutomation).toHaveBeenCalledWith(
       expect.objectContaining({
         trigger: { type: 'event', event: 'run_succeeded', filter: 'deploy' },
-        policy: { permissionMode: 'default', notify: true, model: 'default' },
+        policy: { permissionMode: 'default', notify: true, model: 'default', effort: null },
       }),
     );
   });
@@ -229,7 +241,7 @@ describe('the form', () => {
 
     // `Auto` is `modelOptions`' own first entry - what a run gets when nobody
     // chose. Its presence is what says the picker is wired to the catalogue.
-    const trigger = await screen.findByRole('button', { name: 'Auto' });
+    const trigger = await screen.findByRole('button', { name: /^Model:/ });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     fireEvent.click(trigger);
 
@@ -256,8 +268,66 @@ describe('the form', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     await screen.findByRole('dialog');
 
-    expect(await screen.findByRole('button', { name: 'claude-sonnet-5' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Auto' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Model: claude-sonnet-5' })).toBeTruthy();
+  });
+
+  /**
+   * The effort, which the schema carried and no form ever set — exactly as the
+   * model did until this release, and the scheduler forwards both.
+   */
+  it('offers the effort levels under Auto, where nothing can be ruled out', async () => {
+    /*
+     * Asserted on the trigger rather than by opening the menu: Radix's menu
+     * needs a pointer event and a frame, and what the contract actually says
+     * is *whether there is a choice to make*. Under `Auto` the learner picks
+     * the model at submit time, so every level stays possible and the control
+     * is live.
+     */
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+    const open = screen.getByRole('button', { name: 'New automation' }) as HTMLButtonElement;
+    await waitFor(() => expect(open.disabled).toBe(false));
+    fireEvent.click(open);
+    await screen.findByRole('dialog');
+
+    const trigger = (await screen.findByRole('button', { name: /^Effort:/ })) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(false);
+    expect(trigger.getAttribute('aria-label')).toBe('Effort: Auto');
+  });
+
+  it('drops an effort the newly chosen model does not offer', async () => {
+    /*
+     * Changing the model changes the list. The composer's own picker shows the
+     * first entry while leaving the stored value alone — display and payload
+     * disagreeing — and an automation fires unattended, so it must not carry a
+     * setting nobody can see they chose.
+     */
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByRole('dialog');
+
+    /*
+     * Asserted on what is *sent*, not on what is shown.
+     *
+     * The first version of this checked the trigger's label and passed with
+     * the reset removed: the label falls back to the first option, so it reads
+     * `Auto` whether the value was dropped or merely hidden. That is the whole
+     * defect — display and payload disagreeing — so the assertion has to reach
+     * the payload.
+     *
+     * The fixture is Sonnet at `high`, and Sonnet reports low/medium only.
+     */
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Diagnose it.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(apiMock.updateAutomation).toHaveBeenCalled());
+    const [, body] = apiMock.updateAutomation.mock.calls[0] as [string, { policy?: { effort?: unknown } }];
+    expect(body.policy?.effort).toBeNull();
   });
 
   it('starts from the automation’s own model when editing, not from the default', async () => {
@@ -273,7 +343,7 @@ describe('the form', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     await screen.findByRole('dialog');
 
-    expect(await screen.findByRole('button', { name: 'Sonnet 5' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Model: Sonnet 5' })).toBeTruthy();
   });
 });
 
@@ -296,7 +366,7 @@ describe('editing an automation', () => {
     // A model, as Zod guarantees one in production: `AutomationPolicy.model`
     // has `.default('default')`, so a stored policy always carries it. A
     // fixture without one made the form report a change nobody made.
-    policy: { permissionMode: 'default', notify: true, model: 'claude-sonnet-5' },
+    policy: { permissionMode: 'default', notify: true, model: 'claude-sonnet-5', effort: null },
   });
 
   /**

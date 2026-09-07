@@ -7,7 +7,16 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Files, GitBranch, MoreVertical, Plus, Sparkles, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Files,
+  GitBranch,
+  MoreVertical,
+  Plus,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -18,6 +27,7 @@ import {
   type PermissionMode,
 } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { WorkspaceSettingsModal } from '@/components/workspace/WorkspaceSettingsModal';
 import { Composer, type ComposerValue } from '@/components/transcript/Composer';
 import { MessageStream } from '@/components/transcript/MessageStream';
 import { RewindDialog } from '@/components/transcript/RewindDialog';
@@ -65,6 +75,7 @@ export function SessionPage() {
 
   const [panel, setPanel] = useState<SidePanel>('none');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false);
   /** The run whose file changes the operator is considering undoing. */
   const [rewinding, setRewinding] = useState<string | null>(null);
 
@@ -357,6 +368,22 @@ export function SessionPage() {
       onSelect: () => setPanel(panel === 'git' ? 'none' : 'git'),
     },
     {
+      /*
+       * The workspace's own settings, from inside a session of it.
+       *
+       * A session runs *under* those settings — the model, the permission
+       * mode, whether files are checkpointed — and reaching them meant leaving
+       * the session for the workspace screen and coming back. The dialog was a
+       * local function of that screen, which is why it could not be offered
+       * here before; it is a component now, with two callers.
+       */
+      key: 'workspace-settings',
+      label: t('Workspace settings'),
+      icon: <SlidersHorizontal className="size-4" />,
+      pressed: undefined as boolean | undefined,
+      onSelect: () => setShowWorkspaceSettings(true),
+    },
+    {
       key: 'delete',
       label: t('Delete session'),
       icon: <Trash2 className="size-4" />,
@@ -526,6 +553,18 @@ export function SessionPage() {
           )}
         </div>
       ) : null}
+
+      {/* Its settings are the ones this session runs under, so it is reached
+          from here rather than from the workspace screen and back. */}
+      <WorkspaceSettingsModal
+        open={showWorkspaceSettings}
+        onOpenChange={setShowWorkspaceSettings}
+        workspaceId={workspace.id}
+        settings={workspace.settings}
+        name={workspace.name}
+        description={workspace.description}
+        locked={Boolean(workspaceQuery.data?.isSystem)}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

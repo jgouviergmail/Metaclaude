@@ -76,6 +76,24 @@
   --mc-accent: oklch(54% 0.19 275);
   --mc-accent-hover: oklch(48% 0.2 275);
   --mc-accent-soft: oklch(94% 0.03 275);
+
+  /*
+   * The tint behind a section's own heading.
+   *
+   * Hue 250 rather than the accent's 275: the accent is a blue-violet, and a
+   * heading band in it reads as "this section is selected" — the same signal
+   * the current nav chip and the pressed toggle already use. 250 is plainly
+   * blue and belongs to nothing else, so it says "this is a heading" and
+   * nothing more.
+   *
+   * Opaque, not an alpha over the surface: a translucent band changes colour
+   * with whatever it sits on — inside a card, over the sunken well of a code
+   * block — and a heading that shifts hue down the page is worse than no tint
+   * at all. The rule under it is the same hue a step down, so the band closes
+   * on something related rather than on the generic border.
+   */
+  --mc-section-tint: oklch(96.5% 0.022 250);
+  --mc-section-line: oklch(88% 0.045 250);
   --mc-accent-text: oklch(100% 0 0);
 
   /* Semantic states. */
@@ -167,6 +185,16 @@
   --mc-accent: oklch(68% 0.16 275);
   --mc-accent-hover: oklch(74% 0.16 275);
   --mc-accent-soft: oklch(28% 0.06 275);
+
+  /*
+   * Dark: the same idea, inverted. `--mc-surface` is 18.5% at hue 275, so the
+   * band lifts to 24% and moves to 250 — light enough to read as a distinct
+   * strip on both `bg` and `surface`, dark enough that white text keeps its
+   * contrast, and far enough from `accent-soft` (28% 0.06 275) that a heading
+   * is never mistaken for a selected chip.
+   */
+  --mc-section-tint: oklch(24% 0.032 250);
+  --mc-section-line: oklch(34% 0.05 250);
   --mc-accent-text: oklch(14% 0.01 275);
 
   --mc-success: oklch(72% 0.15 155);
@@ -269,6 +297,8 @@
   --color-accent: var(--mc-accent);
   --color-accent-hover: var(--mc-accent-hover);
   --color-accent-soft: var(--mc-accent-soft);
+  --color-section: var(--mc-section-tint);
+  --color-section-line: var(--mc-section-line);
   --color-accent-ink: var(--mc-accent-text);
   --color-success: var(--mc-success);
   --color-success-soft: var(--mc-success-soft);

@@ -103,6 +103,9 @@ const { apiMock, toastMock } = vi.hoisted(() => ({
       id: 'mcpServer_1',
       connector: { name, title: name, installed: true },
     })),
+    saveMcpServer: vi.fn(async (_body: Record<string, unknown>) => ({
+      server: { id: 'mcp_1', name: 'google' },
+    })),
   },
 }));
 
@@ -568,5 +571,55 @@ describe('withDescriptions', () => {
 
   it('is a no-op when nothing was asked', () => {
     expect(withDescriptions(tools, undefined)).toEqual(tools);
+  });
+});
+
+/**
+ * Flipping the switch saves the switch, and nothing else.
+ *
+ * It used to open the editor instead, on the plea that the write endpoint
+ * replaced the whole secret set — which stopped being true when
+ * `upsertMcpServer` began *merging* submitted secrets over the stored ones.
+ * The comment outlived the behaviour, and the cost was paid by the one server
+ * whose credentials an operator cannot retype: `google` arrives holding a
+ * refresh token nobody has a copy of, so a dialog asking for its three secrets
+ * asks for something that exists only in the vault.
+ */
+describe('the MCP tab: the enable switch', () => {
+  it('turns a server on in place, without opening the editor', async () => {
+    apiMock.mcpServers.mockResolvedValue({
+      servers: [
+        {
+          ...mcpServer,
+          id: 'mcp_g',
+          name: 'google',
+          transport: 'stdio' as const,
+          command: '/usr/local/bin/node',
+          args: ['/opt/metaclaude/apps/api/dist/integrations/google/main.js', '--grants', 'gmail.read'],
+          url: null,
+          envKeys: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN'],
+          enabled: false,
+        },
+      ],
+    } as never);
+
+    renderWithProviders(<AgentsPage />);
+    await openMcpTab();
+
+    const toggle = await screen.findByRole('switch', { name: /Enable server google/i });
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(apiMock.saveMcpServer).toHaveBeenCalledTimes(1));
+    const body = apiMock.saveMcpServer.mock.calls[0]![0];
+    expect(body.id).toBe('mcp_g');
+    expect(body.enabled).toBe(true);
+    // Blank values are what tells the API "keep what is stored"; naming a key
+    // in `removeEnvKeys` is what deletes it, and a save that merely flips the
+    // switch must never do that.
+    expect(body.removeEnvKeys).toEqual([]);
+    expect(body.env).toEqual({});
+
+    // No dialog: the editor's own title is what would give it away.
+    expect(screen.queryByRole('heading', { name: 'Edit MCP server' })).toBeNull();
   });
 });

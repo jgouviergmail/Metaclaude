@@ -162,7 +162,7 @@ export function registerIntegrationRoutes(app: App, context: AppContext): void {
     try {
       const status = await google.complete({ state: query.state, code: query.code });
       // Only now does the connection become a thing a run could use — and it
-      // arrives disabled.
+      // arrives switched on, because consenting to the grants is the decision.
       syncGoogleMcpServer({ registry: context.registry, google });
       context.audit.record({
         actor: status.connectedBy ?? 'unknown',

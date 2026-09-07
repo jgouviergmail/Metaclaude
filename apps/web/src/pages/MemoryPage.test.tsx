@@ -828,3 +828,116 @@ describe('the constellation is revealed, not imposed', () => {
   });
 });
 
+
+/**
+ * Two things the review screen could not do.
+ *
+ * The gate's verdict could be disagreed with in exactly one direction — a
+ * refused note could be kept, a kept one could not be undone — and the note
+ * that matters most is the wrong *keep*, which is already in the corpus and
+ * will be recalled. And a decision, once made, left the screen for good: what
+ * the system learned and what it was refused were the two things the review
+ * was for, and neither could be looked at again.
+ */
+const gateInsight = (over: Record<string, unknown> = {}) => ({
+  id: 'ins_g',
+  workspaceId: null,
+  runId: 'run_1',
+  kind: 'lesson',
+  title: 'What the gate decided',
+  body: 'x',
+  confidence: 0.7,
+  status: 'new',
+  // Built to the shared contract, not to a shape I assumed: `readDecisions`
+  // parses with `ReflexionInsightPayload`, and a fixture that misses a field —
+  // or names an outcome the enum does not have — silently renders the plain
+  // body instead, which reads as a broken component.
+  payload: JSON.stringify({
+    kind: 'reflexion',
+    decisions: [
+      {
+        title: 'A refused note',
+        content: 'c',
+        kind: 'semantic',
+        tags: [],
+        level: 'redundant',
+        outcome: 'skipped',
+        reason: 'too vague',
+        memoryId: null,
+        shelf: null,
+      },
+      {
+        title: 'A kept note',
+        content: 'c',
+        kind: 'semantic',
+        tags: [],
+        level: 'lesson',
+        outcome: 'kept',
+        reason: '',
+        memoryId: 'mem_kept',
+        shelf: 'durable',
+      },
+    ],
+  }),
+  createdAt: 1_700_000_000_000,
+  ...over,
+});
+
+describe('disagreeing with the memory gate', () => {
+  it('offers Keep on a refused note and Forget on a kept one', async () => {
+    apiMock.insights.mockResolvedValue({ insights: [gateInsight()] });
+    renderWithProviders(<MemoryPage />);
+
+    // Wait on the insight itself, not on the heading: the heading is there
+    // before the query answers, so asserting after it reads an empty list.
+    await screen.findByText('What the gate decided');
+    expect(await screen.findByRole('button', { name: 'Keep A refused note' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Forget A kept note' })).toBeDefined();
+  });
+
+  it('forgets the memory the keep created, not the insight', async () => {
+    // The row names a memory; undoing a keep is deleting that memory. Rejecting
+    // the whole insight would throw away the other decisions with it.
+    apiMock.insights.mockResolvedValue({ insights: [gateInsight()] });
+    apiMock.deleteMemory.mockResolvedValue({ ok: true });
+    renderWithProviders(<MemoryPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Forget A kept note' }));
+    await waitFor(() => expect(apiMock.deleteMemory).toHaveBeenCalledWith('mem_kept'));
+    expect(apiMock.setInsightStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('looking back at insights already decided', () => {
+  it('asks the server for the status the operator chose', async () => {
+    apiMock.insights.mockResolvedValue({ insights: [] });
+    renderWithProviders(<MemoryPage />);
+
+    await waitFor(() =>
+      expect(apiMock.insights).toHaveBeenCalledWith(expect.objectContaining({ status: 'new' })),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Kept' }));
+    await waitFor(() =>
+      expect(apiMock.insights).toHaveBeenCalledWith(expect.objectContaining({ status: 'accepted' })),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rejected' }));
+    await waitFor(() =>
+      expect(apiMock.insights).toHaveBeenCalledWith(expect.objectContaining({ status: 'rejected' })),
+    );
+  });
+
+  it('renames the heading, so it never says "awaiting review" over rejected ones', async () => {
+    // The heading is read before the chips are; leaving it fixed would make
+    // the screen state its own opposite.
+    apiMock.insights.mockResolvedValue({ insights: [] });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByRole('button', { name: 'Kept' });
+
+    expect(screen.getByRole('heading', { name: /awaiting review/i })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Rejected' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: /rejected/i })).toBeDefined());
+    expect(screen.queryByRole('heading', { name: /awaiting review/i })).toBeNull();
+  });
+});

@@ -94,7 +94,7 @@ export function AdvisorCard() {
 
   return (
     <Card>
-      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+      <div className="flex items-center justify-between gap-2 rounded-t-xl border-b border-section-line bg-section px-4 py-3">
         <div className="flex items-center gap-2">
           <Compass className="size-4 text-accent" aria-hidden />
           <h2 className="text-body font-semibold text-ink">{t('The advisor')}</h2>

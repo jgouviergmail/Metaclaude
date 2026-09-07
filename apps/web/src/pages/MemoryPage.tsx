@@ -12,7 +12,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Page, Section } from '@/components/ui/layout';
+import { FILTER_ROW, Page, Section } from '@/components/ui/layout';
 import {
   Archive,
   Brain,
@@ -58,6 +58,7 @@ import { ScopeBadge, scopeName } from '@/components/memory/ScopeBadge';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
+  CHIP,
   Badge,
   Button,
   Card,
@@ -237,6 +238,25 @@ function sourceHrefOf(
   return source ? routes.session(source.workspaceId, source.sessionId) : null;
 }
 
+/**
+ * The three states an insight can be looked at in.
+ *
+ * `applied` is deliberately not offered: it is what a consolidation becomes
+ * once its merge has run, and the rows it acted on are in the memory list
+ * above — a fourth filter would be a list of things whose effect is already
+ * visible elsewhere.
+ *
+ * Each carries its own heading, because "Insights awaiting review" over a list
+ * of rejected ones is a lie the eye reads before the chips.
+ */
+const INSIGHT_STATUS_FILTERS = [
+  { value: 'new' as const, label: 'Awaiting review', heading: 'Insights awaiting review' },
+  { value: 'accepted' as const, label: 'Kept', heading: 'Insights you kept' },
+  { value: 'rejected' as const, label: 'Rejected', heading: 'Insights you rejected' },
+];
+
+type InsightStatus = (typeof INSIGHT_STATUS_FILTERS)[number]['value'];
+
 export function MemoryPage() {
   const t = useT();
   const plural = usePlural();
@@ -303,9 +323,22 @@ export function MemoryPage() {
     enabled: recallQuery.length > 0,
   });
 
+  /*
+   * Which insights the list shows.
+   *
+   * `new` only, until now — so an operator could accept or reject a lesson and
+   * then never see it again. What the system learned, and what it was refused,
+   * are the two things the review was *for*: a decision you cannot look back
+   * at is a decision you cannot check, and "did I already reject this?" had no
+   * answer on this screen. The API has always taken the filter; only the
+   * control was missing.
+   */
+  const [insightStatus, setInsightStatusFilter] = useState<InsightStatus>('new');
+
   const insightsQuery = useQuery({
-    queryKey: ['insights', 'new', workspaceId ?? null],
-    queryFn: () => api.insights({ status: 'new', ...(workspaceId ? { workspaceId } : {}) }),
+    queryKey: ['insights', insightStatus, workspaceId ?? null],
+    queryFn: () =>
+      api.insights({ status: insightStatus, ...(workspaceId ? { workspaceId } : {}) }),
   });
 
   /* ------------------------------ Mutations ------------------------------- */
@@ -1015,8 +1048,26 @@ export function MemoryPage() {
                   className="flex items-center gap-2 text-body font-semibold text-ink"
                 >
                   <Lightbulb className="size-4 text-warning" aria-hidden />
-                  {t('Insights awaiting review')}
+                  {t(INSIGHT_STATUS_FILTERS.find((f) => f.value === insightStatus)!.heading)}
                 </h2>
+                <div className={cn(FILTER_ROW, 'gap-1.5 pt-1')} role="group" aria-label={t('Insight status')}>
+                  {INSIGHT_STATUS_FILTERS.map((filter) => (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      aria-pressed={insightStatus === filter.value}
+                      onClick={() => setInsightStatusFilter(filter.value)}
+                      className={cn(
+                        CHIP,
+                        insightStatus === filter.value
+                          ? 'bg-accent-soft font-medium text-accent'
+                          : 'border border-line text-muted hover:text-ink',
+                      )}
+                    >
+                      {t(filter.label)}
+                    </button>
+                  ))}
+                </div>
                 <p className="text-caption leading-relaxed text-muted">
                   {t(
                     "Distilled by the reflexion pass after a run. Proposals are never installed automatically — nothing here changes the agent's behaviour until you accept it.",
@@ -1108,7 +1159,7 @@ export function MemoryPage() {
                         return (
                           <div className="space-y-2">
                             <p className="text-caption text-subtle">
-                              {t('What the memory gate made of each note this run proposed. A refused note can still be kept.')}
+                              {t('What the memory gate made of each note this run proposed. A refused note can still be kept, and a kept one forgotten.')}
                             </p>
                             <ul className="space-y-2">
                               {gate.decisions.map((decision, index) => (
@@ -1119,6 +1170,21 @@ export function MemoryPage() {
                                     <span className="font-medium text-ink">{decision.title}</span>
                                     {decision.reason ? <span className="text-subtle"> — {decision.reason}</span> : null}
                                   </span>
+                                  {/*
+                                    * Both directions, because the gate is a
+                                    * judgement and not a verdict.
+                                    *
+                                    * A refused note could be kept and a kept
+                                    * one could not be undone — so disagreeing
+                                    * with the gate was possible in exactly one
+                                    * direction, and the note that mattered
+                                    * most (a wrong keep, which is now in the
+                                    * corpus and will be recalled) was the one
+                                    * with no way back. `Forget` deletes the
+                                    * memory the keep created; the row then
+                                    * offers `Keep` again, so the decision
+                                    * stays reversible either way.
+                                    */}
                                   {REFUSED.has(decision.outcome) && !decision.memoryId ? (
                                     <Button
                                       size="sm"
@@ -1132,6 +1198,19 @@ export function MemoryPage() {
                                       aria-label={t('Keep {title}', { title: decision.title })}
                                     >
                                       {t('Keep')}
+                                    </Button>
+                                  ) : decision.memoryId ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => deleteMemory.mutate(decision.memoryId as string)}
+                                      loading={
+                                        deleteMemory.isPending &&
+                                        deleteMemory.variables === decision.memoryId
+                                      }
+                                      aria-label={t('Forget {title}', { title: decision.title })}
+                                    >
+                                      {t('Forget')}
                                     </Button>
                                   ) : null}
                                 </li>

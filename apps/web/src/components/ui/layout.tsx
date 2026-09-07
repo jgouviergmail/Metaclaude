@@ -156,7 +156,21 @@ export function Section({
   const help = useDisclosedDescription(description, typeof title === 'string' ? title : undefined);
   return (
     <section aria-labelledby={`${id}-title`} className={className}>
-      <header className="flex items-start justify-between gap-4 border-b border-line pb-2">
+      {/*
+        * A tinted band, bled to the section's edges.
+        *
+        * The rule alone separates a section from the one above it; it does not
+        * say where a section *starts*, which is the question on a settings
+        * screen carrying eight of them. A light opaque band answers it at a
+        * glance without enclosing the content — the point of a section is that
+        * it is not a box.
+        *
+        * `-mx-3 px-3` so the tint reaches past the text on both sides and
+        * reads as a band rather than a highlighted word; the rounded top
+        * finishes it. `rounded-t-lg` only: the bottom is the rule, and a
+        * radius there would detach the band from the content it introduces.
+        */}
+      <header className="-mx-3 flex items-start justify-between gap-4 rounded-t-lg border-b border-section-line bg-section px-3 pb-2 pt-2">
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             {icon ? (

@@ -747,6 +747,19 @@ restates the code is noise; one that records a decision or a trap is not.
   something mutates the DOM — proved by four crossed cases. So a responsive
   test passes or fails depending on whether React happened to re-render in
   between. Set the width **before** the render, never after.
+- **A test fixture is derived from the schema, never written from memory.**
+  Five in one session were wrong, and every one looked like a broken component:
+  an `outcome: 'refused'` that `GateOutcome` does not have, a
+  `level: 'workspace'` absent from `GateLevel`, a settings object missing half
+  its fields, `sonner` unmocked so the assertion watched the real module, a role
+  never set so the branch under test never ran. The shape is always the same —
+  the parse fails, the component falls back to its degraded rendering, and the
+  test times out on an element that was never going to appear. Build it with
+  `Schema.parse({})` where the schema has defaults, or read the enum before
+  typing a value into a fixture; and when a test fails, read the contract
+  before touching the code, because four times out of five here the code was
+  right.
+
 - **Moving a screen breaks everything that pointed at it, and nothing tells
   you.** The machine left Settings for a screen of its own, and four things
   went on pointing where it used to be: the guide's `Settings → Server` (caught

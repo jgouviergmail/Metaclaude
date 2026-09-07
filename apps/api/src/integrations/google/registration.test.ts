@@ -74,15 +74,16 @@ describe('putting the connection on the MCP shelf', () => {
     expect(stored()).toBeUndefined();
   });
 
-  it('creates a disabled stdio server once Google is connected', async () => {
-    // Disabled matters more here than for a skill: an enabled MCP server is
-    // mounted into every run of every workspace, so a connection that switched
-    // itself on would put a live mailbox in front of every agent.
+  it('creates an enabled stdio server once Google is connected', async () => {
+    // Consent *is* the decision. An operator who has just walked their Cloud
+    // project through Google's consent screen, for grants they picked one by
+    // one, has said what they want; a connection that then landed switched off
+    // on a screen they were not sent to reads as the connection having failed.
     await connect();
     sync();
 
     const server = stored()!;
-    expect(server.enabled).toBe(false);
+    expect(server.enabled).toBe(true);
     expect(server.transport).toBe('stdio');
     expect(server.command).toBe(NODE);
     expect(server.args).toEqual([ENTRY, '--grants', 'gmail.read,calendar.write']);
@@ -153,6 +154,34 @@ describe('putting the connection on the MCP shelf', () => {
     const server = stored()!;
     expect(server.enabled).toBe(true);
     expect(server.args).toEqual([ENTRY, '--grants', 'drive.write']);
+  });
+
+  it('keeps the switch off when the operator turned it off', async () => {
+    // The other half of the same rule: the default is only a default. Someone
+    // who deliberately switched the server off and then re-consented to add a
+    // grant must not find it back on.
+    await connect();
+    const id = sync()!;
+    registry.upsertMcpServer({
+      id,
+      workspaceId: null,
+      name: GOOGLE_SERVER_NAME,
+      transport: 'stdio',
+      command: NODE,
+      args: [ENTRY, '--grants', 'gmail.read,calendar.write'],
+      enabled: false,
+    });
+
+    google = new GoogleConnectService(
+      db,
+      vault,
+      googleFetch('openid email https://www.googleapis.com/auth/drive.file'),
+      () => 1_700_000_100_000,
+    );
+    await connect(['drive.write']);
+    sync();
+
+    expect(stored()!.enabled).toBe(false);
   });
 
   it('updates in place rather than accumulating servers', async () => {

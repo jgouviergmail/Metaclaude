@@ -9,9 +9,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { apiMock } = vi.hoisted(() => ({ apiMock: { setRuntimeSetting: vi.fn() } }));
 vi.mock('@/lib/api', () => ({ api: apiMock, ApiError: class ApiError extends Error {} }));
+// The language picker reports a failed deployment write through a toast, so
+// the module has to be a mock for the assertion to mean anything.
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import { renderWithProviders } from '@/test/render';
 import { useAuthStore } from '@/lib/store';
+import { toast } from 'sonner';
 
 import { landingSection } from '@/components/layout/SettingsTabs';
 import { AppearanceCard } from './SettingsPage';
@@ -50,6 +54,30 @@ describe('choosing the language', () => {
 
   const asRole = (role: string) =>
     useAuthStore.setState({ user: { id: 'u1', username: 'jgo', role } as never });
+
+  /**
+   * And says so when it cannot.
+   *
+   * The failure used to be swallowed under a comment claiming the interface
+   * changing had already reported it — backwards: the interface changes
+   * whatever happens, so a failure left the app in French and the deployment
+   * still writing English, with nothing on screen to say the two had come
+   * apart. Reported from use: twenty-two memories in English under a French
+   * interface.
+   */
+  it('says so when the deployment could not be told', async () => {
+    // Only an owner reaches the server half at all.
+    asRole('owner');
+    apiMock.setRuntimeSetting.mockRejectedValue(new Error('forbidden'));
+    renderWithProviders(<AppearanceCard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Français/ }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(String((toast.error as ReturnType<typeof vi.fn>).mock.calls[0]?.[0])).toMatch(
+      /could not be told|n’a pas pu/i,
+    );
+  });
 
   it('tells the server what to write in, as well as switching the interface', async () => {
     asRole('owner');

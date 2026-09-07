@@ -1836,20 +1836,24 @@ function McpTab({
                 </div>
 
                 <div className="flex items-center gap-2 sm:shrink-0">
-                  {/* Unlike the other tabs this cannot save straight away: the
-                      write endpoint replaces the whole secret set, so flipping
-                      the switch opens the editor rather than silently dropping
-                      this server's credentials. */}
+                  {/* Saves in place, like every other tab. This used to open
+                      the editor instead, on the grounds that the write endpoint
+                      replaced the whole secret set — which stopped being true
+                      when `upsertMcpServer` began merging submitted secrets
+                      over the stored ones. `draftFromServer` sends the keys
+                      with blank values, which is precisely what tells the API
+                      to keep what it holds. The stale comment cost the one
+                      server whose credentials nobody can retype: `google`
+                      holds a refresh token that exists only in the vault, so
+                      the dialog was asking for something unanswerable. */}
                   <Switch
                     checked={server.enabled}
+                    disabled={save.isPending}
                     onChange={() =>
-                      setEditing({
-                        ...draftFromServer(server),
-                        enabled: !server.enabled,
-                      })
+                      save.mutate({ ...draftFromServer(server), enabled: !server.enabled })
                     }
                     label={`${server.enabled ? 'Disable' : 'Enable'} server ${server.name}`}
-                    tooltip={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} — opens the editor, because saving replaces this server's stored secrets`}
+                    tooltip={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} — its stored secrets are kept`}
                   />
                   {/* A remote server can demand OAuth, and until 0.36 there
                       was nothing to press when it did — the card said

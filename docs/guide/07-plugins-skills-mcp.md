@@ -272,8 +272,11 @@ mail, the calendar and Drive are each their own checkbox — and give consent
 once, in your own browser. Metaclaude keeps the refresh token in the vault
 and ships its own Gmail/Calendar/Drive MCP server *inside the image*, so
 there is no third party between the agent and your account: the server
-appears under this tab as `google`, disabled until you switch it on, and a
-capability you did not grant is not merely refused — its tool is never
+appears under this tab as `google`, switched on the moment consent comes back
+— giving consent is the decision, and a connection that landed switched off on
+a screen you were never sent to only looked broken. Switch it off there if you
+want it held back; reconnecting to add a grant leaves the switch where you put
+it. A capability you did not grant is not merely refused — its tool is never
 registered, so the agent cannot try it.
 
 One Google-side fact decides how well this works. Reading mail or Drive uses

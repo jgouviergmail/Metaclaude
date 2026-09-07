@@ -618,8 +618,22 @@ export function AppearanceCard() {
     void setLang(value);
     if (user?.role !== 'owner') return;
     void api.setRuntimeSetting('language', value).catch(() => {
-      // Already reported by the interface changing; a failure here leaves the
-      // deployment writing in whatever it wrote in before, which is safe.
+      /*
+       * Said out loud, because nothing else says it.
+       *
+       * This used to be swallowed, under a comment claiming the interface
+       * changing had already reported it — which is exactly backwards: the
+       * interface changes *whatever* happens here, so a failure leaves the app
+       * in French and the deployment still writing English, with nothing on
+       * screen to say the two had come apart. Reported from use: twenty-two
+       * memories in English under a French interface, and no way to tell
+       * whether the setting had ever been applied.
+       */
+      toast.error(
+        t(
+          'The interface is in your language, but the deployment could not be told to write in it. Set it under Settings → Configuration → language.',
+        ),
+      );
     });
   };
 

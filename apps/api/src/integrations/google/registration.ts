@@ -9,10 +9,14 @@
  *
  * Two rules the flow depends on:
  *
- *  - **Created disabled, but re-consent keeps the switch where it was.** A new
- *    connection must not silently mount a mailbox into every run. An operator
- *    who reconnects to add a grant, though, has already decided — flipping
- *    them back off would look like the reconnection failed.
+ *  - **Created enabled, and re-consent keeps the switch where it was.**
+ *    Consent is the decision: the operator registered a Cloud project, picked
+ *    the grants one by one and walked Google's own screen for them. A
+ *    connection that then arrived switched off, on a screen they were never
+ *    sent to, reads as the connection having failed — which is exactly how it
+ *    read. The default is only a default, though: someone who deliberately
+ *    switched the server off and reconnects to add a grant must not find it
+ *    back on, and someone who had it on must not find it off.
  *  - **The grants ride on the command line, the secrets in the environment.**
  *    Grants are configuration and belong where the operator can read them on
  *    the server card; the three credentials are secrets and belong in the
@@ -86,7 +90,7 @@ export function syncGoogleMcpServer(input: SyncInput): string | null {
     // A grant the operator revoked must take its secret slot with it — but
     // these three keys are always all present or all absent, so nothing to
     // remove here beyond what upsert already merges.
-    enabled: existing?.enabled ?? false,
+    enabled: existing?.enabled ?? true,
   });
   return server.id;
 }
