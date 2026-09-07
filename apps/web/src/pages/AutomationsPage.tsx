@@ -21,7 +21,7 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -53,7 +53,8 @@ import { api, ApiError } from '@/lib/api';
 import { TOUCH_TARGET } from '@/components/ui/touch-target';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
-import { routes } from '@metaclaude/shared';
+import { modelOptions } from '@/lib/claude-catalogue';
+import { routes, type ModelSelector } from '@metaclaude/shared';
 
 /** Ready-made schedules, so nobody has to remember cron syntax to get started. */
 /**
@@ -161,16 +162,16 @@ export function AutomationsPage() {
         tabs={<SystemTabs />}
         title={t('Automations')}
         subtitle={t('Scheduled and continuous agent loops.')}
-        showSidebarToggle={false}
         actions={
           <Button
             variant="primary"
             size="sm"
             onClick={() => setEditing('new')}
             disabled={workspaces.length === 0}
+            aria-label={t('New automation')}
           >
             <Plus className="size-4" aria-hidden />
-            {t('New automation')}
+            <span className="hidden sm:inline">{t('New automation')}</span>
           </Button>
         }
       />
@@ -435,6 +436,33 @@ function AutomationEditor({
     automation?.policy.permissionMode ?? 'default',
   );
   const [notify, setNotify] = useState(automation?.policy.notify ?? false);
+  /*
+   * The model an unattended run uses.
+   *
+   * `AutomationPolicy.model` has been in the schema since the feature shipped
+   * and no form ever set it, so every automation ran on whatever `'default'`
+   * resolves to — including the nightly briefs, where the choice matters most
+   * and nobody could make it. Same shape as the composer's picker, and the
+   * same catalogue: a model this deployment cannot reach is not offered.
+   */
+  const [model, setModel] = useState<ModelSelector>(automation?.policy.model ?? 'default');
+
+  /*
+   * The catalogue of the workspace this automation runs in — not a fixed list.
+   *
+   * What the CLI can reach depends on the credential the workspace uses, so a
+   * hard-coded set would offer models a firing cannot run. It follows the
+   * workspace picker above: change the workspace, the models change with it.
+   */
+  const catalogueQuery = useQuery({
+    queryKey: ['claude-catalogue', workspaceId],
+    queryFn: () => api.claudeCatalogue({ workspaceId }),
+    enabled: Boolean(workspaceId),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const models = useMemo(() => modelOptions(catalogueQuery.data), [catalogueQuery.data]);
+  const activeModel = models.find((entry) => entry.value === model);
   const [maxFailures, setMaxFailures] = useState(automation?.maxConsecutiveFailures ?? 3);
   // The zone the server reads every cron expression in, shown beside the
   // field: eight o'clock on a UTC host is ten in Paris all summer.
@@ -470,6 +498,7 @@ function AutomationEditor({
     setContinuous(from.continuous);
     setPermissionMode(from.policy.permissionMode);
     setNotify(from.policy.notify);
+    setModel(from.policy.model);
     setMaxFailures(from.maxConsecutiveFailures);
   };
 
@@ -510,6 +539,7 @@ function AutomationEditor({
     const policy: Record<string, unknown> = {};
     if (permissionMode !== automation.policy.permissionMode) policy.permissionMode = permissionMode;
     if (notify !== automation.policy.notify) policy.notify = notify;
+    if (model !== automation.policy.model) policy.model = model;
     if (Object.keys(policy).length > 0) patch.policy = policy;
     return patch;
   };
@@ -529,7 +559,7 @@ function AutomationEditor({
         trigger: buildTrigger(),
         continuous,
         maxConsecutiveFailures: maxFailures,
-        policy: { permissionMode, notify },
+        policy: { permissionMode, notify, model },
         workspaceId,
       });
     },
@@ -782,6 +812,43 @@ function AutomationEditor({
         </label>
 
         <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <span className="mb-1.5 block text-body font-medium text-ink">{t('Model')}</span>
+            <Menu
+              side="bottom"
+              trigger={
+                <Button variant="secondary" size="sm" className="w-full justify-between">
+                  {/*
+                    * Three cases, and the middle one is why this is not a
+                    * `??` chain on a label.
+                    *
+                    * The catalogue follows the workspace picker above, so
+                    * changing the workspace can leave `model` holding a value
+                    * the new catalogue does not list. Falling back to `Auto`
+                    * there would show a choice nobody made while posting a
+                    * different one — the interface lying about its own state.
+                    * The raw value is shown instead: it is what will be sent,
+                    * and the CLI degrades it with a visible message if it
+                    * cannot serve it.
+                    */}
+                  {activeModel ? t(activeModel.label) : model === 'default' ? t('Auto') : model}
+                </Button>
+              }
+            >
+              <MenuLabel>{t('What the scheduled run is given')}</MenuLabel>
+              {models.map((entry) => (
+                <MenuItem
+                  key={entry.value}
+                  selected={entry.value === model}
+                  onSelect={() => setModel(entry.value)}
+                  description={entry.hint}
+                >
+                  {t(entry.label)}
+                </MenuItem>
+              ))}
+            </Menu>
+          </div>
+
           <div>
             <span className="mb-1.5 block text-body font-medium text-ink">{t(
               'Permission mode',

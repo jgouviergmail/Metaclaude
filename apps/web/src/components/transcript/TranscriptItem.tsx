@@ -29,7 +29,7 @@ import { attachmentUrl } from '@/lib/api';
 import { renderMarkdown } from '@/lib/markdown';
 import { RunMetaChips } from './RunMetaChips';
 import { useUiStore } from '@/lib/store';
-import { cn, formatBytes, formatCost, formatDuration, formatTokens } from '@/lib/utils';
+import { cn, formatBytes, formatCost, formatDuration, formatTime, formatTokens } from '@/lib/utils';
 import { SubagentEvent } from './Delegation';
 import { ToolCallCard } from './ToolCallCard';
 import { DiffView } from './DiffView';
@@ -111,6 +111,7 @@ export const UserMessage = memo(function UserMessage({
               ))}
             </ul>
           ) : null}
+          <MessageTime at={event.at} className="text-right" />
         </div>
         <div
           className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-raised text-muted"
@@ -130,21 +131,55 @@ export const UserMessage = memo(function UserMessage({
 export const AssistantText = memo(function AssistantText({
   text,
   streaming = false,
+  at = null,
 }: {
   text: string;
   streaming?: boolean;
+  /**
+   * When the reply was recorded. Absent while it streams: the message has no
+   * settled time yet, and stamping "now" on every token would tick a clock
+   * under the caret.
+   */
+  at?: number | null;
 }) {
   // Re-rendering markdown on every streamed token would dominate the frame
   // budget, so the parse is memoised on the text itself.
   const html = useMemo(() => renderMarkdown(text), [text]);
 
   return (
-    <div
-      className={cn('prose-mc max-w-none text-ink', streaming && 'caret')}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div>
+      <div
+        className={cn('prose-mc max-w-none text-ink', streaming && 'caret')}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {at !== null && !streaming ? <MessageTime at={at} /> : null}
+    </div>
   );
 });
+
+/**
+ * The clock time under a message.
+ *
+ * Asked for after a session was read back a day later and nothing on screen
+ * said when any of it happened — the run footer carries a duration, which
+ * answers "how long", never "when". A `<time>` element with a full
+ * `dateTime`, so the exact instant is available to anything reading the page
+ * even though the text is only `14:32`.
+ *
+ * Muted and small on purpose: it is a reference you look for, not something to
+ * read down the page. Forty of them in a session must not compete with the
+ * conversation.
+ */
+function MessageTime({ at, className }: { at: number; className?: string }) {
+  return (
+    <time
+      dateTime={new Date(at).toISOString()}
+      className={cn('mt-1 block text-caption text-subtle', className)}
+    >
+      {formatTime(at)}
+    </time>
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /* Thinking                                                                    */
@@ -517,7 +552,7 @@ export function TranscriptItem({
     case 'user_message':
       return <UserMessage event={event} />;
     case 'assistant_text':
-      return <AssistantText text={event.text} />;
+      return <AssistantText text={event.text} at={event.at} />;
     case 'thinking':
       return <ThinkingBlock text={event.text} />;
     case 'tool_call':

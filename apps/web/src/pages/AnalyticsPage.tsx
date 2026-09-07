@@ -199,7 +199,6 @@ export function AnalyticsPage() {
         tabs={<SystemTabs />}
         title={t('Analytics')}
         subtitle={`${periodLabel} · ${scopeLabel}`}
-        showSidebarToggle={false}
         icon={<Activity />}
         actions={
           <>

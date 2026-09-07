@@ -71,12 +71,54 @@ const MEMS = [
   ['procedural', 'Backup restore rehearsal, step by step', 0.6, 8 * DAY],
   ['procedural', 'Rotating the master key without losing the vault', 0.4, 25 * DAY],
 ];
+/*
+ * A body that is not the title again.
+ *
+ * The seed used to write `content: `${title}.``, so every memory card showed
+ * the same sentence twice — and a card judged on that picture looks bloated
+ * for a reason the product does not have. A bench that misrepresents the thing
+ * it photographs is worse than no bench: it was nearly the basis for cutting
+ * the card down. Real memories carry a title you scan and a body you read.
+ */
+const BODY = {
+  'The deploy pipeline gates on /healthz':
+    'The workflow will not promote an image until /healthz answers 200 twice, thirty seconds apart. A slow first boot therefore reads as a failed deploy.',
+  'CSP is script-src self — no inline scripts':
+    'Anything inline is refused by the browser without a console line the app can see. Put it in apps/web/public/ and reference it by path.',
+  'Tailwind semantic tokens only, never raw palette':
+    'bg-surface, text-ink, border-line and the state colours. A raw palette class looks right in the dark theme and breaks the light one.',
+  'The audit chain orders by rowid, not timestamp':
+    'Ids carry a random suffix and several entries land in the same millisecond, so ordering by (at, id) chains onto the wrong predecessor.',
+  'Vite manual chunks pull into the entry graph':
+    'Naming a chunk makes index.html emit a modulepreload for it, which is the opposite of deferring it. Let the dynamic imports derive the chunks.',
+  'ESM imports must end in .js under NodeNext':
+    'Relative imports in apps/api and packages/shared, even when the source is TypeScript. The web app uses the bundler resolver instead.',
+  'Fixed the uninstall set -e trap after CI caught it':
+    'An assignment from a failing command substitution exits the script. uninstall.sh died there, after removing the units and before saving .env.',
+  'The proxy healthcheck leaked one task per probe':
+    'Caddy is PID 1 and does not reap, so every CMD-SHELL probe left a zombie. Five hours to hit the pids ceiling, then the container reads unhealthy forever while serving perfectly.',
+  'Bundle ratchet measures +1 kB on the CI runner':
+    'gzip settles differently there. The ceiling carries the headroom rather than the local figure.',
+  'jgo prefers curly quotes in UI strings':
+    'Apostrophes in copy are U+2019, not the ASCII one. The catalogue follows.',
+  'Radix tabs activate on mousedown in jsdom':
+    'fireEvent.click alone does nothing; the pointer event has to come first. Costs a red test that looks like a broken component.',
+  'How to cut a release: changelog, bump, push, CI tag':
+    'Write the entry into the empty [Unreleased] section, never above it. bump.mjs reads the first one it finds and refuses an empty one.',
+  'Prove a new test can fail before trusting it':
+    'Break the line it covers, watch it go red, put the line back. Three kernel tests were written against code that already worked.',
+  'Backup restore rehearsal, step by step':
+    'Stop the stack, restore into a throwaway volume, boot it, check the marker, then tear it down. Never against the live volume.',
+  'Rotating the master key without losing the vault':
+    'Re-encrypt every secret under the new key inside one transaction, then swap the file. A partial rotation is unrecoverable.',
+};
+
 for (const [kind, title, confidence, age] of MEMS) {
   const { memory } = await context.memory.remember({
     workspaceId: ws.id,
     kind,
     title,
-    content: `${title}.`,
+    content: BODY[title] ?? `${title}.`,
     confidence,
   });
   context.db
@@ -100,17 +142,38 @@ context.db.prepare('UPDATE memories SET last_used_at = ? WHERE id = ?').run(now 
 // identical to the version before it was grouped — so the bench could not show
 // the change it was built to judge. A screen whose new layout is invisible in
 // the only place anyone looks at it is a screen nobody reviewed.
+// The body says something the title does not — see the note on BODY above.
+// These three sit at the top of the Memory page, so a body that restates its
+// own title is the first thing anyone judging that screen reads twice.
 const GLOBALS = [
-  ['semantic', 'The operator writes in French', 0.94, 3 * HOUR],
-  ['procedural', 'Prove a new test can fail before trusting it', 0.88, 20 * HOUR],
-  ['semantic', 'Never push personal infrastructure details to a repository', 0.9, 2 * DAY],
+  [
+    'semantic',
+    'The operator writes in French',
+    'Replies, commit messages and UI copy in French; identifiers, file paths and command names stay as they are.',
+    0.94,
+    3 * HOUR,
+  ],
+  [
+    'procedural',
+    'Prove a new test can fail before trusting it',
+    'Break the line it covers, watch it go red, then put the line back. A test written against code that already works proves only that the code runs.',
+    0.88,
+    20 * HOUR,
+  ],
+  [
+    'semantic',
+    'Never push personal infrastructure details to a repository',
+    'Hostnames, IPs, key paths and account names belong in the private operations file, not in code, comments or commit messages.',
+    0.9,
+    2 * DAY,
+  ],
 ];
-for (const [kind, title, confidence, age] of GLOBALS) {
+for (const [kind, title, content, confidence, age] of GLOBALS) {
   const { memory } = await context.memory.remember({
     workspaceId: null,
     kind,
     title,
-    content: `${title}. Applies wherever the agent works.`,
+    content,
     confidence,
   });
   context.db
@@ -368,12 +431,21 @@ async function shoot(theme, viewport, suffix, options = {}) {
     ['/board', 'board'],
     ['/automations', 'automations'],
     ['/help', 'help'],
+    ['/server', 'server'],
     ['/agents', 'skills', 'Skills'],
     ['/agents', 'connectors', 'MCP servers'],
     ['/agents', 'library', 'Library'],
-    ['/settings', 'system-tab', 'System'],
-    ['/settings', 'configuration', 'Configuration'],
-    ['/settings', 'google-connection', 'Connections'],
+    /*
+     * Settings' groups are routes now, not tabs — so the French pass reaches
+     * them. They used to need a tab opened by its English name, which is the
+     * whole reason the French pass skipped them, and it skipped exactly the
+     * screens where the longest copy sits.
+     */
+    ['/settings/appearance', 'settings-appearance'],
+    ['/settings/security', 'settings-security'],
+    ['/settings/connections', 'settings-connections'],
+    ['/settings/configuration', 'settings-configuration'],
+    ['/settings/audit', 'settings-audit'],
   ];
   for (const [path, name, tab] of screens) {
     if (ONLY.length && !ONLY.includes(name)) continue;
@@ -501,6 +573,18 @@ await shoot('dark', { width: 390, height: 844 }, '-mobile');
  * question the other thirteen would only repeat.
  */
 await shoot('dark', { width: 390, height: 844 }, '-mobile-comfortable', {
+  density: 'comfortable',
+});
+/*
+ * And comfortable on a desk, which is where it is actually chosen.
+ *
+ * The setting was photographed on a phone only, and a phone is one column
+ * whatever the density — so the pass that existed showed the smallest half of
+ * what the setting does. The dashboard's two columns, a settings screen's
+ * sections and a table's rows are where the extra air either reads as room or
+ * as a page that will not fit; none of it had ever been looked at.
+ */
+await shoot('dark', { width: 1440, height: 900 }, '-comfortable', {
   density: 'comfortable',
 });
 await shoot('dark', { width: 390, height: 844 }, '-mobile-fr', { locale: 'fr-FR' });

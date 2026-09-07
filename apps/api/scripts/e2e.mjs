@@ -391,9 +391,20 @@ results.section('rewind');
       preview.status === 200 && preview.body.applied === false,
       preview.text.slice(0, 200),
     );
+    /*
+     * `canRewind` must be *true*, not merely a boolean.
+     *
+     * The first version of this asserted `typeof … === 'boolean'`, which false
+     * satisfies — so it would have passed on a rewind the CLI refuses, which
+     * is exactly the state this suite was in: the anchor was never recorded,
+     * and the only check that could have said so accepted "no" as an answer.
+     * The whole point of running a live agent here is that the CLI agrees the
+     * point is restorable; anything weaker is a test of our own plumbing.
+     */
     results.check(
-      'and says whether it could restore',
-      typeof preview.body.canRewind === 'boolean',
+      'and the CLI agrees the anchor is restorable',
+      preview.body.canRewind === true,
+      preview.body.error ?? preview.text.slice(0, 200),
     );
   } else {
     results.skip('rewinding a real run', 'no run was performed');

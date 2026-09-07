@@ -747,6 +747,91 @@ restates the code is noise; one that records a decision or a trap is not.
   something mutates the DOM — proved by four crossed cases. So a responsive
   test passes or fails depending on whether React happened to re-render in
   between. Set the width **before** the render, never after.
+- **Moving a screen breaks everything that pointed at it, and nothing tells
+  you.** The machine left Settings for a screen of its own, and four things
+  went on pointing where it used to be: the guide's `Settings → Server` (caught
+  by `check.sh`, which is what that check is for), three onboarding steps whose
+  cards had moved, the dashboard's pairing link, and the command palette, which
+  had no entry for the new screen at all. Every one of them still *resolved* —
+  to a page with none of what it promised, which is the failure an operator
+  reads as "this list is lying to me". After moving a screen, grep for every
+  builder that names it, and pin the destinations in a test: `onboarding.test.ts`
+  now asserts each step lands where its card actually is.
+
+- **Two copies of a component have already diverged by the time you notice.**
+  `SystemTabs` and `SettingsTabs` were the same forty lines — chips, current-chip
+  scrolling, hit area — and differed by exactly one class: one carried
+  `[&>*]:shrink-0`, the other did not. That class is what makes a chip row
+  scroll rather than squeeze, and its absence is the board filter-bar defect,
+  waiting in whichever copy was forgotten. `SectionTabs` is the one component;
+  each section is now a table and a call. The same sweep found the owner-only
+  group list written twice and the System paths written twice — both now single
+  entries in `packages/shared/src/routes.ts`, with tests holding the readers to
+  them.
+
+- **`tsc` does not report an unused import, and nothing else did either.**
+  Splitting Settings in two left eleven names imported and never used — five
+  cards, a report view, four hooks — each still pulling its module into the
+  chunk. `noUnusedLocals` is off deliberately (it fails the build on a
+  half-written line), no test can see it, and it is invisible until someone
+  reads the imports. The `deadImports` ratchet counts a name that appears
+  exactly once in its file; ceiling zero. It found three more that predated
+  this work.
+
+- **An instrument that lies is worse than no instrument, and three of them lied
+  in one session.** (1) `scripts/shots.mjs` seeded every memory with
+  `content: `${title}.`` and every global with `${title}. Applies wherever the
+  agent works.`, so each card showed its own sentence twice — the Memory page
+  looked bloated for a reason it does not have, and cutting the card down was
+  nearly the conclusion. (2) The first `measure-chrome.mjs` took "the top of
+  the first vertical scroller" as the end of the chrome; on the board that
+  scroller is inside a *column*, so it reported 179px against 118 on the
+  screenshot. (3) Its second version reported `0px` for the board when its
+  band filter matched nothing — a flattering number where "I cannot measure
+  this" was the truth. **Every measurement gets checked against a picture
+  once**, and a measure that finds nothing says so instead of returning zero.
+  Same family as the bench trap below: what you look at has to be what ships.
+
+- **Measure before believing a layout complaint, including your own.** "Two
+  stacked navigation bars on the System screens" was the plausible defect, and
+  `measure-chrome.mjs` refuted it: those screens spend **101px** on chrome,
+  header included, 12% of a 390×844 phone. The real offender was the board at
+  **237px (28%)**, which nothing had flagged — its filter bar wrapped to three
+  rows in French, and it sits *above* the scroller so every row it grows steals
+  one from the board. `FILTER_ROW` is the fix and the rule: a filter bar
+  scrolls, it does not wrap. `flex-nowrap` alone is not enough — a flex child
+  shrinks before it overflows, so the chips squeezed into three-line pills and
+  the bar got *taller*; the row has to carry `[&>*]:shrink-0`.
+
+- **A test double that emits what the real system never emits proves the
+  opposite of what it claims.** Rewind needed the uuid of the user message a
+  turn opened with, and the code waited for the CLI to volunteer it on a replay
+  acknowledgement (`type: 'user'`, `isReplay: true`). Four unit tests covered
+  it, green for every release — because `fakeQuery` emitted that
+  acknowledgement. Instrumented against Claude Code 2.1.218 over a real run,
+  the CLI sends **no `type: 'user'` message at all** in streaming-input mode:
+  the only frames are `system/init`, `stream_event`, `assistant`,
+  `rate_limit_event`, `system/status` and `result`. So `rewindPoint` was null
+  for every run ever recorded and the Rewind button, gated on that field, could
+  not appear. The fix is not to wait better: `SDKUserMessage.uuid` is a *client*
+  uuid we may assign ourselves, the CLI stamps it back as `user_message_uuid`
+  and — measured — accepts it as the `rewindFiles` target. **When an identifier
+  can be supplied rather than awaited, supply it**; an anchor that exists
+  before the process starts cannot be lost to a frame that never comes. The
+  same sweep checked the other three values `execute` takes off the wire —
+  `claudeSessionId`, `servedModel`, `usage` — and all three do arrive; this was
+  the only dead one. What no test could have caught, and what did catch it, was
+  `console.error` on every frame during `check:e2e`.
+
+- **`typeof x === 'boolean'` is satisfied by the failure.** The live check that
+  should have reported the dead rewind asserted `typeof preview.body.canRewind
+  === 'boolean'`, which `false` meets — so the one test able to see the defect
+  accepted "no" as an answer and stayed green beside it. Same family as the
+  edge-schema trap: assert the value that means it *works*
+  (`canRewind === true`), never merely its type. Worth grepping for: a
+  `typeof … === 'boolean'` in a check whose point is that something succeeded
+  is nearly always this bug.
+
 - **Renaming a value is not changing it, and a ratchet cannot tell them
   apart.** Twelve lots turned `text-[13px]` into `text-body` — which is
   13px — `divide-[var(--mc-border)]` into `divide-line`, a `<div className=

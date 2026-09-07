@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Page } from '@/components/ui/layout';
-import { Archive, FolderGit2, GitBranch, MoreVertical, Plus, Trash2 } from 'lucide-react';
+import { Archive, FolderGit2, MoreVertical, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -86,7 +86,6 @@ export function WorkspacesPage() {
       <ContentHeader
         title={t('Workspaces')}
         subtitle={t('Each workspace is a project directory with its own agent policy and memory.')}
-        showSidebarToggle={false}
         actions={
           <>
             {/* The labels fold to their icon below `sm`. This header also

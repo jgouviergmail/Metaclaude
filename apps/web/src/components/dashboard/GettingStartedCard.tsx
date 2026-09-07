@@ -12,7 +12,7 @@ import { CheckCircle2, Circle, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlural, useT } from '@/lib/i18n';
-import { Button, Card, CardHeader } from '@/components/ui/primitives';
+import { Button, Card, CardHeader, Meter } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { onboardingDone, onboardingSteps } from '@/lib/onboarding';
 import { useAuthStore } from '@/lib/store';
@@ -77,6 +77,7 @@ export function GettingStartedCard() {
   if (onboardingDone(steps)) return null;
 
   const remaining = steps.filter((step) => !step.done).length;
+  const done = steps.length - remaining;
 
   const dismiss = (): void => {
     try {
@@ -105,7 +106,33 @@ export function GettingStartedCard() {
         }
       />
       <ul className="space-y-1 px-4 pb-4">
-        {steps.map((step) => {
+        {/*
+          * What is done becomes a bar, not three struck-through rows.
+          *
+          * Measured on the dashboard: six rows filled 343px at the top of the
+          * screen, and half of them said nothing an operator can act on — a
+          * finished step is finished. Keeping the count and the bar keeps the
+          * sense of progress, which is the only thing those rows carried, and
+          * gives back about ninety pixels of the first screen. `Meter` is the
+          * app's existing bar; a second one drawn here would drift from it.
+          */}
+        {done > 0 ? (
+          <li className="flex items-center gap-2.5 px-2 pb-1.5">
+            <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
+            <span className="shrink-0 text-caption text-muted">
+              {t('{done} of {total} done', { done, total: steps.length })}
+            </span>
+            <Meter
+              value={done / steps.length}
+              tone="success"
+              label={t('{done} of {total} done', { done, total: steps.length })}
+              className="ml-1 flex-1"
+            />
+          </li>
+        ) : null}
+        {steps
+          .filter((step) => !step.done)
+          .map((step) => {
           /*
            * A checklist explains the step you are on.
            *

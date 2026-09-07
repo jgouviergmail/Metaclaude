@@ -17,13 +17,12 @@ import {
   FolderGit2,
   LayoutDashboard,
   Menu as MenuIcon,
-  MessageSquare,
   Settings,
   SquareKanban,
 } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { isSystemPath } from './SystemTabs';
+import { isSettingsPath, isSystemPath } from '@/lib/sections';
 import { useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
@@ -106,16 +105,39 @@ const NAV: NavEntry[] = [
   { to: routes.board(), label: 'Board', icon: <SquareKanban /> },
   { to: routes.memory(), label: 'Memory', icon: <Brain /> },
   {
-    // Points at Automations, the first of the group's own strip. The cog
-    // belongs to Settings — it is what everyone means by it — so this takes
-    // the stacked boxes: what the deployment is made of.
-    to: routes.automations(),
+    // Points at the first screen of the group's own strip. The cog belongs to
+    // Settings — it is what everyone means by it — so this takes the stacked
+    // boxes: what the deployment is made of.
+    to: routes.server(),
     label: 'System',
     icon: <Boxes />,
     matches: isSystemPath,
   },
-  { to: routes.settings(), label: 'Settings', icon: <Settings /> },
+  {
+    // Its own screens are routes now, so the entry has to own them the way the
+    // System entry owns its five — otherwise the rail highlights nothing on
+    // `/settings/security`, and nothing at all on `/help`.
+    to: routes.settingsSection('appearance'),
+    label: 'Settings',
+    icon: <Settings />,
+    matches: isSettingsPath,
+  },
 ];
+
+/**
+ * Whether this screen has a contextual panel at all.
+ *
+ * `ContentHeader` draws the button that reveals it, and the two are written in
+ * different files: three screens shipped a "Toggle panel" button with no panel
+ * behind it — Board, Help and Plugins — because the header's default was
+ * `true` and nobody passing a header remembered to say otherwise. A control
+ * that does nothing is worse than a missing one: it teaches the operator that
+ * pressing things here has no effect.
+ *
+ * Derived rather than declared, so the defect cannot come back: the shell
+ * knows whether it was given a panel, and the header asks.
+ */
+const HasSidebar = createContext(false);
 
 export function AppShell({
   sidebar,
@@ -136,6 +158,7 @@ export function AppShell({
   }, [location.pathname]);
 
   return (
+    <HasSidebar.Provider value={Boolean(sidebar)}>
     <div className="flex h-full overflow-hidden bg-bg text-ink">
       {/* Icon rail — hidden on phones, where the tab bar takes over. */}
       <nav
@@ -257,6 +280,7 @@ export function AppShell({
         </div>
       </nav>
     </div>
+    </HasSidebar.Provider>
   );
 }
 
@@ -284,13 +308,17 @@ export function ContentHeader({
   title,
   subtitle,
   actions,
-  showSidebarToggle = true,
+  showSidebarToggle,
   icon,
   tabs,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Override the shell's own answer. Left undefined — which is the normal
+   * case — the button appears exactly when there is a panel to reveal.
+   */
   showSidebarToggle?: boolean;
   icon?: ReactNode;
   /**
@@ -303,11 +331,28 @@ export function ContentHeader({
    */
   tabs?: ReactNode;
 }) {
+  const hasSidebar = useContext(HasSidebar);
+  const showToggle = showSidebarToggle ?? hasSidebar;
   return (
     <div className="shrink-0 border-b border-line bg-surface">
-      <header className="flex h-14 items-center gap-3 px-3 sm:px-4">
-        {showSidebarToggle ? <SidebarToggle /> : null}
-        {icon ? <span className="shrink-0 [&>svg]:size-4">{icon}</span> : null}
+      {/*
+        * A tighter gap on a phone, because the row is finite and the title is
+        * what pays: three 12px gaps are 36px out of 390, and `Board` was
+        * missing exactly one pixel of the 41 it wants. Measured, not guessed —
+        * `scripts/measure-titles.mjs`.
+        */}
+      <header className="flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-4">
+        {showToggle ? <SidebarToggle /> : null}
+        {/*
+          * The title's icon is decorative — `aria-hidden`, and the title beside
+          * it already says which page you are on. On a phone it costs 28px
+          * with its gap, out of a row that also carries the actions and the
+          * three-icon status cluster, and the title is the flexible item that
+          * pays: measured at 390px, `Board` had 24px and `Mémoire` 58, both
+          * truncated. Nothing reports that — `truncate` is doing its job — so
+          * `scripts/measure-titles.mjs` is what found it.
+          */}
+        {icon ? <span className="hidden shrink-0 sm:block [&>svg]:size-4">{icon}</span> : null}
 
         {/*
           * The title keeps at least a third of the row.

@@ -4,7 +4,6 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Page, Section } from '@/components/ui/layout';
-import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import {
   Check,
   Copy,
@@ -20,20 +19,17 @@ import {
 import { useState } from 'react';
 import { type Lang, type TranslateFn, useI18n, usePlural, useT } from '@/lib/i18n';
 import { toast } from 'sonner';
+import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
+import { SettingsTabs, landingSection } from '@/components/layout/SettingsTabs';
 import { TotpQr } from '@/components/auth/TotpQr';
-import { DoctorReportView } from '@/components/system/DoctorReportView';
-import { ResourceMeters } from '@/components/system/ResourceMeters';
-import { RetrievalStatus } from '@/components/system/RetrievalStatus';
-import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
 import { GoogleConnectionCard } from '@/components/settings/GoogleConnectionCard';
 import { ConfigurationCard } from '@/components/settings/ConfigurationCard';
 import { McpGatewayCard } from '@/components/settings/McpGatewayCard';
-import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { PasskeysCard } from '@/components/settings/PasskeysCard';
 import { UpdateCard } from '@/components/settings/UpdateCard';
 import { CopyableCode } from '@/components/ui/CopyableCode';
-import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import {
   Badge,
   Button,
@@ -41,7 +37,6 @@ import {
   Input,
   Label,
   Spinner,
-  StatList,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { CheckboxField, SegmentedControl } from '@/components/ui/controls';
@@ -50,10 +45,14 @@ import {
   cn,
   copyToClipboard,
   formatDateTime,
-  formatDuration,
   formatRelative,
 } from '@/lib/utils';
-import { routes } from '@metaclaude/shared';
+import {
+  isOwnerOnlySection,
+  routes,
+  SETTINGS_SECTIONS,
+  type SettingsSection,
+} from '@metaclaude/shared';
 
 /**
  * Which tab the page opens on, from the URL's query string.
@@ -65,106 +64,81 @@ import { routes } from '@metaclaude/shared';
  * toast, and the query parameter left in place. The parameter that carries
  * the outcome has to also pick the tab that can read it.
  */
-export function initialSettingsTab(search: string): string {
-  return new URLSearchParams(search).has('google') ? 'connections' : 'security';
+/**
+ * One group of settings, addressed by its own route.
+ *
+ * It was a single screen with Radix tabs, which meant every group shared one
+ * URL: nothing could be linked to, the browser's back button walked out of
+ * Settings rather than back a group, and the section read as a different kind
+ * of thing from the System strip beside it. Each group is a route now, listed
+ * by `SettingsTabs` exactly as the System screens are listed by `SystemTabs`.
+ *
+ * `/settings` is kept: `integrations.ts` returns from Google's consent there
+ * and an operator has bookmarks. It forwards — see `landingSection`.
+ */
+
+export function SettingsRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`${routes.settingsSection(landingSection(search))}${search}`} replace />;
 }
 
 export function SettingsPage() {
   const t = useT();
   const user = useAuthStore((state) => state.user);
+  const { section } = useParams<{ section: string }>();
+  const owner = user?.role === 'owner';
+
+  // An unknown slug, or an owner-only group an operator typed by hand: send
+  // them somewhere real rather than render an empty page. The API refuses the
+  // same requests, so this is the interface agreeing with it, not the guard.
+  const known = SETTINGS_SECTIONS.includes(section as SettingsSection);
+  const allowed = known && (owner || !isOwnerOnlySection(section as string));
+  if (!allowed) return <Navigate to={routes.settingsSection('appearance')} replace />;
 
   return (
     <AppShell>
       <ContentHeader
+        tabs={<SettingsTabs />}
         title={t('Settings')}
         subtitle={user ? t(
           'Signed in as {name} ({role})',
           { name: user.username, role: user.role },
         ) : undefined}
-        showSidebarToggle={false}
       />
 
-      <Page width="prose" gap="none">
-          <Tabs defaultValue={initialSettingsTab(window.location.search)}>
-            <TabStrip label={t('Settings sections')}>
-              <TabTrigger value="security">
-                {t('Security')}
-              </TabTrigger>
-              <TabTrigger value="appearance">
-                {t('Appearance')}
-              </TabTrigger>
-              <TabTrigger value="system">
-                {t('System')}
-              </TabTrigger>
-              {user?.role === 'owner' ? (
-                <TabTrigger value="connections">
-                  {t('Connections')}
-                </TabTrigger>
-              ) : null}
-              {user?.role === 'owner' ? (
-                <TabTrigger value="configuration">
-                  {t('Configuration')}
-                </TabTrigger>
-              ) : null}
-              {user?.role === 'owner' ? (
-                <TabTrigger value="audit">
-                  {t('Audit log')}
-                </TabTrigger>
-              ) : null}
-            </TabStrip>
+      <Page width="prose">
+        {section === 'appearance' ? <AppearanceCard /> : null}
 
-            <TabPanel value="security" className="space-y-4">
-              <PasswordCard />
-              <TotpCard />
-              <PasskeysCard />
-              <SessionsCard />
-            </TabPanel>
+        {section === 'security' ? (
+          <>
+            <PasswordCard />
+            <TotpCard />
+            <PasskeysCard />
+            <SessionsCard />
+          </>
+        ) : null}
 
-            <TabPanel value="appearance">
-              <AppearanceCard />
-            </TabPanel>
+        {/* Owner only: connecting Google stores a credential that reaches a
+            live mailbox, which is a wider blast radius than any other registry
+            write. The other direction — what *reaches in* — is owner-only for
+            the same reason: a token that may start runs is a credential for
+            executing things here. */}
+        {section === 'connections' ? (
+          <>
+            <GoogleConnectionCard />
+            <McpGatewayCard />
+          </>
+        ) : null}
 
-            <TabPanel value="system" className="space-y-4">
-              <SystemCard />
-              {user?.role === 'owner' ? <DoctorCard /> : null}
-              {user?.role === 'owner' ? <UpdateCard /> : null}
-            </TabPanel>
+        {/* Owner only, exactly like the API behind it: how long a run may take
+            and how many may run at once is not an operator's call. */}
+        {section === 'configuration' ? <ConfigurationCard /> : null}
 
-            {/* Owner only: connecting Google stores a credential that reaches a
-                live mailbox, which is a wider blast radius than any other
-                registry write. */}
-            {user?.role === 'owner' ? (
-              <TabPanel value="connections" className="space-y-4">
-                <GoogleConnectionCard />
-                {/* The other direction: what *reaches in*. Owner-only for the
-                    same reason — a token that may start runs is a credential
-                    for executing things here. */}
-                <McpGatewayCard />
-              </TabPanel>
-            ) : null}
-
-            {/* Owner only, exactly like the API behind it: how long a run may
-                take and how many may run at once is not an operator's call. */}
-            {user?.role === 'owner' ? (
-              <TabPanel value="configuration">
-                <ConfigurationCard />
-              </TabPanel>
-            ) : null}
-
-            {user?.role === 'owner' ? (
-              <TabPanel value="audit">
-                <AuditCard />
-              </TabPanel>
-            ) : null}
-          </Tabs>
+        {section === 'audit' ? <AuditCard /> : null}
       </Page>
     </AppShell>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Security                                                                    */
-/* -------------------------------------------------------------------------- */
 
 function PasswordCard() {
   const t = useT();
@@ -730,167 +704,6 @@ export function AppearanceCard() {
 /* System                                                                      */
 /* -------------------------------------------------------------------------- */
 
-/**
- * On demand rather than on mount: a full examination probes the CLI binary
- * and walks the audit chain, and running that on every tab visit would be
- * noise. The button is the request.
- */
-function DoctorCard() {
-  const t = useT();
-  const doctorQuery = useQuery({
-    queryKey: ['doctor'],
-    queryFn: () => api.doctor(),
-    enabled: false,
-  });
-
-  return (
-    <Section
-      title={t('Doctor')}
-      description={t(
-        'Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations.',
-      )}
-      actions={
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={doctorQuery.isFetching}
-          onClick={() => void doctorQuery.refetch()}
-        >
-          {t('Run checks')}
-        </Button>
-      }
-    >
-      <div>
-        {doctorQuery.data ? (
-          <DoctorReportView report={doctorQuery.data} />
-        ) : doctorQuery.isError ? (
-          <p className="text-caption text-muted">{t('The examination could not run.')}</p>
-        ) : (
-          <p className="text-caption text-subtle">{t('Not run yet.')}</p>
-        )}
-      </div>
-    </Section>
-  );
-}
-
-function SystemCard() {
-  const t = useT();
-  const { data, isLoading } = useQuery({
-    queryKey: ['system'],
-    queryFn: () => api.system(),
-    refetchInterval: 30_000,
-  });
-
-  if (isLoading || !data) {
-    return (
-      <div className="flex justify-center py-10">
-        <Spinner />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/*
-        * Three facts, listed rather than tiled.
-        *
-        * Three big-number tiles in a two-column grid leave one orphaned on its
-        * own row, and none of the three is a number worth a 24px display face
-        * — a version string, an uptime and a timezone are things you look up,
-        * not figures you monitor. `Stat` stays where the dashboard uses it,
-        * for what actually moves.
-        */}
-      <Section title={t('Deployment')}>
-        <StatList
-          items={[
-            { label: t('Version'), value: data.version },
-            { label: t('Uptime'), value: formatDuration(data.uptimeMs) },
-            {
-              // The clock every cron expression is read in. A schedule typed
-              // for eight on a UTC host fired at ten in Paris, and nothing
-              // said which.
-              label: t('Server timezone'),
-              value: data.timezone,
-              hint: t('Cron schedules are read in it.'),
-            },
-          ]}
-        />
-      </Section>
-      {/* The same three meters the dashboard shows, from the same payload.
-          Two separate renderings of "how full is the disk" would eventually
-          disagree, and the one nobody is looking at would be the wrong one. */}
-      <ResourceMeters resources={data.resources} />
-
-      <Section
-        title={t('Claude CLI')}
-        description={t('Every agent run goes through this binary.')}
-      >
-        <dl className="divide-y divide-line">
-          <DefinitionRow label={t('Available')}>
-            {data.claudeCli.available ? (
-              <Badge tone="success">{t('yes')}</Badge>
-            ) : (
-              <Badge tone="danger">{t('not found')}</Badge>
-            )}
-          </DefinitionRow>
-          <DefinitionRow label={t('Version')}>{data.claudeCli.version ?? '—'}</DefinitionRow>
-          <DefinitionRow label={t('Authentication')}>
-            <div className="flex flex-wrap items-center gap-2">
-              {data.claudeCli.authMode === 'subscription' ? (
-                <Badge tone="success">{t('subscription (Pro / Max)')}</Badge>
-              ) : data.claudeCli.authMode === 'api_key' ? (
-                <Badge tone="warning">{t('API key (pay as you go)')}</Badge>
-              ) : (
-                <Badge tone="danger">{t('none configured')}</Badge>
-              )}
-              {data.claudeCli.authHint ? (
-                <code className="font-mono text-caption text-muted">{data.claudeCli.authHint}</code>
-              ) : null}
-              {data.claudeCli.authSource ? (
-                <span className="text-caption text-subtle">
-                  {data.claudeCli.authSource === 'stored'
-                    ? t('paired here')
-                    : data.claudeCli.authSource === 'cli-login'
-                      ? t('CLI account sign-in')
-                      : t('from the environment')}
-                </span>
-              ) : null}
-            </div>
-          </DefinitionRow>
-        </dl>
-      </Section>
-
-      <ClaudeCredentialCard />
-
-      <NotificationsCard />
-
-      <Section title={t('Kernel')}>
-        <dl className="divide-y divide-line">
-          <DefinitionRow label={t('Active runs')}>{data.activeRuns}</DefinitionRow>
-          <DefinitionRow label={t('Queued runs')}>{data.queuedRuns}</DefinitionRow>
-          <DefinitionRow label={t('Stored memories')}>{data.memoryCount}</DefinitionRow>
-          <DefinitionRow label={t('Retrieval')}>
-            <RetrievalStatus status={data.retrieval} />
-          </DefinitionRow>
-        </dl>
-      </Section>
-    </div>
-  );
-}
-
-function DefinitionRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-2">
-      <dt className="text-body text-muted">{label}</dt>
-      <dd className="text-body font-medium text-ink">{children}</dd>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Audit                                                                       */
-/* -------------------------------------------------------------------------- */
-
 function AuditCard() {
   const t = useT();
   const [verifying, setVerifying] = useState(false);
@@ -988,7 +801,6 @@ function AuditCard() {
 }
 
 /* -------------------------------------------------------------------------- */
-
 
 /** Turn a user-agent string into something a human can recognise. */
 function describeUserAgent(userAgent: string | null, t: TranslateFn): string {

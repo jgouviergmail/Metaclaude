@@ -37,6 +37,7 @@ import {
 } from '@/lib/board';
 import { socket } from '@/lib/socket';
 import { useBoardTouchDrag } from '@/lib/touch-drag';
+import { FILTER_ROW } from '@/components/ui/layout';
 import { cn } from '@/lib/utils';
 
 const WHO_FILTERS: Array<{ value: AssigneeFilter; label: string }> = [
@@ -180,10 +181,20 @@ export function BoardPage() {
               trigger={
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-body text-ink hover:border-accent"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-2 text-body text-ink hover:border-accent sm:px-3"
                 >
-                  {workspace?.name ?? t('Workspace')}
-                  <ChevronDown className="size-3.5" aria-hidden />
+                  {/*
+                    * Bounded on a phone, because the header row is finite and
+                    * the title is what pays otherwise: measured at 390px, this
+                    * picker left `Board` 24 pixels of the 40 it wants. A
+                    * workspace still has to be identifiable — that is the whole
+                    * point of the control on this screen — so it truncates
+                    * rather than folding to an icon.
+                    */}
+                  <span className="max-w-[4rem] truncate sm:max-w-none">
+                    {workspace?.name ?? t('Workspace')}
+                  </span>
+                  <ChevronDown className="size-3.5 shrink-0" aria-hidden />
                 </button>
               }
             >
@@ -241,8 +252,8 @@ export function BoardPage() {
         />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2 sm:px-6">
-            <div className="flex gap-1.5" role="group" aria-label={t('Filter by assignee')}>
+          <div className={cn(FILTER_ROW, 'gap-x-4 border-b border-line px-4 py-2 sm:px-6')}>
+            <div className="flex shrink-0 gap-1.5 [&>*]:shrink-0" role="group" aria-label={t('Filter by assignee')}>
               {WHO_FILTERS.map((filter) => (
                 <button
                   key={filter.value}
@@ -261,7 +272,7 @@ export function BoardPage() {
               ))}
             </div>
 
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('Filter by kind')}>
+            <div className="flex flex-nowrap gap-1.5 [&>*]:shrink-0" role="group" aria-label={t('Filter by kind')}>
               {KIND_FILTERS.map((entry) => (
                 <button
                   key={entry.kind}
@@ -280,7 +291,17 @@ export function BoardPage() {
               ))}
             </div>
 
-            <p className="ml-auto text-caption text-muted">
+            {/*
+              * The running total is desk-only.
+              *
+              * It sat at `ml-auto` inside the filter bar, which works while the
+              * bar wraps and puts it off the right edge the moment the bar
+              * scrolls. Giving it its own row would cost the height the scroll
+              * just saved, and on a phone each column already carries its own
+              * count beside its name — this is a summary of numbers that are
+              * on screen anyway.
+              */}
+            <p className="ml-auto hidden text-caption text-muted sm:block">
               {plural(counts.total, '{n} card', '{n} cards')}
               {counts.working > 0 ? (
                 <span className="text-accent"> · {t(

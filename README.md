@@ -235,8 +235,8 @@ time is deliberately not a limit on how long work
 may take; a loop or an overnight refactor is normal, and what bounds the *work*
 is the workspace's own turn and cost ceilings.
 
-A pending approval also reaches you: a push notification (see Settings →
-Notifications) with a ten-minute lifetime matching the approval's own, and a
+A pending approval also reaches you: a push notification (see System →
+Server) with a ten-minute lifetime matching the approval's own, and a
 badge on the installed app's icon that clears when the last decision is made.
 
 ### Configuration, changed while it runs

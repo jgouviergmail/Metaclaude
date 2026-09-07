@@ -43,7 +43,7 @@ import {
   newId,
   reviewToolNames,
 } from '@metaclaude/shared';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
@@ -354,8 +354,35 @@ class PromptStream {
   private wake: (() => void) | null = null;
   private closed = false;
 
-  push(content: UserContent): boolean {
-    if (this.closed) return false;
+  /**
+   * Queue a message, and name it.
+   *
+   * Returns the uuid the message was filed under, or null when the stream is
+   * already closed — the caller that only needs "did it go" compares against
+   * null.
+   *
+   * The uuid is generated *here* rather than left to the CLI, and that is the
+   * whole of the rewind fix. `Query.rewindFiles(userMessageId)` restores the
+   * files as they were at a given user message, so a rewind needs that id —
+   * and the code used to wait for the CLI to volunteer it on a replay
+   * acknowledgement (`type: 'user'`, `isReplay: true`). Measured against
+   * Claude Code 2.1.218 through a real run: the CLI sends **no** `type: 'user'`
+   * message at all in streaming-input mode, so the acknowledgement never
+   * arrived, `rewindPoint` stayed null for every run ever recorded, and the
+   * Rewind button — gated on exactly that field — could not appear. The
+   * feature was dead in production while its unit tests, which drive a fake
+   * `query`, stayed green.
+   *
+   * `SDKUserMessage.uuid` is the client uuid the SDK documents as
+   * `submitMessage options.uuid`; the CLI stamps it back on the turn's first
+   * reply frame as `user_message_uuid` and, measured, accepts it as the
+   * `rewindFiles` target. Generating it means the anchor exists the instant
+   * the message is queued, before any frame comes back — it cannot be lost to
+   * a message the CLI decides not to send.
+   */
+  push(content: UserContent): string | null {
+    if (this.closed) return null;
+    const uuid = randomUUID();
     // No cast: this object *is* an `SDKUserMessage`, and saying so lets the
     // compiler notice when the SDK renames a field rather than waiting for a
     // run to fail.
@@ -364,10 +391,11 @@ class PromptStream {
       message: { role: 'user', content },
       parent_tool_use_id: null,
       session_id: '',
+      uuid,
     };
     this.queued.push(message);
     this.wake?.();
-    return true;
+    return uuid;
   }
 
   close(): void {
@@ -1063,6 +1091,10 @@ export class AgentSupervisor {
 
     let claudeSessionId: string | null = null;
     let servedModel: string | null = null;
+    // Seeded from the prompt's own uuid rather than left for the CLI to
+    // volunteer. A replay acknowledgement, if a CLI ever sends one, finds this
+    // already set and leaves it alone — see the `rewindPoint === null` guard
+    // below, and the note on `PromptStream.push`.
     let rewindPoint: string | null = null;
     let usage: RunUsage = { ...EMPTY_USAGE };
     let error: string | null = null;
@@ -1072,12 +1104,29 @@ export class AgentSupervisor {
     // documented as streaming-input only, so this is what makes the handle
     // below worth holding. Attachments ride the first message as content
     // blocks beside the text; see buildUserContent for the rules.
-    stream.push(await buildUserContent(request.prompt, request.attachments));
+    // The run's anchor: the uuid this message is filed under. Assigned before
+    // the CLI is even started, so nothing the CLI omits can take it away.
+    const promptUuid = stream.push(await buildUserContent(request.prompt, request.attachments));
+
+    /*
+     * The anchor exists only where a rewind could actually work.
+     *
+     * `rewindFiles` restores from the CLI's file checkpoints, and those are
+     * only written when `enableFileCheckpointing` was set for the run — which
+     * follows the workspace's `checkpointing` setting. Anchoring regardless
+     * would put a Rewind button on every run and have it fail at the press,
+     * which is worse than not offering it: `planRewind` says "checkpointing
+     * was off for this workspace" precisely so the operator knows what to
+     * change. Null stays the honest answer there.
+     */
+    if (promptUuid !== null && options.enableFileCheckpointing === true) {
+      rewindPoint = promptUuid;
+    }
 
     const handle = (this.deps.query ?? sdkQuery)({ prompt: stream, options });
     const entry: LiveRun = {
       handle,
-      send: (text) => stream.push(text),
+      send: (text) => stream.push(text) !== null,
       close: () => stream.close(),
       interruptRequested: false,
       holdIdle,
@@ -1892,11 +1941,17 @@ export class StreamState {
 
   private handleUser(message: Extract<SDKMessage, { type: 'user' }>): Captured {
     // The replay acknowledgement: the CLI echoing back a user message with the
-    // uuid it filed it under. That uuid is the only thing a rewind can be
-    // addressed to, and it is never repeated, so it is picked up here on the
-    // way past. Tool results arrive as `type: 'user'` too — hence the flag
-    // rather than "the first user message we see", which would anchor a rewind
-    // to the middle of the run.
+    // uuid it filed it under. Tool results arrive as `type: 'user'` too — hence
+    // the flag rather than "the first user message we see", which would anchor
+    // a rewind to the middle of the run.
+    //
+    // This is now a fallback, not the source. Claude Code 2.1.218 sends no
+    // `type: 'user'` message at all in streaming-input mode — measured over a
+    // real run — so relying on it left every run unrewindable. The anchor is
+    // the client uuid assigned in `PromptStream.push`; this branch only fills
+    // in when that is somehow absent, and the `rewindPoint === null` guard at
+    // the call site means an acknowledgement never overwrites the uuid the
+    // CLI has already accepted as a `rewindFiles` target.
     const replay = message as { isReplay?: boolean; uuid?: string };
     const captured: Captured =
       replay.isReplay === true && typeof replay.uuid === 'string'

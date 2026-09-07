@@ -102,3 +102,43 @@ describe('BoardPage', () => {
     expect(screen.getByText('Renew the lease')).toBeTruthy();
   });
 });
+
+/**
+ * The filter bar on a phone.
+ *
+ * It sits *above* the scroller, so every row it wraps to is a row stolen from
+ * the board itself. At 390px in French it wrapped to three, and the first card
+ * started a quarter of the way down the screen.
+ */
+describe('the filter bar', () => {
+  it('scrolls rather than wrapping, so it cannot grow a second row', async () => {
+    renderWithProviders(<BoardPage />);
+    const group = await screen.findByRole('group', { name: 'Filter by assignee' });
+    const bar = group.parentElement as HTMLElement;
+
+    expect(bar.className).toContain('flex-nowrap');
+    expect(bar.className).toContain('overflow-x-auto');
+    expect(bar.className).not.toContain('flex-wrap');
+  });
+
+  it('keeps every chip at its own width', async () => {
+    // A flex child shrinks before it overflows, so `flex-nowrap` alone squeezes
+    // the chips into three-line pills instead of scrolling them.
+    renderWithProviders(<BoardPage />);
+    const group = await screen.findByRole('group', { name: 'Filter by assignee' });
+    expect((group.parentElement as HTMLElement).className).toContain('[&>*]:shrink-0');
+    expect(group.className).toContain('[&>*]:shrink-0');
+  });
+
+  it('leaves the running total off the phone, where each column carries its own', async () => {
+    // It sat at `ml-auto` inside the bar, which works while the bar wraps and
+    // puts it past the right edge the moment it scrolls. Giving it a row of
+    // its own would cost the height the scroll just saved.
+    renderWithProviders(<BoardPage />);
+    const group = await screen.findByRole('group', { name: 'Filter by assignee' });
+    const total = (group.parentElement as HTMLElement).querySelector('p');
+    expect(total).not.toBeNull();
+    expect(total?.className).toContain('hidden');
+    expect(total?.className).toContain('sm:block');
+  });
+});

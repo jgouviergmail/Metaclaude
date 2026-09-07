@@ -496,7 +496,12 @@ const ROUTES = [
   ['/plugins', 'plugins'],
   ['/analytics', 'analytics'],
   ['/help', 'help'],
-  ['/settings', 'settings'],
+  ['/server', 'server'],
+  ['/settings/appearance', 'settings'],
+  ['/settings/security', 'settings-security'],
+  ['/settings/connections', 'settings-connections'],
+  ['/settings/configuration', 'settings-configuration'],
+  ['/settings/audit', 'settings-audit'],
 ];
 /*
  * The dialogs, named in both languages.

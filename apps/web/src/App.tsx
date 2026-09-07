@@ -44,7 +44,9 @@ const BoardPage = lazyPage(() => import('@/pages/BoardPage'), 'BoardPage');
 const MemoryPage = lazyPage(() => import('@/pages/MemoryPage'), 'MemoryPage');
 const PluginsPage = lazyPage(() => import('@/pages/PluginsPage'), 'PluginsPage');
 const SessionPage = lazyPage(() => import('@/pages/SessionPage'), 'SessionPage');
+const ServerPage = lazyPage(() => import('@/pages/ServerPage'), 'ServerPage');
 const SettingsPage = lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPage');
+const SettingsRedirect = lazyPage(() => import('@/pages/SettingsPage'), 'SettingsRedirect');
 const WorkspacePage = lazyPage(() => import('@/pages/WorkspacePage'), 'WorkspacePage');
 const WorkspacesPage = lazyPage(() => import('@/pages/WorkspacesPage'), 'WorkspacesPage');
 
@@ -240,6 +242,7 @@ export function App() {
           <Route path={routes.workspaces()} element={<WorkspacesPage />} />
           <Route path={routePattern.workspace} element={<WorkspacePage />} />
           <Route path={routePattern.session} element={<SessionPage />} />
+          <Route path={routes.server()} element={<ServerPage />} />
           <Route path={routes.board()} element={<BoardPage />} />
           <Route path={routes.memory()} element={<MemoryPage />} />
           <Route path={routes.automations()} element={<AutomationsPage />} />
@@ -247,7 +250,8 @@ export function App() {
           <Route path={routes.plugins()} element={<PluginsPage />} />
           <Route path={routes.analytics()} element={<AnalyticsPage />} />
           <Route path={routes.help()} element={<HelpPage />} />
-          <Route path={routes.settings()} element={<SettingsPage />} />
+          <Route path={routes.settings()} element={<SettingsRedirect />} />
+          <Route path={routePattern.settingsSection} element={<SettingsPage />} />
           <Route path="*" element={<Navigate to={routes.dashboard()} replace />} />
         </Routes>
       </Suspense>

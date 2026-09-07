@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Plus,
+  Server,
   Settings,
   SquareKanban,
   Timer,
@@ -98,6 +99,9 @@ export function CommandPalette() {
       'Go to',
     ), run: go(routes.plugins()) },
     { id: 'nav-help', label: 'Help', icon: <CircleHelp />, group: t('Go to'), run: go(routes.help()) },
+    // The machine got a screen of its own; the palette is how an operator
+    // reaches a screen without knowing where it sits.
+    { id: 'nav-server', label: 'Server', icon: <Server />, group: t('Go to'), run: go(routes.server()) },
     { id: 'nav-settings', label: 'Settings', icon: <Settings />, group: t(
       'Go to',
     ), run: go(routes.settings()) },

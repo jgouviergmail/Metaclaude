@@ -10,7 +10,7 @@ Claude subscription.
 
 1. Open your Metaclaude address and sign in with the owner account created at
    installation.
-2. Go to **Settings → Two-factor authentication** and enrol immediately: scan
+2. Go to **Settings → Security → Two-factor authentication** and enrol immediately: scan
    the QR code with any authenticator app, confirm one code, and store the
    recovery codes somewhere safe. They are shown exactly once and each works
    exactly once.

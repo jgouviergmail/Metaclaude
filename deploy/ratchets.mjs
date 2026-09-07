@@ -1569,6 +1569,42 @@ function countBoxedSections() {
   return n;
 }
 
+/**
+ * A name imported and never used.
+ *
+ * `tsc` does not report it — `noUnusedLocals` is off here and turning it on
+ * would fail the build on a half-written line — and no test can see it. It is
+ * invisible until someone reads the imports, which is why eleven of them
+ * survived a screen being split in two: five cards and a report view left
+ * `SettingsPage` for `ServerPage`, and every import stayed behind, still
+ * pulling those modules into the chunk.
+ *
+ * Counted by name rather than by parsing: an identifier that appears exactly
+ * once in the file is the import itself and nothing else. That undercounts —
+ * a name used only inside a string or a comment reads as used — which is the
+ * right way to be wrong for a ratchet whose ceiling is zero.
+ */
+function countDeadImports() {
+  let n = 0;
+  const IMPORT = /^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+'([^']+)';$/gm;
+  for (const file of tracked('apps/web/src/*', 'apps/api/src/*', 'packages/shared/src/*')) {
+    if (!/\.tsx?$/.test(file) || file.includes('.test.')) continue;
+    const text = read(file);
+    for (const match of text.matchAll(IMPORT)) {
+      for (const raw of match[1].split(',')) {
+        const name = raw.replace(/\btype\b/, '').trim().split(/\s+as\s+/).pop();
+        if (!name) continue;
+        const uses = text.match(new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'));
+        if ((uses?.length ?? 0) <= 1) {
+          n += 1;
+          note('imp ', file, `${name} (from ${match[2]})`);
+        }
+      }
+    }
+  }
+  return n;
+}
+
 function countDisplayBesideDensityHelp() {
   let n = 0;
   for (const file of tracked('apps/web/src/*')) {
@@ -1802,6 +1838,12 @@ const METRICS = [
     direction: 'down',
     label: 'paths written by hand instead of built from the shared contract',
     measure: countHardcodedRoutes,
+  },
+  {
+    key: 'deadImports',
+    direction: 'down',
+    label: 'names imported and never used',
+    measure: countDeadImports,
   },
   {
     key: 'boxedSections',

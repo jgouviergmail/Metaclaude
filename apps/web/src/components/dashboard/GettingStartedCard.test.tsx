@@ -48,8 +48,46 @@ describe('GettingStartedCard', () => {
       '/workspaces',
     );
     expect(screen.getByText(/install the host updater/i)).toBeTruthy();
-    // Done steps stay visible, struck through — progress reads as progress.
-    expect(screen.getByText(/pair claude/i)).toBeTruthy();
+  });
+
+  /*
+   * What is finished is a number, not a row.
+   *
+   * Six rows filled 343px at the top of the dashboard and half of them were
+   * struck through — a finished step is finished, and there is nothing on it
+   * to act on. The count and the bar carry the only thing those rows said,
+   * which is that you are getting somewhere.
+   */
+  it('does not list a step that is already done', async () => {
+    renderWithProviders(<GettingStartedCard />);
+    await screen.findByRole('list');
+
+    // The fixture has Claude paired and a workspace created.
+    expect(screen.queryByText(/pair claude/i)).toBeNull();
+    expect(screen.queryByText(/create a workspace/i)).toBeNull();
+    expect(document.querySelector('.line-through')).toBeNull();
+  });
+
+  it('says how far along you are, in words and as a bar', async () => {
+    renderWithProviders(<GettingStartedCard />);
+    await screen.findByRole('list');
+
+    // Two of the six are done in this fixture.
+    expect(screen.getByText('2 of 6 done')).toBeTruthy();
+    // `Meter` is an `img` with a label, deliberately: it is a drawn ratio, not
+    // a control, and it carries its reading in the name.
+    expect(screen.getByRole('img', { name: '2 of 6 done' })).toBeTruthy();
+  });
+
+  it('shows no progress line before anything is done', async () => {
+    // A bar at zero reads as "you have failed at something", and the rows
+    // below already say what to do first.
+    apiMock.system.mockResolvedValue({ claudeCli: { authenticated: false } });
+    apiMock.workspaces.mockResolvedValue({ workspaces: [] });
+    renderWithProviders(<GettingStartedCard />);
+    await screen.findByRole('list');
+
+    expect(screen.queryByRole('img', { name: /done/ })).toBeNull();
   });
 
   it('says nothing once everything is done', async () => {
@@ -103,7 +141,8 @@ describe('how much of itself the checklist explains', () => {
    * display utility is exactly what this contract decides, so a selector naming
    * one would move with the implementation instead of holding it.
    */
-  const details = () => [...document.querySelectorAll('li span.text-caption')];
+  const details = () =>
+    [...document.querySelectorAll('li a span.text-caption')];
 
   it('explains the step you are on, and leaves the rest to the comfortable density', async () => {
     renderWithProviders(<GettingStartedCard />);
@@ -118,13 +157,13 @@ describe('how much of itself the checklist explains', () => {
     }
   });
 
-  it('says nothing at all about a step already done', async () => {
+  it('explains only steps, never the progress line', async () => {
+    // The progress line carries a caption of its own; it must not be counted
+    // as a step's explanation, or the contract above would pass by accident.
     renderWithProviders(<GettingStartedCard />);
     await screen.findByRole('list');
-    const done = [...document.querySelectorAll('li')].filter((row) =>
-      row.querySelector('.line-through'),
-    );
-    expect(done.length).toBeGreaterThan(0);
-    for (const row of done) expect(row.querySelector('span.text-caption')).toBeNull();
+    for (const detail of details()) {
+      expect(detail.closest('a')).not.toBeNull();
+    }
   });
 });

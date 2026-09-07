@@ -179,6 +179,37 @@ export function Section({
 }
 
 /* -------------------------------------------------------------------------- */
+/* Filter row                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A row of filter chips that scrolls sideways rather than wrapping.
+ *
+ * `flex-wrap` on a filter bar is a phone defect that never shows on a desk.
+ * Measured on the board at 390px in French: the assignee and kind groups wrap
+ * to three rows, and because that bar sits *above* the scroller it pushes the
+ * first card to 237px — 28% of a 844px screen spent before any content, the
+ * worst of the ten routes and by a wide margin. Nothing reports it: no control
+ * is clipped, none is covered, no ancestor overflows.
+ *
+ * `SystemTabs` already solved this for the section strip, with the same
+ * reasoning written beside it ("a strip that wraps to two rows pushes the
+ * content down on every phone"), and the rule was never carried across. Here
+ * it is, once, so the next filter bar inherits it. `scripts/responsive.mjs`
+ * tolerates a control outside the frame precisely when an ancestor scrolls,
+ * which is what makes this a choice rather than a clipped row.
+ *
+ * `[&>*]:shrink-0` is not decoration, for the same reason `Grid` carries
+ * `[&>*]:min-w-0`: a flex child's default is to shrink before it overflows,
+ * so `flex-nowrap` alone squeezes the chips instead of scrolling them —
+ * measured, `Tous les types` broke over three lines inside its own pill and
+ * made the bar *taller* than the wrapping version it replaced. The row has
+ * to say that its children keep their width; a caller cannot be relied on
+ * to remember.
+ */
+export const FILTER_ROW = 'flex flex-nowrap items-center overflow-x-auto [&>*]:shrink-0';
+
+/* -------------------------------------------------------------------------- */
 /* Table                                                                       */
 /* -------------------------------------------------------------------------- */
 

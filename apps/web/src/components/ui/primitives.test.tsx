@@ -357,3 +357,44 @@ describe('StatList', () => {
     expect(value.className).toContain('tabular-nums');
   });
 });
+
+/**
+ * A field passed to `Label` gets the whole row.
+ *
+ * The control sits inside the `<label>` — that is what associates the two
+ * without an id — and the label was a flex item, which shrinks to its content.
+ * So each field took `w-full` of its own *label text*: three password fields
+ * on one screen came out 311, 292 and 344 pixels wide, and thirteen of the
+ * seventeen visible fields in the app were under 80% of the room they had.
+ *
+ * happy-dom lays nothing out, so what a test can hold is the class contract;
+ * `apps/api/scripts/measure-inputs.mjs` measures the result in a browser and
+ * reports zero — and three again when this line is taken away.
+ */
+describe('a field inside a Label', () => {
+  it('gives the label the full row rather than its text width', () => {
+    const { container } = render(
+      <Label htmlFor="pw">
+        Current password
+        <Input id="pw" />
+      </Label>,
+    );
+    const label = container.querySelector('label') as HTMLElement;
+    expect(label.className).toContain('w-full');
+    expect(label.className).toContain('min-w-0');
+  });
+
+  it('keeps the explain trigger on the first line, not centred on the field', () => {
+    // With the label two rows tall, `items-center` would float the trigger
+    // halfway down the input beside a label it no longer sits next to.
+    const { container } = render(
+      <Label htmlFor="pw" explanation="Changing it signs out every device.">
+        Current password
+        <Input id="pw" />
+      </Label>,
+    );
+    const row = container.querySelector('label')?.parentElement as HTMLElement;
+    expect(row.className).toContain('items-start');
+    expect(row.className).not.toContain('items-center');
+  });
+});

@@ -16,7 +16,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { newId } from './ids.js';
-import { routePattern, routes } from './routes.js';
+import {
+  isOwnerOnlySection,
+  OWNER_ONLY_SETTINGS,
+  routePattern,
+  routes,
+  SETTINGS_SECTIONS,
+  SYSTEM_SECTION_PATHS,
+} from './routes.js';
 
 describe('the paths that ship today', () => {
   it('builds every top-level screen exactly as it is deployed', () => {
@@ -109,5 +116,89 @@ describe('the router patterns', () => {
       );
     expect(asPattern(routes.workspace('ws_1'))).toBe(routePattern.workspace);
     expect(asPattern(routes.session('ws_1', 'ses_1'))).toBe(routePattern.session);
+  });
+});
+
+/**
+ * The two sections, described once.
+ *
+ * Settings' groups and the System screens are each read by three consumers —
+ * a strip that draws them, a predicate that says which section owns a path,
+ * and a screen that guards itself. Written out per consumer they drift, and a
+ * drift shows up as a hidden screen, an unguarded one, or a rail that
+ * highlights nothing while you stand on it.
+ */
+describe('the settings groups', () => {
+  it('names the five that ship, in the order they are shown', () => {
+    expect([...SETTINGS_SECTIONS]).toEqual([
+      'appearance',
+      'connections',
+      'security',
+      'configuration',
+      'audit',
+    ]);
+  });
+
+  it('builds each one as a route under /settings', () => {
+    for (const section of SETTINGS_SECTIONS) {
+      expect(routes.settingsSection(section)).toBe(`/settings/${section}`);
+    }
+  });
+
+  it('keeps `/settings` itself, because other systems still build it', () => {
+    // `integrations.ts` returns from Google's consent there, and an operator
+    // has bookmarks. It forwards; it does not 404.
+    expect(routes.settings()).toBe('/settings');
+    expect(routes.settings({ google: 'connected' })).toBe('/settings?google=connected');
+  });
+});
+
+describe('which groups an operator may not reach', () => {
+  it('names the three the API also refuses them', () => {
+    expect([...OWNER_ONLY_SETTINGS]).toEqual(['connections', 'configuration', 'audit']);
+  });
+
+  it('answers for every group, and only for groups', () => {
+    for (const section of SETTINGS_SECTIONS) {
+      expect(isOwnerOnlySection(section), section).toBe(
+        (OWNER_ONLY_SETTINGS as readonly string[]).includes(section),
+      );
+    }
+    expect(isOwnerOnlySection('appearance')).toBe(false);
+    expect(isOwnerOnlySection('nonexistent')).toBe(false);
+  });
+
+  it('lists only groups that exist', () => {
+    // A stale entry here would guard nothing, silently.
+    for (const section of OWNER_ONLY_SETTINGS) {
+      expect(SETTINGS_SECTIONS).toContain(section);
+    }
+  });
+});
+
+describe('the system screens', () => {
+  it('names the five, the machine first', () => {
+    expect([...SYSTEM_SECTION_PATHS]).toEqual([
+      '/server',
+      '/automations',
+      '/agents',
+      '/plugins',
+      '/analytics',
+    ]);
+  });
+
+  it('matches what the route builders produce', () => {
+    // The paths are literals here so the list can be read without pulling the
+    // builders in; this is the seam that keeps the two spellings equal.
+    expect(SYSTEM_SECTION_PATHS[0]).toBe(routes.server());
+    expect(SYSTEM_SECTION_PATHS[1]).toBe(routes.automations());
+    expect(SYSTEM_SECTION_PATHS[2]).toBe(routes.agents());
+    expect(SYSTEM_SECTION_PATHS[3]).toBe(routes.plugins());
+    expect(SYSTEM_SECTION_PATHS[4]).toBe(routes.analytics());
+  });
+
+  it('does not list Settings or Help, which belong to the other section', () => {
+    expect(SYSTEM_SECTION_PATHS).not.toContain(routes.settings());
+    expect(SYSTEM_SECTION_PATHS).not.toContain(routes.help());
   });
 });

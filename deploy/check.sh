@@ -1718,33 +1718,42 @@ section "Every screen the guide sends the reader to still exists"
 # docs/DEPLOYMENT.md is deliberately excluded — its "Settings → General →
 # About" paths are iOS and Android, not Metaclaude.
 #
-# The claim asserted is narrow on purpose: the first segment after
-# "Settings →" must appear somewhere in SettingsPage.tsx, tab label or card
-# title. That is enough to catch a screen that is not there at all, without
-# pretending to parse the route tree.
+# The claim asserted is narrow on purpose: the first segment after a section
+# name must appear somewhere in that section's own sources — a strip label or a
+# card title. That is enough to catch a screen that is not there at all,
+# without pretending to parse the route tree.
+#
+# Two sections, because the machine moved. "Settings → Server" was correct
+# while the machine was a tab inside Settings and became a dangling reference
+# the moment it became a screen of its own; this check is what caught it. A
+# reference is now checked against the section that owns it, so moving a screen
+# between sections fails here until the guide follows.
 paths="$(python3 - "$REPO_ROOT" <<'PY' | tr -d '\r'
 import pathlib, re, sys
 
 root = pathlib.Path(sys.argv[1])
 sources = sorted((root / "docs" / "guide").glob("*.md")) + [root / "README.md"]
 seen = []
-cite = re.compile(r"Settings\s*→\s*([^*\n.;,)]+)")
+cite = re.compile(r"(Settings|System)\s*→\s*([^*\n.;,)]+)")
 for doc in sources:
     if not doc.exists():
         continue
-    for raw in cite.findall(doc.read_text(encoding="utf-8")):
-        # "System → Doctor → Run checks" — only the first hop is a Settings
-        # screen; what it contains is that screen's business.
+    for section, raw in cite.findall(doc.read_text(encoding="utf-8")):
+        # "Server → Doctor → Run checks" — only the first hop is a screen;
+        # what it contains is that screen's business.
         first = raw.split("→")[0].strip().rstrip("*").strip()
         # Prose that continues past the screen name ("Security and turn on…").
         first = re.split(r"\s+(?:and|then|to|for|which|where)\b", first)[0].strip()
         if first:
-            seen.append(first)
+            seen.append(f"{section}\t{first}")
 print("\n".join(dict.fromkeys(seen)))
 PY
 )"
 
 settings_page="$REPO_ROOT/apps/web/src/pages/SettingsPage.tsx"
+# Each section's own sources: where a screen it owns must be named.
+settings_sources="$settings_page $REPO_ROOT/apps/web/src/components/layout/SettingsTabs.tsx $REPO_ROOT/apps/web/src/pages/HelpPage.tsx"
+system_sources="$REPO_ROOT/apps/web/src/components/layout/SystemTabs.tsx $REPO_ROOT/apps/web/src/pages/ServerPage.tsx $REPO_ROOT/apps/web/src/pages/AutomationsPage.tsx $REPO_ROOT/apps/web/src/pages/AgentsPage.tsx $REPO_ROOT/apps/web/src/pages/PluginsPage.tsx $REPO_ROOT/apps/web/src/pages/AnalyticsPage.tsx"
 if [ ! -f "$settings_page" ]; then
   bad "locating the settings screen" "$settings_page is missing"
 elif [ -z "$paths" ]; then
@@ -1754,19 +1763,25 @@ elif [ -z "$paths" ]; then
 else
   missing_paths=""
   path_count=0
-  while IFS= read -r screen; do
+  while IFS="$(printf '\t')" read -r section screen; do
     [ -n "$screen" ] || continue
     path_count=$((path_count + 1))
-    grep -qF -- "$screen" "$settings_page" 2>/dev/null \
+    if [ "$section" = "System" ]; then
+      files="$system_sources"
+    else
+      files="$settings_sources"
+    fi
+    # shellcheck disable=SC2086
+    grep -qF -- "$screen" $files 2>/dev/null \
       || missing_paths="$missing_paths
-    Settings → $screen"
+    $section → $screen"
   done <<EOF
 $paths
 EOF
   if [ -n "$missing_paths" ]; then
-    bad "the guide sends the reader to a Settings screen that does not exist" "$missing_paths"
+    bad "the guide sends the reader to a screen its section does not have" "$missing_paths"
   else
-    ok "all $path_count documented Settings screens exist in SettingsPage.tsx"
+    ok "all $path_count documented screens exist in their section's sources"
   fi
 fi
 

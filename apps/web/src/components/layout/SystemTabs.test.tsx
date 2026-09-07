@@ -19,6 +19,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
+import { SYSTEM_SECTION_PATHS } from '@metaclaude/shared';
 import { isSystemPath, SYSTEM_PATHS, SystemTabs } from './SystemTabs';
 
 describe('SystemTabs', () => {
@@ -42,12 +43,17 @@ describe('SystemTabs', () => {
     // notification links to `/automations`, and push notifications carry their
     // own paths. A rename here is a silent break there.
     expect(SYSTEM_PATHS.map((entry) => entry.to)).toEqual([
+      '/server',
       '/automations',
       '/agents',
       '/plugins',
       '/analytics',
-      '/help',
     ]);
+    // And the same list the predicate reads, in the same order: the strip
+    // pairs these paths with icons, `lib/sections` answers "which section owns
+    // this" from the contract, and a screen added to one and forgotten in the
+    // other leaves the rail highlighting nothing while you stand on it.
+    expect(SYSTEM_PATHS.map((entry) => entry.to)).toEqual([...SYSTEM_SECTION_PATHS]);
   });
 
   /*
@@ -58,9 +64,15 @@ describe('SystemTabs', () => {
    * rail highlighting no section at all on the screen an operator opens most.
    * Its URL is untouched: what changed is which group owns it.
    */
-  it('no longer counts Settings as one of its screens', () => {
+  it('no longer counts Settings or Help as one of its screens', () => {
+    // Settings left because it is where an operator goes deliberately and by
+    // name; Help left because it is the manual, not a capability. Both keep
+    // their URLs — what changed is the group that owns them.
     expect(SYSTEM_PATHS.map((entry) => entry.to)).not.toContain('/settings');
+    expect(SYSTEM_PATHS.map((entry) => entry.to)).not.toContain('/help');
     expect(isSystemPath('/settings')).toBe(false);
+    expect(isSystemPath('/help')).toBe(false);
+    expect(isSystemPath('/server')).toBe(true);
     expect(isSystemPath('/automations')).toBe(true);
   });
 
@@ -113,7 +125,7 @@ describe('the current section is brought into view', () => {
       calls.push(this);
     };
     try {
-      render(<SystemTabs />, { route: '/help' });
+      render(<SystemTabs />, { route: '/analytics' });
       const current = screen
         .getAllByRole('link')
         .find((link) => link.getAttribute('aria-current') === 'page');
@@ -141,3 +153,29 @@ describe('the chips are reachable with a thumb', () => {
   });
 });
 
+
+/**
+ * The strip and the predicate must agree.
+ *
+ * `isSystemPath` lives in `lib/sections` and lists the prefixes by hand, so
+ * that `AppShell` — in the entry chunk — can ask which section a path belongs
+ * to without pulling this module's six icons in behind it. The bundle ratchet
+ * measured that at +1 kB gzip. The cost of writing them twice is that they can
+ * drift: a screen added to the strip and forgotten there would leave the rail
+ * highlighting nothing while you stand on it. This is the seam, held shut.
+ */
+describe('the strip and the predicate list the same screens', () => {
+  it('recognises every screen the strip offers', () => {
+    for (const entry of SYSTEM_PATHS) {
+      expect(isSystemPath(entry.to), entry.to).toBe(true);
+    }
+  });
+
+  it('recognises a child route of one, and nothing outside the section', () => {
+    expect(isSystemPath(`${SYSTEM_PATHS[0]!.to}/anything`)).toBe(true);
+    expect(isSystemPath('/')).toBe(false);
+    expect(isSystemPath('/board')).toBe(false);
+    // The trap a prefix test falls into: `/serverless` is not `/server`.
+    expect(isSystemPath('/serverless')).toBe(false);
+  });
+});

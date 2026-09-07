@@ -215,9 +215,24 @@ export function Label({
   const help = useDisclosedDescription(explanation, undefined, labelId);
   return (
     <div className={cn('block space-y-1.5', className)}>
-      <div className="flex items-center gap-2">
+      {/*
+        * `items-start` and a label that fills the row.
+        *
+        * A control passed as `children` sits *inside* the `<label>` — that is
+        * the point, it is what associates the two without an id. But the label
+        * was a flex item, and a flex item shrinks to its content: the field
+        * inside it took `w-full` of the label's *text* width. Measured across
+        * the app, thirteen of seventeen visible fields were under 90% of the
+        * room they had, and the three password fields on one screen came out
+        * 311, 292 and 344 pixels wide — each one the width of its own label.
+        *
+        * `w-full` on the label gives the row back; `items-start` keeps the
+        * explain trigger on the first line rather than centring it against a
+        * label that is now two rows tall.
+        */}
+      <div className="flex items-start gap-2">
         <label
-          className="block text-body font-medium text-ink"
+          className="block w-full min-w-0 text-body font-medium text-ink"
           htmlFor={htmlFor}
           {...props}
           // After the spread, deliberately: the trigger's `aria-describedby`

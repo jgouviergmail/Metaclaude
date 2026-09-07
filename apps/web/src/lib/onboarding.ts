@@ -37,7 +37,11 @@ export function onboardingSteps(input: OnboardingInput): OnboardingStep[] {
       label: 'Pair Claude',
       detail: 'Sign in with your Pro or Max account — nothing runs without it.',
       done: input.authenticated,
-      href: routes.settings(),
+      // The credential card lives on the server screen, not in Settings: it is
+      // part of what the deployment *is*, not a preference. A step that lands
+      // on the wrong screen is worse than no step — the operator arrives, sees
+      // nothing to do, and stops trusting the list.
+      href: routes.server(),
     },
     {
       key: 'workspace',
@@ -58,21 +62,21 @@ export function onboardingSteps(input: OnboardingInput): OnboardingStep[] {
       label: 'Turn on two-factor auth',
       detail: 'This server is on the network; your account should need more than a password.',
       done: input.totpEnabled,
-      href: routes.settings(),
+      href: routes.settingsSection('security'),
     },
     {
       key: 'push',
       label: 'Enable notifications',
       detail: 'A push when a run waits on your approval — the phone is the point.',
       done: input.pushDevices > 0,
-      href: routes.settings(),
+      href: routes.server(),
     },
     {
       key: 'updater',
       label: 'Install the host updater',
       detail: 'Re-run deploy/install-app.sh once; updates become one button here.',
       done: input.updaterAvailable,
-      href: routes.settings(),
+      href: routes.server(),
     },
   ];
 }

@@ -16,7 +16,7 @@ import type { RunUsage, TranscriptEvent } from '@metaclaude/shared';
 
 import { renderWithProviders } from '@/test/render';
 
-import { AssistantText, ResultFooter, ThinkingBlock, TodoList, TranscriptItem } from './TranscriptItem';
+import { AssistantText, ResultFooter, ThinkingBlock, TodoList, TranscriptItem, UserMessage } from './TranscriptItem';
 
 const { ui } = vi.hoisted(() => ({ ui: { showThinking: true, expandTools: false } }));
 
@@ -202,5 +202,54 @@ describe('the result footer’s token tooltip', () => {
     );
 
     expect(screen.queryByText(/tokens/)).toBeNull();
+  });
+});
+
+/**
+ * When a message was written.
+ *
+ * Asked for after a session was read back a day later and nothing on screen
+ * said when any of it happened: the run footer carries a duration, which
+ * answers "how long", never "when". Both sides carry it — a reply without a
+ * time beside the prompt that caused it is half an answer.
+ */
+describe('the time on a message', () => {
+  const at = Date.UTC(2026, 8, 7, 12, 32, 0);
+
+  it('stamps a user message with the exact instant, not only the text', () => {
+    const { container } = renderWithProviders(
+      <UserMessage
+        event={
+          {
+            id: 'ev_1',
+            runId: 'run_1',
+            kind: 'user_message',
+            at,
+            text: 'Résume le bail',
+            attachments: [],
+          } as never
+        }
+      />,
+    );
+    const time = container.querySelector('time') as HTMLTimeElement;
+    expect(time).not.toBeNull();
+    // The text is short by design; the machine-readable value is complete, so
+    // anything reading the page has the day and the second.
+    expect(time.getAttribute('dateTime')).toBe(new Date(at).toISOString());
+    expect(time.textContent).toMatch(/\d{1,2}[:h]\d{2}/);
+  });
+
+  it('stamps a settled assistant reply', () => {
+    const { container } = renderWithProviders(<AssistantText text="Voici." at={at} />);
+    expect(container.querySelector('time')?.getAttribute('dateTime')).toBe(
+      new Date(at).toISOString(),
+    );
+  });
+
+  it('leaves a streaming reply unstamped', () => {
+    // It has no settled time yet, and stamping "now" on every token would tick
+    // a clock under the caret.
+    const { container } = renderWithProviders(<AssistantText text="Voi" at={at} streaming />);
+    expect(container.querySelector('time')).toBeNull();
   });
 });

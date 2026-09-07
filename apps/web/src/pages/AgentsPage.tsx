@@ -141,7 +141,6 @@ export function AgentsPage() {
         tabs={<SystemTabs />}
         title={t('Agents & skills')}
         subtitle={scopeLabel}
-        showSidebarToggle={false}
         icon={<Bot />}
         actions={
           <Menu

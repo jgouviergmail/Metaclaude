@@ -13,7 +13,7 @@ import { SystemTabs } from './SystemTabs';
 import { AppShell, ContentHeader } from './AppShell';
 
 /** The System screens the rail no longer carries: its strip does. */
-const SECONDARY = ['Automations', 'Agents & skills', 'Plugins', 'Analytics', 'Help'];
+const SECONDARY = ['Server', 'Automations', 'Agents & skills', 'Plugins', 'Analytics'];
 
 describe('AppShell navigation', () => {
   it('offers the same six sections in the rail and in the phone tab bar', () => {
@@ -177,7 +177,7 @@ describe('the six sections', () => {
   });
 
   it('marks System as current on each of its five screens', () => {
-    for (const route of ['/automations', '/agents', '/plugins', '/analytics', '/help']) {
+    for (const route of ['/server', '/automations', '/agents', '/plugins', '/analytics']) {
       const { unmount } = renderWithProviders(<AppShell>content</AppShell>, { route });
       const entries = screen.getAllByLabelText('System');
       expect(
@@ -204,7 +204,7 @@ describe('the six sections', () => {
    * pass just as well if System lit up too, which is the state this replaces.
    */
   it('marks Settings as current on its own screen, and System not at all', () => {
-    renderWithProviders(<AppShell>content</AppShell>, { route: '/settings' });
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/settings/security' });
 
     const settings = screen.getAllByLabelText('Settings');
     expect(settings.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
@@ -255,12 +255,36 @@ describe('the six sections', () => {
     }
   });
 
+  /*
+   * Help moved out of the System group and into Settings.
+   *
+   * It was the one entry there that did not describe something the deployment
+   * *does* — it is the manual. Its URL is untouched, so every link and
+   * bookmark still lands; what changed is which section owns it, and the rail
+   * has to agree or `/help` highlights nothing at all.
+   */
+  it('marks Settings as current on the help screen', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/help' });
+
+    const settings = screen.getAllByLabelText('Settings');
+    expect(settings.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+
+    const system = screen.getAllByLabelText('System');
+    expect(system.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
+  });
+
+  it('sends the Settings entry to the first group of its own strip', () => {
+    renderWithProviders(<AppShell>content</AppShell>);
+    const entry = screen.getAllByLabelText('Settings')[0] as HTMLElement;
+    expect(entry.getAttribute('href')).toBe('/settings/appearance');
+  });
+
   it('sends the System entry to the first screen of its own strip', () => {
     // Not to `/settings`, which is no longer in the group and would land the
     // operator on a screen the strip does not list.
     renderWithProviders(<AppShell>content</AppShell>);
     const entry = screen.getAllByLabelText('System')[0] as HTMLElement;
-    expect(entry.getAttribute('href')).toBe('/automations');
+    expect(entry.getAttribute('href')).toBe('/server');
   });
 });
 
@@ -315,3 +339,83 @@ describe('ContentHeader', () => {
   });
 });
 
+
+/**
+ * The panel button exists only when there is a panel.
+ *
+ * Three screens shipped a "Toggle panel" button with nothing behind it —
+ * Board, Help and Plugins — because `ContentHeader`'s default was `true` and
+ * the two components live in different files, so nobody adding a header
+ * remembered to say otherwise. A control that does nothing is worse than a
+ * missing one: it teaches the operator that pressing things here has no
+ * effect. The shell knows whether it was given a panel; the header asks it.
+ */
+describe('the panel toggle', () => {
+  it('is absent on a screen with no panel', () => {
+    renderWithProviders(
+      <AppShell>
+        <ContentHeader title="Board" />
+      </AppShell>,
+    );
+    expect(screen.queryByRole('button', { name: 'Toggle panel' })).toBeNull();
+  });
+
+  it('is there on a screen that has one', () => {
+    renderWithProviders(
+      <AppShell sidebar={<div>panel</div>}>
+        <ContentHeader title="Workspace" />
+      </AppShell>,
+    );
+    expect(screen.getByRole('button', { name: 'Toggle panel' })).toBeTruthy();
+  });
+
+  it('can still be hidden deliberately on a screen that has one', () => {
+    // The override stays for a screen whose panel is reached another way.
+    renderWithProviders(
+      <AppShell sidebar={<div>panel</div>}>
+        <ContentHeader title="Workspace" showSidebarToggle={false} />
+      </AppShell>,
+    );
+    expect(screen.queryByRole('button', { name: 'Toggle panel' })).toBeNull();
+  });
+});
+
+/**
+ * The title keeps enough of the row to be read.
+ *
+ * `truncate` is doing exactly what it is for, so nothing reports this: no
+ * control is clipped, nothing overflows, no ancestor scrolls. The title is
+ * simply the flexible item in a row whose buttons are not — and it is the only
+ * thing on screen saying which page you are on. Measured at 390px:
+ * `Automations` had 91px, `Aut…`; `Board` had 24 of the 41 it wants; eight
+ * titles across two languages were cut. `scripts/measure-titles.mjs` is what
+ * found them and reports zero now.
+ *
+ * happy-dom lays nothing out, so what a test can hold is the class contract —
+ * the two decisions that gave the row back its pixels.
+ */
+describe('what the header gives the title', () => {
+  it('folds the decorative icon away on a phone', () => {
+    // 28px with its gap, for something `aria-hidden` beside a title that
+    // already says which page you are on.
+    const { container } = renderWithProviders(
+      <AppShell>
+        <ContentHeader title="Memory" icon={<span data-testid="icon" />} />
+      </AppShell>,
+    );
+    const wrapper = container.querySelector('[data-testid="icon"]')?.parentElement as HTMLElement;
+    expect(wrapper.className).toContain('hidden');
+    expect(wrapper.className).toContain('sm:block');
+  });
+
+  it('keeps the row tight on a phone and roomy beyond it', () => {
+    const { container } = renderWithProviders(
+      <AppShell>
+        <ContentHeader title="Board" />
+      </AppShell>,
+    );
+    const header = container.querySelector('main header') as HTMLElement;
+    expect(header.className).toContain('gap-2');
+    expect(header.className).toContain('sm:gap-3');
+  });
+});

@@ -368,9 +368,15 @@ export const Run = z.object({
   /**
    * The CLI's uuid for the user message that started this run.
    *
-   * The anchor a rewind restores to. Null when the run cannot be rewound —
-   * checkpointing was off, the CLI sent no acknowledgement, or the run predates
-   * the feature. The UI treats all three the same way: no rewind offered.
+   * The anchor a rewind restores to: the uuid Metaclaude puts on the message
+   * it hands the CLI, so it exists the moment the run starts. Null when the
+   * run cannot be rewound — checkpointing was off for the workspace, or the
+   * run predates the feature. The UI treats both the same way: no rewind
+   * offered.
+   *
+   * It used to be read off a replay acknowledgement the CLI was expected to
+   * send back, and Claude Code 2.1.218 sends no user message at all in
+   * streaming-input mode: the field was null for every run ever recorded.
    */
   rewindPoint: z.string().nullable(),
   /**

@@ -24,6 +24,7 @@ const { apiMock } = vi.hoisted(() => ({
     deleteAutomation: vi.fn(),
     createAutomation: vi.fn(),
     system: vi.fn(),
+    claudeCatalogue: vi.fn(),
   },
 }));
 
@@ -43,6 +44,7 @@ const automation = (over: Record<string, unknown> = {}) => ({
   nextRunAt: 1_700_000_600_000,
   consecutiveFailures: 0,
   sessionId: null,
+  policy: { permissionMode: 'default', notify: false, model: 'claude-sonnet-5' },
   createdAt: 0,
   updatedAt: 0,
   ...over,
@@ -59,6 +61,15 @@ beforeEach(() => {
   apiMock.deleteAutomation.mockResolvedValue({ ok: true });
   apiMock.system.mockResolvedValue({ timezone: 'Europe/Paris' });
   apiMock.createAutomation.mockResolvedValue({});
+  // The picker offers what the workspace can reach, so the test has to say
+  // what that is — an empty catalogue would offer nothing to choose.
+  apiMock.claudeCatalogue.mockResolvedValue({
+    models: [
+      { value: 'claude-opus-5', displayName: 'Opus 5', description: 'The deep one' },
+      { value: 'claude-sonnet-5', displayName: 'Sonnet 5', description: 'The quick one' },
+    ],
+    efforts: [],
+  });
 });
 
 describe('the list', () => {
@@ -192,9 +203,77 @@ describe('the form', () => {
     expect(apiMock.createAutomation).toHaveBeenCalledWith(
       expect.objectContaining({
         trigger: { type: 'event', event: 'run_succeeded', filter: 'deploy' },
-        policy: { permissionMode: 'default', notify: true },
+        policy: { permissionMode: 'default', notify: true, model: 'default' },
       }),
     );
+  });
+
+  /**
+   * The model an unattended run uses.
+   *
+   * `AutomationPolicy.model` shipped with the feature and no form ever set it,
+   * so every automation ran on whatever `default` resolves to — including the
+   * nightly briefs, where the choice matters most and nobody could make it.
+   * The scheduler has always forwarded the field; only the picker was missing,
+   * which is the same shape as the `notify` flag above and as the event
+   * trigger before it. A schema field nothing writes is a promise on screen
+   * and silence underneath.
+   */
+  it('offers the workspace’s models, from the catalogue rather than a fixed list', async () => {
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+    const open = screen.getByRole('button', { name: 'New automation' }) as HTMLButtonElement;
+    await waitFor(() => expect(open.disabled).toBe(false));
+    fireEvent.click(open);
+    await screen.findByRole('dialog');
+
+    // `Auto` is `modelOptions`' own first entry - what a run gets when nobody
+    // chose. Its presence is what says the picker is wired to the catalogue.
+    const trigger = await screen.findByRole('button', { name: 'Auto' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+
+    expect(await screen.findByRole('menuitemcheckbox', { name: /Opus 5/ })).toBeTruthy();
+    expect(screen.getByRole('menuitemcheckbox', { name: /Sonnet 5/ })).toBeTruthy();
+  });
+
+  it('shows the stored model even when the catalogue does not list it', async () => {
+    /*
+     * The catalogue follows the workspace picker, so a model chosen under one
+     * workspace can be absent from another's list — and an automation created
+     * before a credential changed can name a model the CLI no longer reports.
+     * Falling back to `Auto` there would show a choice nobody made while
+     * posting a different one. The raw value is what will be sent, so the raw
+     * value is what the button says.
+     */
+    apiMock.claudeCatalogue.mockResolvedValue({ models: [], efforts: [] });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByRole('dialog');
+
+    expect(await screen.findByRole('button', { name: 'claude-sonnet-5' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Auto' })).toBeNull();
+  });
+
+  it('starts from the automation’s own model when editing, not from the default', async () => {
+    // The editor edits a snapshot; a picker that always opened on `Auto` would
+    // quietly rewrite the choice on the next save of any other field - the
+    // trigger-overwriting bug this file already covers, on another field.
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByRole('dialog');
+
+    expect(await screen.findByRole('button', { name: 'Sonnet 5' })).toBeTruthy();
   });
 });
 
@@ -214,7 +293,10 @@ describe('editing an automation', () => {
     trigger: { type: 'event', event: 'run_failed' },
     continuous: false,
     maxConsecutiveFailures: 3,
-    policy: { permissionMode: 'default', notify: true },
+    // A model, as Zod guarantees one in production: `AutomationPolicy.model`
+    // has `.default('default')`, so a stored policy always carries it. A
+    // fixture without one made the form report a change nobody made.
+    policy: { permissionMode: 'default', notify: true, model: 'claude-sonnet-5' },
   });
 
   /**

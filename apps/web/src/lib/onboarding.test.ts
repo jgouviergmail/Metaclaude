@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { routes } from '@metaclaude/shared';
 import { onboardingDone, onboardingSteps } from './onboarding';
 
 const FRESH = {
@@ -58,5 +59,56 @@ describe('onboardingSteps', () => {
         }),
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * Each step lands where its card actually is.
+ *
+ * Three of the six pointed at Settings, and the cards they name — the Claude
+ * credential, notifications, the updater — moved to the server screen when the
+ * machine stopped being a Settings tab. Nothing failed: the links still
+ * resolved, to a page with none of what the step asks for. An operator arrives,
+ * finds nothing to do, and stops trusting the list, which is worse than the
+ * list not existing.
+ *
+ * Asserted against the routes contract rather than against strings, so a path
+ * that moves again fails here rather than in someone's afternoon.
+ */
+describe('where each step sends you', () => {
+  const steps = onboardingSteps({
+    authenticated: false,
+    workspaces: 0,
+    hasRuns: false,
+    totpEnabled: false,
+    pushDevices: 0,
+    updaterAvailable: false,
+  });
+  const href = (key: string) => steps.find((step) => step.key === key)?.href;
+
+  it('sends the three machine steps to the server screen', () => {
+    // The credential card, the notifications card and the updater all live
+    // there — none of them is a preference.
+    expect(href('pair')).toBe(routes.server());
+    expect(href('push')).toBe(routes.server());
+    expect(href('updater')).toBe(routes.server());
+  });
+
+  it('sends two-factor auth to the security group, not to Settings’ landing', () => {
+    // `/settings` forwards to Appearance, which is not where the control is.
+    expect(href('totp')).toBe(routes.settingsSection('security'));
+  });
+
+  it('sends the workspace steps to the workspaces screen', () => {
+    expect(href('workspace')).toBe(routes.workspaces());
+    expect(href('run')).toBe(routes.workspaces());
+  });
+
+  it('leaves no step pointing at a bare /settings', () => {
+    // The landing redirects, so a step that ends there is a step that arrives
+    // somewhere nobody chose.
+    for (const step of steps) {
+      expect(step.href, step.key).not.toBe(routes.settings());
+    }
   });
 });

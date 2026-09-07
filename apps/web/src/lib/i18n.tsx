@@ -25,7 +25,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { currentLang, publishLang, type Lang } from './lang';
+import { publishLang, type Lang } from './lang';
 
 export type { Lang };
 

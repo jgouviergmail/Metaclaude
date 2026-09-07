@@ -18,7 +18,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
 import { useUiStore } from '@/lib/store';
-import { FLUSH_TABLE, Grid, Page, PageBody, Section } from './layout';
+import { FILTER_ROW, FLUSH_TABLE, Grid, Page, PageBody, Section } from './layout';
 
 // The density lives on the store and on the root element, and no render tears
 // either down: a case that sets one and walks away hands the next case a
@@ -268,5 +268,29 @@ describe('FLUSH_TABLE', () => {
     // what makes this safe is that it names first and last and nothing else.
     expect(FLUSH_TABLE).not.toMatch(/\[&_:is\(th,td\)\]/);
     expect(FLUSH_TABLE).not.toContain('px-0');
+  });
+});
+
+/**
+ * `FILTER_ROW` — a filter bar that scrolls instead of wrapping.
+ *
+ * Measured on the board at 390px in French: the wrapping bar pushed the first
+ * card to 237px, a quarter of the screen spent before any content, and no
+ * guard could report it — nothing was clipped, covered, or overflowing an
+ * ancestor. happy-dom lays nothing out, so what a test can hold is the class
+ * contract; `scripts/measure-chrome.mjs` measures the result in a browser.
+ */
+describe('FILTER_ROW', () => {
+  it('never wraps, and scrolls instead', () => {
+    expect(FILTER_ROW).toContain('flex-nowrap');
+    expect(FILTER_ROW).toContain('overflow-x-auto');
+    expect(FILTER_ROW).not.toContain('flex-wrap');
+  });
+
+  it('stops its children from shrinking, which is what makes it scroll', () => {
+    // Without this a flex child squeezes before it overflows: `Tous les types`
+    // broke over three lines inside its own pill and made the bar *taller*
+    // than the wrapping version it replaced. Measured, not supposed.
+    expect(FILTER_ROW).toContain('[&>*]:shrink-0');
   });
 });

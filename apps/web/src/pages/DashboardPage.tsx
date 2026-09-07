@@ -137,16 +137,16 @@ export function DashboardPage() {
               })
             : t('No Claude credentials configured')
         }
-        showSidebarToggle={false}
         actions={
           <Button
             variant="primary"
             size="sm"
             onClick={() => createWorkspace.mutate()}
             loading={createWorkspace.isPending}
+            aria-label={t('New workspace')}
           >
             <Plus className="size-4" aria-hidden />
-            {t('New workspace')}
+            <span className="hidden sm:inline">{t('New workspace')}</span>
           </Button>
         }
       />
@@ -178,8 +178,8 @@ export function DashboardPage() {
               <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
               <p className="text-muted">
                 {t('Pair it from')}{' '}
-                <Link to={routes.settings()} className={cn('font-medium underline-offset-2', QUIET_LINK)}>
-                  {t('Settings → System')}
+                <Link to={routes.server()} className={cn('font-medium underline-offset-2', QUIET_LINK)}>
+                  {t('System → Server')}
                 </Link>
                 {t(
                   ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from',

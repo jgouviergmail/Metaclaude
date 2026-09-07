@@ -13,19 +13,22 @@ vi.mock('@/lib/api', () => ({ api: apiMock, ApiError: class ApiError extends Err
 import { renderWithProviders } from '@/test/render';
 import { useAuthStore } from '@/lib/store';
 
-import { AppearanceCard, initialSettingsTab } from './SettingsPage';
+import { landingSection } from '@/components/layout/SettingsTabs';
+import { AppearanceCard } from './SettingsPage';
 
-describe('which tab the settings page opens on', () => {
-  it('opens Security by default', () => {
-    expect(initialSettingsTab('')).toBe('security');
-    expect(initialSettingsTab('?theme=dark')).toBe('security');
+describe('where a bare /settings forwards to', () => {
+  it('forwards to Appearance by default', () => {
+    expect(landingSection('')).toBe('appearance');
+    expect(landingSection('?theme=dark')).toBe('appearance');
   });
 
-  it('opens Connections when Google’s callback carried an outcome', () => {
-    // The toast lives in the connection card, and Radix unmounts inactive
-    // tabs: landing anywhere else swallows the outcome silently.
-    expect(initialSettingsTab('?google=connected')).toBe('connections');
-    expect(initialSettingsTab('?google=failed&reason=redirect_uri_mismatch')).toBe('connections');
+  it('forwards to Connections when Google’s callback carried an outcome', () => {
+    // The toast lives in the connection card, which is only mounted on its own
+    // route: landing anywhere else swallows the outcome silently. The API
+    // still returns to `/settings?google=…`, so this redirect is what keeps
+    // that contract working after the groups became routes.
+    expect(landingSection('?google=connected')).toBe('connections');
+    expect(landingSection('?google=failed&reason=redirect_uri_mismatch')).toBe('connections');
   });
 });
 

@@ -11,6 +11,145 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.66.0] — 2026-09-07
+
+### Changed
+
+- **Settings is a section, not a screen.** Its groups were Radix tabs sharing
+  one URL: nothing could be linked to, the back button walked out of Settings
+  rather than back a group, and the section read as a different kind of thing
+  from the System strip beside it. Each group is a route now — appearance,
+  connections, security, configuration, audit log — listed by chips exactly as
+  the System screens are. `/settings` is kept and still carries its query,
+  because `integrations.ts` returns from Google's consent there and an operator
+  has bookmarks; it forwards to the group that can read what it carries.
+- **The machine gets a screen of its own, at the head of System.** Version,
+  uptime, resources, the Claude CLI, the doctor and the updater were a tab
+  inside Settings, which was wrong twice: none of it is a preference, and
+  "System" then named both that tab and the rail section beside it. It leads
+  the System strip now, because "is the box healthy" comes before "what is it
+  doing".
+- **Help moves to Settings, after the audit log.** It was the one entry in the
+  System strip that did not describe something the deployment *does* — it is
+  the manual, and it sits with the settings it explains. Its URL is untouched.
+- **An automation chooses its model.** `AutomationPolicy.model` shipped with
+  the feature, the scheduler has always forwarded it, and no form ever set it —
+  so every automation ran on whatever `default` resolves to, including the
+  nightly briefs where the choice matters most. The picker reads the workspace's
+  own catalogue, and shows the stored value rather than `Auto` when the
+  catalogue does not list it: falling back there would show a choice nobody
+  made while posting a different one.
+- **Messages carry the time they were written.** A session read back a day
+  later said when nothing happened: the run footer carries a duration, which
+  answers "how long", never "when". Both sides now, as a `<time>` with the full
+  instant behind a short `14:32`.
+
+### Fixed
+
+- **Every text field uses the width it is given.** A control passed to `Label`
+  sits inside the `<label>` — that is what associates the two — and the label
+  was a flex item, which shrinks to its content: each field took `w-full` of
+  its own *label text*. Three password fields on one screen came out 311, 292
+  and 344 pixels wide. Measured across the app, thirteen of seventeen visible
+  fields were under 80% of their room; it is zero now, and
+  `scripts/measure-inputs.mjs` is the ruler.
+- **Eight page titles were truncated on a phone**, in both languages —
+  `Automations` reduced to `Aut…`, `Board` to 24 of the 41 pixels it wants. The
+  title is the flexible item in a row whose buttons are not, and it is the only
+  thing on screen saying which page you are on; `truncate` was doing exactly
+  what it is for, so nothing reported it. Four measured changes brought it to
+  zero: the action labels fold to their icon below `sm`, the title's decorative
+  icon folds away with them, the board's workspace picker is bounded, and the
+  header's gap tightens on a phone. `scripts/measure-titles.mjs` is the ruler,
+  and the code's own note asked for exactly this — "the crowding is real and
+  unfixed; it belongs to the final pass, with a measurement rather than a
+  guess".
+- **A panel button with no panel behind it**, on Board, Help and Plugins:
+  `ContentHeader`'s default was `true` and the two components live in different
+  files. The shell knows whether it was given a panel and the header asks it,
+  so the defect cannot come back.
+- Four things went on pointing at the machine's old address after it moved: the
+  guide, three onboarding steps whose cards had gone with it, the dashboard's
+  pairing link, and the command palette, which had no entry for the new screen
+  at all. Each still *resolved*, to a page with none of what it promised.
+  `check.sh` caught the first and now checks both sections; `onboarding.test.ts`
+  pins the rest.
+
+### Added
+
+- `SectionTabs`, one component for both section strips. They were the same
+  forty lines twice and had already diverged by exactly one class —
+  `[&>*]:shrink-0`, which is what makes a chip row scroll rather than squeeze.
+  `OWNER_ONLY_SETTINGS` and `SYSTEM_SECTION_PATHS` join it in the shared
+  contract: the owner-only rule had three readers and two spellings, and the
+  System paths two.
+- `deadImports`, a ratchet counting names imported and never used. `tsc` does
+  not report them, no test can see them, and splitting Settings in two left
+  eleven — each still pulling its module into the chunk. Ceiling zero; three of
+  the eleven predated this work.
+- `scripts/measure-inputs.mjs`, and the `lib/sections.ts` split that keeps the
+  entry chunk at 191 kB: `AppShell` needs the two section predicates, and
+  importing them from the strips dragged six lucide icons in behind them.
+
+### Fixed
+
+- **Rewind works. It never had.** The Rewind button is gated on a run's
+  `rewindPoint`, the uuid of the user message a turn opened with, and the code
+  waited for the CLI to volunteer it on a replay acknowledgement. Instrumented
+  against Claude Code 2.1.218 over a real run: the CLI sends **no** `type:
+  'user'` message at all in streaming-input mode, so the acknowledgement never
+  came, the field was null for every run ever recorded, and the button could
+  not appear. Four unit tests covered it and stayed green throughout, because
+  the fake `query` emitted the message the real CLI does not. `SDKUserMessage`
+  carries a *client* uuid we may assign ourselves; the CLI stamps it back as
+  `user_message_uuid` and — measured — accepts it as the `rewindFiles` target.
+  The anchor now exists the instant the prompt is queued, and only where
+  checkpointing is on, so a run that could not be restored still offers no
+  button. `check:e2e` proves it end to end with a live agent.
+- The live check that should have caught it asserted `typeof
+  preview.body.canRewind === 'boolean'` — which `false` satisfies. It asserts
+  `=== true` now: the CLI has to agree the anchor is restorable.
+- The board's filter bar wrapped to three rows in French at 390px and sits
+  *above* the scroller, so it pushed the first card to 237px — 28% of the
+  screen, the worst of the ten routes and reported by nothing, because no
+  control was clipped, covered or overflowing. It scrolls now, like the section
+  strip that had already solved this and whose rule was never carried across.
+- Two of the eleven flagged upstream advisories reached code we load: `sharp`
+  (four libvips CVEs) rides `@huggingface/transformers` in the local-embeddings
+  configuration production runs. Overrides take `sharp` to 0.35.4, `adm-zip` to
+  0.6.0 and `qs` to 6.16.0; measured, `adm-zip` and `qs` are never loaded at
+  all, and `transformers` imports and resolves sharp 0.35.4 without complaint.
+
+### Changed
+
+- The Settings tab called **System** is now **Server**, which is what it shows:
+  version, uptime, timezone, CPU/RAM/disk, the Claude CLI, the kernel. "System"
+  named two different things one tap apart — that tab and the rail section
+  holding Automations, Agents, Plugins, Analytics and Help. The `?tab=system`
+  value is untouched, so bookmarks and the guide's links still land.
+- The setup checklist stops listing what is already done. Six rows filled 343px
+  at the top of the dashboard and half of them were struck through; the count
+  and a bar carry the only thing those rows said. Ninety-four pixels back on
+  the first screen.
+
+### Added
+
+- `FILTER_ROW`, the class a filter bar takes so it scrolls rather than wraps.
+  `flex-nowrap` alone is not enough: a flex child shrinks before it overflows,
+  so the chips squeezed into three-line pills and the bar got *taller* than the
+  wrapping version. It carries `[&>*]:shrink-0`.
+- `scripts/measure-tabbar.mjs` and `scripts/measure-chrome.mjs` — two rulers
+  for what no guard can see. The first found 2px between `Dashboard` and
+  `Workspaces` on a six-section tab bar (16px in French, which already says
+  `Accueil` and `Espaces`); the second refuted the assumption that the System
+  screens' two navigation bars were the problem — they cost 101px, 12% of a
+  phone — and found the board instead.
+- The bench photographs the comfortable density on a desk, not only on a phone,
+  where one column hides most of what the setting does. And its memories carry
+  a body that is not their own title repeated: every card showed its sentence
+  twice, which made a well-judged screen look bloated and nearly got it cut
+  down.
+
 ## [0.65.0] — 2026-09-07
 
 ### Changed

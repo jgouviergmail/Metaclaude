@@ -548,7 +548,6 @@ export function MemoryPage() {
       <ContentHeader
         title={t('Memory')}
         subtitle={scopeLabel}
-        showSidebarToggle={false}
         icon={<Brain />}
         actions={
           <>

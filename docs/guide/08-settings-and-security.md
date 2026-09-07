@@ -60,7 +60,7 @@ the account sign-in can do.
 
 ## Notifications
 
-The System tab's **Notifications** card makes the phone part of the loop:
+The server screen's **Notifications** card makes the phone part of the loop:
 enable it on a device and Metaclaude pushes when a run **waits on your
 approval** — the one moment the whole system is blocked on you — and when
 a run **you started** ends, with its outcome. Automations, loops and
@@ -118,10 +118,13 @@ directories and the embedder are absent for a different reason — they cannot
 change while the process runs, and switching the embedder would leave every
 stored memory unreadable to the new one.
 
-## System, doctor and updates
+## Server, doctor and updates
 
-The System tab shows the server's vitals — version, uptime, memory, disk, and
-the Claude CLI's state. For the owner, two more cards:
+The **Server** screen — the first of the System section, not a settings group —
+shows the server's vitals: version, uptime, memory, disk, and the Claude CLI's
+state. None of it is a preference, which is why it sits with what the
+deployment *does* rather than with how you like it. For the owner, two more
+cards:
 
 **Doctor** runs every self-check the system knows in one pass — database
 integrity, the audit chain, the secrets vault, disk space on both volumes,

@@ -146,6 +146,26 @@ export function formatRelative(timestamp: number, now: number = Date.now()): str
   });
 }
 
+/**
+ * The clock time a message was written, for the transcript.
+ *
+ * Short deliberately — `14:32`, not a date: everything in one exchange happens
+ * within minutes, and a full date on every message would be noise repeated
+ * forty times down a session. The day it happened is the session's business,
+ * and `formatDateTime` is there for wherever that matters.
+ *
+ * The locale comes from `lib/lang` for the same reason `formatRelative`'s does:
+ * `undefined` follows the *browser*, which is a different question from the one
+ * the operator answered in Settings — and it is what decides 24-hour versus
+ * am/pm.
+ */
+export function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString(currentLang(), {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function formatDateTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString(currentLang(), {
     dateStyle: 'medium',

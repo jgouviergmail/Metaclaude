@@ -791,14 +791,24 @@ describe('failures are reported as failures', () => {
 /* Rewind                                                                      */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Where a run can be rewound to.
+ *
+ * The anchor is the uuid of the user message that opened the turn, because
+ * that is what `Query.rewindFiles(userMessageId)` takes. It used to be read
+ * off a replay acknowledgement the CLI was expected to send back — and Claude
+ * Code 2.1.218 sends no `type: 'user'` message at all in streaming-input mode,
+ * measured over a real run. So `rewindPoint` was null for every run ever
+ * recorded and the Rewind button, gated on that field, could never appear.
+ *
+ * These tests passed throughout, because the fake `query` here emitted the
+ * acknowledgement the real CLI does not. That is the trap they now exist to
+ * stop: the first case below asserts the anchor with the CLI saying *nothing*,
+ * which is the only shape that could have failed against the defect.
+ */
 describe('a run records where it can be rewound to', () => {
-  /**
-   * The workspace setting has always been honoured — `enableFileCheckpointing`
-   * was set — but nothing could act on it, because rewinding needs the uuid the
-   * CLI assigns to the user message that opened the turn, and that uuid exists
-   * only on the wire. It arrives as a replay acknowledgement mid-run. Miss it
-   * and the checkpoints are unreachable forever.
-   */
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
   const replay = (uuid: string, text: string) => ({
     type: 'user',
     uuid,
@@ -808,19 +818,53 @@ describe('a run records where it can be rewound to', () => {
     message: { role: 'user', content: text },
   });
 
-  it('captures the uuid the CLI assigns to the opening prompt', async () => {
+  it('anchors the run even when the CLI says nothing at all', async () => {
+    // The case that matters, and the one nothing covered: the anchor is the
+    // uuid we put on the message, so it exists before the CLI has spoken and
+    // survives a CLI that never mentions it.
     const { query, control } = fakeQuery();
     const supervisor = makeSupervisor(query);
 
     const run = supervisor.execute(makeRequest(), makeCallbacks());
     await vi.waitFor(() => expect(control.received.length).toBe(1));
-    control.emit(replay('11111111-1111-4111-8111-111111111111', 'first turn'));
     control.finish();
 
-    expect((await run).rewindPoint).toBe('11111111-1111-4111-8111-111111111111');
+    const point = (await run).rewindPoint;
+    expect(point).not.toBeNull();
+    expect(point).toMatch(UUID);
   });
 
-  it('keeps the first acknowledgement, not the last', async () => {
+  it('anchors on the very uuid it handed the CLI', async () => {
+    // Not merely "some uuid": `rewindFiles` is addressed with this string, so
+    // an anchor that does not match what the CLI was given restores nothing.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+
+    const sent = control.received[0] as { uuid?: string };
+    expect(sent.uuid).toMatch(UUID);
+    expect((await run).rewindPoint).toBe(sent.uuid);
+  });
+
+  it('gives two runs two different anchors', async () => {
+    // A constant would restore the wrong run's files, and a single test of one
+    // run cannot tell a fresh uuid from a hard-coded one.
+    const points: (string | null)[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      const { query, control } = fakeQuery();
+      const supervisor = makeSupervisor(query);
+      const run = supervisor.execute(makeRequest(), makeCallbacks());
+      await vi.waitFor(() => expect(control.received.length).toBe(1));
+      control.finish();
+      points.push((await run).rewindPoint);
+    }
+    expect(points[0]).not.toBe(points[1]);
+  });
+
+  it('keeps the opening anchor when the run is steered', async () => {
     // A run is steerable: the operator can type a follow-up into it. Undoing
     // "the run" means undoing all of it, so a later turn must not move the
     // anchor forward and quietly shrink what a rewind restores.
@@ -829,35 +873,64 @@ describe('a run records where it can be rewound to', () => {
 
     const run = supervisor.execute(makeRequest(), makeCallbacks());
     await vi.waitFor(() => expect(control.received.length).toBe(1));
-    control.emit(replay('11111111-1111-4111-8111-111111111111', 'first turn'));
+    const opening = (control.received[0] as { uuid?: string }).uuid;
+
     await supervisor.send('run_1', 'and also this');
-    control.emit(replay('22222222-2222-4222-8222-222222222222', 'and also this'));
+    await vi.waitFor(() => expect(control.received.length).toBe(2));
+    const followUp = (control.received[1] as { uuid?: string }).uuid;
     control.finish();
 
-    expect((await run).rewindPoint).toBe('11111111-1111-4111-8111-111111111111');
+    expect(followUp).not.toBe(opening);
+    expect((await run).rewindPoint).toBe(opening);
   });
 
-  it('reports no rewind point when the CLI never acknowledges', async () => {
-    // Checkpointing off, or an older CLI. Null is the honest answer, and it is
-    // what stops the UI offering a button that cannot work.
+  it('lets no acknowledgement overwrite the anchor it already has', async () => {
+    // The fallback path stays for a CLI that does send one, but it must not
+    // win: the uuid we assigned is the one the CLI accepted as a target.
     const { query, control } = fakeQuery();
     const supervisor = makeSupervisor(query);
 
     const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    const opening = (control.received[0] as { uuid?: string }).uuid;
+    control.emit(replay('11111111-1111-4111-8111-111111111111', 'first turn'));
+    control.finish();
+
+    expect((await run).rewindPoint).toBe(opening);
+  });
+
+  it('offers no anchor when checkpointing is off for the workspace', async () => {
+    // `rewindFiles` restores from checkpoints the CLI only writes when
+    // `enableFileCheckpointing` was set. Anchoring anyway would put a button
+    // on every run and have it fail at the press — `planRewind` says
+    // "checkpointing was off for this workspace" so the operator knows what to
+    // change, and that sentence has to stay reachable.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const request = makeRequest();
+    request.workspace = {
+      ...request.workspace,
+      settings: { ...request.workspace.settings, checkpointing: false },
+    } as Workspace;
+
+    const run = supervisor.execute(request, makeCallbacks());
     await vi.waitFor(() => expect(control.received.length).toBe(1));
     control.finish();
 
     expect((await run).rewindPoint).toBeNull();
   });
 
-  it('ignores a user message that is not a replay acknowledgement', async () => {
+  it('never anchors on a tool result', async () => {
     // Tool results arrive as `type: 'user'` too. Treating one as the anchor
-    // would rewind to the middle of the run.
+    // would rewind to the middle of the run — which the opening uuid already
+    // prevents, so this pins the fallback's own guard rather than the outcome.
     const { query, control } = fakeQuery();
     const supervisor = makeSupervisor(query);
 
     const run = supervisor.execute(makeRequest(), makeCallbacks());
     await vi.waitFor(() => expect(control.received.length).toBe(1));
+    const opening = (control.received[0] as { uuid?: string }).uuid;
     control.emit({
       type: 'user',
       uuid: '33333333-3333-4333-8333-333333333333',
@@ -867,7 +940,8 @@ describe('a run records where it can be rewound to', () => {
     });
     control.finish();
 
-    expect((await run).rewindPoint).toBeNull();
+    expect((await run).rewindPoint).toBe(opening);
+    expect((await run).rewindPoint).not.toBe('33333333-3333-4333-8333-333333333333');
   });
 });
 
