@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { newId } from './ids.js';
 import { routePattern, routes } from './routes.js';
 
 describe('the paths that ship today', () => {
@@ -68,6 +69,24 @@ describe('an id that is not a plain identifier', () => {
   it('leaves an ordinary id untouched, or every existing link would move', () => {
     expect(routes.workspace('ws_01HZY')).toBe('/w/ws_01HZY');
     expect(routes.session('ws_01HZY', 'ses_01HZZ')).toBe('/w/ws_01HZY/s/ses_01HZZ');
+  });
+
+  /*
+   * Derived from the generator rather than from a sample I typed.
+   *
+   * "Encoding changes nothing today" is a claim about `ids.ts`, not about this
+   * file: it holds because the alphabet is Crockford base32 and a prefix, all
+   * of which `encodeURIComponent` passes through. An alphabet that ever gained
+   * a `/` or a `+` would move every link the API has already sent, and this is
+   * the test that would say so.
+   */
+  it('leaves a freshly generated id untouched, whatever the generator does', () => {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const workspaceId = newId('workspace');
+      const sessionId = newId('session');
+      expect(routes.workspace(workspaceId)).toBe(`/w/${workspaceId}`);
+      expect(routes.session(workspaceId, sessionId)).toBe(`/w/${workspaceId}/s/${sessionId}`);
+    }
   });
 });
 

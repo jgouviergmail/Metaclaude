@@ -11,6 +11,15 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.61.1] — 2026-09-07
+
+### Changed
+
+- The claim that encoding an id changes nothing is now derived from the
+  generator rather than from a sample. It holds because the alphabet is
+  Crockford base32 and a prefix; an alphabet that ever gained a `/` would move
+  every link the API has already sent, and the test says so.
+
 ## [0.61.0] — 2026-09-07
 
 ### Changed
