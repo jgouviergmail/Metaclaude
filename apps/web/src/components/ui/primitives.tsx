@@ -552,7 +552,7 @@ export function Stat({
   return (
     <div className="rounded-xl border border-line bg-surface p-gutter">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-caption font-medium uppercase tracking-wide text-subtle">{label}</p>
+        <p className="text-eyebrow uppercase text-subtle">{label}</p>
         {icon ? <span className="text-subtle [&>svg]:size-4">{icon}</span> : null}
       </div>
       <p

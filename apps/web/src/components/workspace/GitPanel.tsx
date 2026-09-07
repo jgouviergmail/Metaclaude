@@ -268,7 +268,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
                   )}
                   aria-hidden
                 />
-                <span className="text-caption font-semibold uppercase tracking-wide text-subtle">
+                <span className="text-eyebrow uppercase text-subtle">
                   {t(section.label)}
                 </span>
                 <span className="text-caption tabular-nums text-subtle">{paths.length}</span>
@@ -403,7 +403,7 @@ function RecentCommits({
   const t = useT();
   return (
     <section className="p-2">
-      <h3 className="px-1.5 py-1 text-caption font-semibold uppercase tracking-wide text-subtle">
+      <h3 className="text-eyebrow px-1.5 py-1 uppercase text-subtle">
         {t('Recent commits')}
       </h3>
 

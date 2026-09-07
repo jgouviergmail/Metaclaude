@@ -234,6 +234,19 @@
   --text-caption: 0.71875rem;
   --text-caption--line-height: 1.4;
 
+  /*
+   * The eyebrow: the small capital label above a group.
+   *
+   * Twenty-one of them across fourteen files, in three sizes and two weights —
+   * `RECENT COMMITS`, `PERMISSION MODE`, `SESSIONS`. It is a role the app uses
+   * constantly and had no name for, so each site invented one. Below `caption`
+   * on purpose: it is a label for a region, not text anybody reads in a row.
+   */
+  --text-eyebrow: 0.65625rem;
+  --text-eyebrow--line-height: 1.3;
+  --text-eyebrow--font-weight: 600;
+  --text-eyebrow--letter-spacing: 0.06em;
+
   /* The gutter and the rhythm, so `p-gutter` and `space-y-section` follow the
      density too. */
   --spacing-gutter: var(--mc-pad-x);

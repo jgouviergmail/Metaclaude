@@ -23,7 +23,7 @@ export function DoctorReportView({ report }: { report: DoctorReport }) {
   const t = useT();
   return (
     <div className="space-y-3">
-      <p className="flex items-center gap-2 text-[13px] text-ink">
+      <p className="flex items-center gap-2 text-body text-ink">
         <Badge tone={TONE[report.status]}>{t(report.status)}</Badge>
         {t(VERDICT[report.status])}
       </p>
@@ -36,11 +36,11 @@ export function DoctorReportView({ report }: { report: DoctorReport }) {
             </Badge>
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-baseline gap-x-2">
-                <code className="font-mono text-[12.5px] font-medium text-ink">{check.name}</code>
-                <span className="text-[12.5px] text-muted">{check.summary}</span>
+                <code className="font-mono text-caption font-medium text-ink">{check.name}</code>
+                <span className="text-caption text-muted">{check.summary}</span>
               </p>
               {check.detail && check.status !== 'ok' ? (
-                <p className="mt-0.5 break-words font-mono text-[11.5px] text-subtle">
+                <p className="mt-0.5 break-words font-mono text-caption text-subtle">
                   {check.detail}
                 </p>
               ) : null}

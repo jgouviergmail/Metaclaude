@@ -162,7 +162,7 @@ export function RunGenesis({ run }: { run: Run }) {
 
               {genesis.data.memories.length > 0 ? (
                 <div className="space-y-1.5">
-                  <p className="text-[10.5px] font-semibold uppercase tracking-wider text-subtle">
+                  <p className="text-eyebrow uppercase text-subtle">
                     {t('Recalled into this run')}
                   </p>
                 <ul className="space-y-1.5">
@@ -196,7 +196,7 @@ export function RunGenesis({ run }: { run: Run }) {
 
               {(genesis.data.documents?.length ?? 0) > 0 ? (
                 <div className="space-y-1.5">
-                  <p className="text-[10.5px] font-semibold uppercase tracking-wider text-subtle">
+                  <p className="text-eyebrow uppercase text-subtle">
                     {t('Passages consulted')}
                   </p>
                   <ul className="space-y-1">

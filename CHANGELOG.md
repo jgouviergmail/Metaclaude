@@ -11,6 +11,36 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.63.0] — 2026-09-07
+
+### Fixed
+
+- The comfortable density was never actually photographed, and its first
+  picture showed a compact screen with more air. The bench wrote
+  `metaclaude.density` — the standalone key the pre-paint script reads to stamp
+  the attribute — and not `metaclaude.ui`, the store the disclosure reads. So
+  the spacing moved and the help stayed folded. Both keys now, and the setting
+  keeps its promise in both directions: five settings visible compact, two with
+  their full explanation comfortable.
+
+### Changed
+
+- A seventh type role, `text-eyebrow`, for the small capital label above a
+  group — `RECENT COMMITS`, `PERMISSION MODE`, `SESSIONS`. Twenty-two of them
+  across fourteen files, in three sizes and two weights, for a role the app
+  used constantly and had no name for. The test that derives the theme
+  namespaces from the stylesheet caught that `cn` would delete it before it
+  reached a single screen.
+- Literal text sizes end at **10**, from 360 when this began. Those ten are a
+  floor rather than a remainder: a notification badge sized to its 15-pixel
+  circle, the page `h1` at 18 where the scale steps 16 then 24, and two TOTP
+  codes spaced so six digits can be read off one phone and typed into another.
+- The design bench photographs the comfortable density and French. It captured
+  three combinations of a possible sixteen and none of them was the density
+  setting's own subject; these two answer what the other thirteen would repeat.
+  The French pass skips the tabbed screens, whose selectors are English —
+  `scripts/responsive.mjs` covers their geometry in French at three widths.
+
 ## [0.62.1] — 2026-09-07
 
 ### Fixed

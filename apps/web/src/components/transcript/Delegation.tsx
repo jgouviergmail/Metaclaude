@@ -114,7 +114,7 @@ export function DelegationStrip({ events }: { events: TranscriptEvent[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-caption uppercase tracking-wide text-subtle">{t('Delegated to')}</span>
+      <span className="text-eyebrow uppercase text-subtle">{t('Delegated to')}</span>
       {delegates.map((delegate) => {
         const status = STATUS[delegate.status];
         return (

@@ -159,11 +159,11 @@ export function CommandPalette() {
     >
       <Command.Input
         placeholder={t('Search workspaces, sessions and commands…')}
-        className="h-12 w-full border-b border-line bg-transparent px-4 text-[15px] text-ink outline-none placeholder:text-subtle"
+        className="h-12 w-full border-b border-line bg-transparent px-4 text-title text-ink outline-none placeholder:text-subtle"
       />
 
       <Command.List className="max-h-[min(26rem,60vh)] overflow-y-auto p-2">
-        <Command.Empty className="px-3 py-8 text-center text-[13px] text-muted">
+        <Command.Empty className="px-3 py-8 text-center text-body text-muted">
           {t('Nothing matches that.')}
         </Command.Empty>
 
@@ -171,7 +171,7 @@ export function CommandPalette() {
           <Command.Group
             key={group}
             heading={t(group)}
-            className="mb-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-subtle"
+            className="text-eyebrow mb-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-caption [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-subtle"
           >
             {actions
               .filter((action) => action.group === group)
@@ -181,14 +181,14 @@ export function CommandPalette() {
                   value={`${t(action.label)} ${action.hint ? t(action.hint) : ''}`}
                   onSelect={action.run}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px]',
+                    'flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-body',
                     'text-ink data-[selected=true]:bg-surface',
                   )}
                 >
                   <span className="shrink-0 text-subtle [&>svg]:size-4">{action.icon}</span>
                   <span className="min-w-0 flex-1 truncate font-medium">{t(action.label)}</span>
                   {action.hint ? (
-                    <span className="max-w-[45%] shrink-0 truncate text-[11.5px] text-subtle">
+                    <span className="max-w-[45%] shrink-0 truncate text-caption text-subtle">
                       {t(action.hint)}
                     </span>
                   ) : null}

@@ -58,7 +58,12 @@ describe('AppShell navigation', () => {
     expect(tabBar).toBeDefined();
     const firstTab = within(tabBar as HTMLElement).getAllByRole('link')[0] as HTMLElement;
     expect(firstTab.className).toContain('[&>svg]:size-6');
-    expect(firstTab.className).toContain('text-[11px]');
+    // `text-caption` — 11.5px — rather than the literal 11px it pinned before.
+    // What this case protects is the metric, not the number: a 24px glyph and a
+    // label small enough that both fit the 56px bar with the home indicator
+    // under it. Half a pixel does not move that, and a role is what the rest of
+    // the app now speaks.
+    expect(firstTab.className).toContain('text-caption');
 
     const main = screen.getByRole('main');
     expect(main.className).toContain('env(safe-area-inset-bottom)');

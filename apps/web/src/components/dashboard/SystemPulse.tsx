@@ -103,7 +103,7 @@ export function SystemPulse({
     <div className="mc-card flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-xl border border-line bg-surface px-4 py-3.5">
       <p
         className={cn(
-          'min-w-0 text-[15px] font-medium leading-relaxed',
+          'min-w-0 text-title font-medium leading-relaxed',
           activeRuns > 0 ? 'text-ink' : 'text-muted',
         )}
         role="status"

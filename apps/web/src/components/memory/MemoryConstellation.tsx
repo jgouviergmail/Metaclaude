@@ -266,7 +266,7 @@ export function MemoryConstellation({
         ))}
       </svg>
 
-      <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[11px] text-subtle">
+      <figcaption className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-caption text-subtle">
         {(Object.keys(KIND_VAR) as MemoryKind[]).map((kind) => (
           <span key={kind} className="flex items-center gap-1.5">
             <span

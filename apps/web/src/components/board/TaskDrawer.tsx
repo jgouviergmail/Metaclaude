@@ -354,7 +354,7 @@ export function TaskDrawer({
           ) : null}
 
           <div className="space-y-1.5">
-            <h3 className="text-caption font-semibold uppercase tracking-wide text-subtle">{t(
+            <h3 className="text-eyebrow uppercase text-subtle">{t(
               'Sub-tasks',
             )}</h3>
             {detail.data && detail.data.children.length > 0 ? (
@@ -391,7 +391,7 @@ export function TaskDrawer({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-caption font-semibold uppercase tracking-wide text-subtle">{t(
+            <h3 className="text-eyebrow uppercase text-subtle">{t(
               'Comments',
             )}</h3>
             <ul className="space-y-2">

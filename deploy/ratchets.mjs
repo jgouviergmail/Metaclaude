@@ -1321,6 +1321,19 @@ function countLiteralTextSizes() {
   // decision spelled the other way. Forty-eight survived five lots of burning
   // the first spelling down, on the reasonable-looking assumption that a
   // measure named "literal text sizes" counted them.
+  //
+  // It started at 360 and ends at 10, and those ten are a floor rather than a
+  // remainder — each is a size chosen for its own geometry, not a seventeenth
+  // spelling of prose:
+  //   · the notification badge's `9px`, set to fit a 15px circle beside
+  //     `leading-[15px]`, which is a shape and not a type role;
+  //   · `PageHeader`'s `text-lg`, the page's own h1 — the scale steps 16 then
+  //     24 and a page title sits between, above a dialog's and below a
+  //     dashboard number's;
+  //   · the two TOTP codes' `text-lg tracking-[0.35em]`, sized so six digits
+  //     can be read off a phone and typed into another.
+  // Lowering this further means inventing roles for one caller each, which is
+  // the disorder it was built to remove.
   // The trailing boundary belongs to the *named* branch only. After `]` there
   // is no word boundary — `]` and the quote after it are both non-word — so a
   // `\b` outside the alternation stops `text-[13px]` matching at all. It

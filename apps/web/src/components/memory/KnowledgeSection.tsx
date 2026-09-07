@@ -198,11 +198,11 @@ export function KnowledgeSection({
     <section className="space-y-4" aria-labelledby="knowledge-heading">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-1">
-          <h2 id="knowledge-heading" className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <h2 id="knowledge-heading" className="flex items-center gap-2 text-title font-semibold text-ink">
             <BookOpenCheck className="size-4 text-accent" aria-hidden />
             {t('Knowledge library')}
           </h2>
-          <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
+          <p className="max-w-2xl text-body leading-relaxed text-muted">
             {t(
               'Reference documents the agent can quote — a lease, a spec, a runbook. Global documents reach every workspace; scoped ones stay in theirs. Runs retrieve the relevant passages automatically, and the transcript shows which ones were used.',
             )}
@@ -259,7 +259,7 @@ export function KnowledgeSection({
                     <button
                       type="button"
                       onClick={() => void openFor(doc)}
-                      className="truncate text-left text-[13.5px] font-medium text-ink transition-colors hover:text-accent"
+                      className="truncate text-left text-body font-medium text-ink transition-colors hover:text-accent"
                     >
                       {doc.title}
                     </button>
@@ -271,7 +271,7 @@ export function KnowledgeSection({
                       </Tooltip>
                     ) : null}
                   </div>
-                  <p className="text-[12px] text-subtle">
+                  <p className="text-caption text-subtle">
                     {t(
                       '{n} passages',
                       { n: String(doc.chunkCount) },
@@ -311,11 +311,11 @@ export function KnowledgeSection({
       {documents.length > 0 ? (
         <Card className="space-y-3 p-4">
           <div className="space-y-1">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+            <h3 className="flex items-center gap-2 text-body font-semibold text-ink">
               <Search className="size-3.5 text-accent" aria-hidden />
               {t('Rehearse a retrieval')}
             </h3>
-            <p className="text-[12.5px] leading-relaxed text-muted">
+            <p className="text-caption leading-relaxed text-muted">
               {t(
                 'Ask what a run would ask, and see exactly the passages it would be shown — same search, same gates, scores included.',
               )}
@@ -343,20 +343,20 @@ export function KnowledgeSection({
             preview.isLoading ? (
               <Skeleton className="h-12" />
             ) : (preview.data?.results.length ?? 0) === 0 ? (
-              <p className="text-[12.5px] text-subtle">
+              <p className="text-caption text-subtle">
                 {t('Nothing relevant enough — a run would receive no passages for this.')}
               </p>
             ) : (
               <ul className="space-y-2">
                 {preview.data!.results.map((hit) => (
                   <li key={hit.chunkId} className="rounded-lg border border-line bg-sunken/40 p-3">
-                    <p className="text-[12px] font-medium text-accent">
+                    <p className="text-caption font-medium text-accent">
                       {[hit.documentTitle, hit.heading].filter(Boolean).join(' › ')}
-                      <span className="ml-2 font-mono text-[11px] text-subtle">
+                      <span className="ml-2 font-mono text-caption text-subtle">
                         {hit.score.toFixed(3)}
                       </span>
                     </p>
-                    <p className="mt-1 line-clamp-3 text-[12.5px] leading-relaxed text-muted">
+                    <p className="mt-1 line-clamp-3 text-caption leading-relaxed text-muted">
                       {hit.text}
                     </p>
                   </li>

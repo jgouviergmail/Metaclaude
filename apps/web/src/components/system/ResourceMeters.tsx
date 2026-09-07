@@ -152,7 +152,7 @@ function ResourceMeter({
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-caption font-medium uppercase tracking-wide text-subtle">{label}</p>
+        <p className="text-eyebrow uppercase text-subtle">{label}</p>
         <span className="text-subtle [&>svg]:size-4">{icon}</span>
       </div>
       <p

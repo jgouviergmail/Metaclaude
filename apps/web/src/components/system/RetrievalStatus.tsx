@@ -28,10 +28,10 @@ export function RetrievalStatus({
     <div className="min-w-0" data-testid="retrieval-status">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={view.tone}>{t(view.label)}</Badge>
-        {view.model ? <code className="font-mono text-[12px] text-muted">{view.model}</code> : null}
+        {view.model ? <code className="font-mono text-caption text-muted">{view.model}</code> : null}
       </div>
       {compact ? null : (
-        <p className="mt-1 text-[12px] leading-relaxed text-muted">
+        <p className="mt-1 text-caption leading-relaxed text-muted">
           {t(view.detail)}
           {view.pending > 0 ? (
             <span className="text-subtle">

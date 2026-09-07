@@ -89,7 +89,7 @@ export const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function MenuI
       {...rest}
       className={cn(
         'flex cursor-pointer select-none items-start gap-2.5 rounded-lg px-2.5 py-2',
-        'text-[13px] outline-none transition-colors',
+        'text-body outline-none transition-colors',
         'data-[highlighted]:bg-surface data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         tone === 'danger' ? 'text-danger' : 'text-ink',
         className,
@@ -100,7 +100,7 @@ export const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function MenuI
       <span className="min-w-0 flex-1">
         <span className="block font-medium">{children}</span>
         {description ? (
-          <span className="mt-0.5 block text-[11.5px] leading-snug text-muted">{description}</span>
+          <span className="mt-0.5 block text-caption leading-snug text-muted">{description}</span>
         ) : null}
       </span>
 
@@ -115,7 +115,7 @@ export function MenuSeparator() {
 
 export function MenuLabel({ children }: { children: ReactNode }) {
   return (
-    <DropdownMenu.Label className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-subtle">
+    <DropdownMenu.Label className="text-eyebrow px-2.5 py-1.5 uppercase text-subtle">
       {children}
     </DropdownMenu.Label>
   );

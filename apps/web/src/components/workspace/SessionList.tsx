@@ -135,7 +135,7 @@ export function SessionList({
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-2 border-b border-line px-3 py-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-caption font-semibold uppercase tracking-wide text-subtle">{t(
+          <h2 className="text-eyebrow uppercase text-subtle">{t(
             'Sessions',
           )}</h2>
           <span className="text-caption tabular-nums text-subtle">{sessions.length}</span>

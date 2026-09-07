@@ -211,7 +211,7 @@ export const ToolCallCard = memo(function ToolCallCard({
         <div className="space-y-3 border-t border-line bg-sunken px-3 py-3">
           <section>
             <div className="mb-1.5 flex items-center justify-between">
-              <h4 className="text-caption font-semibold uppercase tracking-wide text-subtle">
+              <h4 className="text-eyebrow uppercase text-subtle">
                 {t('Input')}
               </h4>
               <Tooltip content={copied ? 'Copied' : t('Copy input')}>
@@ -235,7 +235,7 @@ export const ToolCallCard = memo(function ToolCallCard({
 
           {call.result ? (
             <section>
-              <h4 className="mb-1.5 flex items-center gap-2 text-caption font-semibold uppercase tracking-wide text-subtle">
+              <h4 className="text-eyebrow mb-1.5 flex items-center gap-2 uppercase text-subtle">
                 {t('Result')}
                 {call.resultIsError ? <Badge tone="danger">{t('error')}</Badge> : null}
               </h4>

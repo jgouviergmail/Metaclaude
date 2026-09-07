@@ -110,12 +110,12 @@ export function LoginPage() {
           <Logo />
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-ink">{APP_NAME}</h1>
-            <p className="mt-1 text-[13px] text-muted">{t('Your private agentic OS.')}</p>
+            <p className="mt-1 text-body text-muted">{t('Your private agentic OS.')}</p>
           </div>
         </div>
 
         {bootstrap?.needsBootstrap ? (
-          <div className="mb-4 rounded-xl border border-warning/30 bg-warning-soft/40 p-4 text-[13px] leading-relaxed text-ink">
+          <div className="mb-4 rounded-xl border border-warning/30 bg-warning-soft/40 p-4 text-body leading-relaxed text-ink">
             <p className="font-medium">{t('No account exists yet.')}</p>
             <p className="mt-1 text-muted">
               <Trans
@@ -123,11 +123,11 @@ export function LoginPage() {
                   'Set {user} and {password} in your {file}, then restart the container.',
                 )}
                 values={{
-                  user: <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_USER</code>,
+                  user: <code className="font-mono text-caption">METACLAUDE_BOOTSTRAP_USER</code>,
                   password: (
-                    <code className="font-mono text-[12px]">METACLAUDE_BOOTSTRAP_PASSWORD</code>
+                    <code className="font-mono text-caption">METACLAUDE_BOOTSTRAP_PASSWORD</code>
                   ),
-                  file: <code className="font-mono text-[12px]">.env</code>,
+                  file: <code className="font-mono text-caption">.env</code>,
                 }}
               />
             </p>
@@ -168,7 +168,7 @@ export function LoginPage() {
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2 rounded-lg bg-accent-soft px-3 py-2 text-[13px] text-accent">
+              <div className="flex items-center gap-2 rounded-lg bg-accent-soft px-3 py-2 text-body text-accent">
                 <ShieldCheck className="size-4 shrink-0" aria-hidden />
                 {t('Enter the code from your authenticator app.')}
               </div>
@@ -197,7 +197,7 @@ export function LoginPage() {
           )}
 
           {error ? (
-            <p role="alert" className="text-[13px] leading-relaxed text-danger">
+            <p role="alert" className="text-body leading-relaxed text-danger">
               {error}
             </p>
           ) : null}
@@ -215,7 +215,7 @@ export function LoginPage() {
                 setTotp('');
                 setError(null);
               }}
-              className="w-full text-center text-[12.5px] text-muted hover:text-ink"
+              className="w-full text-center text-caption text-muted hover:text-ink"
             >
               {t('Use a different account')}
             </button>
@@ -223,7 +223,7 @@ export function LoginPage() {
 
           {offerPasskey && !needsTotp ? (
             <>
-              <div className="flex items-center gap-3 text-[11px] uppercase tracking-wide text-subtle">
+              <div className="text-eyebrow flex items-center gap-3 uppercase text-subtle">
                 <span className="h-px flex-1 bg-line" aria-hidden />
                 {t('or')}
                 <span className="h-px flex-1 bg-line" aria-hidden />
@@ -243,7 +243,7 @@ export function LoginPage() {
           ) : null}
         </form>
 
-        <p className="mt-6 text-center text-[11.5px] leading-relaxed text-subtle">
+        <p className="mt-6 text-center text-caption leading-relaxed text-subtle">
           {t('This instance is private. Every action is recorded in a hash-chained audit log.')}
         </p>
       </div>

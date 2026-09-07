@@ -304,12 +304,37 @@ for (const [status, title] of CARDS) {
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 
-async function shoot(theme, viewport, suffix) {
+async function shoot(theme, viewport, suffix, options = {}) {
+  const { density = 'compact', locale = 'en-US' } = options;
   // colorScheme, not localStorage: the app follows the system by default,
   // and headless Chromium's default is light. The locale is pinned for the
   // same reason: the interface follows the browser, the bench's selectors
   // are English, and a French machine otherwise stops at the first tab name.
-  const page = await browser.newPage({ viewport, colorScheme: theme, locale: 'en-US' });
+  const page = await browser.newPage({ viewport, colorScheme: theme, locale });
+  /*
+   * The density is a stored preference, read before first paint by
+   * `public/density-init.js`. `addInitScript` runs before the page's own
+   * scripts, which is the only moment that works.
+   */
+  await page.addInitScript((value) => {
+    try {
+      // Both keys, and that is the whole trap. `metaclaude.density` is the
+      // standalone one the pre-paint script reads to stamp the attribute, so
+      // writing only it moves the *spacing* and nothing else; the disclosure
+      // that shows help outright in the comfortable density reads the zustand
+      // store under `metaclaude.ui`. The first capture of this dimension showed
+      // a comfortable screen with every explanation still folded, which is the
+      // compact one wearing more air.
+      localStorage.setItem('metaclaude.density', value);
+      localStorage.setItem(
+        'metaclaude.ui',
+        JSON.stringify({ state: { density: value }, version: 1 }),
+      );
+    } catch {
+      // Private mode: the stylesheet's default is compact, which is what
+      // this branch would have set anyway.
+    }
+  }, density);
   await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
   await page.fill('input[name="username"], #username', USERNAME);
   await page.fill('input[type="password"]', PASSWORD);
@@ -336,6 +361,16 @@ async function shoot(theme, viewport, suffix) {
     ['/settings', 'google-connection', 'Connections'],
   ];
   for (const [path, name, tab] of screens) {
+    /*
+     * A tab is opened by its *name*, and the names are English.
+     *
+     * `shoot` pins the locale for exactly that reason, so the French pass has
+     * to skip the screens that need one rather than carry a second table of
+     * selectors that would drift from the catalogue. What it still shows is
+     * every plain route — the dashboard, the board, a session — which is where
+     * the longest copy lives anyway.
+     */
+    if (tab && locale !== 'en-US') continue;
     await page.goto(`${server.baseUrl}${path}`, { waitUntil: 'networkidle' });
     if (tab) {
       const trigger = page.getByRole('tab', { name: tab });
@@ -419,6 +454,22 @@ async function shootDialogs(theme, viewport, suffix) {
 await shoot('dark', { width: 1440, height: 900 }, '');
 await shoot('light', { width: 1440, height: 900 }, '');
 await shoot('dark', { width: 390, height: 844 }, '-mobile');
+/*
+ * The two dimensions the bench never photographed.
+ *
+ * `comfortable` is the setting's entire point — more air, and the help shown
+ * outright — and eleven lots changed what it does without a single picture of
+ * it. French is the longest copy in the narrowest frame, which is where every
+ * layout defect of this redesign was found; `scripts/responsive.mjs` measures
+ * its geometry, and geometry is not the same question as whether it reads.
+ *
+ * The full matrix is sixteen runs of a dozen screens. These two answer the
+ * question the other thirteen would only repeat.
+ */
+await shoot('dark', { width: 390, height: 844 }, '-mobile-comfortable', {
+  density: 'comfortable',
+});
+await shoot('dark', { width: 390, height: 844 }, '-mobile-fr', { locale: 'fr-FR' });
 await shootDialogs('dark', { width: 390, height: 844 }, '-mobile');
 await shootDialogs('dark', { width: 1440, height: 900 }, '');
 

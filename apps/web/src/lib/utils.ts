@@ -22,7 +22,9 @@ import { currentLang } from './lang';
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      'font-size': [{ text: ['display', 'title', 'heading', 'body', 'label', 'caption'] }],
+      'font-size': [
+        { text: ['display', 'title', 'heading', 'body', 'label', 'caption', 'eyebrow'] },
+      ],
     },
     /*
      * The density spacing tokens, for a different reason than the sizes above.

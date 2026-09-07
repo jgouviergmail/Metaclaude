@@ -216,7 +216,7 @@ export function AppShell({
                   // An installed PWA renders these raw — no browser text
                   // scaling rescues smaller metrics there. shrink-0 so no
                   // future height squeeze can crush the icon again.
-                  'flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
+                  'flex flex-1 flex-col items-center justify-center gap-0.5 text-caption font-medium',
                   '[&>svg]:size-6 [&>svg]:shrink-0',
                   current ? 'text-accent' : 'text-subtle',
                 )}

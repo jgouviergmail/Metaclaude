@@ -60,7 +60,7 @@ export function Modal({
                 {title}
               </Dialog.Title>
               {description ? (
-                <Dialog.Description className="text-[13px] leading-relaxed text-muted">
+                <Dialog.Description className="text-body leading-relaxed text-muted">
                   {description}
                 </Dialog.Description>
               ) : null}
@@ -154,7 +154,7 @@ export function ConfirmDialog({
         </>
       }
     >
-      <div className="text-[13px] leading-relaxed text-muted">{description}</div>
+      <div className="text-body leading-relaxed text-muted">{description}</div>
     </Modal>
   );
 }

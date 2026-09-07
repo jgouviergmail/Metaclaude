@@ -56,7 +56,7 @@ export function NotificationBell() {
           className="animate-in-up z-50 flex max-h-[70vh] w-[min(22rem,92vw)] flex-col overflow-hidden rounded-xl border border-line bg-raised shadow-[var(--mc-shadow-lg)]"
         >
           <div className="flex items-center justify-between border-b border-line px-3 py-2">
-            <h3 className="text-[13px] font-semibold text-ink">{t('Notifications')}</h3>
+            <h3 className="text-body font-semibold text-ink">{t('Notifications')}</h3>
             {items.length > 0 ? (
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon-sm" onClick={markAllRead} aria-label={t(
@@ -101,12 +101,12 @@ export function NotificationBell() {
                             to a hue. */}
                         <span className="sr-only">{t(LEVEL_LABEL[item.level])}</span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-medium text-ink">{t(item.title)}</p>
-                          <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted">
+                          <p className="truncate text-body font-medium text-ink">{t(item.title)}</p>
+                          <p className="mt-0.5 line-clamp-2 text-caption leading-snug text-muted">
                             {item.message}
                           </p>
                         </div>
-                        <span className="shrink-0 text-[10.5px] text-subtle">
+                        <span className="shrink-0 text-eyebrow text-subtle">
                           {formatRelative(item.at)}
                         </span>
                       </div>

@@ -68,7 +68,7 @@ export function NotePreview({
 
       {me && (incoming.length > 0 || outgoing.length > 0) ? (
         <section className="border-t border-line px-4 py-3 sm:px-6" aria-label={t('Local graph')}>
-          <h3 className="text-caption font-semibold uppercase tracking-wide text-subtle">{t(
+          <h3 className="text-eyebrow uppercase text-subtle">{t(
             'Graph',
           )}</h3>
           <LocalGraph note={me} incoming={incoming} outgoing={outgoing} onOpenNote={onOpenNote} />
@@ -76,7 +76,7 @@ export function NotePreview({
       ) : null}
 
       <section className="border-t border-line px-4 py-3 sm:px-6" aria-label={t('Backlinks')}>
-        <h3 className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-subtle">
+        <h3 className="text-eyebrow flex items-center gap-1.5 uppercase text-subtle">
           <Link2 className="size-3.5" aria-hidden />
           {t('Backlinks')}
           {backlinks.data ? <span>({backlinks.data.backlinks.length})</span> : null}

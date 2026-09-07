@@ -94,7 +94,7 @@ export function ConsolidationCard({
           workspaceId={proposal.members.map((m) => m.workspaceId).find(Boolean) ?? null}
           workspaces={workspaces}
         />
-        <h3 className="min-w-0 text-[13.5px] font-medium text-ink">
+        <h3 className="min-w-0 text-body font-medium text-ink">
           {duplicate
             ? plural(
                 proposal.members.length,
@@ -109,7 +109,7 @@ export function ConsolidationCard({
         </h3>
       </div>
 
-      <p className="break-words text-[13px] leading-relaxed text-muted">{proposal.reason}</p>
+      <p className="break-words text-body leading-relaxed text-muted">{proposal.reason}</p>
 
       {/* The evidence, before the buttons. A row marked as the survivor is the
           one that keeps its history — its use count, its reinforcement and its
@@ -120,7 +120,7 @@ export function ConsolidationCard({
             key={member.id}
             className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-line bg-sunken px-2.5 py-1.5"
           >
-            <span className="min-w-0 flex-1 break-words text-[12.5px] text-ink">{member.title}</span>
+            <span className="min-w-0 flex-1 break-words text-caption text-ink">{member.title}</span>
             {member.id === proposal.winnerId && duplicate ? (
               <Badge tone="success">{t('kept')}</Badge>
             ) : duplicate ? (
@@ -132,15 +132,15 @@ export function ConsolidationCard({
 
       {duplicate && proposal.merged ? (
         <div className="space-y-1 rounded-lg border border-accent/30 bg-accent-soft/30 px-2.5 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
+          <p className="text-eyebrow uppercase text-subtle">
             {t('What would be kept')}
           </p>
-          <p className="break-words text-[13px] font-medium text-ink">{proposal.merged.title}</p>
+          <p className="break-words text-body font-medium text-ink">{proposal.merged.title}</p>
           {/* Bounded but complete: the arbiter may return up to four thousand
               characters, and neither burying the buttons under all of it nor
               clamping away the half an operator is being asked to approve is
               acceptable. It scrolls. */}
-          <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-muted">
+          <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-caption leading-relaxed text-muted">
             {proposal.merged.content}
           </p>
         </div>
@@ -166,7 +166,7 @@ export function ConsolidationCard({
       </div>
 
       {proposal.promotable && duplicate ? (
-        <p className="text-[11.5px] leading-relaxed text-subtle">
+        <p className="text-caption leading-relaxed text-subtle">
           {t(
             'This does not name anything specific to one project, so it can be made global — every workspace would then recall it.',
           )}

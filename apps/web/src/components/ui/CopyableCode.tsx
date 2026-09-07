@@ -13,7 +13,7 @@ export function CopyableCode({ value, label }: { value: string; label?: string }
 
   return (
     <div className="flex items-stretch gap-2">
-      <code className="min-w-0 flex-1 truncate rounded-lg border border-line bg-sunken px-3 py-2 font-mono text-[12.5px] text-ink">
+      <code className="min-w-0 flex-1 truncate rounded-lg border border-line bg-sunken px-3 py-2 font-mono text-caption text-ink">
         {value}
       </code>
       <Button

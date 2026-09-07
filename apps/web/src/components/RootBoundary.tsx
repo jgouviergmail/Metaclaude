@@ -47,14 +47,14 @@ export class RootBoundary extends Component<{ children: ReactNode }, State> {
       <div className="flex min-h-dvh items-center justify-center bg-surface p-6">
         <div className="w-full max-w-md space-y-4 rounded-xl border border-line bg-raised p-6 text-center shadow-[var(--mc-shadow)]">
           <h1 className="text-title font-semibold text-ink">{copy.title}</h1>
-          <p className="text-[13px] leading-relaxed text-muted">{copy.body}</p>
-          <p className="rounded-md bg-sunken px-3 py-2 text-left font-mono text-[11.5px] text-subtle">
+          <p className="text-body leading-relaxed text-muted">{copy.body}</p>
+          <p className="rounded-md bg-sunken px-3 py-2 text-left font-mono text-caption text-subtle">
             {this.state.error.message || String(this.state.error)}
           </p>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="w-full rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-accent-ink transition-opacity hover:opacity-90"
+            className="w-full rounded-lg bg-accent px-4 py-2 text-body font-medium text-accent-ink transition-opacity hover:opacity-90"
           >
             {copy.reload}
           </button>

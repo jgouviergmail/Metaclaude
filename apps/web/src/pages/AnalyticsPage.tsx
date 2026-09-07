@@ -514,7 +514,7 @@ export function AnalyticsPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[22rem] text-body">
                       <thead>
-                        <tr className="text-left text-caption uppercase tracking-wide text-subtle">
+                        <tr className="text-eyebrow text-left uppercase text-subtle">
                           <th className="px-4 py-2 font-semibold">{t('Model')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Runs')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Cost')}</th>
@@ -553,7 +553,7 @@ export function AnalyticsPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[22rem] text-body">
                       <thead>
-                        <tr className="text-left text-caption uppercase tracking-wide text-subtle">
+                        <tr className="text-eyebrow text-left uppercase text-subtle">
                           <th className="px-4 py-2 font-semibold">{t('Category')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Runs')}</th>
                           <th className="px-4 py-2 text-right font-semibold">{t('Avg reward')}</th>
@@ -672,7 +672,7 @@ function PolicyCard({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[34rem] text-body">
           <thead>
-            <tr className="text-left text-caption uppercase tracking-wide text-subtle">
+            <tr className="text-eyebrow text-left uppercase text-subtle">
               <th className="px-4 py-2 font-semibold">{t('Model')}</th>
               <th className="px-4 py-2 font-semibold">{t('Effort')}</th>
               <th className="px-4 py-2 text-right font-semibold">{t('Trials')}</th>

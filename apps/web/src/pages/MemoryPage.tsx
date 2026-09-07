@@ -756,7 +756,7 @@ export function MemoryPage() {
               {recallQuery ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-caption font-semibold uppercase tracking-wide text-subtle">
+                    <p className="text-eyebrow uppercase text-subtle">
                       {t('Top matches')}
                     </p>
                     <button

@@ -392,7 +392,30 @@ ApprovalCard 10, KnowledgeSection 10, TaskDrawer 10.
 | **9** | Accueil et Board | — |
 | **10** | Espaces (liste et espace) + contrat de routes `packages/shared` | `hardcodedRoutes` → 0 |
 | **11** | Session | prudence maximale : streaming, approbations, composeur |
-| **12** | Passe finale : banc, deux densités, deux thèmes, deux langues | matrice complète |
+| **12** | Passe finale : banc, deux densités, deux thèmes, deux langues | matrice complète ✓ |
+
+### Ce que la passe finale a trouvé
+
+La densité confortable n'avait **jamais** été photographiée en douze lots. Sa
+première capture montrait un écran identique au compact : le banc écrivait
+`metaclaude.density`, la clé que lit le script de pré-peinture, et pas
+`metaclaude.ui`, celle du store que lit la divulgation. La densité déplaçait
+donc l'espacement et rien d'autre — « la compacte avec plus d'air ». Les deux
+clés sont posées maintenant, et le réglage tient sa promesse dans les deux sens.
+
+Le banc ne peut pas tourner en français sur les écrans à onglets : ses
+sélecteurs sont anglais, ce que son propre commentaire disait déjà. La passe
+française saute ces écrans plutôt que de porter une seconde table de
+sélecteurs qui divergerait du catalogue ; `scripts/responsive.mjs` couvre leur
+géométrie en français aux trois largeurs.
+
+`literalTextSizes` finit à **10** sur les 360 du départ, et ces dix sont un
+plancher : le compteur de notification ajusté à sa pastille de 15px, le `h1` de
+page à 18px que l'échelle ne couvre pas entre 16 et 24, et les deux codes TOTP
+espacés. Un septième rôle, `text-eyebrow`, a été ajouté pour les vingt-deux
+sur-titres en capitales que l'application écrivait en trois orthographes — et
+le test qui dérive les familles de la feuille a détecté qu'il serait supprimé
+par `cn` avant qu'il n'atteigne un seul écran.
 
 
 **Correction ciblée contre refonte.** Le lot 0 corrige les cinq défauts par

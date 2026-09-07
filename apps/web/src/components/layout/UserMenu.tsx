@@ -47,7 +47,7 @@ export function UserMenu() {
       trigger={
         <button
           type="button"
-          className="flex size-8 items-center justify-center rounded-lg bg-accent-soft text-[11px] font-semibold text-accent hover:brightness-110"
+          className="flex size-8 items-center justify-center rounded-lg bg-accent-soft text-caption font-semibold text-accent hover:brightness-110"
           aria-label={t('Account')}
         >
           {initials(user.displayName || user.username)}
