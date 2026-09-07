@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.64.0] — 2026-09-07
+
+### Changed
+
+- The responsive guard presses menu items too, so a dialog that opens from a
+  row's overflow is audited like any other: an automation's edit form and two
+  confirmations, which nothing had ever looked at. Nineteen dialogues now,
+  1707 checks.
+- The sweep signs back in when a menu item ends the session. `Sign out` is one
+  of the items it presses, and without this the first route logged itself out
+  and the remaining eleven audited the login page — reporting a confident zero
+  dialogues. Naming that item in a deny list would rot the day another one ends
+  a session; noticing the login screen does not.
+
 ## [0.63.1] — 2026-09-07
 
 ### Fixed

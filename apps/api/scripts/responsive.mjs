@@ -520,6 +520,24 @@ const DIALOGS = [
  * no other check looks at.
  */
 const MENU_ROUTES = ROUTES.map(([route]) => route);
+
+/**
+ * The routes whose menus are worth pressing item by item.
+ *
+ * Every list screen, and nothing else: a dialog behind a menu item belongs to a
+ * row. `/w/:id/s/:id` is here because a session's own header menu holds the two
+ * panel toggles and its deletion.
+ */
+const MENU_DIALOG_ROUTES = new Set([
+  '/workspaces',
+  '/board',
+  '/memory',
+  '/automations',
+  '/agents',
+  '/plugins',
+  `/w/${ws.id}`,
+  `/w/${ws.id}/s/${session.id}`,
+]);
 const WIDTHS = [
   { name: '390', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
   { name: '768', viewport: { width: 768, height: 1024 } },
@@ -764,6 +782,14 @@ for (const locale of LOCALES) {
  * the widest copy in the narrowest frame. Running the full matrix would triple
  * a nine-minute sweep for combinations that have never held a defect the phone
  * did not.
+ *
+ * Measured, because the second phase is not free: the button sweep alone runs
+ * the whole guard in 480s, pressing menu items as well takes it to 703s, and
+ * this job is allowed twenty minutes. That buys three dialogues nothing else
+ * reaches — an automation's edit form and two confirmations — and the mechanism
+ * for any added later. Restricting the item sweep to the list screens saved 72s
+ * of it; reading the item names on the first open, which looked like the
+ * obvious saving, saved seven seconds and disproved its own theory.
  */
 {
   const browser = await launch();
@@ -774,6 +800,23 @@ for (const locale of LOCALES) {
       ...WIDTHS[0],
     });
     const inspect = inspector(page);
+    /*
+     * Signing in, and signing in again.
+     *
+     * The menu sweep presses every item, and one of them is `Sign out` — which
+     * ends the session the whole pass depends on. Naming that item in a deny
+     * list would rot the day another one ends a session; noticing that we are
+     * back on the login screen does not. Without this the first route logged
+     * itself out and the remaining eleven audited the login page, reporting a
+     * confident zero dialogues.
+     */
+    const signIn = async () => {
+      await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
+      await page.fill('input[name="username"], #username', USERNAME);
+      await page.fill('input[type="password"]', PASSWORD);
+      await page.click('button[type="submit"]');
+      await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 20_000 });
+    };
     await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
     await page.fill('input[name="username"], #username', USERNAME);
     await page.fill('input[type="password"]', PASSWORD);
@@ -859,6 +902,93 @@ for (const locale of LOCALES) {
       if (page.url() !== before || (await page.$('[role="dialog"]'))) {
         await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
         await page.waitForTimeout(400);
+      }
+    }
+
+    /*
+     * The dialogs behind a menu item, which pressing buttons never reaches.
+     *
+     * Sixteen of fifty-two were found by the sweep above; the rest open from a
+     * row's overflow menu — rename, move, archive, confirm a deletion. That is
+     * where an operator meets them, and nothing had ever audited one.
+     *
+     * A menu closes when an item is chosen, so each item costs its own reopen.
+     * Deduplicated by item name across the whole pass, because the rail's menus
+     * repeat on every route and opening `Sign out` twelve times measures the
+     * same thing twelve times.
+     */
+    /*
+     * Only the screens that carry a *row* menu.
+     *
+     * A dialog behind a menu item is opened from a list: an automation's
+     * overflow, a memory's, a session's. The rail's three menus are the same on
+     * every route, and opening them twelve times to read names nobody will
+     * press again cost most of a five-minute increase — measured, after an
+     * optimisation that read the names on the first open saved seven seconds
+     * and disproved the cheaper theory.
+     */
+    const triggers = MENU_DIALOG_ROUTES.has(route) ? await page.$$('[aria-haspopup="menu"]') : [];
+    for (let index = 0; index < triggers.length; index += 1) {
+      const openMenu = async () => {
+        const trigger = (await page.$$('[aria-haspopup="menu"]'))[index];
+        if (!trigger || !(await trigger.isVisible())) return false;
+        await trigger.scrollIntoViewIfNeeded().catch(() => {});
+        await page.waitForTimeout(120);
+        // Radix opens on pointerdown; a click after it toggles the menu shut.
+        await trigger.dispatchEvent('pointerdown');
+        await page.waitForTimeout(320);
+        return (await page.$('[role="menu"]')) !== null;
+      };
+
+      if (!(await openMenu())) continue;
+      const ITEMS = '[role="menuitem"], [role="menuitemcheckbox"]';
+      /*
+       * The names are read on the *first* open, and only an unseen one costs a
+       * reopen.
+       *
+       * Reopening for every item and checking the name afterwards spent five
+       * minutes of every run on menus whose entries had all been pressed on an
+       * earlier route — the rail's three appear on all twelve. Same reasoning
+       * as the menu loop above deduplicating by name, one level in.
+       */
+      const names = [];
+      for (const entry of await page.$$(ITEMS)) {
+        names.push(((await entry.textContent()) ?? '').replace(/[\s]+/g, ' ').trim().slice(0, 40));
+      }
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(150);
+
+      for (let item = 0; item < names.length; item += 1) {
+        const name = names[item];
+        if (!name || seenDialogs.has(name)) continue;
+        if (!(await openMenu())) break;
+        const entry = (await page.$$(ITEMS))[item];
+        if (!entry) {
+          await page.keyboard.press('Escape');
+          continue;
+        }
+
+        const before = page.url();
+        await entry.click({ timeout: 2000 }).catch(() => {});
+        await page.waitForTimeout(500);
+
+        if (await page.$('[role="dialog"]')) {
+          seenDialogs.add(name);
+          await inspect(`${label} · menu → dialogue « ${name} »`);
+          const english = await page.evaluate(UNTRANSLATED(FRENCH_KEYS));
+          results.check(
+            `${label} · menu → dialogue « ${name} »: nothing shows in English`,
+            english.length === 0,
+            english.map((text) => `« ${text.slice(0, 48)} »`).join(' | '),
+          );
+        }
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(200);
+        if (new URL(page.url()).pathname.startsWith('/login')) await signIn();
+        if (page.url() !== before || (await page.$('[role="dialog"]'))) {
+          await page.goto(`${server.baseUrl}${route}`, { waitUntil: 'networkidle' });
+          await page.waitForTimeout(400);
+        }
       }
     }
   }
