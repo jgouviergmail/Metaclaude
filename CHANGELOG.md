@@ -11,6 +11,23 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.64.1] — 2026-09-07
+
+### Fixed
+
+- The sweep reported a toast's close button as covered by the dialog that had
+  just opened over it. The menu phase presses items that announce something,
+  and it was written without the dismissal the button phase already does — one
+  copy in two places, and the one that was forgotten is the one that broke. The
+  dismissal is shared now.
+- And the check no longer depends on how fast the machine is. Dismissing a
+  toast before each press narrows the race; it does not close it — this sweep
+  was green locally at the moment CI was red on exactly that. A toast is
+  transient chrome whose geometry belongs to sonner and which disappears on its
+  own, so the audit excludes it the way it already excludes what a modal marks
+  `aria-hidden`. A check that answers differently on two machines teaches you
+  to read past red.
+
 ## [0.64.0] — 2026-09-07
 
 ### Changed

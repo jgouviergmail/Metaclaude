@@ -235,8 +235,19 @@ const AUDIT = `
       (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent.trim() ||
        (el.labels && el.labels[0] ? el.labels[0].textContent : '') || '').replace(/\\s+/g, ' ').trim();
     const short = (el) => (nameOf(el) || '<' + el.tagName.toLowerCase() + '>').slice(0, 40);
-    // Behind an open modal Radix marks the rest aria-hidden. Not a defect.
-    const inert = (el) => el.closest('[aria-hidden="true"], [inert]') !== null;
+    /*
+     * Behind an open modal Radix marks the rest aria-hidden. Not a defect.
+     *
+     * A toast is excluded for a different reason: it is transient chrome whose
+     * geometry belongs to sonner, it lives outside the dialog it may overlap,
+     * and it disappears on its own. Dismissing them before each press narrows
+     * the window; it does not close it — the sweep was green here and red in
+     * CI on exactly that race, because two machines do not time alike. A check
+     * that depends on how fast a machine is teaches you to read past red.
+     */
+    const inert = (el) =>
+      el.closest('[aria-hidden="true"], [inert], [data-sonner-toast], [data-sonner-toaster]') !==
+      null;
     const verdict = (el) => {
       for (let p = el.parentElement; p; p = p.parentElement) {
         if (p.scrollWidth > p.clientWidth + 1) {
@@ -810,6 +821,26 @@ for (const locale of LOCALES) {
      * itself out and the remaining eleven audited the login page, reporting a
      * confident zero dialogues.
      */
+    /*
+     * Dismiss whatever the previous press announced.
+     *
+     * A toast left over from one control was still on screen when the next one
+     * opened a dialog, and the audit reported its close button as covered — by
+     * the dialog that had just opened over it. That is an artefact of pressing
+     * everything in a row, not something an operator meets.
+     *
+     * Shared by both phases, and the reason is a red CI: the menu phase was
+     * added without it, a menu item that fires a toast preceded a button that
+     * opens a dialog, and the failure appeared there and not here because the
+     * two machines time differently. One copy cannot be forgotten in one of
+     * two places.
+     */
+    const dismissToasts = async () => {
+      for (const close of await page.$$('[data-sonner-toast] button')) {
+        await close.click({ timeout: 500 }).catch(() => {});
+      }
+    };
+
     const signIn = async () => {
       await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
       await page.fill('input[name="username"], #username', USERNAME);
@@ -864,19 +895,7 @@ for (const locale of LOCALES) {
         .slice(0, 40);
       if (!name || seenDialogs.has(name)) continue;
 
-      /*
-       * Dismiss whatever the previous click announced.
-       *
-       * A toast left over from one button was still on screen when the next
-       * one opened a dialog, and the audit reported its close button as
-       * covered — by the dialog that had just opened over it. That is an
-       * artefact of pressing every button in a row, not something an
-       * operator meets, and a check that reports it is reporting on the
-       * probe rather than on the app.
-       */
-      for (const close of await page.$$('[data-sonner-toast] button')) {
-        await close.click({ timeout: 500 }).catch(() => {});
-      }
+      await dismissToasts();
 
       const before = page.url();
       await button.scrollIntoViewIfNeeded().catch(() => {});
@@ -967,6 +986,8 @@ for (const locale of LOCALES) {
           await page.keyboard.press('Escape');
           continue;
         }
+
+        await dismissToasts();
 
         const before = page.url();
         await entry.click({ timeout: 2000 }).catch(() => {});
