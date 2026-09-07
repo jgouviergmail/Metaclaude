@@ -654,9 +654,15 @@ export const api = {
       body: { workspaceId },
     }),
 
-  memoryMaintenance: (action: 'decay' | 'collect' | 'reindex' | 'consolidate') =>
+  memoryMaintenance: (
+    action: 'decay' | 'collect' | 'reindex' | 'consolidate' | 'reflect',
+    // Only `reflect` is scoped: the other four are deployment-wide.
+    workspaceId?: string,
+  ) =>
     request<{
       affected: number;
+      /** `reflect` only: runs queued for a background pass, not rows changed. */
+      queued?: number;
       consolidation?: {
         groups: number;
         proposed: number;
@@ -667,7 +673,7 @@ export const api = {
       };
     }>(
       '/api/memory/maintenance',
-      { method: 'POST', body: { action } },
+      { method: 'POST', body: { action, ...(workspaceId ? { workspaceId } : {}) } },
     ),
 
   /* ----------------------------- Insights ----------------------------- */

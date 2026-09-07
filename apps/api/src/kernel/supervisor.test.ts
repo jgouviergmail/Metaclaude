@@ -363,6 +363,7 @@ function makeSupervisor(
   extra: {
     delegate?: () => Promise<never>;
     board?: unknown;
+    memory?: unknown;
     steward?: unknown;
     runTimeoutMs?: number;
     idleTimeoutMs?: number;
@@ -380,6 +381,7 @@ function makeSupervisor(
     query: query as never,
     ...(extra.delegate ? { delegate: extra.delegate as never } : {}),
     ...(extra.board ? { board: extra.board as never } : {}),
+    ...(extra.memory ? { memory: extra.memory as never } : {}),
     ...(extra.steward ? { steward: extra.steward as never } : {}),
   });
 }
@@ -2534,5 +2536,115 @@ describe('how a ceiling names itself', () => {
     for (const ms of [45 * 60_000, 4 * 60 * 60_000, 90 * 60_000]) {
       expect(await stoppedAt(ms)).not.toMatch(/(minutes|hours) time limit/);
     }
+  });
+});
+
+/**
+ * The workspace's own memory: mounted, and said out loud.
+ *
+ * Both halves matter and only one of them is obvious. Recall reaches the model
+ * as an unattributed block carrying "never mention this section", so an agent
+ * that has just been told something worth keeping has no reason to believe a
+ * store exists — it wrote Markdown files in the workspace instead, which is
+ * correct behaviour for an agent that has only a filesystem, and a second
+ * memory that nothing lists, decays or consolidates.
+ */
+describe('the memory tools', () => {
+  const store = { search: async () => [], get: () => null, remember: async () => ({}), update: async () => null, retire: () => null };
+  const serversOf = (opened: Record<string, unknown>) =>
+    Object.keys((opened.mcpServers ?? {}) as Record<string, unknown>);
+  const appended = (opened: Record<string, unknown>) =>
+    String((opened.systemPrompt as { append?: string } | undefined)?.append ?? '');
+
+  /** Open a run, let it settle, and hand back the options the CLI was given. */
+  const optionsFor = async (
+    request: RunRequest,
+    extra: Parameters<typeof makeSupervisor>[2] = {},
+  ): Promise<Record<string, unknown>> => {
+    const { query, control } = fakeQuery();
+    const run = makeSupervisor(query, undefined, extra).execute(request, makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+    await run;
+    return control.opened[0] as Record<string, unknown>;
+  };
+
+  it('mounts them for an ordinary workspace, and tells the agent they are there', async () => {
+    const opened = await optionsFor(makeRequest(), { memory: store });
+    expect(serversOf(opened)).toContain('metaclaude_memory');
+    expect(appended(opened)).toContain('memory_write');
+  });
+
+  it('says nothing about a memory it did not mount', async () => {
+    // A briefing without the tools is worse than silence: the agent is told to
+    // use something that will answer "no such tool".
+    const opened = await optionsFor(makeRequest());
+    expect(serversOf(opened)).not.toContain('metaclaude_memory');
+    expect(appended(opened)).not.toContain('memory_write');
+  });
+
+  it('leaves a workspace that recalls nothing alone', async () => {
+    const opened = await optionsFor(withSettings({ memoryEnabled: false }), { memory: store });
+    expect(serversOf(opened)).not.toContain('metaclaude_memory');
+    expect(appended(opened)).not.toContain('memory_write');
+  });
+
+  /**
+   * Reading and writing memory without a card, forgetting with one.
+   *
+   * Measured on the deployment this was built for: `default` mode with
+   * `Write`, `Edit` and `Bash` pre-approved and nothing else. Writing a
+   * Markdown file was therefore silent and writing a memory would have raised
+   * an approval card every time — the system making the wrong thing
+   * frictionless, which is how the second memory came to exist at all.
+   */
+  it('pre-approves reading and writing memory, but not forgetting', async () => {
+    // In `default` mode the decision is made at the broker seam inside
+    // `execute`, not in the CLI's managed settings, so what is asserted is
+    // whether the broker was reached at all.
+    const decisions: Array<{ tool: string; asked: boolean }> = [];
+    for (const tool of [
+      'mcp__metaclaude_memory__memory_search',
+      'mcp__metaclaude_memory__memory_write',
+      'mcp__metaclaude_memory__memory_forget',
+    ]) {
+      let reachedBroker = false;
+      const { query, control } = fakeQuery();
+      const supervisor = makeSupervisor(
+        query,
+        {
+          request: async () => {
+            reachedBroker = true;
+            return { behavior: 'allow' };
+          },
+        },
+        { memory: store },
+      );
+      const run = supervisor.execute(makeRequest(), makeCallbacks());
+      await vi.waitFor(() => expect(control.received.length).toBe(1));
+      const opts = control.opened[0] as {
+        canUseTool: (name: string, input: unknown, extra: { toolUseID: string }) => Promise<unknown>;
+      };
+      await opts.canUseTool(tool, {}, { toolUseID: 'tu_1' });
+      control.finish();
+      await run;
+      decisions.push({ tool, asked: reachedBroker });
+    }
+
+    expect(decisions).toEqual([
+      { tool: 'mcp__metaclaude_memory__memory_search', asked: false },
+      { tool: 'mcp__metaclaude_memory__memory_write', asked: false },
+      { tool: 'mcp__metaclaude_memory__memory_forget', asked: true },
+    ]);
+  });
+
+  it('does not mount them in the system workspace, whose steward has more', async () => {
+    // `system_memory_write` does all of this and can file under any workspace.
+    // Two ways to do one thing is how a model picks the weaker one.
+    const opened = await optionsFor(makeRequest(), {
+      memory: store,
+      steward: { workspaceId: () => makeRequest().workspace.id, facade: () => ({}) },
+    });
+    expect(serversOf(opened)).not.toContain('metaclaude_memory');
   });
 });

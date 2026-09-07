@@ -990,4 +990,32 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
     `,
   },
+  {
+    version: 25,
+    name: 'run_reflected_at',
+    sql: /* sql */ `
+      -- When the reflexion pass last considered this run, or NULL if it never
+      -- completed one. "Considered", not "learned something": a run the
+      -- predicate declined is marked too, because a finished run is immutable
+      -- and that decision will never change.
+      --
+      -- Nothing recorded this before, so four outcomes were indistinguishable
+      -- and all of them rendered as an empty Memory page: not eligible,
+      -- eligible and refused, eligible and answered, eligible and dead. Ten
+      -- consecutive failures at the turn ceiling went unnoticed for a day
+      -- because of it, and a catch-up could not even be written -- there was
+      -- no set of runs to catch up on.
+      --
+      -- Backfilled from the insights table rather than left NULL: a run that
+      -- produced an insight demonstrably went through a complete pass, and
+      -- marking it keeps the first catch-up bounded to what actually needs
+      -- one. A run that legitimately proposed nothing is not distinguishable
+      -- from a failed one in the data we kept, so it is offered once; that
+      -- costs a single cheap call and then it is marked for good.
+      ALTER TABLE runs ADD COLUMN reflected_at INTEGER;
+      UPDATE runs SET reflected_at = finished_at
+       WHERE finished_at IS NOT NULL
+         AND EXISTS (SELECT 1 FROM insights WHERE insights.run_id = runs.id);
+    `,
+  },
 ];

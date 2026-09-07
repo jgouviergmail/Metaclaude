@@ -1856,6 +1856,17 @@ export const fr: Record<string, string> = {
   'Server timezone': 'Fuseau horaire du serveur',
   'Deployment': 'Déploiement',
   'Forget': 'Oublier',
+  'Catch up': 'Rattraper',
+  'Run the reflexion pass over finished runs that never had one. The pass is out-of-band, so a failure there is silent by design; this is the way back. It works in the background and tells you when it is done.':
+    'Rejoue la passe de réflexion sur les runs terminés qui n’en ont jamais eu. La passe est hors bande, donc un échec y est silencieux par conception ; ceci est le chemin de retour. Elle travaille en arrière-plan et vous prévient quand elle a fini.',
+  'Nothing to catch up on': 'Rien à rattraper',
+  'Catching up on {n} run': 'Rattrapage de {n} run',
+  'Catching up on {n} runs': 'Rattrapage de {n} runs',
+  'Every finished run here has already been through the reflexion pass.':
+    'Tous les runs terminés ici sont déjà passés par la réflexion.',
+  'It runs in the background — you will be notified when it finishes.':
+    'Elle tourne en arrière-plan — vous serez prévenu à la fin.',
+  'Catch-up finished': 'Rattrapage terminé',
   'The interface is in your language, but the deployment could not be told to write in it. Set it under Settings → Configuration → language.':
     'L’interface est dans votre langue, mais le déploiement n’a pas pu être informé d’y écrire. Réglez-le dans Réglages → Configuration → language.',
   'Insight status': 'Statut des enseignements',

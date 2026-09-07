@@ -18,11 +18,12 @@
  */
 
 import type { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import type { ApiTokenRecord, BoardTask } from '@metaclaude/shared';
+import type { ApiTokenRecord, BoardTask, Memory } from '@metaclaude/shared';
 import { describe, expect, it } from 'vitest';
 import { buildGatewayServer, type GatewayDeps } from '../services/mcp-gateway.js';
 import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
+import { buildMemoryServer, type WorkspaceMemoryFacade } from './memory-tools.js';
 import { buildSystemServer, type SystemFacade } from './system-tools.js';
 
 /* -------------------------------------------------------------------------- */
@@ -265,6 +266,34 @@ describe('every field a tool accepts reaches its facade', () => {
     });
     const tools = registered(buildBoardServer(rec.facade, scope));
     expect(Object.keys(tools).length).toBe(7);
+    for (const [name, tool] of Object.entries(tools)) await assertForwards(name, tool, rec);
+  });
+
+  it('holds for the workspace memory tools', async () => {
+    // `get` answers for any id, and always inside this workspace: the scope
+    // guard runs before every write, so a recorder that refuses would keep
+    // each handler from ever reaching the facade.
+    const mem = (id: unknown): Memory =>
+      ({
+        id: String(id),
+        workspaceId: 'ws_1',
+        kind: 'semantic',
+        shelf: 'durable',
+        title: 'm',
+        content: 'c',
+        tags: [],
+        confidence: 0.7,
+        pinned: false,
+      }) as unknown as Memory;
+    const rec = recorder<WorkspaceMemoryFacade>({
+      get: (id) => mem(id),
+      search: async () => [],
+      remember: async (input) => ({ memory: mem((input as { title: string }).title), merged: false }),
+      update: async (id) => mem(id),
+      retire: (id) => mem(id),
+    });
+    const tools = registered(buildMemoryServer(rec.facade, { workspaceId: 'ws_1', runId: 'run_1' }));
+    expect(Object.keys(tools).length).toBe(3);
     for (const [name, tool] of Object.entries(tools)) await assertForwards(name, tool, rec);
   });
 

@@ -138,10 +138,16 @@ const KIND_TONE: Record<MemoryKind, 'info' | 'accent' | 'thinking'> = {
 };
 
 const MAINTENANCE: ReadonlyArray<{
-  action: 'decay' | 'collect' | 'reindex' | 'consolidate';
+  action: 'decay' | 'collect' | 'reindex' | 'consolidate' | 'reflect';
   label: string;
   explanation: string;
 }> = [
+  {
+    action: 'reflect',
+    label: 'Catch up',
+    explanation:
+      'Run the reflexion pass over finished runs that never had one. The pass is out-of-band, so a failure there is silent by design; this is the way back. It works in the background and tells you when it is done.',
+  },
   {
     action: 'consolidate',
     label: 'Consolidate',
@@ -417,10 +423,33 @@ export function MemoryPage() {
   });
 
   const maintenance = useMutation({
-    mutationFn: (action: 'decay' | 'collect' | 'reindex' | 'consolidate') =>
-      api.memoryMaintenance(action),
+    mutationFn: (action: (typeof MAINTENANCE)[number]['action']) =>
+      // Only the catch-up is scoped; the other four are deployment-wide, and
+      // handing them a workspace they ignore would say otherwise.
+      action === 'reflect' && workspaceId
+        ? api.memoryMaintenance(action, workspaceId)
+        : api.memoryMaintenance(action),
     onSuccess: (result, action) => {
       refreshMemory();
+      if (action === 'reflect') {
+        // Not a count of rows changed: the pass has only been *queued*, and
+        // saying "0 memories affected" over a job that has not started yet is
+        // the same lie the consolidation report used to tell.
+        void queryClient.invalidateQueries({ queryKey: ['insights'] });
+        const queued = result.queued ?? 0;
+        toast.success(
+          queued === 0
+            ? t('Nothing to catch up on')
+            : plural(queued, 'Catching up on {n} run', 'Catching up on {n} runs'),
+          {
+            description:
+              queued === 0
+                ? t('Every finished run here has already been through the reflexion pass.')
+                : t('It runs in the background — you will be notified when it finishes.'),
+          },
+        );
+        return;
+      }
       if (action === 'consolidate') {
         // The only action that answers with a queue rather than a change, so
         // it is the only one whose report has to say what to do next. A pass

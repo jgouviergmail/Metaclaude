@@ -11,6 +11,80 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.68.0] — 2026-09-07
+
+### Added
+
+- **The agent can write to its own workspace's memory.** It could read it and
+  not write it: recall arrives as an unattributed block with an instruction
+  never to mention it, and the only write path was the pass that runs *after*
+  the conversation. So an agent told something worth keeping did the one thing
+  it could and wrote Markdown files — a second memory that nothing lists,
+  decays, consolidates or searches, and that diverges from the store on the
+  next run. `memory_search`, `memory_write` and `memory_forget`, pinned to the
+  run's own workspace: another workspace's memory, and the global tier this
+  one merely recalls, answer exactly like a memory that does not exist. Not
+  mounted in the system workspace, whose steward already has more. These
+  writes skip the memory gate deliberately — the gate exists to stop the
+  automatic pass flooding the corpus, and a note written because the operator
+  just said something is not that.
+- **Catch up on runs that were never reflected on.** `Memory → maintenance →
+  Catch up` replays the pass over finished runs that never completed one,
+  scoped to the workspace in view. It runs in the background and reports what
+  it recovered, because one model call per run cannot fit in a request.
+- **The Doctor reports runs that never went through the pass.** The failure
+  this whole release is about was invisible for a day; this is the check that
+  would have spoken after the first one.
+- `scripts/eval-memory-tool.mjs`, which measures what the agent actually
+  writes: a real server, the real CLI, and a scripted conversation half of
+  whose turns carry something durable and half of which carry nothing. What it
+  reports is discrimination, not volume. Measured over five passes: the agent
+  never once called `memory_write` on a turn carrying nothing, wrote on every
+  turn carrying a durable fact bar one, and on a borderline turn twice
+  *corrected* an existing memory rather than adding a second — which is what
+  its instructions ask for.
+
+### Changed
+
+- **A workspace that has memory pre-approves reading and writing it.** Measured
+  on the deployment this was built for: the workspace ran in `default` mode
+  with `Write`, `Edit` and `Bash` pre-approved and nothing else, so writing a
+  Markdown file was silent while writing a memory would have raised an approval
+  card every single time. That incoherence is what produced the second memory
+  in the first place — the system made the wrong thing frictionless. A memory
+  write is strictly less consequential than the `Write` beside it: confined to
+  the workspace's own tier, unable to touch a file, another workspace or the
+  global shelf, listed on a screen built to review it, and reversible.
+  `memory_forget` still asks, being the only one that takes something out of
+  recall. `memoryEnabled` remains the switch for the whole arrangement.
+
+### Fixed
+
+- **The reflexion pass had been dying silently.** `structuredCall` allowed one
+  turn, and the SDK returns a schema-constrained answer through a hidden tool
+  call — so a model that spends that turn writing prose first ends as "Reached
+  maximum number of turns (1)" with no answer at all. The memory gate measured
+  this and raised its own call to three; nothing raised the reflector's, which
+  has the longest prompt of the lot. Measured in production: **ten consecutive
+  failures**, a workspace with eighteen successful runs and not one memory,
+  each failure logged at warn and dropped by design. The default is three for
+  every caller now: a ceiling is not a target, so a call that answers on its
+  first turn costs exactly what it did before.
+- **A run whose notes were all refused left no trace.** An insight was recorded
+  only when a memory was *kept*, which made a refusal indistinguishable from a
+  crash and from a pass that never ran — three very different things, one blank
+  screen. It is recorded whenever the gate returned a verdict, and the `Keep`
+  button added last release makes those refusals reversible.
+- The insight list ordered by timestamp alone, which is not a total order: one
+  run records its reflexion insight and its skill proposal in the same
+  millisecond, so which one read as newest changed between runs.
+- **The catch-up had no grace period, and the Doctor did.** Both read
+  `reflected_at`; only one left a freshly finished run alone. A catch-up
+  started while the live pass was still working on a run would have reflected
+  it a second time and written its lessons twice. One shared constant now.
+- The catch-up's notification reported how many runs it managed without saying
+  how many it was given, so a partial success read as a success.
+
 ## [0.67.0] — 2026-09-07
 
 ### Added

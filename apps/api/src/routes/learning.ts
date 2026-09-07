@@ -25,7 +25,15 @@ import { fingerprint } from '../learning/consolidation.js';
 import { MemoryReconcileError } from '../learning/memory.js';
 import { reindexStale } from '../learning/reindex.js';
 import { shelfForKeep } from '../learning/gatekeeper.js';
-import { getInsight, listInsights, setInsightPayload, setInsightStatus } from '../learning/reflexion.js';
+import {
+  catchUpReflexion,
+  getInsight,
+  listInsights,
+  runsAwaitingReflexion,
+  setInsightPayload,
+  setInsightStatus,
+} from '../learning/reflexion.js';
+import { SYSTEM_TOPIC, routes as appRoutes } from '@metaclaude/shared';
 
 /**
  * Where each memory was learned, as somewhere an operator can actually go.
@@ -227,13 +235,26 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
   );
 
   /**
+   * How many runs one press of the catch-up may replay. Bounded because each
+   * one is a model call: fifty is a few minutes of background work and a few
+   * cents, and a deployment further behind than that presses twice.
+   */
+  const CATCH_UP_LIMIT = 50;
+  /** One catch-up at a time; two would pick the same unmarked runs. */
+  let catchUpInFlight = false;
+
+  /**
    * Manual maintenance. These run on a schedule anyway; exposing them lets the
    * operator see the effect immediately rather than waiting a day.
    */
   app.post('/api/memory/maintenance', async (request, reply) => {
     const actor = requireOperator(request);
     const parsed = z
-      .object({ action: z.enum(['decay', 'collect', 'reindex', 'consolidate']) })
+      .object({
+        action: z.enum(['decay', 'collect', 'reindex', 'consolidate', 'reflect']),
+        /** Only `reflect` reads it: the other four are deployment-wide. */
+        workspaceId: z.string().optional(),
+      })
       .safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, 'Unknown maintenance action.');
 
@@ -269,6 +290,69 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
           detail: `${result.groups} group(s) examined, ${result.proposed} proposed`,
         });
         return reply.send({ affected: result.proposed, consolidation: result });
+      }
+      case 'reflect': {
+        /*
+         * Replay the reflexion pass over the runs that never had one.
+         *
+         * The live pass is out-of-band by design — a failure there is logged
+         * and dropped so nothing disturbs the run the operator is watching —
+         * and that is exactly why a way back is needed: a deployment lost a
+         * day of conversation to ten consecutive turn-ceiling failures, with
+         * every transcript still sitting intact in the database.
+         *
+         * It cannot be synchronous. One model call per run at six to ten
+         * seconds apiece would blow through any request timeout at a dozen
+         * runs, so the answer says how many were queued and the notification
+         * says what came of it. One at a time: a `reflect` already running is
+         * refused rather than doubled, because both passes would pick the
+         * same unmarked runs.
+         */
+        const workspaceId = parsed.data.workspaceId ?? null;
+        const queued = runsAwaitingReflexion(context.db, { workspaceId, limit: CATCH_UP_LIMIT });
+        if (queued.length === 0) return reply.send({ affected: 0, queued: 0 });
+        if (catchUpInFlight) throw new HttpError(409, 'A catch-up is already running.');
+
+        catchUpInFlight = true;
+        context.audit.record({
+          actor: actor.username,
+          action: 'memory.reflect',
+          ipAddress: requestIp(context, request),
+          detail: `${queued.length} run(s) queued for reflexion`,
+        });
+
+        void catchUpReflexion(
+          {
+            db: context.db,
+            reflect: (run, events) => context.reflexion.reflect(run, events),
+            loadRun: (id) => context.runRepo.get(id),
+            loadEvents: (id) => context.transcriptRepo.byRun(id),
+            log: (level, message, data) => context.log[level](data ?? {}, message),
+          },
+          { workspaceId, limit: CATCH_UP_LIMIT },
+        )
+          .then((result) => {
+            context.bus.publish(SYSTEM_TOPIC, {
+              type: 'notification',
+              topic: SYSTEM_TOPIC,
+              level: 'info',
+              title: 'Catch-up finished',
+              // `examined` is what completed, `queued` is what was offered:
+              // saying only the first reports a partial success as a success.
+              message:
+                `Reflected on ${result.examined} of ${queued.length} run(s) and recovered ` +
+                `${result.memories} memor${result.memories === 1 ? 'y' : 'ies'}.`,
+              href: appRoutes.memory(workspaceId ?? undefined),
+            });
+          })
+          .catch((error: unknown) => {
+            context.log.error({ message: (error as Error).message }, 'the reflexion catch-up failed');
+          })
+          .finally(() => {
+            catchUpInFlight = false;
+          });
+
+        return reply.send({ affected: queued.length, queued: queued.length });
       }
     }
   });

@@ -248,6 +248,61 @@ describe('maintenance', () => {
 
     await waitFor(() => expect(apiMock.memoryMaintenance).toHaveBeenCalledWith('decay'));
   });
+
+  /**
+   * The catch-up, and the two things it must not say.
+   *
+   * It queues a background pass, so "0 memories affected" — the report every
+   * other action gets — would be a claim about work that has not started. And
+   * an empty queue is the good outcome, not a failure.
+   */
+  const openCatchUp = () => {
+    const trigger = screen.getByRole('button', { name: 'Memory maintenance' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Catch up/i }));
+  };
+
+  it('queues a catch-up for the whole deployment when no scope is chosen', async () => {
+    apiMock.memoryMaintenance.mockResolvedValue({ affected: 3, queued: 3 });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    openCatchUp();
+
+    await waitFor(() => expect(apiMock.memoryMaintenance).toHaveBeenCalledWith('reflect'));
+  });
+
+  it('carries the chosen scope, so a catch-up on one workspace stays there', async () => {
+    // The scope the operator picked is the scope the pass must use: pressing
+    // this on one workspace and reflecting on every run of the deployment is
+    // a bill, not a feature. `selected` makes a MenuItem a menuitemcheckbox.
+    apiMock.memoryMaintenance.mockResolvedValue({ affected: 1, queued: 1 });
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [{ id: 'ws_a', name: 'Alpha', color: '#888888' } as Workspace],
+    });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    const scopeTrigger = screen.getByRole('button', { name: /Memory scope/ });
+    fireEvent.pointerDown(scopeTrigger, { button: 0, ctrlKey: false });
+    fireEvent.click(scopeTrigger);
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Alpha/ }));
+
+    openCatchUp();
+
+    await waitFor(() => expect(apiMock.memoryMaintenance).toHaveBeenCalledWith('reflect', 'ws_a'));
+  });
+
+  it('says the queue is empty rather than reporting nothing affected', async () => {
+    apiMock.memoryMaintenance.mockResolvedValue({ affected: 0, queued: 0 });
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    openCatchUp();
+
+    await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Nothing to catch up on', expect.anything()));
+  });
 });
 
 describe('the knowledge library below it', () => {

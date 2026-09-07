@@ -747,6 +747,46 @@ restates the code is noise; one that records a decision or a trap is not.
   something mutates the DOM — proved by four crossed cases. So a responsive
   test passes or fails depending on whether React happened to re-render in
   between. Set the width **before** the render, never after.
+- **A default every caller has to remember to override is a default that is
+  wrong.** `structuredCall` defaulted to `maxTurns: 1` under a comment that
+  already described the trap in full — the SDK returns a schema-constrained
+  answer through a hidden tool call, so a model that spends its one turn on
+  prose dies as "Reached maximum number of turns (1)" with no answer — and even
+  named the fix: "a caller whose prompt is long says 2 or 3". The memory gate
+  measured it and raised *its own* call to three. Nothing raised the others,
+  and the reflector, which has the longest prompt of the lot (a whole
+  transcript summary, up to ~12 kB), kept the failing default. Measured in
+  production: ten consecutive failures, a workspace with eighteen successful
+  runs and **zero** memories. A ceiling is not a target — a call that answers
+  on its first turn costs the same at three — so the knowledge belonged in the
+  default, not in a comment telling each caller to opt out.
+
+- **A pass that is "logged and dropped" needs a way back, and a way to see that
+  it fell.** Reflexion is out-of-band on purpose: a failure must never disturb
+  the run the operator is watching. The cost of that is that nothing else can
+  report it, and the screen could not tell four outcomes apart — the run was
+  not eligible, the gate refused every note, the pass answered and proposed
+  nothing, the pass died — because all four wrote no row. `runs.reflected_at`
+  is the fix and it is worth stating generally: **when a background pass may
+  fail silently, record that it ran, not only what it produced.** The mark then
+  gives a Doctor check for free, and a catch-up something to iterate over —
+  without it there is no set of runs to catch up *on*. Related: the insight was
+  written only when a memory was *kept*, so a refusal was as invisible as a
+  crash; it is now written whenever the gate returned a verdict.
+
+- **A store the agent can read and not write grows a second store.** Memory
+  reached every run as an unattributed recall block carrying "never mention
+  this section", and the only write path was the post-run pass. An agent told
+  something worth keeping mid-conversation therefore did the only thing it
+  could and wrote Markdown files in its workspace — which the operator saw
+  immediately for what it was: two memories is no memory, since the files are
+  not listed, not decayed, not consolidated, not searchable beside the rest,
+  and diverge from the store on the next run. `metaclaude_memory` is the fix,
+  and the second half of it is that the agent has to be **told**: a tool nobody
+  is told about is a tool nobody uses, so the mount and the briefing are
+  computed from one predicate in `supervisor.ts` and a test asserts neither can
+  appear without the other.
+
 - **A test fixture is derived from the schema, never written from memory.**
   Five in one session were wrong, and every one looked like a broken component:
   an `outcome: 'refused'` that `GateOutcome` does not have, a

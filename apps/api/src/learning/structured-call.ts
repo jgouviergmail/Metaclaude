@@ -1,9 +1,10 @@
 /**
- * One tool-less, single-turn, schema-constrained model call.
+ * One tool-less, schema-constrained model call.
  *
  * The shape both reflexion and skill synthesis need: a plain system prompt
  * (never the claude_code preset — these are classifiers, not agents), no
- * tools offered and none permitted, one turn, a JSON schema on the output,
+ * tools offered and none permitted, a small turn ceiling, a JSON schema on
+ * the output,
  * and a hard timeout because background passes must never run long. The
  * fallback matters in production: some CLI versions omit `structured_output`,
  * so the text body is mined for JSON before giving up.
@@ -28,13 +29,22 @@ export interface StructuredCallRequest {
   model?: string;
   timeoutMs?: number;
   /**
-   * Turns the CLI may take. One by default — a classifier, not an agent. The
-   * SDK delivers a schema-constrained answer through a hidden tool call, and
-   * on a long prompt the model sometimes spends its single turn producing
-   * prose before that call, which ends as "Reached maximum number of turns
-   * (1)" with no answer at all; a caller whose prompt is long says 2 or 3 —
-   * the memory gate measured six failures in thirty calls at one turn and
-   * two at two.
+   * Turns the CLI may take. Three by default.
+   *
+   * It was one — a classifier, not an agent — and that was wrong in a way that
+   * took a day of lost memory to see. The SDK delivers a schema-constrained
+   * answer through a hidden tool call, so a model that spends its single turn
+   * producing prose before that call ends as "Reached maximum number of turns
+   * (1)" with no answer at all. The memory gate measured six failures in
+   * thirty calls at one turn and two at two, and raised *its own* call to
+   * three; every other caller kept the failing default, and the reflector —
+   * whose prompt is the longest here, a whole transcript summary — failed ten
+   * times running in production, each failure logged at warn and dropped.
+   *
+   * The default belongs here rather than in each caller because the trap is a
+   * property of the mechanism, not of any one prompt, and because a ceiling is
+   * not a target: a call that answers on its first turn costs exactly what it
+   * cost at one. A caller that genuinely wants a single turn still says so.
    */
   maxTurns?: number;
   /** Injectable for tests. */
@@ -59,7 +69,7 @@ export async function structuredCall<T>(
         cwd: context.cwd,
         systemPrompt: request.systemPrompt,
         model: request.model ?? 'haiku',
-        maxTurns: request.maxTurns ?? 1,
+        maxTurns: request.maxTurns ?? 3,
         // Belt and braces: no tools offered, and none permitted.
         allowedTools: [],
         disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task'],

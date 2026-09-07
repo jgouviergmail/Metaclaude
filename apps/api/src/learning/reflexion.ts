@@ -176,7 +176,13 @@ export class ReflexionEngine {
    * Never throws.
    */
   async reflect(run: Run, events: TranscriptEvent[]): Promise<string[]> {
-    if (!this.isWorthReflecting(run, events)) return [];
+    if (!this.isWorthReflecting(run, events)) {
+      // Marked, not skipped silently: a finished run is immutable, so this
+      // verdict will never change, and leaving it unmarked would make every
+      // catch-up load its transcript again to reach the same conclusion.
+      markRunReflected(this.deps.db, run.id);
+      return [];
+    }
 
     let output: ReflexionOutput | null = null;
     try {
@@ -210,6 +216,7 @@ export class ReflexionEngine {
     }
 
     let decisions: GateDecision[] = [];
+    let judged = true;
     try {
       decisions = await this.deps.gate.admit({
         workspaceId: run.workspaceId,
@@ -218,6 +225,7 @@ export class ReflexionEngine {
         candidates,
       });
     } catch (error) {
+      judged = false;
       this.deps.log('warn', 'the memory gate failed; nothing was stored for this run', {
         runId: run.id,
         message: (error as Error).message,
@@ -225,11 +233,29 @@ export class ReflexionEngine {
     }
     const written = decisions.filter((d) => d.memoryId).map((d) => d.memoryId as string);
 
-    // An insight only when there is something to show: a memory kept, or a
-    // failure whose lessons — kept or not — an operator will want to read.
-    // One row per reflected run was the other half of the flood, and a row
-    // that says "nothing learned" is not an insight.
-    if (output.summary?.trim() && (written.length > 0 || run.status === 'failed')) {
+    // Only a completed pass counts. A reflector that threw and a gate that
+    // threw both leave the run unmarked, which is precisely the set a
+    // catch-up should retry -- and the set that stayed invisible while ten
+    // runs in a row died at the turn ceiling.
+    if (judged) markRunReflected(this.deps.db, run.id);
+
+    /*
+     * An insight whenever the gate actually returned a verdict.
+     *
+     * It used to require a memory *kept*, and that made a refusal indis-
+     * tinguishable from silence: reflexion never run, reflexion failed and
+     * reflexion refused every note all rendered as an empty screen. Measured
+     * on a workspace with eighteen successful runs and no memory at all —
+     * nine had died at the turn ceiling, six had been refused, and nothing
+     * said so. A refusal is a judgement the operator is entitled to see and
+     * to overturn; the review screen offers `Keep` on exactly these rows.
+     *
+     * The flood this guard was written against is still guarded: it was a row
+     * per *reflected run*, including every run that proposed nothing, and
+     * `decisions.length` is zero for those — as it is when the gate threw,
+     * which must stay silent because no judgement was made.
+     */
+    if (output.summary?.trim() && (decisions.length > 0 || run.status === 'failed')) {
       const payload: ReflexionInsightPayload = {
         kind: 'reflexion',
         decisions: decisions.map((d) => ({
@@ -422,6 +448,107 @@ export class ReflexionEngine {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Which runs have been through the pass                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How long a finished run is left alone before anything calls it un-reflected.
+ *
+ * The live pass starts when the run ends and takes seconds — six to ten of
+ * them, measured. Without this both readers of `reflected_at` are wrong in
+ * their own way: the doctor reads amber after every single run, and a
+ * catch-up reflects a run the live pass is still working on, writing its
+ * lessons twice.
+ */
+export const REFLEXION_GRACE_MS = 10 * 60 * 1000;
+
+/** Record that the reflexion pass has considered this run. */
+export function markRunReflected(db: Db, runId: string, at: number = Date.now()): void {
+  db.prepare('UPDATE runs SET reflected_at = ? WHERE id = ?').run(at, runId);
+}
+
+/**
+ * Finished runs nobody has considered yet, oldest first.
+ *
+ * Oldest first because memory accumulates in order: a later run that
+ * supersedes an earlier fact has to arrive after it, or the corpus records the
+ * correction and then the thing it corrected.
+ */
+export function runsAwaitingReflexion(
+  db: Db,
+  options: { workspaceId?: string | null; limit?: number; now?: number } = {},
+): string[] {
+  // The same grace the doctor's check uses, and for a stronger reason here:
+  // the doctor would merely read amber for a minute after every run, while a
+  // catch-up would *reflect the run a second time* alongside the live pass
+  // that has not finished yet, and write its lessons twice. The guard was on
+  // one of the two readers of this column and not the other.
+  const before = (options.now ?? Date.now()) - REFLEXION_GRACE_MS;
+  const params: unknown[] = [before];
+  let where =
+    "WHERE reflected_at IS NULL AND finished_at IS NOT NULL AND status != 'interrupted' AND finished_at < ?";
+  if (options.workspaceId) {
+    where += ' AND workspace_id = ?';
+    params.push(options.workspaceId);
+  }
+  params.push(Math.max(1, Math.min(options.limit ?? 25, 200)));
+  return db
+    .prepare(`SELECT id FROM runs ${where} ORDER BY finished_at ASC, rowid ASC LIMIT ?`)
+    .all(...params)
+    .map((row) => (row as { id: string }).id);
+}
+
+/** What a catch-up managed. */
+export interface CatchUpResult {
+  /** Runs that went through a complete pass. */
+  examined: number;
+  /** Memories the gate kept across all of them. */
+  memories: number;
+}
+
+/**
+ * Replay the reflexion pass over runs that never had one.
+ *
+ * Everything here already exists — this only reaches the runs the live path
+ * missed, one at a time, through the very same `reflect`. It is worth having
+ * because the live path is out-of-band by design: a failure there is logged
+ * and dropped so that nothing disturbs the run the operator is watching, and
+ * without a way back there is no way to recover a day of conversation whose
+ * every lesson died at a turn ceiling.
+ *
+ * One bad run never strands the queue: the loop carries on and the count says
+ * how many actually completed.
+ */
+export async function catchUpReflexion(
+  deps: {
+    db: Db;
+    reflect: (run: Run, events: TranscriptEvent[]) => Promise<string[]>;
+    loadRun: (id: string) => Run | null;
+    loadEvents: (runId: string) => TranscriptEvent[];
+    log: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void;
+  },
+  options: { workspaceId?: string | null; limit?: number } = {},
+): Promise<CatchUpResult> {
+  let examined = 0;
+  let memories = 0;
+
+  for (const id of runsAwaitingReflexion(deps.db, options)) {
+    const run = deps.loadRun(id);
+    if (!run) continue;
+    try {
+      memories += (await deps.reflect(run, deps.loadEvents(id))).length;
+      examined += 1;
+    } catch (error) {
+      deps.log('warn', `catch-up reflexion failed for run ${id}`, {
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  return { examined, memories };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Insight queries                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -457,7 +584,11 @@ export function listInsights(
 
   return db
     .prepare<unknown[], InsightRow>(
-      `SELECT * FROM insights ${where} ORDER BY created_at DESC LIMIT ?`,
+      // `rowid` breaks the tie: one run records its reflexion insight and
+      // its skill proposal in the same millisecond, and `created_at` alone
+      // is then not a total order — the newest row is whichever the query
+      // plan happens to reach first, which differs between runs.
+      `SELECT * FROM insights ${where} ORDER BY created_at DESC, rowid DESC LIMIT ?`,
     )
     .all(...params, Math.min(options.limit ?? 50, 500))
     .map(toInsight);

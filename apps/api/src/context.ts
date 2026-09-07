@@ -665,6 +665,9 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       return kernelRef.delegate(input);
     },
     board,
+    // The store itself: `MemoryStore` satisfies the facade as it stands, and
+    // the server pins every call to the run's own workspace.
+    memory,
     // Same lazy shape as the broker: the advisor needs the kernel's submit,
     // so it is built after both — but its propose surface must be mountable
     // into every run from the start.

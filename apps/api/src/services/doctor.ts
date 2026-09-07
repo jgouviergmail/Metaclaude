@@ -13,6 +13,7 @@
  */
 
 import type { DoctorCheck, DoctorReport } from '@metaclaude/shared';
+import { REFLEXION_GRACE_MS } from '../learning/reflexion.js';
 import { APP_VERSION } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { DUPLICATE_SCAN_LIMIT } from '../learning/memory.js';
@@ -175,6 +176,7 @@ export class Doctor {
     await examine('claude-cli', () => this.claudeCli());
     await examine('retrieval', () => this.retrieval());
     await examine('memory', () => this.memory());
+    await examine('reflexion', () => this.reflexion());
     await examine('runs', () => this.runs());
     await examine('automations', () => this.automations());
 
@@ -500,6 +502,50 @@ export class Doctor {
       }
     }
     return { name: 'claude-cli', status: 'ok', summary: version, detail: `auth: ${mode}` };
+  }
+
+  /**
+   * Runs that finished and never went through the reflexion pass.
+   *
+   * The pass is out-of-band by design: a failure is logged at warn and dropped
+   * so that nothing disturbs the run the operator is watching. That is right,
+   * and it is why nothing else can report it — a deployment lost a day of
+   * conversation to ten consecutive turn-ceiling failures, eighteen successful
+   * runs and not one memory, and the only symptom was an empty Memory page
+   * that looks exactly like a quiet week.
+   *
+   * A run is marked as soon as a pass completes, including one that decided
+   * the run was not worth reflecting on, so anything left here is a failure
+   * rather than a judgement. The ten-minute grace keeps a run whose pass is
+   * still in flight from painting this amber.
+   */
+  private reflexion(): DoctorCheck {
+    const before = (this.deps.now?.() ?? Date.now()) - REFLEXION_GRACE_MS;
+    const waiting =
+      this.deps.db
+        .prepare<[number], { n: number }>(
+          `SELECT COUNT(*) AS n FROM runs
+            WHERE reflected_at IS NULL AND finished_at IS NOT NULL
+              AND status != 'interrupted' AND finished_at < ?`,
+        )
+        .get(before)?.n ?? 0;
+
+    if (waiting === 0) {
+      return {
+        name: 'reflexion',
+        status: 'ok',
+        summary: 'Every finished run has been through the pass.',
+        detail: null,
+      };
+    }
+    return {
+      name: 'reflexion',
+      status: 'warn',
+      summary: `${waiting} finished run${waiting === 1 ? '' : 's'} never reflected on.`,
+      detail:
+        'Whatever those runs established was never offered to memory. The pass is out-of-band, so a ' +
+        'failure there is silent by design — Memory → maintenance → Catch up replays them.',
+    };
   }
 
   /**

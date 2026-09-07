@@ -5,7 +5,7 @@ import { migrate, openDatabase } from '../db/index.js';
 import { HashingEmbedder } from './embeddings.js';
 import { MemoryStore } from './memory.js';
 import type { GateDecision, GateInput } from './gatekeeper.js';
-import { ReflexionEngine, getInsight, listInsights, parseJsonLoose, pruneInsights, setInsightStatus, withLanguage } from './reflexion.js';
+import { ReflexionEngine, catchUpReflexion, getInsight, listInsights, parseJsonLoose, pruneInsights, runsAwaitingReflexion, setInsightStatus, withLanguage } from './reflexion.js';
 
 /**
  * `invoke()` needs a live Claude CLI subprocess and is never called here.
@@ -577,12 +577,33 @@ describe('reflect()', () => {
     expect(memory.get(written[0]!)?.title).toBe('Build shared first');
   });
 
-  it('records an insight carrying every decision when something was kept, and none otherwise', async () => {
+  it('records an insight carrying every decision the gate returned, kept or not', async () => {
+    /*
+     * A refusal is a decision, and it has to be visible.
+     *
+     * The condition used to be "something was kept", which made three very
+     * different outcomes render as one blank screen: reflexion never ran,
+     * reflexion failed, and reflexion ran and the gate refused every note.
+     * Measured in production on a workspace with eighteen successful runs and
+     * not one memory — nine runs had failed at the turn ceiling and six had
+     * been refused outright, and nothing on screen could tell them apart.
+     *
+     * The flood the old condition guarded against was a row per *reflected
+     * run*, including the runs that proposed nothing at all; that guard is
+     * `decisions.length > 0`, which is what this asserts. And a refusal shown
+     * is a refusal an operator can overturn: the review screen offers `Keep`
+     * on exactly these rows.
+     */
     invokeAnswer = () => ({ summary: 'Routine.', lessons: [{ kind: 'semantic', title: 'State', content: 'The form has three tabs.', confidence: 0.8 }] });
     gateAnswer = async (input) => [{ candidate: input.candidates[0]!, level: 'state', outcome: 'skipped', reason: 'changes next release' }];
 
     await engine.reflect(makeRun({ status: 'succeeded' }), events());
-    expect(listInsights(db, { limit: 10 })).toHaveLength(0);
+    const [refused] = listInsights(db, { limit: 10 });
+    expect(refused?.body).toContain('[skipped · state] State');
+    expect(
+      (JSON.parse(refused!.payload as string) as { decisions: Array<{ memoryId: string | null }> }).decisions[0]!
+        .memoryId,
+    ).toBeNull();
 
     gateAnswer = async (input) => {
       const { memory: row } = await memory.remember({ workspaceId: input.workspaceId, kind: 'semantic', title: 'Kept', content: 'Kept.', sourceRunId: input.runId });
@@ -593,7 +614,8 @@ describe('reflect()', () => {
     };
     await engine.reflect(makeRun({ id: 'run_2', status: 'succeeded' }), events());
 
-    const [insight] = listInsights(db, { limit: 10 });
+    // By run, never by position: both insights land in the same millisecond.
+    const insight = listInsights(db, { limit: 10 }).find((row) => row.runId === 'run_2');
     expect(insight?.kind).toBe('lesson');
     expect(insight?.body).toContain('[skipped · state] State');
     expect(insight?.body).toContain('[kept · volatile · fact] Kept');
@@ -601,6 +623,16 @@ describe('reflect()', () => {
     expect(payload.kind).toBe('reflexion');
     expect(payload.decisions.map((d) => d.outcome)).toEqual(['skipped', 'kept']);
     expect(payload.decisions[1]!.memoryId).toBeTruthy();
+  });
+
+  it('records nothing when the reflector proposed nothing, which is not the same as a refusal', async () => {
+    // The other half of the guard: no candidates means no decisions, and a row
+    // saying "nothing learned" is not an insight. This is the flood the old
+    // condition was written against, and it stays closed.
+    invokeAnswer = () => ({ summary: 'Nothing worth keeping.', lessons: [] });
+
+    expect(await engine.reflect(makeRun({ status: 'succeeded' }), events())).toEqual([]);
+    expect(listInsights(db, { limit: 10 })).toHaveLength(0);
   });
 
   it('records a failure insight even when the gate kept nothing', async () => {
@@ -634,5 +666,170 @@ describe('reflect()', () => {
     expect(memory.count()).toBe(0);
     expect(logged.some((entry) => /memory gate failed/.test(entry.message))).toBe(true);
     expect(listInsights(db, { limit: 10 })).toHaveLength(0);
+  });
+});
+
+/**
+ * Whether a run has been through the pass.
+ *
+ * Nothing recorded it, so three outcomes were indistinguishable from each
+ * other and from a run that was never eligible: reflexion refused the run,
+ * reflexion answered, reflexion died. That is what let ten consecutive turn-
+ * ceiling failures pass unnoticed for a day, and it is what makes a catch-up
+ * impossible to write — there is no set of runs to catch up *on*.
+ *
+ * The mark says "considered", not "learned something": a run the predicate
+ * declined is marked too, because runs are immutable once finished and that
+ * decision will never change. Only a failure leaves it unmarked, which is
+ * exactly the set a catch-up should retry.
+ */
+describe('the mark that says a run has been considered', () => {
+  const events = (n = 3): TranscriptEvent[] =>
+    Array.from({ length: n }, () => toolCall('Bash', { command: 'pnpm test' }, { result: 'ok' }));
+  const markOf = (id: string): number | null =>
+    (db.prepare('SELECT reflected_at FROM runs WHERE id = ?').get(id) as { reflected_at: number | null })
+      .reflected_at;
+
+  afterEach(() => {
+    invokeAnswer = () => null;
+  });
+
+  it('marks a run whose gate returned a verdict', async () => {
+    invokeAnswer = () => ({ summary: 'S.', lessons: [{ kind: 'semantic', title: 'T', content: 'C.', confidence: 0.9 }] });
+    await engine.reflect(makeRun(), events());
+    expect(markOf('run_1')).toBeGreaterThan(0);
+  });
+
+  it('marks a run whose reflector proposed nothing — the pass ran, and must not run twice', async () => {
+    invokeAnswer = () => ({ summary: 'Nothing worth keeping.', lessons: [] });
+    await engine.reflect(makeRun(), events());
+    expect(markOf('run_1')).toBeGreaterThan(0);
+  });
+
+  it('marks a run it declined to reflect on, because that decision cannot change', async () => {
+    await engine.reflect(makeRun({ status: 'interrupted' }), events());
+    expect(markOf('run_1')).toBeGreaterThan(0);
+  });
+
+  it('leaves a run unmarked when the reflector threw, so a catch-up retries it', async () => {
+    invokeAnswer = () => {
+      throw new Error('Reached maximum number of turns (1)');
+    };
+    await engine.reflect(makeRun(), events());
+    expect(markOf('run_1')).toBeNull();
+  });
+
+  it('leaves a run unmarked when the gate threw: no judgement was made', async () => {
+    invokeAnswer = () => ({ summary: 'S.', lessons: [{ kind: 'semantic', title: 'T', content: 'C.', confidence: 0.9 }] });
+    gateAnswer = async () => {
+      throw new Error('gate down');
+    };
+    await engine.reflect(makeRun(), events());
+    expect(markOf('run_1')).toBeNull();
+  });
+});
+
+describe('catching up on runs that were never reflected', () => {
+  const events = (n = 3): TranscriptEvent[] =>
+    Array.from({ length: n }, () => toolCall('Bash', { command: 'pnpm test' }, { result: 'ok' }));
+
+  beforeEach(() => {
+    // Two more finished runs, and one still running.
+    const now = Date.now();
+    // Finished well before the grace window, or nothing would be offered.
+    const done = now - 60 * 60 * 1000;
+    db.prepare(
+      "INSERT INTO runs (id, session_id, workspace_id, prompt, status, started_at, finished_at) VALUES (?,'ses_1','ws_1','p','succeeded',?,?)",
+    ).run('run_3', done + 10, done + 20);
+    db.prepare(
+      "INSERT INTO runs (id, session_id, workspace_id, prompt, status, started_at) VALUES ('run_live','ses_1','ws_1','p','running',?)",
+    ).run(now + 30);
+    db.prepare('UPDATE runs SET finished_at = ? WHERE id IN (?, ?)').run(done, 'run_1', 'run_2');
+  });
+
+  it('offers the finished runs nobody has considered, oldest first', () => {
+    expect(runsAwaitingReflexion(db, {})).toEqual(['run_1', 'run_2', 'run_3']);
+  });
+
+  it('leaves alone a run whose live pass may still be in flight', () => {
+    /*
+     * The doctor's grace, on the other reader of this column — and it matters
+     * more here. There, missing it means amber for a minute after every run.
+     * Here it means a catch-up reflecting a run the live pass has not finished
+     * with, writing the same lessons twice. The guard had been put on one of
+     * the two readers and not the other, which is how a shared invariant ends
+     * up half enforced.
+     */
+    const now = Date.now();
+    db.prepare('UPDATE runs SET finished_at = ? WHERE id = ?').run(now - 1000, 'run_2');
+    expect(runsAwaitingReflexion(db, { now })).toEqual(['run_1', 'run_3']);
+  });
+
+  it('drops a run once it has been considered', () => {
+    db.prepare('UPDATE runs SET reflected_at = ? WHERE id = ?').run(Date.now(), 'run_2');
+    expect(runsAwaitingReflexion(db, {})).toEqual(['run_1', 'run_3']);
+  });
+
+  it('never offers a run that has not finished', () => {
+    expect(runsAwaitingReflexion(db, {})).not.toContain('run_live');
+  });
+
+  it('scopes to one workspace and honours a ceiling', () => {
+    expect(runsAwaitingReflexion(db, { workspaceId: 'ws_absent' })).toEqual([]);
+    expect(runsAwaitingReflexion(db, { limit: 2 })).toEqual(['run_1', 'run_2']);
+  });
+
+  it('replays the pass over each of them and reports what it recovered', async () => {
+    invokeAnswer = () => ({ summary: 'S.', lessons: [{ kind: 'semantic', title: 'T', content: 'C.', confidence: 0.9 }] });
+    const seen: string[] = [];
+
+    const result = await catchUpReflexion(
+      {
+        db,
+        reflect: (run, evts) => {
+          seen.push(run.id);
+          return engine.reflect(run, evts);
+        },
+        loadRun: (id) => makeRun({ id }),
+        loadEvents: () => events(),
+        log: () => {},
+      },
+      { limit: 2 },
+    );
+
+    expect(seen).toEqual(['run_1', 'run_2']);
+    expect(result).toEqual({ examined: 2, memories: 2 });
+    // And they are gone from the queue, so pressing twice is not doing it twice.
+    expect(runsAwaitingReflexion(db, {})).toEqual(['run_3']);
+  });
+
+  it('carries on when one run throws, and says how many it managed', async () => {
+    // A single bad run must not strand the rest of the queue.
+    let calls = 0;
+    const result = await catchUpReflexion(
+      {
+        db,
+        reflect: async () => {
+          calls += 1;
+          if (calls === 1) throw new Error('boom');
+          return [];
+        },
+        loadRun: (id) => makeRun({ id }),
+        loadEvents: () => events(),
+        log: () => {},
+      },
+      { limit: 3 },
+    );
+
+    expect(calls).toBe(3);
+    expect(result.examined).toBe(2);
+  });
+
+  it('skips a run whose row has vanished', async () => {
+    const result = await catchUpReflexion(
+      { db, reflect: async () => [], loadRun: () => null, loadEvents: () => [], log: () => {} },
+      { limit: 3 },
+    );
+    expect(result).toEqual({ examined: 0, memories: 0 });
   });
 });

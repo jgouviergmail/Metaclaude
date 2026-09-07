@@ -93,3 +93,46 @@ describe('extractJson', () => {
     expect(extractJson<Answer>('no braces here', accept)).toBeNull();
   });
 });
+
+/**
+ * The turn ceiling.
+ *
+ * One turn was the default, and the comment beside it already knew the trap:
+ * the SDK delivers a schema-constrained answer through a hidden tool call, so
+ * a model that spends its single turn writing prose first ends as "Reached
+ * maximum number of turns (1)" with no answer at all. The memory gate hit it,
+ * measured it and raised *its own* call to three. Nothing raised the others,
+ * and the reflector — whose prompt is the longest of the lot, a whole
+ * transcript summary — kept the failing default: ten consecutive failures in
+ * production, every one of them logged at warn and dropped, which is why an
+ * entire day of conversation left no memory behind.
+ *
+ * A ceiling is not a target. A call that answers on its first turn costs
+ * exactly what it cost before, so raising the default is free where it already
+ * worked and is the difference between an answer and nothing where it did not.
+ */
+describe('the turn ceiling', () => {
+  const optionsOf = async (request: Partial<Parameters<typeof structuredCall>[1]>) => {
+    let seen: Record<string, unknown> = {};
+    await structuredCall<Answer>(context, {
+      prompt: 'p',
+      systemPrompt: 's',
+      schema: {},
+      accept,
+      ...request,
+      queryFn: ((input: { options: Record<string, unknown> }) => {
+        seen = input.options;
+        return fakeQuery([{ type: 'result', structured_output: { worthIt: true } }]);
+      }) as never,
+    });
+    return seen;
+  };
+
+  it('leaves room for a turn spent on prose, for every caller', async () => {
+    expect((await optionsOf({})).maxTurns).toBe(3);
+  });
+
+  it('still lets a caller ask for fewer', async () => {
+    expect((await optionsOf({ maxTurns: 1 })).maxTurns).toBe(1);
+  });
+});

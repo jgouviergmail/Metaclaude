@@ -72,6 +72,7 @@ describe('a healthy system', () => {
       'claude-cli',
       'retrieval',
       'memory',
+      'reflexion',
       'runs',
       'automations',
     ]);
@@ -573,3 +574,63 @@ describe('the public address', () => {
   });
 });
 
+
+/**
+ * The check that would have spoken on the first failure.
+ *
+ * Reflexion is out-of-band: a failure is logged at warn and dropped, so that
+ * nothing disturbs the run the operator is watching. Nothing else could report
+ * it, and ten consecutive turn-ceiling failures went unseen for a day —
+ * eighteen successful runs, not one memory, and a Memory page that looks
+ * exactly like a quiet week.
+ */
+describe('the reflexion check', () => {
+  const seedRun = (id: string, over: { finishedAt?: number; status?: string; reflectedAt?: number } = {}) => {
+    db.prepare(
+      "INSERT INTO workspaces (id, name, slug, path, created_at, updated_at) VALUES ('ws_1','W','w','/tmp/w',0,0) ON CONFLICT DO NOTHING",
+    ).run();
+    db.prepare(
+      "INSERT INTO sessions (id, workspace_id, created_at, updated_at, last_activity_at) VALUES ('ses_1','ws_1',0,0,0) ON CONFLICT DO NOTHING",
+    ).run();
+    db.prepare(
+      'INSERT INTO runs (id, session_id, workspace_id, prompt, status, started_at, finished_at, reflected_at) VALUES (?,?,?,?,?,?,?,?)',
+    ).run(
+      id,
+      'ses_1',
+      'ws_1',
+      'p',
+      over.status ?? 'succeeded',
+      0,
+      over.finishedAt ?? NOW - 60 * 60 * 1000,
+      over.reflectedAt ?? null,
+    );
+  };
+  const check = async () => (await makeDoctor().run()).checks.find((entry) => entry.name === 'reflexion');
+
+  it('is quiet when every finished run has been considered', async () => {
+    seedRun('run_1', { reflectedAt: NOW });
+    expect((await check())?.status).toBe('ok');
+  });
+
+  it('warns, and says how many, when runs were never considered', async () => {
+    seedRun('run_1');
+    seedRun('run_2');
+
+    const result = await check();
+    expect(result?.status).toBe('warn');
+    expect(result?.summary).toContain('2 finished runs');
+    expect(result?.detail).toContain('Catch up');
+  });
+
+  it('leaves a run whose pass may still be in flight alone', async () => {
+    // Reflexion starts when the run ends and takes seconds; without the grace
+    // this check would be amber for a minute after every single run.
+    seedRun('run_1', { finishedAt: NOW - 1000 });
+    expect((await check())?.status).toBe('ok');
+  });
+
+  it('ignores an interrupted run, which the pass declines by design', async () => {
+    seedRun('run_1', { status: 'interrupted' });
+    expect((await check())?.status).toBe('ok');
+  });
+});

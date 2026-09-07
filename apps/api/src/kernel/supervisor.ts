@@ -50,6 +50,11 @@ import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
+import {
+  MEMORY_SERVER_NAME,
+  buildMemoryServer,
+  type WorkspaceMemoryFacade,
+} from './memory-tools.js';
 import { buildSystemServer, type SystemFacade } from './system-tools.js';
 import type { PermissionBroker } from './permissions.js';
 import { resolvePermissionMode } from './permissions.js';
@@ -182,6 +187,16 @@ export interface SupervisorDeps {
    * automation" is not reserved to the advisor's own analysis runs.
    */
   advisor?: AdvisorFacade;
+  /**
+   * The workspace's own memory, when the deployment wires the store in.
+   *
+   * Mounted for every run of every workspace *except* the system one, whose
+   * steward already holds the strictly larger `system_memory_*` table and
+   * would otherwise be offered two ways to do one thing. Gated on the
+   * workspace's `memoryEnabled`, because a workspace that recalls nothing has
+   * no business writing into a store it never reads.
+   */
+  memory?: WorkspaceMemoryFacade;
   /**
    * The steward's tools, mounted for runs of the system workspace only — and
    * only for runs a person or the schedule started there. Withheld from `api`
@@ -492,6 +507,21 @@ export class AgentSupervisor {
   constructor(private readonly deps: SupervisorDeps) {}
 
   /**
+   * Whether this run gets the workspace's own memory tools.
+   *
+   * One predicate because three things read it — the mount, the briefing that
+   * tells the agent they exist, and the pre-approval below — and a briefing
+   * without a mount is an instruction to call a tool that is not there.
+   */
+  private mountsMemory(workspace: RunRequest['workspace']): boolean {
+    return (
+      this.deps.memory !== undefined &&
+      workspace.settings.memoryEnabled &&
+      this.deps.steward?.workspaceId() !== workspace.id
+    );
+  }
+
+  /**
    * The run's permission mode and the tools this workspace pre-approves.
    *
    * Shared by `buildOptions` and `execute` rather than computed twice: the two
@@ -530,7 +560,33 @@ export class AgentSupervisor {
     for (const { name, reason } of review.rejected) {
       this.deps.log('warn', `refusing to pre-approve "${name}": it ${reason}`);
     }
-    return { mode, preapproved: review.allowed.filter((name) => !cut.has(name)), forbidden };
+    /*
+     * Reading and writing this workspace's own memory, without a card.
+     *
+     * Measured on the deployment this was built for: the workspace ran in
+     * `default` mode with `Write`, `Edit` and `Bash` pre-approved and nothing
+     * else — so writing a Markdown file was silent and writing a memory would
+     * have raised an approval card every time. That is the incoherence that
+     * produced the second memory in the first place: the system made the
+     * wrong thing frictionless and would have made the right thing cost a
+     * decision. A memory write is strictly less consequential than the `Write`
+     * beside it — confined to this workspace's own tier, unable to touch a
+     * file, another workspace or the global shelf, listed on a screen built to
+     * review it, and reversible.
+     *
+     * `memory_forget` is deliberately *not* here. It is the only one that
+     * takes something out of recall, forgetting is rare, and a card costs
+     * nothing at that rate. `memoryEnabled` is the operator's switch for the
+     * whole arrangement: a workspace that recalls nothing mounts none of this.
+     */
+    const preapproved = [...review.allowed];
+    if (this.mountsMemory(request.workspace)) {
+      preapproved.push(
+        `mcp__${MEMORY_SERVER_NAME}__memory_search`,
+        `mcp__${MEMORY_SERVER_NAME}__memory_write`,
+      );
+    }
+    return { mode, preapproved: preapproved.filter((name) => !cut.has(name)), forbidden };
   }
 
   /**
@@ -577,6 +633,34 @@ export class AgentSupervisor {
     // an availability filter can force absence, but only words ask for use.
     const controls = policy.toolControls;
     const steering: string[] = [];
+
+    /*
+     * The workspace's own memory: mounted, and *said*.
+     *
+     * A tool nobody is told about is a tool nobody uses. Recall reaches the
+     * model as an unattributed block with an instruction never to mention it,
+     * so an agent that has just been told something worth keeping has no
+     * reason to believe a store exists. Reported from use: it wrote Markdown
+     * files instead, which is the correct behaviour for an agent that has
+     * only a filesystem — and a second memory that is not listed, not
+     * decayed, not consolidated and diverges on the next run.
+     *
+     * Not for the system workspace: the steward's `system_memory_*` does all
+     * of this and more, and two ways to do one thing is how a model picks the
+     * weaker one.
+     */
+    const mountsMemory = this.mountsMemory(workspace);
+    if (mountsMemory) {
+      steering.push(
+        'You have a memory of your own for this workspace, and the notes recalled above came out of it. ' +
+          'Search it with memory_search before asking for something you may already have been told. ' +
+          'Write to it with memory_write whenever this conversation establishes something that will still ' +
+          'matter next week — a preference, a fact about this project or the people in it, a way of working ' +
+          'that succeeded — rather than keeping notes in files, which nothing else can read. ' +
+          'Correct a memory by its id rather than adding a second one that nearly repeats it, and retire ' +
+          'with memory_forget what has stopped being true.',
+      );
+    }
     if (controls && controls.requiredSkills.length > 0) {
       steering.push(
         `For this message the operator requires the skill(s): ${controls.requiredSkills.join(', ')}. Use them.`,
@@ -763,6 +847,29 @@ export class AgentSupervisor {
           }),
         }
       : {};
+    /*
+     * The workspace's own memory.
+     *
+     * Read-only until now, and not even visibly that: recall is injected into
+     * the system prompt as recollection, with an instruction never to mention
+     * it, so an agent told something worth keeping mid-conversation had no
+     * store to put it in and wrote Markdown files instead. Two memories is no
+     * memory — the files are not listed, not decayed, not consolidated, and
+     * diverge from the store on the next run.
+     *
+     * Not for the system workspace: its steward has `system_memory_*`, which
+     * can do all of this and more, and mounting both would offer two ways to
+     * do one thing.
+     */
+    const memoryServer: NonNullable<Options['mcpServers']> =
+      mountsMemory && this.deps.memory
+        ? {
+            metaclaude_memory: buildMemoryServer(this.deps.memory, {
+              workspaceId: workspace.id,
+              runId: request.runId,
+            }),
+          }
+        : {};
     // Metaclaude's own tools, for its own workspace, for runs started there
     // by a person or the schedule. See `SupervisorDeps.steward`.
     const systemServer: NonNullable<Options['mcpServers']> =
@@ -791,6 +898,7 @@ export class AgentSupervisor {
       Object.keys(delegationServer).length > 0 ||
       Object.keys(boardServer).length > 0 ||
       Object.keys(advisorServer).length > 0 ||
+      Object.keys(memoryServer).length > 0 ||
       Object.keys(systemServer).length > 0
     ) {
       options.mcpServers = {
@@ -798,6 +906,7 @@ export class AgentSupervisor {
         ...delegationServer,
         ...boardServer,
         ...advisorServer,
+        ...memoryServer,
         ...systemServer,
       };
     }
