@@ -242,3 +242,21 @@ describe('workspaces with something unread', () => {
   });
 });
 
+
+describe('creating a workspace', () => {
+  /**
+   * The description is where the peer directory comes from, and creation is
+   * where it gets written. Saying so only in the settings dialog would leave
+   * the one moment an operator is actually composing the sentence uninformed,
+   * and a directory nobody fills is a feature that ships dark.
+   */
+  it('says who reads a description while it is being written', async () => {
+    renderWithProviders(<WorkspacesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: /new workspace/i }));
+
+    const field = await screen.findByLabelText(/description/i);
+    const describedBy = field.getAttribute('aria-describedby');
+    expect(describedBy).toBe('ws-description-hint');
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(/other workspaces/i);
+  });
+});

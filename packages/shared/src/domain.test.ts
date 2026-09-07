@@ -100,6 +100,26 @@ describe('WorkspaceSettings defaults', () => {
     expect(WorkspaceSettings.parse({}).checkpointing).toBe(true);
   });
 
+  /**
+   * `delegable` is an opt-*out*, and the default is the whole of it.
+   *
+   * Every workspace row written before the field existed carries settings JSON
+   * without the key — measured on a real deployment, where the stored objects
+   * had 20 keys against the schema's 21, `language` being the one missing and
+   * healed by its default at read. `toWorkspace` reparses through this schema
+   * on every read, so the default is what those rows get. A default of `false`
+   * would therefore not mean "off until you choose": it would silently make
+   * every existing workspace unreachable, with nothing in the interface saying
+   * why.
+   */
+  it('defaults delegable on, so a workspace written before the field is still reachable', () => {
+    expect(WorkspaceSettings.parse({}).delegable).toBe(true);
+  });
+
+  it('keeps an explicit opt-out', () => {
+    expect(WorkspaceSettings.parse({ delegable: false }).delegable).toBe(false);
+  });
+
   it('rejects a permission mode outside the known set', () => {
     expect(WorkspaceSettings.safeParse({ defaultPermissionMode: 'yolo' }).success).toBe(false);
   });

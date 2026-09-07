@@ -192,11 +192,18 @@ export function WorkspaceSettingsModal({
           />
         </Label>
 
-        <Label htmlFor="ws-edit-description">{t('Description')}<Textarea
+        <Label
+          htmlFor="ws-edit-description"
+          hint={t('Read by other workspaces, so their agents know when to consult this one.')}
+        >{t('Description')}<Textarea
             id="ws-edit-description"
             value={draftDescription}
             onChange={(event) => setDraftDescription(event.target.value)}
             rows={2}
+            // The hint is rendered outside the label — text inside one becomes
+            // part of the accessible name — so the control points at it, which
+            // is what `Label` emits the id for.
+            aria-describedby="ws-edit-description-hint"
             className="mt-1.5"
           />
         </Label>
@@ -388,6 +395,21 @@ export function WorkspaceSettingsModal({
             label={t('Let the advisor study this workspace daily')}
             hint={t(
               'At most once a day, an advisor run reads recent runs, the board and the registry, creates backlog tickets and disabled automations, and leaves anything that would act — skills, agents, vetted MCP servers — in the Dashboard inbox for you to accept. The manual button works either way.',
+            )}
+          />
+        </fieldset>
+
+        <MenuSeparator />
+
+        <fieldset className="space-y-3">
+          <legend className="text-body font-semibold text-ink">{t('Other workspaces')}</legend>
+
+          <CheckboxField
+            checked={draft.delegable}
+            onChange={(value) => update('delegable', value)}
+            label={t('Let other workspaces consult this one')}
+            hint={t(
+              'Another project’s agent can ask this workspace a question and get its answer — a full run here, under this workspace’s own memory, conventions and permission mode, and behind an approval like any other tool. The description above is what tells it when to ask: without one this workspace stays reachable but is not listed. Metaclaude’s own steward reaches every workspace whatever this says.',
             )}
           />
         </fieldset>

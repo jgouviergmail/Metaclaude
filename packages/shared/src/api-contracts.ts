@@ -109,6 +109,7 @@ export const RuntimeSettingKey = z.enum([
   'quotaGuardPct',
   'runRetentionDays',
   'runKeepPerWorkspace',
+  'delegationDirectoryChars',
   'logLevel',
   'language',
   'embeddings',

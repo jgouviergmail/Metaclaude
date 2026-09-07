@@ -103,6 +103,23 @@ const EnvSchema = z.object({
   METACLAUDE_RUN_KEEP_PER_WORKSPACE: z.coerce.number().int().min(1).default(50),
 
   /**
+   * How many characters of the peer directory are injected into every run that
+   * may delegate — the block naming the other workspaces and what each is for.
+   *
+   * Measured at the default: twenty peers all keep their description for about
+   * 550 tokens; past roughly twenty-seven the descriptions go together and the
+   * names remain; past about eighty the block says how many names it left out.
+   * Raise it if this deployment carries more workspaces than that and the
+   * agent should still see what each one does.
+   *
+   * **0 switches peer delegation off** across the deployment: no directory and
+   * no `delegate` tool, rather than a tool mounted with nothing said about it.
+   * The steward is unaffected — it reaches every workspace through its own
+   * verbs.
+   */
+  METACLAUDE_DELEGATION_DIRECTORY_CHARS: z.coerce.number().int().min(0).max(20_000).default(3000),
+
+  /**
    * The VAPID `sub` claim — who a push relay contacts about a misbehaving
    * sender. Relays require the shape and none deliver anything to it, but
    * they do validate it: Apple answers 400 BadJwtToken for a token it does
@@ -195,6 +212,8 @@ export interface Config {
   idleTimeoutMs: number;
   /** Run retention: how long finished runs live, and the per-workspace floor. */
   runRetention: { days: number; keepPerWorkspace: number };
+  /** Characters of peer directory injected into a run that may delegate; 0 is off. */
+  delegationDirectoryChars: number;
   language: 'auto' | 'fr' | 'en';
   embeddings: { provider: 'hash' | 'local'; model: string };
   embeddingCacheDir: string | null;
@@ -361,6 +380,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       days: env.METACLAUDE_RUN_RETENTION_DAYS,
       keepPerWorkspace: env.METACLAUDE_RUN_KEEP_PER_WORKSPACE,
     },
+    delegationDirectoryChars: env.METACLAUDE_DELEGATION_DIRECTORY_CHARS,
     language: env.METACLAUDE_LANGUAGE,
     embeddings: { provider: env.METACLAUDE_EMBEDDINGS, model: env.METACLAUDE_EMBEDDING_MODEL },
     embeddingCacheDir: env.METACLAUDE_EMBEDDING_CACHE?.trim() ? env.METACLAUDE_EMBEDDING_CACHE.trim() : null,

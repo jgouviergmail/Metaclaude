@@ -11,6 +11,64 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.70.0] — 2026-09-07
+
+### Added
+
+- **An agent can see which other workspaces it may consult.** `delegate` has
+  shipped since the delegation lot describing its argument as "the target
+  workspace's slug, exactly as listed" — and nothing listed anything. Measured
+  on the build before this one: with delegation wired, the SDK options carry
+  the `metaclaude` server and a system-prompt append of the empty string. The
+  tool therefore only ever worked in the one case where the agent needed no
+  help, a human having already typed the slug in the message. Every run that
+  may delegate now carries a short directory of the other workspaces — slug,
+  description, and the name only when a rename has moved it away from the slug
+  — so a **workspace's description stops being decoration**: it is what another
+  project's agent reads to decide whether the question belongs to you. Read
+  against a real deployment the block costs about 220 tokens for three peers.
+  The mount and the briefing come from one answer, so a tool nobody is told
+  about and a briefing for a tool that is not mounted are both inexpressible;
+  the supervisor's dependency carries the roster and the verb together for the
+  same reason. Withheld from a run started through the gateway (a token names
+  the workspaces it may reach, and the directory is a map of the rest), from a
+  delegated run (depth is one), and from `dontAsk`, where the tool would be
+  refused rather than asked about and the words would be waste on every
+  scheduled run for ever.
+- **Any workspace can decline to be consulted.** *Settings → Other workspaces →
+  Let other workspaces consult this one*, on by default and stored as
+  `delegable`. On by default is the whole of the decision, not a preference:
+  settings are reparsed through their schema on every read, so every row
+  written before the field existed takes the default — measured on a live
+  deployment whose stored settings carried twenty keys against the schema's
+  twenty-one — and `false` would have made every existing workspace silently
+  unreachable at the next boot. It governs other projects' agents, never the
+  steward, which reaches every workspace through its own verbs.
+- **The size of that block is an operator's setting.** *Settings →
+  Configuration → Peer directory budget*, 3000 characters by default. Measured
+  with descriptions of the length an operator actually writes: twenty peers all
+  keep theirs, past roughly twenty-seven the descriptions go together and the
+  names remain, past about eighty the block says how many names it could not
+  fit. Membership never degrades, because capping a list sorted by slug would
+  make the same tail invisible on every run for ever. `0` switches delegation
+  between workspaces off across the deployment — the tool included, since a
+  ceiling whose zero means "off" that still creates the thing is the trap this
+  repository already has a note about.
+- **`list_workspaces` says what a workspace is for.** The gateway answered id,
+  slug and name, which is what a workspace is *called*; a program routing
+  between them had exactly the problem the agent had.
+
+### Fixed
+
+- **A checkbox wired to a literal showed the operator the opposite of what was
+  stored, and nothing could see it.** Each of the workspace dialog's ten
+  boolean settings was covered, if at all, by the test for the feature that
+  introduced it; a control reading its neighbour's field renders, saves and
+  looks perfect. The new test turns one field on at a time and requires exactly
+  one box checked, which is what tells a swap from a literal — the first
+  version turned them all on together, and a control reading its neighbour
+  passed it.
+
 ## [0.69.0] — 2026-09-07
 
 ### Added

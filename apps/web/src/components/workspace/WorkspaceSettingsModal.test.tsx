@@ -75,6 +75,101 @@ describe('the workspace settings dialog', () => {
     expect(body.name).toBe('Beta');
   });
 
+  /**
+   * Every boolean setting, not just the one this release added.
+   *
+   * A checkbox wired to a literal, or to its neighbour's field, renders and
+   * saves and looks perfect - and shows the operator the opposite of what is
+   * stored. Nothing in the suite could see that: each control was covered by
+   * the test for the feature that introduced it, if at all.
+   *
+   * One field true at a time, and exactly one box checked. Counting rather
+   * than naming keeps this free of a label table that would drift and would
+   * have to be translated - with the tool and plugin lists empty, every
+   * checked box in the dialog is a boolean setting. Turning them all on
+   * together was the first version and it was weaker than it looked: it
+   * catches a literal, and a control reading its neighbour's field passes it,
+   * because with every field alike no arrangement can be told from another.
+   */
+  const BOOLEAN_SETTINGS = Object.entries(WorkspaceSettings.parse({}))
+    .filter(([, value]) => typeof value === 'boolean')
+    .map(([key]) => key);
+
+  const allBooleans = (on: boolean) =>
+    Object.fromEntries(BOOLEAN_SETTINGS.map((key) => [key, on]));
+
+  it('shows nothing checked when every boolean setting is off', async () => {
+    open({ settings: WorkspaceSettings.parse(allBooleans(false)) });
+    await screen.findByRole('dialog');
+
+    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+    expect(boxes.length).toBeGreaterThanOrEqual(BOOLEAN_SETTINGS.length);
+    expect(boxes.filter((box) => box.checked)).toHaveLength(0);
+  });
+
+  it.each(BOOLEAN_SETTINGS)('gives %s a checkbox of its own', async (key) => {
+    open({ settings: WorkspaceSettings.parse({ ...allBooleans(false), [key]: true }) });
+    await screen.findByRole('dialog');
+
+    const checked = (screen.getAllByRole('checkbox') as HTMLInputElement[]).filter(
+      (box) => box.checked,
+    );
+    expect(checked).toHaveLength(1);
+  });
+
+  it('shows a workspace that already opted out as opted out', async () => {
+    // Asserting only the default would pass on a box wired to a literal, and
+    // the failure that hides is the worst one this control can have: a
+    // workspace stored as unreachable, displayed as reachable, with the
+    // operator reading the opposite of the truth off the screen.
+    open({ settings: WorkspaceSettings.parse({ delegable: false }) });
+    await screen.findByRole('dialog');
+
+    const box = screen.getByLabelText(/let other workspaces consult this one/i);
+    expect((box as HTMLInputElement).checked).toBe(false);
+  });
+
+  /**
+   * The opt-out an operator actually presses.
+   *
+   * The default is on, and it has to be: settings are reparsed on every read,
+   * so every workspace written before the field existed takes the default. A
+   * test that only asserted the box exists would pass on a control wired to
+   * nothing, so this one turns it off and follows the value to the request.
+   */
+  it('sends the delegation opt-out it was toggled to', async () => {
+    open();
+    await screen.findByRole('dialog');
+
+    const box = screen.getByLabelText(/let other workspaces consult this one/i);
+    expect((box as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(apiMock.updateWorkspace).toHaveBeenCalled());
+    const [, body] = apiMock.updateWorkspace.mock.calls[0] as [
+      string,
+      { settings?: { delegable?: boolean } },
+    ];
+    expect(body.settings?.delegable).toBe(false);
+  });
+
+  /**
+   * The description gained a second reader — other workspaces' agents — and
+   * the field has to say so, or nobody writes one and the directory stays
+   * empty. The hint sits outside the `<label>`, because text inside one joins
+   * the accessible name, so the control has to point at it to be announced.
+   */
+  it('tells the operator who reads a description, and says it to a screen reader too', async () => {
+    open();
+    await screen.findByRole('dialog');
+
+    const field = screen.getByDisplayValue('A project');
+    const describedBy = field.getAttribute('aria-describedby');
+    expect(describedBy).toBe('ws-edit-description-hint');
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(/other workspaces/i);
+  });
+
   it('fixes the system workspace’s tool lists, and says why', async () => {
     /*
      * What `locked` actually holds — read from the component rather than

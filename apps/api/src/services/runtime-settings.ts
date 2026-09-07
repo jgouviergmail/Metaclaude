@@ -117,6 +117,15 @@ export const RUNTIME_SETTING_SPECS: readonly RuntimeSettingSpec[] = [
     fromConfig: (config) => config.runRetention.keepPerWorkspace,
   },
   {
+    key: 'delegationDirectoryChars',
+    kind: 'count',
+    min: 0,
+    max: 20_000,
+    options: [],
+    envVar: 'METACLAUDE_DELEGATION_DIRECTORY_CHARS',
+    fromConfig: (config) => config.delegationDirectoryChars,
+  },
+  {
     key: 'logLevel',
     kind: 'choice',
     min: null,

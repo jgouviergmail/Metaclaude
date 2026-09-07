@@ -200,6 +200,20 @@ export const WorkspaceSettings = z.object({
    * manual "Ask the advisor" button works either way.
    */
   advisorAuto: z.boolean().default(false),
+  /**
+   * Whether another workspace's agent may consult this one by delegation.
+   *
+   * An opt-*out*, and the default carries the whole decision: settings are
+   * reparsed through this schema on every read, so every row written before
+   * this field existed gets what the default says. `false` would have made a
+   * live deployment's workspaces silently unreachable at the next boot.
+   *
+   * It governs the peer directory and the `delegate` tool — not the steward,
+   * which reaches every workspace through `runAsk`/`runStart` whatever this
+   * says. Locking the operator's own agent out of a workspace is not what an
+   * operator asks for by declining to be consulted by *other projects*.
+   */
+  delegable: z.boolean().default(true),
 });
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettings>;
 

@@ -49,6 +49,20 @@ import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
+import {
+  DIRECTORY_CONTEXT_MINIMUM,
+  delegationPeers,
+  selectDirectoryContext,
+} from './context.js';
+
+/**
+ * The in-process server carrying `delegate`.
+ *
+ * Named once: the mount, the pre-approval check and the tool name the CLI
+ * reports all have to agree, and three spellings of one string is how they
+ * stop agreeing.
+ */
+const DELEGATION_SERVER_NAME = 'metaclaude';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
 import {
   MEMORY_SERVER_NAME,
@@ -165,16 +179,31 @@ export interface SupervisorDeps {
    */
   query?: typeof sdkQuery;
   /**
-   * Run a prompt in another workspace and wait for its answer — the kernel's
-   * `delegate`, handed in lazily like the broker (mutual construction). When
-   * absent, runs simply never see the delegation tool.
+   * Delegation: who this run may consult, and how to consult them.
+   *
+   * One object rather than two optional dependencies, and that is the whole
+   * point of the shape. The tool is mounted exactly when the directory has
+   * someone in it, so a deployment that wired the verb without the roster
+   * would offer a tool the agent is told nothing about — the defect this pair
+   * exists to fix — while one that wired the roster without the verb would
+   * advertise a tool that is not there. Neither is expressible now.
+   *
+   * `peers` answers the deployment's live workspace list, unfiltered; the
+   * exclusions and the order are `delegationPeers`, so the directory, the
+   * mount and the refusal cannot drift apart. Handed in lazily like the
+   * broker, because the kernel owns both and the two are mutually referential.
    */
-  delegate?: (input: {
-    fromWorkspaceId: string;
-    fromTriggeredBy: Run['triggeredBy'];
-    target: string;
-    prompt: string;
-  }) => Promise<{ status: Run['status']; finalText: string; error: string | null }>;
+  delegation?: {
+    peers: () => readonly Workspace[];
+    /** How many characters of directory to inject. 0 switches delegation off. */
+    budget: () => number;
+    run: (input: {
+      fromWorkspaceId: string;
+      fromTriggeredBy: Run['triggeredBy'];
+      target: string;
+      prompt: string;
+    }) => Promise<{ status: Run['status']; finalText: string; error: string | null }>;
+  };
   /**
    * The workspace's kanban board, when the deployment wires one in. Every run
    * gets the tools, scoped to its own workspace — including delegated runs,
@@ -589,6 +618,71 @@ export class AgentSupervisor {
     return { mode, preapproved: preapproved.filter((name) => !cut.has(name)), forbidden };
   }
 
+
+  /**
+   * Whether this run gets the delegation tool, and what it is told about who
+   * it may consult. One answer, used for both, so they cannot disagree.
+   *
+   * Four reasons to withhold it, each its own:
+   *
+   *  - **A delegated run.** Depth is one, enforced in the kernel too; the
+   *    affordance is withheld rather than dangled so the model never sees a
+   *    tool it would only ever be refused.
+   *  - **An `api` run.** Its caller holds a token scoped to named workspaces,
+   *    and delegation reaches *other* workspaces by design. Leaving the tool in
+   *    reach would make that scope a suggestion, one prompt away from an agent
+   *    consulting a workspace the token was never given.
+   *  - **Nobody to consult.** A single-workspace deployment, or one where every
+   *    peer opted out, would otherwise carry a tool whose every call fails.
+   *  - **A budget of zero.** The operator's off switch, and it has to skip the
+   *    mount and not merely the text: a ceiling whose 0 means "off" that still
+   *    creates the thing is the zero-delay-timer trap.
+   *
+   * The directory itself is deliberately *not* a reason. A peer with no
+   * description is unlisted and still reachable, so a person who names its
+   * slug is answered exactly as before.
+   */
+  private delegationDirectory(
+    request: RunRequest,
+    resolved: { mode: RunPolicy['permissionMode']; preapproved: string[] },
+  ): { mounted: boolean; text: string } {
+    const silent = { mounted: false, text: '' };
+    const delegation = this.deps.delegation;
+    if (!delegation) return silent;
+    if (request.triggeredBy === 'delegation' || request.triggeredBy === 'api') return silent;
+
+    // `dontAsk` never reaches the broker: the CLI answers "denied, nothing is
+    // pre-approved" itself, so a mounted `delegate` is refused rather than
+    // asked about — measured, and written down in CLAUDE.md. Describing it to
+    // an automation would be this release's own defect upside down: a briefing
+    // for a tool that cannot run, on every scheduled run, for ever.
+    //
+    // Pre-approving it here instead would let an unattended run start work in
+    // another workspace with nobody watching, which is a widening of what the
+    // mode promises and the operator's call — so `allowedTools` naming it is
+    // honoured, and nothing else is assumed.
+    if (
+      resolved.mode === 'dontAsk' &&
+      !resolved.preapproved.includes(`mcp__${DELEGATION_SERVER_NAME}__delegate`)
+    ) {
+      return silent;
+    }
+
+    const budget = delegation.budget();
+    if (budget <= 0) return silent;
+
+    const peers = delegationPeers(delegation.peers(), request.workspace.id);
+    if (peers.length === 0) return silent;
+
+    // A non-zero budget is raised to the floor rather than honoured to the
+    // letter. Below it the block cannot fit even the sentence explaining why
+    // there is no list, and dropping *that* would leave the tool mounted and
+    // unexplained — the defect this pair exists to fix, reintroduced by a
+    // setting. 0 remains the off switch, and it is handled above.
+    const room = Math.max(budget, DIRECTORY_CONTEXT_MINIMUM);
+    return { mounted: true, text: selectDirectoryContext(peers, room).text };
+  }
+
   /**
    * Build the SDK options for a run. See the `buildOptions` describe in
    * supervisor.test.ts.
@@ -661,6 +755,21 @@ export class AgentSupervisor {
           'with memory_forget what has stopped being true.',
       );
     }
+
+    /*
+     * The peer directory: mounted, and *said* — the memory lesson one floor up,
+     * applied to the tool that had been carrying it the longest.
+     *
+     * `delegate` shipped describing its argument as "the target workspace's
+     * slug, exactly as listed", and nothing listed. Measured on this very
+     * build: with delegation wired, the options carry the `metaclaude` server
+     * and a system-prompt append of the empty string. So the tool worked only
+     * for a run whose human had already typed a slug — which is the one case
+     * where the agent did not need to be told anything.
+     */
+    const directory = this.delegationDirectory(request, resolved);
+    if (directory.text) steering.push(directory.text);
+
     if (controls && controls.requiredSkills.length > 0) {
       steering.push(
         `For this message the operator requires the skill(s): ${controls.requiredSkills.join(', ')}. Use them.`,
@@ -812,20 +921,12 @@ export class AgentSupervisor {
     }
     if (settings.checkpointing) options.enableFileCheckpointing = true;
 
-    // The delegation tool: an in-process MCP server, offered only to runs a
-    // human (or an automation) started — a delegated run never sees it, so
-    // the affordance matches the kernel's depth-one rule instead of dangling
-    // a tool that would only ever be refused.
-    //
-    // An `api` run is excluded for a different and stronger reason: its caller
-    // holds a token scoped to named workspaces, and delegation reaches *other*
-    // workspaces by design. Leaving the tool in reach would make the scope a
-    // suggestion — one prompt away from an agent consulting a workspace the
-    // token was never given.
-    const delegationServer: NonNullable<Options['mcpServers']> =
-      this.deps.delegate && request.triggeredBy !== 'delegation' && request.triggeredBy !== 'api'
-        ? { metaclaude: this.buildDelegationServer(request) }
-        : {};
+    // The delegation tool. `delegationDirectory` owns every reason it might be
+    // withheld, and the steering above was written from the same answer, so
+    // the tool and the block that explains it cannot come apart.
+    const delegationServer: NonNullable<Options['mcpServers']> = directory.mounted
+      ? { [DELEGATION_SERVER_NAME]: this.buildDelegationServer(request) }
+      : {};
     // The board tools, scoped to this run's workspace and signing as this run.
     // No depth rule here, unlike delegation: a delegated run updating the
     // cards it works is exactly what the board is for.
@@ -1588,7 +1689,7 @@ export class AgentSupervisor {
    */
   private buildDelegationServer(request: RunRequest): ReturnType<typeof createSdkMcpServer> {
     return createSdkMcpServer({
-      name: 'metaclaude',
+      name: DELEGATION_SERVER_NAME,
       version: '1.0.0',
       tools: [
         sdkTool(
@@ -1598,14 +1699,19 @@ export class AgentSupervisor {
             'consult a project through its own agent rather than reading its files cold. Costs a full run ' +
             'there, and the answer can take minutes. The target cannot delegate further.',
           {
-            workspace: z.string().describe("The target workspace's slug, exactly as listed."),
+            workspace: z
+              .string()
+              .describe(
+                "The target workspace's slug, exactly as written in the directory of other " +
+                  'workspaces in your instructions.',
+              ),
             prompt: z
               .string()
               .describe('What to ask. Self-contained — the target does not see this conversation.'),
           },
           async (args) => {
             try {
-              const result = await this.deps.delegate!({
+              const result = await this.deps.delegation!.run({
                 fromWorkspaceId: request.workspace.id,
                 fromTriggeredBy: request.triggeredBy,
                 target: args.workspace,

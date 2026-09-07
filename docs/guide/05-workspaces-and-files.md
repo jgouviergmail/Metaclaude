@@ -69,12 +69,39 @@ workspace to work on something and get its answer back — the target runs
 with its own memory, skills, conventions and permission mode, so a project
 consulted through its own agent answers better than its files read cold.
 
+**It knows who to ask because you told it.** Every run that may delegate
+carries a short directory of the other workspaces: each one's slug, its name
+and its description. So a workspace's **description is not decoration** — it
+is what another project's agent reads to decide whether the question belongs
+to you. Write it as an answer to "when should someone ask this workspace?",
+and keep it to a sentence or two. A workspace with no description stays
+reachable if you name its slug yourself, but no agent will find it.
+
+The block is bounded, and it degrades in one direction only: every workspace
+stays listed, and the descriptions are what shrink when there are many. Around
+twenty workspaces all keep theirs; past that you see the names and the
+descriptions go together. **Settings → Configuration → Peer directory budget**
+sets the size, and `0` there switches delegation between workspaces off across
+the whole server.
+
+**Any workspace can decline.** In its settings, under *Other workspaces*, turn
+off *Let other workspaces consult this one* and it leaves every directory and
+refuses every delegation. Metaclaude's own steward still reaches it — that
+switch is about other projects, not about you.
+
 Every delegation goes through a permission prompt naming the target and the
 exact ask, costs a full run there (visible in that workspace's history and
 usage), and lands in a standing *Delegations* session so context accumulates
 across asks. Depth is one by construction: a delegated run cannot delegate
 further, so chains cannot loop and every delegation traces back to a run a
 human started.
+
+Two runs never see the directory at all: one started through the MCP gateway,
+because a token names the workspaces it may reach and the directory is a map
+of the rest; and one that is itself a delegation, which has no tool to use it
+with. A run in `dontAsk` does not either — nothing unapproved executes in that
+mode, so the tool would be refused rather than asked about, and being told
+about it would only waste the turn.
 
 ## Its settings
 

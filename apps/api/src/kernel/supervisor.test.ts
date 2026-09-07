@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '@metaclaude/shared';
+import { WorkspaceSettings } from '@metaclaude/shared';
 import {
   AgentSupervisor,
   buildUserContent,
@@ -34,29 +35,18 @@ const workspace: Workspace = {
   color: '#6366f1',
   icon: 'folder',
   archived: false,
-  settings: {
-    defaultModel: 'default',
-    defaultEffort: null,
-    defaultPermissionMode: 'default',
-    language: 'auto',
-    thinking: 'adaptive',
-    thinkingBudgetTokens: null,
+  // Derived from the schema, never written out: the hand-written version listed
+  // all twenty-one fields and had to be edited every time one was added, which
+  // is the fixture trap CLAUDE.md names — a fixture written from memory fails
+  // as a broken component rather than as a missing field. Only the three values
+  // that differ from the defaults are named, and they are the point of the
+  // fixture: a turn ceiling to exercise, and the two learning passes off so no
+  // test accidentally depends on them.
+  settings: WorkspaceSettings.parse({
     maxTurns: 40,
-    maxBudgetUsd: null,
-    allowedTools: [],
-    disallowedTools: [],
-    additionalDirectories: [],
-    systemPromptAppend: '',
-    memoryEnabled: true,
-    knowledgeEnabled: true,
     autoPolicyEnabled: false,
     reflexionEnabled: false,
-    checkpointing: true,
-    mirrorSessions: false,
-    autoWorkBoard: false,
-    enabledPlugins: {},
-    advisorAuto: false,
-  },
+  }),
   createdAt: 0,
   updatedAt: 0,
 };
@@ -361,7 +351,7 @@ function makeSupervisor(
   query: unknown,
   broker?: { request: () => Promise<unknown> },
   extra: {
-    delegate?: () => Promise<never>;
+    delegation?: unknown;
     board?: unknown;
     memory?: unknown;
     steward?: unknown;
@@ -379,7 +369,7 @@ function makeSupervisor(
     directoryPolicy: { workspacesDir: '/srv/metaclaude/workspaces', dataDir: '/var/lib/metaclaude' },
     log: () => {},
     query: query as never,
-    ...(extra.delegate ? { delegate: extra.delegate as never } : {}),
+    ...(extra.delegation ? { delegation: extra.delegation as never } : {}),
     ...(extra.board ? { board: extra.board as never } : {}),
     ...(extra.memory ? { memory: extra.memory as never } : {}),
     ...(extra.steward ? { steward: extra.steward as never } : {}),
@@ -1986,25 +1976,62 @@ describe('buildOptions — mirroring sessions to claude.ai', () => {
   });
 });
 
-describe('buildOptions — the delegation tool', () => {
-  const delegate = async (): Promise<never> => {
-    throw new Error('not called in these tests');
-  };
-
-  it('offers the metaclaude server when delegation is wired', () => {
-    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
-    const options = supervisor.buildOptions(makeRequest());
-
-    expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude');
+describe('buildOptions — the delegation tool and its directory', () => {
+  /**
+   * The pair this whole block is about: a tool is mounted, and the agent is
+   * told who it may reach with it.
+   *
+   * `delegate` shipped for releases describing its argument as "the target
+   * workspace's slug, exactly as listed" while nothing listed anything —
+   * measured on this build before the fix, the options carried the
+   * `metaclaude` server and a system-prompt append of the empty string. So the
+   * tool was usable only by a run whose human had already typed a slug, which
+   * is the one case where the agent needed no help at all. Every case below
+   * asserts the two halves together, because either one alone is a defect: a
+   * tool nobody is told about goes unused, and a briefing for a tool that is
+   * not mounted sends the model at something that answers "no such tool".
+   */
+  const peerWorkspace = (slug: string, description = 'Invoicing and the monthly export.'): Workspace => ({
+    ...workspace,
+    id: `ws_${slug}`,
+    slug,
+    name: slug,
+    description,
   });
 
-  it('withholds it from a run that is itself a delegation — depth is one', () => {
+  const wired = (peers: Workspace[] = [peerWorkspace('billing')], budget = 3000) => ({
+    peers: () => peers,
+    budget: () => budget,
+    run: async () => {
+      throw new Error('not called in these tests');
+    },
+  });
+
+  const serversOf = (options: ReturnType<AgentSupervisor['buildOptions']>) =>
+    Object.keys(options.mcpServers ?? {});
+  const appendOf = (options: ReturnType<AgentSupervisor['buildOptions']>) =>
+    String((options.systemPrompt as { append?: string } | undefined)?.append ?? '');
+
+  it('mounts the server and names the peers it may reach', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(serversOf(options)).toContain('metaclaude');
+    expect(appendOf(options)).toContain('billing');
+    expect(appendOf(options)).toContain('Invoicing and the monthly export.');
+  });
+
+  it('withholds both from a run that is itself a delegation — depth is one', () => {
     // The kernel refuses chained delegation too; withholding the tool means
-    // the model never sees an affordance it would only be refused on.
-    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    // the model never sees an affordance it would only be refused on, and
+    // withholding the directory means it is not told about one either.
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
     const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'delegation' }));
 
-    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude');
+    expect(serversOf(options)).not.toContain('metaclaude');
+    expect(appendOf(options)).not.toContain('billing');
   });
 
   /**
@@ -2013,29 +2040,174 @@ describe('buildOptions — the delegation tool', () => {
    * A token names the workspaces it may reach. Delegation reaches *other*
    * workspaces by design, so a run started through the gateway holding that
    * tool would be one prompt away from consulting a workspace nobody granted
-   * it, through an agent that would answer helpfully.
+   * it, through an agent that would answer helpfully. The directory is
+   * withheld for a second reason of its own: it is a map of the deployment,
+   * and handing it to a token scoped to one workspace leaks the rest by name.
    */
-  it('withholds it from a run an outside token started — scope is not a suggestion', () => {
-    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+  it('withholds both from a run an outside token started — scope is not a suggestion', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
     const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'api' }));
 
-    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude');
+    expect(serversOf(options)).not.toContain('metaclaude');
+    expect(appendOf(options)).not.toContain('billing');
   });
 
   it('offers nothing when delegation is not wired at all', () => {
     const supervisor = makeSupervisor(fakeQuery().query);
+
     const options = supervisor.buildOptions(makeRequest());
 
-    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude');
+    expect(serversOf(options)).not.toContain('metaclaude');
+    expect(appendOf(options)).toBe('');
+  });
+
+  /**
+   * A single-workspace deployment, or one where every peer opted out. The tool
+   * could only ever fail there, and before this it was mounted anyway: schema
+   * tokens spent on every run for an affordance with no target.
+   */
+  it('offers nothing when there is nobody to consult', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired([]) });
+
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(serversOf(options)).not.toContain('metaclaude');
+    expect(appendOf(options)).toBe('');
+  });
+
+  it('does not count the run’s own workspace as a peer', () => {
+    // The list the deployment hands over is every workspace, this one included.
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      delegation: wired([workspace]),
+    });
+
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(serversOf(options)).not.toContain('metaclaude');
+  });
+
+  it('leaves out a workspace that declined to be consulted', () => {
+    const closed: Workspace = {
+      ...peerWorkspace('secrets'),
+      settings: WorkspaceSettings.parse({ delegable: false }),
+    };
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      delegation: wired([peerWorkspace('billing'), closed]),
+    });
+
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(appendOf(options)).toContain('billing');
+    expect(appendOf(options)).not.toContain('secrets');
+  });
+
+  /**
+   * Peers exist, none has said what it is for. The tool still works for a
+   * person who names a slug, so it stays mounted — and saying nothing would
+   * put us back exactly where this block started.
+   */
+  it('still mounts it when no peer is described, and says so', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      delegation: wired([peerWorkspace('billing', ''), peerWorkspace('shop', '')]),
+    });
+
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(serversOf(options)).toContain('metaclaude');
+    expect(appendOf(options)).toContain('2 other workspaces');
+  });
+
+  /**
+   * The operator's off switch. It has to skip the *mount*, not merely the
+   * text: a ceiling whose 0 means "off" that still creates the thing is the
+   * zero-delay-timer trap, and here it would leave the tool mounted with
+   * nothing said about it — the original defect, restored by a setting.
+   */
+  it('a budget of zero switches the whole thing off, tool included', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      delegation: wired([peerWorkspace('billing')], 0),
+    });
+
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(serversOf(options)).not.toContain('metaclaude');
+    expect(appendOf(options)).toBe('');
+  });
+
+  /**
+   * A budget too small to say anything is raised to the floor rather than
+   * obeyed. Obeying it would drop the sentence explaining why there is no
+   * list, and leave the tool mounted and unexplained — which is precisely the
+   * defect this pair exists to fix, reintroduced through a settings field.
+   */
+  it('raises a budget too small to hold a sentence, rather than falling silent', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      delegation: wired([peerWorkspace('billing')], 120),
+    });
+
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(serversOf(options)).toContain('metaclaude');
+    expect(appendOf(options)).toContain('billing');
+  });
+
+  /**
+   * `dontAsk` is the one mode where the broker is never asked: the CLI answers
+   * "denied, nothing is pre-approved" itself. So a mounted `delegate` there is
+   * refused rather than asked about, and briefing an automation about it every
+   * hour would be this release's own defect upside down — words for a tool
+   * that cannot run.
+   */
+  it('says nothing to an unattended run that would only be refused', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+    const unattended = makeRequest();
+    unattended.policy = { ...unattended.policy, permissionMode: 'dontAsk' };
+
+    const options = supervisor.buildOptions(unattended);
+
+    expect(serversOf(options)).not.toContain('metaclaude');
+    expect(appendOf(options)).not.toContain('billing');
+  });
+
+  /**
+   * Unless the operator pre-approved it by name, which is a decision they are
+   * entitled to make and the one thing that makes the tool live in that mode.
+   * Pre-approving it *for* them would let an unattended run start work in
+   * another workspace with nobody watching.
+   */
+  it('speaks up in dontAsk when the operator pre-approved delegation by name', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+    const unattended = withSettings({ allowedTools: ['mcp__metaclaude__delegate'] });
+    unattended.policy = { ...unattended.policy, permissionMode: 'dontAsk' };
+
+    const options = supervisor.buildOptions(unattended);
+
+    expect(serversOf(options)).toContain('metaclaude');
+    expect(appendOf(options)).toContain('billing');
   });
 
   it('keeps the configured MCP servers beside it', () => {
-    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
     const options = supervisor.buildOptions(
       makeRequest({ mcpServers: { github: { command: 'npx' } } }),
     );
 
-    expect(Object.keys(options.mcpServers ?? {}).sort()).toEqual(['github', 'metaclaude']);
+    expect(serversOf(options).sort()).toEqual(['github', 'metaclaude']);
+  });
+
+  it('keeps the directory beside the context the kernel already built', () => {
+    // The append is a stack: recalled memory and conventions come from the
+    // kernel, the directory is added here, and neither may replace the other.
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
+    const options = supervisor.buildOptions(
+      makeRequest({ systemPromptAppend: '## Recalled context\n\nsomething remembered' }),
+    );
+
+    expect(appendOf(options)).toContain('something remembered');
+    expect(appendOf(options)).toContain('billing');
   });
 });
 
@@ -2166,10 +2338,14 @@ describe('buildOptions — tool controls', () => {
   it('cannot strip the internal delegation server', () => {
     // The metaclaude server is merged after the exclusion filter on purpose:
     // it is kernel machinery with its own depth rule, not a workspace server.
-    const delegate = async (): Promise<never> => {
-      throw new Error('not called');
+    const delegation = {
+      peers: () => [{ ...workspace, id: 'ws_peer', slug: 'peer', description: 'A peer.' }],
+      budget: () => 3000,
+      run: async (): Promise<never> => {
+        throw new Error('not called');
+      },
     };
-    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegate });
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation });
     const options = supervisor.buildOptions(
       withControls({ requiredSkills: [], excludedMcpServers: ['metaclaude'], preferredMcpServers: [] }),
     );

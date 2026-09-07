@@ -347,6 +347,27 @@ validators, the workspace settings endpoint, and the supervisor when it builds
 SDK options. A workspace, a session, a run and an automation each check it
 independently.
 
+### The peer directory
+
+A run that may delegate is told which other workspaces exist, by slug, name and
+description, so it can pick one. That block is a map of the deployment, and it
+is withheld wherever knowing the map would be a widening rather than a
+convenience: from a run started through the MCP gateway, because a token names
+the workspaces it may reach and the rest are none of its business; from a run
+that is itself a delegation, which has no tool to use it with; and from
+`dontAsk`, where the tool would be refused unimpressively rather than asked
+about. A workspace can also leave every directory and refuse every delegation
+with one setting, `delegable`.
+
+What the directory does not change is who may be reached. `delegate` goes
+through an approval card naming the target and the exact ask, in every mode
+that has cards — so the directory makes the affordance findable, not freer.
+The exception is the one that has no cards at all: under `bypassPermissions`
+nothing is asked, and an agent that can now *name* the other workspaces can
+consult them unattended. That mode is refused unless the container opts in, is
+documented as being for disposable sandboxes, and `delegable` is the control
+for a workspace that should stay out of reach of one.
+
 ### Standing grants
 
 A prompt needs somebody to answer it, and an unattended run has nobody. A

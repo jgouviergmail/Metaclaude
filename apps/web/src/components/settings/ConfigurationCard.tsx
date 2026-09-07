@@ -67,6 +67,10 @@ export const COPY: Record<string, { label: string; help: string }> = {
     label: 'Always keep, per workspace',
     help: 'The newest runs survive the sweep whatever their age, so a workspace left alone for a year still has its history.',
   },
+  delegationDirectoryChars: {
+    label: 'Peer directory budget',
+    help: 'Characters of the directory of other workspaces injected into every run that may delegate, so the agent knows who it can consult and what for. Around twenty workspaces all keep their description at this size; past that the names remain and the descriptions go together. 0 switches delegation between workspaces off.',
+  },
   logLevel: {
     label: 'Log level',
     help: 'What the server writes to its own log. `debug` is worth switching on while chasing something and worth switching off afterwards.',

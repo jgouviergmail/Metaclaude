@@ -214,6 +214,29 @@ collapsing repeats by name and reporting the *worst* status of each group: seven
 of eight succeeding is not a success, and taking the last one would report
 whichever happened to finish last.
 
+### The peer directory — an affordance has to be findable
+
+`delegate` shipped describing its argument as "the target workspace's slug,
+exactly as listed" and nothing listed anything. Measured before the fix: with
+delegation wired, the SDK options carried the `metaclaude` server and a
+system-prompt append of the empty string. The tool therefore worked only in the
+one case where the agent needed no help — a human had already typed a slug.
+
+The fix is not a second guard but a single answer used twice.
+`delegationDirectory` decides whether the run may delegate and what it is told,
+and `buildOptions` takes the mount and the system-prompt block from that one
+call, so a tool nobody is briefed about and a briefing for a tool that is not
+mounted are both inexpressible. The dependency has the same shape for the same
+reason: `SupervisorDeps.delegation` carries the roster and the verb together,
+so a deployment cannot wire half of it.
+
+What the directory contains is `selectDirectoryContext`, beside the memory and
+knowledge blocks it resembles, and it degrades in one direction only:
+membership is never negotiable, because a peer absent from the list is a peer
+the agent never thinks to ask, while the descriptions shrink together and a cut
+list says how many it left out. Capping a list sorted by slug would have made
+the same tail invisible on every run for ever.
+
 ### The MCP gateway — work asked for from outside
 
 Delegation is one workspace's agent asking another's. The gateway is the same

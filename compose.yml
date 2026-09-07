@@ -46,6 +46,7 @@ services:
       METACLAUDE_RUN_TIMEOUT_MS: ${METACLAUDE_RUN_TIMEOUT_MS:-14400000}
       METACLAUDE_RUN_RETENTION_DAYS: ${METACLAUDE_RUN_RETENTION_DAYS:-180}
       METACLAUDE_RUN_KEEP_PER_WORKSPACE: ${METACLAUDE_RUN_KEEP_PER_WORKSPACE:-50}
+      METACLAUDE_DELEGATION_DIRECTORY_CHARS: ${METACLAUDE_DELEGATION_DIRECTORY_CHARS:-3000}
       # The public origin, needed only so an MCP server's authorization server
       # has somewhere to send the browser back. Read by the app rather than by
       # Caddy, so it belongs in this block: a variable named in .env and never

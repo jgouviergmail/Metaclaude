@@ -340,7 +340,13 @@ function CreateWorkspaceModal({
           />
         </Label>
 
-        <Label htmlFor="ws-description">
+        <Label
+          htmlFor="ws-description"
+          // The same sentence as the settings dialog, deliberately the same
+          // string: it is one rule about one field, and two wordings of it
+          // would be two catalogue entries free to drift apart.
+          hint={t('Read by other workspaces, so their agents know when to consult this one.')}
+        >
           {t('Description')}
           <Textarea
             id="ws-description"
@@ -348,6 +354,7 @@ function CreateWorkspaceModal({
             onChange={(event) => setDescription(event.target.value)}
             placeholder={t('What this project is, in one line.')}
             rows={2}
+            aria-describedby="ws-description-hint"
             className="mt-1.5"
           />
         </Label>

@@ -13,8 +13,9 @@
  *     highest-scoring items kept.
  */
 
-import type { Memory, MemorySearchResult } from '@metaclaude/shared';
+import type { Memory, MemorySearchResult, Workspace } from '@metaclaude/shared';
 import type { KnowledgeSearchResult } from '../learning/knowledge.js';
+import { slugify } from '../security/paths.js';
 
 /** Upper bound on the injected memory block, in characters. */
 export const MEMORY_CONTEXT_BUDGET = 6000;
@@ -157,4 +158,200 @@ export function selectKnowledgeContext(
 
   if (lines.length === 0) return { text: '', injected: [] };
   return { text: `${KNOWLEDGE_HEADER}\n\n${lines.join('\n\n')}`, injected };
+}
+
+/* -------------------------------------------------------------------------- */
+/* The peer directory                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Upper bound on the injected directory block, in characters.
+ *
+ * Measured rather than guessed, with descriptions of the length an operator
+ * actually writes: up to twenty peers every one keeps its description and the
+ * block costs about 550 tokens; past roughly twenty-seven the descriptions go
+ * together and the names remain, at half that cost; past about eighty the
+ * names themselves stop fitting and the block says how many it left out.
+ *
+ * It is the default only — `delegationDirectoryChars` overrides it at runtime,
+ * and 0 there switches peer delegation off entirely rather than leaving a tool
+ * mounted with nothing to say about it.
+ */
+export const DIRECTORY_CONTEXT_BUDGET = 3000;
+
+/** The most of one description that is ever shown. */
+const DIRECTORY_ENTRY_MAX = 300;
+
+/**
+ * The least a description may be clipped to before it is not worth showing.
+ *
+ * Below this the entries degrade *together* — everyone keeps their name and
+ * nobody keeps their description. The alternative, filling descriptions in
+ * order until the budget runs out, hands the whole budget to whoever sorts
+ * first and leaves the rest bare for a reason no operator could deduce.
+ */
+const DIRECTORY_ENTRY_MIN = 60;
+
+const DIRECTORY_HEADER = `## Other workspaces of this Metaclaude
+
+You can consult any of these with the \`delegate\` tool, quoting its slug exactly as written. Each runs its own agent, with its own memory, conventions and permission mode, so asking one about its own project beats reading its files cold. It costs a full run there and can take minutes, so ask when the work genuinely belongs to that project rather than out of curiosity. Take the answer back and continue yourself: the workspace you ask cannot delegate onwards.`;
+
+/** How the block names a count of workspaces it is not listing. */
+const workspaceCount = (count: number) =>
+  count === 1 ? 'one other workspace' : `${count} other workspaces`;
+
+/**
+ * Peers exist and none of them says what it is for.
+ *
+ * Saying nothing here would reproduce the defect this block exists to fix: a
+ * `delegate` tool mounted and never mentioned, which measurably never gets
+ * used. So the note states that the tool works, and what is missing for it to
+ * be worth using — which is also the only place an operator's missing
+ * descriptions can surface to anyone.
+ */
+const undescribedNote = (count: number) => `## Other workspaces of this Metaclaude
+
+This Metaclaude has ${workspaceCount(count)} you could consult with the \`delegate\` tool, but not one of them has described what it is for, so there is nothing here to choose between. Ask the operator for the exact slug if the work belongs to another project.`;
+
+/**
+ * The budget cannot hold even one entry.
+ *
+ * A note of its own rather than the one above, because the two blame different
+ * things and only one of them can be true at a time. Falling back to "none has
+ * described what it is for" when the real cause is a budget the operator
+ * squeezed sends them editing descriptions that were already there.
+ */
+const noRoomNote = (count: number) => `## Other workspaces of this Metaclaude
+
+This Metaclaude has ${workspaceCount(count)} you could consult with the \`delegate\` tool, but this block has no room to list any of them. Ask the operator for the exact slug if the work belongs to another project.`;
+
+/**
+ * The least budget a directory can say anything true in.
+ *
+ * Both notes above have to fit, or the block that explains why there is no
+ * list is itself dropped for want of room — which lands back on a mounted
+ * tool nobody is told about. `context.test.ts` derives the check from the
+ * notes rather than trusting this number, so rewording one cannot quietly
+ * outgrow it.
+ */
+export const DIRECTORY_CONTEXT_MINIMUM = 600;
+
+/**
+ * The workspaces this run may consult, in the order the directory shows them.
+ *
+ * Three exclusions, each for its own reason: a workspace cannot consult
+ * itself, an archived one is not running anything, and one that opted out of
+ * `delegable` declined to be consulted *by other workspaces' agents* — the
+ * steward reaches every workspace through its own verbs whatever this says.
+ *
+ * The order is imposed here rather than inherited. `WorkspaceRepo.list`
+ * answers `updated_at DESC`, which is neither total — several workspaces can
+ * share a millisecond — nor stable, since touching any workspace reorders it;
+ * and this list decides what the budget degrades. Slugs are `[a-z0-9-]` by
+ * schema, so a plain comparison is a total order and, unlike `localeCompare`,
+ * carries no dependency on the runtime's ICU data.
+ */
+export function delegationPeers(
+  all: readonly Workspace[],
+  selfWorkspaceId: string,
+): Workspace[] {
+  return all
+    .filter((one) => one.id !== selfWorkspaceId && !one.archived && one.settings.delegable)
+    .sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+}
+
+/**
+ * The workspace's name, when it says something its slug does not.
+ *
+ * A slug is derived from the name at creation and then frozen, so for most
+ * workspaces the two are the same words twice: read against a real deployment,
+ * every entry came out as `- **bac-a-sable** — Bac a sable. Bac a sable pour
+ * les essais jetables.` — the stutter that a fixture whose name and slug were
+ * invented separately could never show. A rename is the case where the name
+ * carries what the slug no longer does, and that is exactly when it is kept.
+ *
+ * Through `slugify` itself rather than a second spelling of it. The first
+ * version reimplemented the flattening and got it wrong in the way that
+ * matters most here: the real one folds accents, so `Bac à sable` is
+ * `bac-a-sable`, and a hand-rolled `[^a-z0-9]+` reads it as `bac-sable` and
+ * calls the two different — every accented name in a French deployment
+ * printed twice. It also truncates at 48 characters, which is a second rule
+ * nobody would think to copy.
+ */
+function nameIfItAdds(workspace: Workspace): string {
+  return slugify(workspace.name) === workspace.slug ? '' : ` (${workspace.name})`;
+}
+
+/** Flatten to one line and clip to `max` characters, ellipsis included. */
+function clip(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${space > max * 0.6 ? cut.slice(0, space) : cut}…`;
+}
+
+/**
+ * Render the peer directory as a system-prompt block, and report whose
+ * description made it in.
+ *
+ * Two rules shape the degradation, and both come from the same fact: a peer
+ * the agent cannot see is a peer it will never think to ask.
+ *
+ * **Membership outranks description.** Capping a sorted list keeps a prefix,
+ * so under a total order the same tail would be invisible on every run for
+ * ever — `zephyr` unreachable because `alpha` through `hotel` spent the
+ * budget. The descriptions are what shrinks, collectively, and only once they
+ * would be too short to say anything.
+ *
+ * **A cut is stated, never silent.** Past the point where the names alone
+ * exhaust the budget there is nothing left to shrink, so the block says how
+ * many it is not showing. An agent told "and forty more" can ask the operator;
+ * an agent handed a truncated list believes it has seen everything.
+ *
+ * A peer with no description is reachable and unlisted: the directory says who
+ * declared a role, while `delegate` still accepts any reachable slug a person
+ * names. Listing a roleless entry would spend budget on a line nobody can
+ * choose from.
+ */
+export function selectDirectoryContext(
+  peers: readonly Workspace[],
+  budget: number = DIRECTORY_CONTEXT_BUDGET,
+): { text: string; described: Workspace[] } {
+  if (peers.length === 0) return { text: '', described: [] };
+
+  const described = peers.filter((one) => one.description.trim().length > 0);
+  if (described.length === 0) return { text: undescribedNote(peers.length), described: [] };
+
+  const names = described.map((one) => `- **${one.slug}**${nameIfItAdds(one)}`);
+  const omission = (count: number) =>
+    `- …and ${workspaceCount(count)} this block has no room for. Ask the operator for a slug if the work belongs to one of them.`;
+
+  // How many entries fit, counting the line that owns up to the ones that do
+  // not. Shrinking by one at a time rather than solving for it: the omission
+  // line grows as the count does, so the two are mutually recursive and a
+  // closed form would be a cleverness nobody could check.
+  const sizeOf = (kept: number) =>
+    DIRECTORY_HEADER.length +
+    1 +
+    names.slice(0, kept).reduce((total, line) => total + line.length + 1, 0) +
+    (kept < names.length ? omission(names.length - kept).length + 1 : 0);
+
+  let kept = names.length;
+  while (kept > 0 && sizeOf(kept) > budget) kept -= 1;
+  if (kept === 0) return { text: noRoomNote(peers.length), described: [] };
+
+  const share = Math.floor((budget - sizeOf(kept)) / kept);
+  const perEntry = share >= DIRECTORY_ENTRY_MIN ? Math.min(share, DIRECTORY_ENTRY_MAX) : 0;
+
+  const lines = names.slice(0, kept).map((line, index) => {
+    if (perEntry === 0) return line;
+    return `${line} — ${clip(described[index]!.description, perEntry)}`;
+  });
+  if (kept < names.length) lines.push(omission(names.length - kept));
+
+  return {
+    text: `${DIRECTORY_HEADER}\n\n${lines.join('\n')}`,
+    described: perEntry === 0 ? [] : described.slice(0, kept),
+  };
 }

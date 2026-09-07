@@ -145,11 +145,23 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
   };
 
   return {
-    listWorkspaces: async (): Promise<Array<{ id: string; slug: string; name: string }>> => {
+    listWorkspaces: async (): Promise<
+      Array<{ id: string; slug: string; name: string; description: string }>
+    > => {
+      // The description rides along because a caller choosing between
+      // workspaces has the same problem an agent does: a name says what a
+      // workspace is called and never what it is for. The operator writes that
+      // sentence already, and until now it reached nothing outside the
+      // interface.
       const reachable = deps.workspaces
         .list()
         .filter((workspace) => token.workspaceIds.includes(workspace.id))
-        .map((workspace) => ({ id: workspace.id, slug: workspace.slug, name: workspace.name }));
+        .map((workspace) => ({
+          id: workspace.id,
+          slug: workspace.slug,
+          name: workspace.name,
+          description: workspace.description,
+        }));
 
       // An empty answer is a conclusion the caller cannot check: a program
       // asking this reads "no workspaces" as "this deployment is empty" and

@@ -327,6 +327,15 @@ export const fr: Record<string, string> = {
   'Always keep, per workspace': 'Toujours conserver, par workspace',
   'The newest runs survive the sweep whatever their age, so a workspace left alone for a year still has its history.':
     'Les runs les plus récents survivent au balayage quel que soit leur âge, pour qu’un workspace laissé de côté un an garde son historique.',
+  'Peer directory budget': 'Budget de l’annuaire des pairs',
+  'Characters of the directory of other workspaces injected into every run that may delegate, so the agent knows who it can consult and what for. Around twenty workspaces all keep their description at this size; past that the names remain and the descriptions go together. 0 switches delegation between workspaces off.':
+    'Nombre de caractères de l’annuaire des autres workspaces injectés dans chaque run pouvant déléguer, pour que l’agent sache qui il peut consulter et à quel sujet. À cette taille une vingtaine de workspaces gardent tous leur description ; au-delà les noms restent et les descriptions disparaissent ensemble. 0 désactive la délégation entre workspaces.',
+  'Other workspaces': 'Autres workspaces',
+  'Let other workspaces consult this one': 'Laisser les autres workspaces consulter celui-ci',
+  'Another project’s agent can ask this workspace a question and get its answer — a full run here, under this workspace’s own memory, conventions and permission mode, and behind an approval like any other tool. The description above is what tells it when to ask: without one this workspace stays reachable but is not listed. Metaclaude’s own steward reaches every workspace whatever this says.':
+    'L’agent d’un autre projet peut poser une question à ce workspace et en recevoir la réponse — un run complet ici, sous la mémoire, les conventions et le mode de permission de ce workspace, et derrière une approbation comme tout autre outil. C’est la description ci-dessus qui lui dit quand demander : sans elle, ce workspace reste joignable mais n’est pas listé. L’intendant de Metaclaude atteint tous les workspaces quoi qu’il en soit.',
+  'Read by other workspaces, so their agents know when to consult this one.':
+    'Lue par les autres workspaces, pour que leurs agents sachent quand consulter celui-ci.',
   'Log level': 'Niveau de journalisation',
   'What the server writes to its own log. `debug` is worth switching on while chasing something and worth switching off afterwards.':
     'Ce que le serveur écrit dans son propre journal. `debug` vaut la peine d’être activé le temps d’une investigation, et désactivé ensuite.',

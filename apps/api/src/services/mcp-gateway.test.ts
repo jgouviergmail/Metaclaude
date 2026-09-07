@@ -33,8 +33,8 @@ const TOKEN: ApiTokenRecord = {
   hint: 'mck_tok_01',
 };
 
-const workspace = (id: string, slug: string) =>
-  ({ id, slug, name: slug, settings: {} }) as never;
+const workspace = (id: string, slug: string, description = `The ${slug} project.`) =>
+  ({ id, slug, name: slug, description, settings: {} }) as never;
 
 function deps(overrides: Partial<GatewayDeps> = {}): GatewayDeps {
   return {
@@ -68,6 +68,20 @@ describe('list_workspaces', () => {
     const listed = await handlers.listWorkspaces();
 
     expect(listed.map((one) => one.id)).toEqual(['ws_mine']);
+  });
+
+  /**
+   * A program routing between workspaces has the same problem the agent had:
+   * `list_workspaces` answered id, slug and name, which says what a workspace
+   * is *called* and never what it is *for*. The operator already writes that
+   * sentence, and it was reaching nobody outside the interface.
+   */
+  it('says what each workspace is for, not only what it is called', async () => {
+    const handlers = createGatewayHandlers(deps(), TOKEN);
+
+    const listed = await handlers.listWorkspaces();
+
+    expect(listed[0]!.description).toBe('The mine project.');
   });
 });
 

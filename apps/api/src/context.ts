@@ -660,9 +660,16 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     directoryPolicy: { workspacesDir: config.workspacesDir, dataDir: config.dataDir },
     log: kernelLog,
     // Same lazy shape as the broker, for the same mutual-construction reason.
-    delegate: (input) => {
-      if (!kernelRef) throw new Error('The kernel is not ready yet.');
-      return kernelRef.delegate(input);
+    // The roster travels with the verb: the supervisor mounts the tool exactly
+    // when the directory has someone in it, so wiring one without the other
+    // has to be inexpressible rather than merely discouraged.
+    delegation: {
+      peers: () => workspaceRepo.list(),
+      budget: () => runtimeSettings.number('delegationDirectoryChars'),
+      run: (input) => {
+        if (!kernelRef) throw new Error('The kernel is not ready yet.');
+        return kernelRef.delegate(input);
+      },
     },
     board,
     // The store itself: `MemoryStore` satisfies the facade as it stands, and
