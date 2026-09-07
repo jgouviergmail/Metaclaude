@@ -25,6 +25,7 @@ const { apiMock, ApiErrorMock } = vi.hoisted(() => {
     ApiErrorMock,
     apiMock: {
       claudeCredential: { get: vi.fn(), save: vi.fn(), clear: vi.fn() },
+      claudeCliVersion: vi.fn(),
       claudePairing: { begin: vi.fn(), complete: vi.fn(), cancel: vi.fn() },
     },
   };
@@ -37,6 +38,13 @@ const AUTHORIZE_URL = 'https://claude.com/cai/oauth/authorize?code=true&state=ab
 beforeEach(() => {
   vi.clearAllMocks();
   apiMock.claudeCredential.get.mockResolvedValue({ mode: 'none', source: null, hint: null });
+  apiMock.claudeCliVersion.mockResolvedValue({
+    installed: null,
+    latest: null,
+    behind: null,
+    error: null,
+    checkedAt: 0,
+  });
   apiMock.claudePairing.begin.mockResolvedValue({ url: AUTHORIZE_URL, expiresAt: 9_999 });
   apiMock.claudePairing.complete.mockResolvedValue({
     mode: 'subscription',
@@ -233,5 +241,71 @@ describe('the end of a CLI sign-in', () => {
     renderWithProviders(<ClaudeCredentialCard />);
     await screen.findByText(/signed in with a Claude account/i);
     expect(screen.queryByText(/sign-in ends/i)).toBeNull();
+  });
+});
+
+/**
+ * The CLI's version, and the badge when it is behind.
+ *
+ * A reading, never a button. The CLI is pinned into the image and the
+ * container refuses to change it three ways over — non-root process,
+ * root-owned directory, read-only filesystem — so "update available" beside a
+ * control that could not do it would be worse than silence. What the card owes
+ * the operator is where the update actually comes from.
+ */
+describe('the CLI version', () => {
+  const version = (over: Record<string, unknown>) =>
+    apiMock.claudeCliVersion.mockResolvedValue({
+      installed: '2.1.247',
+      latest: '2.1.247',
+      behind: false,
+      error: null,
+      checkedAt: 0,
+      ...over,
+    });
+
+  it('shows the installed version', async () => {
+    version({});
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    expect(await screen.findByText(/2\.1\.247/)).toBeTruthy();
+  });
+
+  it('badges a newer published version, and says where it comes from', async () => {
+    version({ latest: '2.2.0', behind: true });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    expect(await screen.findByText(/2\.2\.0/)).toBeTruthy();
+    expect(screen.getByText(/metaclaude update/i)).toBeTruthy();
+  });
+
+  it('says nothing when it is current', async () => {
+    version({});
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    await screen.findByText(/2\.1\.247/);
+    expect(screen.queryByText(/metaclaude update/i)).toBeNull();
+  });
+
+  /**
+   * Unknown is not reassuring. When the registry could not be read the badge
+   * stays away rather than claiming the CLI is current — a badge that goes
+   * quiet on a broken network is one that lies exactly when it matters.
+   */
+  it('claims nothing when the registry could not be read', async () => {
+    version({ latest: null, behind: null, error: 'ENOTFOUND' });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    await screen.findByText(/2\.1\.247/);
+    expect(screen.queryByText(/published/i)).toBeNull();
+    expect(screen.queryByText(/metaclaude update/i)).toBeNull();
+  });
+
+  it('shows no line at all when the CLI cannot be spawned', async () => {
+    version({ installed: null, latest: null, behind: null });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    await screen.findByText(/claude credentials/i);
+    expect(screen.queryByText(/claude cli/i)).toBeNull();
   });
 });

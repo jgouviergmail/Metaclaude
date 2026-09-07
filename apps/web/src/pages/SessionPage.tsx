@@ -7,6 +7,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import {
   ArrowLeft,
   Files,
@@ -398,11 +399,7 @@ export function SessionPage() {
         title={session.title || t('New session')}
         subtitle={
           <span className="flex items-center gap-1.5">
-            <span
-              className="inline-block size-2 rounded-[3px]"
-              style={{ background: workspace.color }}
-              aria-hidden
-            />
+            <WorkspaceAvatar color={workspace.color} icon={workspace.icon} size="xs" />
             {workspace.name}
           </span>
         }
@@ -563,6 +560,8 @@ export function SessionPage() {
         settings={workspace.settings}
         name={workspace.name}
         description={workspace.description}
+        color={workspace.color}
+        icon={workspace.icon}
         locked={Boolean(workspaceQuery.data?.isSystem)}
       />
 

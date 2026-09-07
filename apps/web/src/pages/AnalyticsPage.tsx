@@ -8,6 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { FLUSH_TABLE, Page, Section } from '@/components/ui/layout';
 import { Activity, CalendarRange, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -257,11 +258,7 @@ export function AnalyticsPage() {
                   selected={scope === workspace.id}
                   onSelect={() => setScope(workspace.id)}
                   icon={
-                    <span
-                      className="mt-0.5 block size-3 rounded-[4px]"
-                      style={{ background: workspace.color }}
-                      aria-hidden
-                    />
+                    <WorkspaceAvatar color={workspace.color} icon={workspace.icon} className="mt-0.5" />
                   }
                 >
                   {workspace.name}

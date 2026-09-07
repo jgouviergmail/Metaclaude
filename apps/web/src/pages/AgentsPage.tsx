@@ -9,6 +9,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import {
   BookOpen,
   Bot,
@@ -178,11 +179,7 @@ export function AgentsPage() {
                 description={t('Its own definitions, plus the global ones')}
                 onSelect={() => setScope(workspace.id)}
                 icon={
-                  <span
-                    className="mt-0.5 block size-3 rounded-[4px]"
-                    style={{ background: workspace.color }}
-                    aria-hidden
-                  />
+                  <WorkspaceAvatar color={workspace.color} icon={workspace.icon} className="mt-0.5" />
                 }
               >
                 {workspace.name}

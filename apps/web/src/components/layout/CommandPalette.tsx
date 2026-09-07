@@ -7,6 +7,7 @@
  */
 
 import { Command } from 'cmdk';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import {
   Activity,
   Blocks,
@@ -121,11 +122,7 @@ export function CommandPalette() {
       label: workspace.name,
       hint: workspace.description || workspace.slug,
       icon: (
-        <span
-          className="block size-3 rounded-[4px]"
-          style={{ background: workspace.color }}
-          aria-hidden
-        />
+        <WorkspaceAvatar color={workspace.color} icon={workspace.icon} />
       ),
       group: 'Workspaces',
       run: go(routes.workspace(workspace.id)),

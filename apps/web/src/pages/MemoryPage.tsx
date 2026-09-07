@@ -12,6 +12,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { FILTER_ROW, Page, Section } from '@/components/ui/layout';
 import {
   Archive,
@@ -669,11 +670,7 @@ export function MemoryPage() {
                   selected={scope === workspace.id}
                   onSelect={() => setScope(workspace.id)}
                   icon={
-                    <span
-                      className="mt-0.5 block size-3 rounded-[4px]"
-                      style={{ background: workspace.color }}
-                      aria-hidden
-                    />
+                    <WorkspaceAvatar color={workspace.color} icon={workspace.icon} className="mt-0.5" />
                   }
                 >
                   {workspace.name}
@@ -1575,11 +1572,7 @@ function MemoryCard({
                 <MenuItem
                   key={workspace.id}
                   icon={
-                    <span
-                      className="mt-0.5 block size-3 rounded-[4px]"
-                      style={{ background: workspace.color }}
-                      aria-hidden
-                    />
+                    <WorkspaceAvatar color={workspace.color} icon={workspace.icon} className="mt-0.5" />
                   }
                   onSelect={() => onMove(workspace.id)}
                 >

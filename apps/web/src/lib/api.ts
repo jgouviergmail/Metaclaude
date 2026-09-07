@@ -337,6 +337,19 @@ export const api = {
    * workspace is the runtime's rule, and the qualified `mcp__server__tool`
    * name has been spelled wrong by hand here before.
    */
+  /**
+   * The CLI's version, and whether npm has a newer one. A reading only: the
+   * CLI is pinned into the image and the container cannot change it.
+   */
+  claudeCliVersion: () =>
+    request<{
+      installed: string | null;
+      latest: string | null;
+      behind: boolean | null;
+      error: string | null;
+      checkedAt: number;
+    }>('/api/system/claude-cli'),
+
   workspaceMcpTools: (id: string) =>
     request<WorkspaceMcpToolsResponse>(`/api/workspaces/${id}/mcp-tools`),
 

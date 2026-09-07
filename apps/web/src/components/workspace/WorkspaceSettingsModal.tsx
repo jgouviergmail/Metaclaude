@@ -27,6 +27,7 @@ import { SessionList } from '@/components/workspace/SessionList';
 import { CheckboxField } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { McpToolPicker } from '@/components/registry/McpToolPicker';
+import { ColourPicker, IconPicker } from '@/components/workspace/WorkspaceAppearance';
 import { Modal } from '@/components/ui/Modal';
 import {
   Button,
@@ -79,6 +80,8 @@ export function WorkspaceSettingsModal({
   settings,
   name,
   description,
+  color,
+  icon,
   locked,
 }: {
   open: boolean;
@@ -87,6 +90,9 @@ export function WorkspaceSettingsModal({
   settings: WorkspaceSettings;
   name: string;
   description: string;
+  color: string;
+  /** The stored icon name, or '' for the plain coloured square. */
+  icon: string;
   /**
    * The system workspace: permission mode and tool lists are fixed by the
    * server, which answers 409 to a change. Shown locked rather than let
@@ -112,6 +118,8 @@ export function WorkspaceSettingsModal({
   const [draft, setDraft] = useState<WorkspaceSettings>(complete);
   const [draftName, setDraftName] = useState(name);
   const [draftDescription, setDraftDescription] = useState(description);
+  const [draftColor, setDraftColor] = useState(color);
+  const [draftIcon, setDraftIcon] = useState(icon);
 
   // Re-seed whenever the dialog opens, so a cancelled edit does not persist.
   useEffect(() => {
@@ -119,8 +127,10 @@ export function WorkspaceSettingsModal({
       setDraft(complete);
       setDraftName(name);
       setDraftDescription(description);
+      setDraftColor(color);
+      setDraftIcon(icon);
     }
-  }, [open, complete, name, description]);
+  }, [open, complete, name, description, color, icon]);
 
   /*
    * The MCP tools this workspace could pre-approve.
@@ -178,6 +188,8 @@ export function WorkspaceSettingsModal({
       api.updateWorkspace(workspaceId, {
         name: draftName.trim(),
         description: draftDescription.trim(),
+        color: draftColor,
+        icon: draftIcon,
         settings: draft,
       }),
     onSuccess: () => {
@@ -235,6 +247,17 @@ export function WorkspaceSettingsModal({
             className="mt-1.5"
           />
         </Label>
+
+        {/* Appearance, beside the name and description it belongs with. The
+            colour was choosable at creation and never again; the icon was a
+            stored field no control ever set and no screen ever showed. */}
+        <ColourPicker value={draftColor} onChange={setDraftColor} disabled={locked} />
+        <IconPicker
+          value={draftIcon}
+          color={draftColor}
+          onChange={setDraftIcon}
+          disabled={locked}
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>

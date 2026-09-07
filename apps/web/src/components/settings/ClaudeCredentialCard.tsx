@@ -18,6 +18,7 @@ import type { ClaudePairingStart } from '@metaclaude/shared';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { CopyableCode } from '@/components/ui/CopyableCode';
 import {
+  Badge,
   Button,
   Input,
   Label,
@@ -38,6 +39,17 @@ export function ClaudeCredentialCard() {
   const status = useQuery({
     queryKey: ['claude-credential'],
     queryFn: () => api.claudeCredential.get(),
+  });
+
+  /*
+   * Cached hard on the server (six hours), so this costs a request per page
+   * view and no outbound call. `staleTime` keeps React Query from asking
+   * again while the card is re-rendered by its neighbours' mutations.
+   */
+  const cli = useQuery({
+    queryKey: ['claude-cli'],
+    queryFn: () => api.claudeCliVersion(),
+    staleTime: 5 * 60_000,
   });
 
   const refresh = () => {
@@ -119,6 +131,31 @@ export function ClaudeCredentialCard() {
       )}
     >
       <div className="space-y-5">
+        {/*
+          The CLI's own version, and whether it is behind.
+          
+          A reading, not a button: the CLI is pinned into the image and the
+          container refuses to change it three ways over — non-root process,
+          root-owned directory, read-only filesystem. Saying "update available"
+          beside a control that could not do it would be worse than silence, so
+          the line says where the update actually comes from.
+        */}
+        {cli.data?.installed ? (
+          <p className="flex flex-wrap items-center gap-2 text-caption text-muted">
+            <span>{t('Claude CLI {version}', { version: cli.data.installed })}</span>
+            {cli.data.behind && cli.data.latest ? (
+              <Badge tone="info">
+                {t('{version} published', { version: cli.data.latest })}
+              </Badge>
+            ) : null}
+            {cli.data.behind ? (
+              <span>
+                {t('It ships with the image, so a Metaclaude update is what brings it in.')}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+
         {/* ---------------------- The CLI's own sign-in --------------------- */}
         {/* `claude auth login` run in the container is the one credential
             Anthropic grants the session-sync scopes to — and any token

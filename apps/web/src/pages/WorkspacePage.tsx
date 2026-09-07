@@ -6,6 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { Page, Section } from '@/components/ui/layout';
 import { GitBranch, Loader2, Plus, Settings2, TerminalSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -141,11 +142,7 @@ export function WorkspacePage() {
         title={workspace.name}
         subtitle={workspace.path}
         icon={
-          <span
-            className="block size-4 rounded"
-            style={{ background: workspace.color }}
-            aria-hidden
-          />
+          <WorkspaceAvatar color={workspace.color} icon={workspace.icon} size="sm" />
         }
         actions={
           <>
@@ -303,6 +300,8 @@ export function WorkspacePage() {
         settings={workspace.settings}
         name={workspace.name}
         description={workspace.description}
+        color={workspace.color}
+        icon={workspace.icon}
         locked={Boolean(data?.isSystem)}
       />
 

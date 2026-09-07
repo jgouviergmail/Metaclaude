@@ -377,6 +377,21 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
     return reply.send(await context.updateChecker.check({ force: query.refresh === 'true' }));
   });
 
+  /**
+   * The CLI's version, and whether npm has a newer one.
+   *
+   * A reading only. The CLI is pinned into the image and the container refuses
+   * to change it three ways over — non-root process, root-owned directory,
+   * read-only filesystem — so there is no honest update to trigger here;
+   * moving it means raising the pin and shipping a release. What this answers
+   * is the thing an operator could not otherwise know.
+   */
+  app.get('/api/system/claude-cli', async (request, reply) => {
+    requireOwner(request);
+    const query = request.query as { refresh?: string };
+    return reply.send(await context.claudeCliUpdate.check({ force: query.refresh === 'true' }));
+  });
+
   app.get('/api/system/update-apply', async (request, reply) => {
     requireOwner(request);
     return reply.send(await context.updateApplier.status());

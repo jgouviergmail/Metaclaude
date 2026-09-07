@@ -11,6 +11,40 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.73.0] — 2026-09-07
+
+### Added
+
+- **A workspace's colour can be changed, and it can wear an icon.** The colour
+  was choosable at creation and never again; the icon was worse — a field the
+  schema stored, the PATCH route accepted, no control ever set and no screen
+  ever showed, which is the "a schema field nothing forwards" shape this
+  repository keeps finding. Both are in the settings dialog and the creation
+  dialog now, from one pair of controls rather than two copies. Removing an
+  icon is a choice of its own, first in the row: without it an operator who
+  picked one could never go back to the plain square.
+- **One avatar component, where there were eight hand-written squares.** The
+  coloured marker was spelled out in the workspaces list, the dashboard, the
+  command palette, a session's header, a workspace's header and the workspace
+  columns of Agents, Analytics and Memory — so adding the icon to one would
+  have left the other seven showing a bare square for a workspace that has
+  one. The icon appears only at the two sizes that can hold one: four of those
+  eight render a 12px marker, where a glyph is not small but illegible, and
+  they render exactly what they rendered before. The system workspace's `bot`,
+  stored since it first shipped and never once displayed, now shows.
+- **The Claude CLI says which version it is, and whether a newer one is
+  published.** A reading, deliberately, and not a button. The CLI is pinned
+  into the image — `npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}`
+  — and the container refuses to change it three ways over: the process runs
+  as uid 10001, the directory is root-owned, and the filesystem is mounted
+  read-only. All three are on purpose. So the honest thing to offer is the
+  knowledge, which nothing carried: the installed version appeared only inside
+  a diagnostics check and the published one nowhere at all, so an operator had
+  no way to know a release was worth asking for. The line says where the
+  update comes from rather than pretending to be one. Unknown reads as
+  unknown: when the registry cannot be reached the badge stays away instead of
+  claiming the CLI is current.
+
 ## [0.72.0] — 2026-09-07
 
 ### Added

@@ -3,6 +3,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
+import { ColourPicker, IconPicker } from '@/components/workspace/WorkspaceAppearance';
 import { Page } from '@/components/ui/layout';
 import { Archive, FolderGit2, MoreVertical, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -22,8 +24,7 @@ import {
   Textarea,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
-import { cn, colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
+import { colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
 import { Trans, usePlural, useT } from '@/lib/i18n';
 import { routes } from '@metaclaude/shared';
 
@@ -150,10 +151,10 @@ export function WorkspacesPage() {
                     className="block h-full rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong"
                   >
                     <div className="flex items-start gap-3">
-                      <span
-                        className="size-10 shrink-0 rounded-lg"
-                        style={{ background: workspace.color }}
-                        aria-hidden
+                      <WorkspaceAvatar
+                        color={workspace.color}
+                        icon={workspace.icon}
+                        size="lg"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 text-body font-semibold text-ink">
@@ -271,6 +272,7 @@ function CreateWorkspaceModal({
   const [description, setDescription] = useState('');
   const [gitUrl, setGitUrl] = useState('');
   const [color, setColor] = useState<string>(WORKSPACE_COLORS[0]);
+  const [icon, setIcon] = useState<string>('');
   const [touchedColor, setTouchedColor] = useState(false);
 
   // Until the user picks a colour, derive one from the name so each new
@@ -285,6 +287,7 @@ function CreateWorkspaceModal({
         name: name.trim(),
         description: description.trim(),
         color,
+        ...(icon ? { icon } : {}),
         ...(gitUrl.trim() ? { gitUrl: gitUrl.trim() } : {}),
       }),
     onSuccess: () => {
@@ -295,6 +298,7 @@ function CreateWorkspaceModal({
       setDescription('');
       setGitUrl('');
       setTouchedColor(false);
+      setIcon('');
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t(
@@ -375,30 +379,15 @@ function CreateWorkspaceModal({
           />
         </Label>
 
-        <fieldset>
-          <legend className="mb-1.5 text-body font-medium text-ink">{t('Colour')}</legend>
-          <div className="flex flex-wrap gap-2">
-            {WORKSPACE_COLORS.map((swatch) => (
-              <button
-                key={swatch}
-                type="button"
-                onClick={() => {
-                  setColor(swatch);
-                  setTouchedColor(true);
-                }}
-                aria-label={t('Use colour {swatch}', { swatch: swatch })}
-                aria-pressed={color === swatch}
-                className={cn(
-                  'size-7 rounded-lg ring-offset-2 ring-offset-surface transition-all',
-                  'data-[active=true]:ring-2 data-[active=true]:ring-accent',
-                  TOUCH_TARGET_Y,
-                )}
-                data-active={color === swatch}
-                style={{ background: swatch }}
-              />
-            ))}
-          </div>
-        </fieldset>
+        <ColourPicker
+          value={color}
+          onChange={(next) => {
+            setColor(next);
+            setTouchedColor(true);
+          }}
+        />
+
+        <IconPicker value={icon} color={color} onChange={setIcon} />
       </div>
     </Modal>
   );

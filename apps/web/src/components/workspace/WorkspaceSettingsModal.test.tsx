@@ -41,6 +41,8 @@ const open = (over: Record<string, unknown> = {}) =>
       settings={SETTINGS}
       name="Alpha"
       description="A project"
+      color="#6366f1"
+      icon=""
       locked={false}
       {...over}
     />,
@@ -168,6 +170,41 @@ describe('the workspace settings dialog', () => {
     const describedBy = field.getAttribute('aria-describedby');
     expect(describedBy).toBe('ws-edit-description-hint');
     expect(document.getElementById(describedBy!)?.textContent).toMatch(/other workspaces/i);
+  });
+
+  /**
+   * The colour was choosable at creation and never again, and the icon was a
+   * field nothing ever set. Both have to reach the request, or the controls
+   * are decoration — the failure this dialog has already had once, on a
+   * checkbox wired to a literal.
+   */
+  it('saves a colour and an icon the operator picked', async () => {
+    open();
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByLabelText('rocket'));
+    fireEvent.click(screen.getByRole('button', { name: /use colour #ec4899/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(apiMock.updateWorkspace).toHaveBeenCalled());
+    const [, body] = apiMock.updateWorkspace.mock.calls[0] as [
+      string,
+      { color?: string; icon?: string },
+    ];
+    expect(body.icon).toBe('rocket');
+    expect(body.color).toBe('#ec4899');
+  });
+
+  it('sends an icon back to nothing when it is taken off', async () => {
+    open({ icon: 'rocket' });
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByLabelText(/no icon/i));
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(apiMock.updateWorkspace).toHaveBeenCalled());
+    const [, body] = apiMock.updateWorkspace.mock.calls[0] as [string, { icon?: string }];
+    expect(body.icon).toBe('');
   });
 
   it('fixes the system workspace’s tool lists, and says why', async () => {

@@ -79,6 +79,7 @@ import { Doctor } from './services/doctor.js';
 import { RuntimeSettings } from './services/runtime-settings.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { UpdateChecker } from './services/update-check.js';
+import { ClaudeCliUpdate } from './services/claude-cli-update.js';
 import { UpdateApplier } from './services/update-apply.js';
 import { BriefService } from './services/brief.js';
 import { SkillSynthesizer, SYNTHESIS_SCHEMA, SYNTHESIS_SYSTEM_PROMPT, type SynthesisOutput } from './learning/synthesis.js';
@@ -122,6 +123,8 @@ export interface AppContext {
   runtimeSettings: RuntimeSettings;
   brief: BriefService;
   synthesizer: SkillSynthesizer;
+  /** Whether the CLI this image ships is behind the published one. A reading, never an action. */
+  claudeCliUpdate: ClaudeCliUpdate;
   /** Null when METACLAUDE_UPDATE_REPO is set empty. */
   updateChecker: UpdateChecker | null;
   /** Unavailable (dir null) unless the host installed the updater. */
@@ -911,6 +914,39 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
 
   // Read-only self-diagnosis. Probes are bound here so the doctor itself
   // stays testable against fakes; on demand only, so no caching.
+  /**
+   * What `claude --version` answers, read once and shared.
+   *
+   * The Doctor reports it as a diagnostic and `ClaudeCliUpdate` compares it
+   * against what npm publishes. Two copies of the spawn would eventually
+   * disagree on the timeout, or on how the first line is taken.
+   */
+  const cliVersion = async (): Promise<string | null> => {
+    try {
+      const { stdout } = await execFileAsync(config.claude.binPath ?? 'claude', ['--version'], {
+        timeout: 10_000,
+      });
+      return stdout.trim().split('\n')[0] ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  /*
+   * A reading, never an action: the CLI is pinned into the image and the
+   * container refuses to change it three ways over — non-root process,
+   * root-owned directory, read-only filesystem. What was missing was knowing
+   * a newer one exists, so an operator can ask for a release.
+   */
+  const claudeCliUpdate = new ClaudeCliUpdate({
+    installedVersion: cliVersion,
+    fetchText: async (url) => {
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.text();
+    },
+  });
+
   const doctor = new Doctor({
     db,
     audit,
@@ -921,16 +957,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
       const stats = await statfs(path);
       return Number(stats.bavail) * Number(stats.bsize);
     },
-    cliVersion: async () => {
-      try {
-        const { stdout } = await execFileAsync(config.claude.binPath ?? 'claude', ['--version'], {
-          timeout: 10_000,
-        });
-        return stdout.trim().split('\n')[0] ?? null;
-      } catch {
-        return null;
-      }
-    },
+    cliVersion,
     /**
      * One outbound request, to the host the CLI itself must reach.
      *
@@ -1104,6 +1131,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     runtimeSettings,
     brief,
     synthesizer,
+    claudeCliUpdate,
     updateChecker,
     updateApplier,
     workspaceRepo,

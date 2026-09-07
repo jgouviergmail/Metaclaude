@@ -6,6 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { Page, Section } from '@/components/ui/layout';
 import {
   Activity,
@@ -437,11 +438,7 @@ export function DashboardPage() {
                         to={routes.workspace(workspace.id)}
                         className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-raised"
                       >
-                        <span
-                          className="size-6 shrink-0 rounded-md"
-                          style={{ background: workspace.color }}
-                          aria-hidden
-                        />
+                        <WorkspaceAvatar color={workspace.color} icon={workspace.icon} size="md" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-body font-medium text-ink">
                             {workspace.name}

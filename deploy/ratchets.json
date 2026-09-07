@@ -1,10 +1,10 @@
 {
   "metrics": {
-    "tests": 3380,
-    "testFiles": 233,
+    "tests": 3409,
+    "testFiles": 236,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
-    "initialJsGzipKb": 192,
+    "initialJsGzipKb": 193,
     "deployChecks": 169,
     "untranslatedStrings": 0,
     "untestedComponents": 0,
