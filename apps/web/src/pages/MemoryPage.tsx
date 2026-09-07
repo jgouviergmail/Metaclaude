@@ -77,6 +77,7 @@ import { INSIGHT_TONE } from '@/lib/insights';
 import { cn, formatPercent, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
 import { describeRetrieval } from '@/lib/retrieval';
+import { routes } from '@metaclaude/shared';
 
 type KindFilter = 'all' | MemoryKind;
 
@@ -233,7 +234,7 @@ function sourceHrefOf(
 ): string | null {
   if (!memory.sourceRunId) return null;
   const source = sources?.[memory.sourceRunId];
-  return source ? `/w/${source.workspaceId}/s/${source.sessionId}` : null;
+  return source ? routes.session(source.workspaceId, source.sessionId) : null;
 }
 
 export function MemoryPage() {

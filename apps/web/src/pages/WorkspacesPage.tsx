@@ -25,6 +25,7 @@ import { api, ApiError } from '@/lib/api';
 import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn, colorForName, formatRelative, WORKSPACE_COLORS } from '@/lib/utils';
 import { Trans, usePlural, useT } from '@/lib/i18n';
+import { routes } from '@metaclaude/shared';
 
 export function WorkspacesPage() {
   const t = useT();
@@ -146,7 +147,7 @@ export function WorkspacesPage() {
               {workspaces.map((workspace) => (
                 <li key={workspace.id} className="group relative">
                   <Link
-                    to={`/w/${workspace.id}`}
+                    to={routes.workspace(workspace.id)}
                     className="block h-full rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong"
                   >
                     <div className="flex items-start gap-3">
@@ -172,14 +173,14 @@ export function WorkspacesPage() {
                             />
                           ) : null}
                         </p>
-                        <p className="truncate font-mono text-[11.5px] text-subtle">
+                        <p className="truncate font-mono text-caption text-subtle">
                           {workspace.slug}
                         </p>
                       </div>
                     </div>
 
                     {workspace.description ? (
-                      <p className="mt-3 line-clamp-2 text-[12.5px] leading-relaxed text-muted">
+                      <p className="mt-3 line-clamp-2 text-caption leading-relaxed text-muted">
                         {workspace.description}
                       </p>
                     ) : null}
@@ -195,7 +196,7 @@ export function WorkspacesPage() {
                       {workspace.settings.defaultPermissionMode === 'bypassPermissions' ? (
                         <Badge tone="danger">{t('bypass')}</Badge>
                       ) : null}
-                      <span className="ml-auto text-[11px] text-subtle">
+                      <span className="ml-auto text-caption text-subtle">
                         {formatRelative(workspace.updatedAt)}
                       </span>
                     </div>
@@ -364,12 +365,12 @@ function CreateWorkspaceModal({
             value={gitUrl}
             onChange={(event) => setGitUrl(event.target.value)}
             placeholder="https://github.com/you/project.git"
-            className="mt-1.5 font-mono text-[13px]"
+            className="mt-1.5 font-mono text-body"
           />
         </Label>
 
         <fieldset>
-          <legend className="mb-1.5 text-[13px] font-medium text-ink">{t('Colour')}</legend>
+          <legend className="mb-1.5 text-body font-medium text-ink">{t('Colour')}</legend>
           <div className="flex flex-wrap gap-2">
             {WORKSPACE_COLORS.map((swatch) => (
               <button
@@ -433,7 +434,7 @@ function DeleteWorkspaceDialog({
               onChange={(event) => setPurge(event.target.checked)}
               className="mt-0.5 size-3.5 accent-[var(--mc-danger)]"
             />
-            <span className="text-[12.5px] leading-relaxed">
+            <span className="text-caption leading-relaxed">
               <span className="font-medium text-ink">{t('Also delete the files on disk')}</span>
               <br />
               <Trans
@@ -441,7 +442,7 @@ function DeleteWorkspaceDialog({
                   'Everything under {path} is erased. This cannot be undone. Leave this unchecked to keep the files and only forget the workspace.',
                 )}
                 values={{
-                  path: <code className="font-mono text-[11.5px]">{workspace?.path}</code>,
+                  path: <code className="font-mono text-caption">{workspace?.path}</code>,
                 }}
               />
             </span>

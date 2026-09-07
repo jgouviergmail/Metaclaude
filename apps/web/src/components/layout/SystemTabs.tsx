@@ -31,6 +31,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { routes } from '@metaclaude/shared';
 
 export interface SystemPath {
   to: string;
@@ -40,12 +41,12 @@ export interface SystemPath {
 
 /** The six, in the order they are shown. Exported so the rail can own them. */
 export const SYSTEM_PATHS: readonly SystemPath[] = [
-  { to: '/automations', label: 'Automations', icon: <Timer /> },
-  { to: '/agents', label: 'Agents & skills', icon: <Bot /> },
-  { to: '/plugins', label: 'Plugins', icon: <Plug /> },
-  { to: '/analytics', label: 'Analytics', icon: <Activity /> },
-  { to: '/settings', label: 'Settings', icon: <Settings /> },
-  { to: '/help', label: 'Help', icon: <LifeBuoy /> },
+  { to: routes.automations(), label: 'Automations', icon: <Timer /> },
+  { to: routes.agents(), label: 'Agents & skills', icon: <Bot /> },
+  { to: routes.plugins(), label: 'Plugins', icon: <Plug /> },
+  { to: routes.analytics(), label: 'Analytics', icon: <Activity /> },
+  { to: routes.settings(), label: 'Settings', icon: <Settings /> },
+  { to: routes.help(), label: 'Help', icon: <LifeBuoy /> },
 ];
 
 /** Whether a path belongs to the System section. */

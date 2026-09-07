@@ -51,6 +51,7 @@ import { socket } from '@/lib/socket';
 import { useSessionStore, useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
+import { routes } from '@metaclaude/shared';
 
 type SidePanel = 'none' | 'files' | 'git';
 
@@ -275,7 +276,7 @@ export function SessionPage() {
     mutationFn: () => api.deleteSession(sessionId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
-      navigate(`/w/${workspaceId}`, { replace: true });
+      navigate(routes.workspace(workspaceId), { replace: true });
       toast.success(t('Session deleted'));
     },
     onError: (error) =>
@@ -286,7 +287,7 @@ export function SessionPage() {
     mutationFn: () => api.createSession({ workspaceId }),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
-      navigate(`/w/${workspaceId}/s/${data.session.id}`);
+      navigate(routes.session(workspaceId, data.session.id));
     },
   });
 
@@ -322,7 +323,7 @@ export function SessionPage() {
       <AppShell sidebar={sidebar}>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
           <p className="text-body text-muted">{t('That session could not be loaded.')}</p>
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/w/${workspaceId}`)}>
+          <Button variant="secondary" size="sm" onClick={() => navigate(routes.workspace(workspaceId))}>
             <ArrowLeft className="size-4" />
             {t('Back to the workspace')}
           </Button>

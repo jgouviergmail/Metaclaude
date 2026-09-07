@@ -131,7 +131,7 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={t('Find a file by name')}
                 aria-label={t('Find a file by name')}
-                className="h-8 pl-8 text-[13px]"
+                className="h-8 pl-8 text-body"
               />
             </div>
           </div>
@@ -202,13 +202,13 @@ export function FilesPanel({ workspaceId, onClose }: { workspaceId: string; onCl
                         <FileIcon className="size-4 shrink-0 text-subtle" aria-hidden />
                       )}
 
-                      <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                      <span className="min-w-0 flex-1 truncate text-body text-ink">
                         {entry.name}
                       </span>
 
                       {/* In search results the name alone is ambiguous, so show
                           where the file actually lives instead of its size. */}
-                      <span className="shrink-0 text-[11px] tabular-nums text-subtle">
+                      <span className="shrink-0 text-caption tabular-nums text-subtle">
                         {searching
                           ? truncate(entry.path, 34)
                           : entry.type === 'file'
@@ -245,7 +245,7 @@ function TruncationNotice({ children }: { children: ReactNode }) {
   return (
     <p
       role="status"
-      className="flex shrink-0 items-start gap-2 border-b border-line bg-warning-soft px-3 py-2 text-[12px] leading-relaxed text-warning"
+      className="flex shrink-0 items-start gap-2 border-b border-line bg-warning-soft px-3 py-2 text-caption leading-relaxed text-warning"
     >
       <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
       <span>{children}</span>
@@ -262,7 +262,7 @@ function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (path: str
   const segments = path ? path.split('/').filter(Boolean) : [];
 
   return (
-    <nav className="flex flex-wrap items-center gap-0.5 text-[12px]" aria-label={t('Folder path')}>
+    <nav className="flex flex-wrap items-center gap-0.5 text-caption" aria-label={t('Folder path')}>
       <button
         type="button"
         onClick={() => onNavigate('')}
@@ -394,7 +394,7 @@ function FileEditor({
           <ArrowLeft className="size-4" />
         </Button>
 
-        <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted" title={path}>
+        <code className="min-w-0 flex-1 truncate font-mono text-caption text-muted" title={path}>
           {path}
         </code>
 
@@ -416,7 +416,7 @@ function FileEditor({
               aria-pressed={mode === 'preview'}
               onClick={() => setMode('preview')}
               className={cn(
-                'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px]',
+                'inline-flex items-center gap-1 rounded-md px-2 py-1 text-caption',
                 mode === 'preview' ? 'bg-accent-soft font-medium text-accent' : 'text-muted hover:text-ink',
               )}
             >
@@ -428,7 +428,7 @@ function FileEditor({
               aria-pressed={mode === 'edit'}
               onClick={() => setMode('edit')}
               className={cn(
-                'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px]',
+                'inline-flex items-center gap-1 rounded-md px-2 py-1 text-caption',
                 mode === 'edit' ? 'bg-accent-soft font-medium text-accent' : 'text-muted hover:text-ink',
               )}
             >
@@ -491,7 +491,7 @@ function FileEditor({
               onOpenNote={onOpen}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-auto text-[13px]">
+            <div className="min-h-0 flex-1 overflow-auto text-body">
               <CodeMirror
                 value={draft}
                 onChange={setDraft}

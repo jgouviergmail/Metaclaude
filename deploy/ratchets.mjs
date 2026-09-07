@@ -1557,6 +1557,63 @@ function onOppositeArms(value) {
   return helpFirst.test(value) || displayFirst.test(value);
 }
 
+/**
+ * A path written by hand rather than built from the shared contract.
+ *
+ * The web app owns the router and the API sends people into it: a push
+ * notification points at a session, Google's consent returns to a settings
+ * tab, an insight links a workspace's memories. Those strings lived in two
+ * files that never meet, so a rename in the router would have left the
+ * notifications on the 404 screen — silently, on a phone.
+ *
+ * `packages/shared/src/routes.ts` is the one place, and it is excluded here
+ * because it is where the strings belong. Counted across both apps, since the
+ * whole point is that neither side may drift from the other.
+ */
+const SCREENS = 'w|login|workspaces|board|memory|automations|agents|plugins|analytics|settings|help';
+
+/**
+ * Any string that *is* one of those paths, in either app.
+ *
+ * The first version matched `to=`, `href=` and `navigate(` — the shapes the web
+ * app writes — and the sabotage on the API side walked straight past it. The
+ * API writes `url: '/settings'` and template literals into a push payload, and
+ * the API is the side that motivated the contract: its notifications land in
+ * the web app's router, which it cannot see.
+ *
+ * `/api/...` is excluded because those are this server's own endpoints, not
+ * links into the interface.
+ */
+const HAND_WRITTEN_ROUTE = new RegExp(
+  '["' + "'" + '`][/](?:' + SCREENS + ')(?:[/][^"' + "'" + '`]*)?["' + "'" + '`$]',
+  'g',
+);
+
+/**
+ * Source with its comments removed.
+ *
+ * A ratchet that greps text cannot tell code from prose, which this repository
+ * already learned once on a raw-palette class written inside a comment
+ * explaining the raw-palette rule. Three of the first seventeen paths reported
+ * here were docblocks explaining why the paths must not change.
+ */
+function withoutComments(source) {
+  return source.replace(/[/][*][^]*?[*][/]/g, '').replace(/^[ ]*[/][/].*$/gm, '');
+}
+
+function countHardcodedRoutes() {
+  let n = 0;
+  for (const file of tracked('apps/web/src/*').concat(tracked('apps/api/src/*'))) {
+    if (!/[.]tsx?$/.test(file) || file.includes('.test.')) continue;
+    for (const hit of withoutComments(read(file)).match(HAND_WRITTEN_ROUTE) ?? []) {
+      if (hit.includes('/api/')) continue;
+      note('url ', file, hit);
+      n += 1;
+    }
+  }
+  return n;
+}
+
 /** Source files with no test file beside them, in the subsystems that matter most. */
 function countUntestedCriticalModules() {
   const CRITICAL = ['apps/api/src/kernel/', 'apps/api/src/security/', 'apps/api/src/learning/'];
@@ -1693,6 +1750,12 @@ const METRICS = [
     direction: 'down',
     label: 'kernel/security/learning modules with no test file',
     measure: countUntestedCriticalModules,
+  },
+  {
+    key: 'hardcodedRoutes',
+    direction: 'down',
+    label: 'paths written by hand instead of built from the shared contract',
+    measure: countHardcodedRoutes,
   },
   {
     key: 'displayBesideDensityHelp',

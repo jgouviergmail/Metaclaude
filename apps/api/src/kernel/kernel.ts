@@ -40,6 +40,7 @@ import { capPermissionMode, PermissionBroker } from './permissions.js';
 import { planRewind } from './rewind.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import { AgentSupervisor, type RunRequest } from './supervisor.js';
+import { routes } from '@metaclaude/shared';
 
 /**
  * How long a clean stop is given before the run is killed outright.
@@ -1006,7 +1007,7 @@ export class Kernel {
             level: 'info',
             title: 'Learned something new',
             message: `Recorded ${written.length} new memor${written.length === 1 ? 'y' : 'ies'} from the last run.`,
-            href: `/memory?workspace=${workspace.id}`,
+            href: routes.memory(workspace.id),
           });
 
           // Consolidate around what was just learned, and only that: the one
@@ -1250,7 +1251,7 @@ export class Kernel {
       message: `${workspace.name} · ${session.title || 'Untitled session'}${
         run.error ? ` — ${run.error.slice(0, 160)}` : ''
       }`,
-      href: `/w/${workspace.id}/s/${session.id}`,
+      href: routes.session(workspace.id, session.id),
     });
   }
 

@@ -20,8 +20,9 @@ import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuthStore } from '@/lib/store';
 import { cn, formatRelative } from '@/lib/utils';
+import { routes } from '@metaclaude/shared';
 
-const sessionPath = (workspaceId: string, sessionId: string) => `/w/${workspaceId}/s/${sessionId}`;
+const sessionPath = (workspaceId: string, sessionId: string) => routes.session(workspaceId, sessionId);
 
 export function MetaclaudeCard() {
   const t = useT();

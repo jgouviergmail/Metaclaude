@@ -33,6 +33,7 @@ import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { APP_VERSION } from '@metaclaude/shared';
 import { useT } from '@/lib/i18n';
+import { routes } from '@metaclaude/shared';
 
 type Tab = 'guide' | 'changelog';
 
@@ -92,7 +93,7 @@ export function HelpPage() {
     setAsking(true);
     try {
       const { workspaceId, sessionId } = await ensureHelpSession(api, trimmed);
-      navigate(`/w/${workspaceId}/s/${sessionId}`);
+      navigate(routes.session(workspaceId, sessionId));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('Could not start the help session.'));
       setAsking(false);

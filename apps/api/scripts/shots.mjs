@@ -264,6 +264,8 @@ async function shoot(theme, viewport, suffix) {
   // mousedown, so a plain click does nothing here either.
   const screens = [
     ['/', 'dashboard'],
+    ['/workspaces', 'workspaces'],
+    [`/w/${ws.id}`, 'workspace'],
     ['/memory', 'memory'],
     ['/analytics', 'analytics'],
     ['/board', 'board'],

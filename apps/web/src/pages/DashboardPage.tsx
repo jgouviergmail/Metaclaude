@@ -39,6 +39,7 @@ import { decideApproval } from '@/lib/approvals';
 import { socket } from '@/lib/socket';
 import { useAuthStore } from '@/lib/store';
 import { cn, formatCost, formatDuration, formatRelative, formatPercent } from '@/lib/utils';
+import { routes } from '@metaclaude/shared';
 
 export function DashboardPage() {
   const plural = usePlural();
@@ -100,7 +101,7 @@ export function DashboardPage() {
     mutationFn: () => api.createWorkspace({ name: t('New workspace') }),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-      navigate(`/w/${data.workspace.id}`);
+      navigate(routes.workspace(data.workspace.id));
     },
     onError: () => toast.error(t('Could not create the workspace.')),
   });
@@ -178,7 +179,7 @@ export function DashboardPage() {
                 <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
                 <p className="text-muted">
                   {t('Pair it from')}{' '}
-                  <Link to="/settings" className={cn('font-medium underline-offset-2', QUIET_LINK)}>
+                  <Link to={routes.settings()} className={cn('font-medium underline-offset-2', QUIET_LINK)}>
                     {t('Settings → System')}
                   </Link>
                   {t(
@@ -255,7 +256,7 @@ export function DashboardPage() {
                         variant="secondary"
                         size="xs"
                         onClick={() =>
-                          navigate(`/w/${approval.workspaceId}/s/${approval.sessionId}`)
+                          navigate(routes.session(approval.workspaceId, approval.sessionId))
                         }
                       >
                         {t('Review')}
@@ -345,7 +346,7 @@ export function DashboardPage() {
                   <FolderGit2 className="size-4 shrink-0 text-muted" aria-hidden />
                   <h2 className="text-body font-semibold text-ink">{t('Workspaces')}</h2>
                 </div>
-                <Link to="/workspaces" className={cn('text-caption', QUIET_LINK)}>
+                <Link to={routes.workspaces()} className={cn('text-caption', QUIET_LINK)}>
                   {t('View all')}
                 </Link>
               </div>
@@ -378,7 +379,7 @@ export function DashboardPage() {
                   {workspaces.slice(0, 6).map((workspace) => (
                     <li key={workspace.id}>
                       <Link
-                        to={`/w/${workspace.id}`}
+                        to={routes.workspace(workspace.id)}
                         className="flex items-center gap-3 px-4 py-3 hover:bg-raised"
                       >
                         <span
@@ -411,7 +412,7 @@ export function DashboardPage() {
                   <Zap className="size-4 shrink-0 text-thinking" aria-hidden />
                   <h2 className="text-body font-semibold text-ink">{t('Recently learned')}</h2>
                 </div>
-                <Link to="/memory" className={cn('text-caption', QUIET_LINK)}>
+                <Link to={routes.memory()} className={cn('text-caption', QUIET_LINK)}>
                   {t('Review')}
                 </Link>
               </div>
@@ -451,7 +452,7 @@ export function DashboardPage() {
                 <Timer className="size-4 shrink-0 text-muted" aria-hidden />
                 <h2 className="text-body font-semibold text-ink">{t('Recent runs')}</h2>
               </div>
-              <Link to="/analytics" className={cn('text-caption', QUIET_LINK)}>
+              <Link to={routes.analytics()} className={cn('text-caption', QUIET_LINK)}>
                 {t('Analytics')}
               </Link>
             </div>
@@ -492,7 +493,7 @@ function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
   return (
     <li>
       <Link
-        to={`/w/${run.workspaceId}/s/${run.sessionId}`}
+        to={routes.session(run.workspaceId, run.sessionId)}
         className="flex items-center gap-3 px-4 py-2.5 hover:bg-raised"
       >
         <span className={cn('relative shrink-0', live && 'pulse-ring rounded-full')}>

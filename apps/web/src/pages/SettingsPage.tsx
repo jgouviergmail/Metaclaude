@@ -56,6 +56,7 @@ import {
   formatDuration,
   formatRelative,
 } from '@/lib/utils';
+import { routes } from '@metaclaude/shared';
 
 /**
  * Which tab the page opens on, from the URL's query string.
@@ -180,7 +181,7 @@ function PasswordCard() {
     onSuccess: () => {
       toast.success(t('Password changed. Sign in again with the new one.'));
       // Every session was revoked server-side, including this one.
-      setTimeout(() => window.location.assign('/login'), 1200);
+      setTimeout(() => window.location.assign(routes.login()), 1200);
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('Could not change the password.')),

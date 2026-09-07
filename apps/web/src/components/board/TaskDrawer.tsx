@@ -31,6 +31,7 @@ import {
 import { toast } from 'sonner';
 import { cn, formatRelative } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
+import { routes } from '@metaclaude/shared';
 
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
 
@@ -317,7 +318,7 @@ export function TaskDrawer({
                     {t('The agent is working this card')}
                   </span>
                   <Link
-                    to={`/w/${task.workspaceId}/s/${run.sessionId}`}
+                    to={routes.session(task.workspaceId, run.sessionId)}
                     className={cn('inline-flex items-center gap-1 text-caption', QUIET_LINK)}
                   >
                     {t('Watch the session')}
@@ -340,7 +341,7 @@ export function TaskDrawer({
                   </span>
                   {run ? (
                     <Link
-                      to={`/w/${task.workspaceId}/s/${run.sessionId}`}
+                      to={routes.session(task.workspaceId, run.sessionId)}
                       className={cn('inline-flex items-center gap-1 text-caption', QUIET_LINK)}
                     >
                       {t('Last session')}

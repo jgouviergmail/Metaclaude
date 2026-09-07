@@ -30,6 +30,7 @@ import { Tooltip } from '@/components/ui/primitives';
 import { ConnectionBadge } from './ConnectionBadge';
 import { NotificationBell } from './NotificationBell';
 import { UserMenu } from './UserMenu';
+import { routes, WORKSPACE_PREFIX } from '@metaclaude/shared';
 
 interface NavEntry {
   to: string;
@@ -71,19 +72,19 @@ function isCurrent(entry: NavEntry, pathname: string): boolean {
  * in the same order. Nothing is one tap further away than anything else.
  */
 const NAV: NavEntry[] = [
-  { to: '/', label: 'Dashboard', icon: <LayoutDashboard /> },
+  { to: routes.dashboard(), label: 'Dashboard', icon: <LayoutDashboard /> },
   {
-    to: '/workspaces',
+    to: routes.workspaces(),
     label: 'Workspaces',
     icon: <FolderGit2 />,
-    matches: (path) => path === '/workspaces' || path.startsWith('/w/'),
+    matches: (path) => path === routes.workspaces() || path.startsWith(WORKSPACE_PREFIX),
   },
-  { to: '/board', label: 'Board', icon: <SquareKanban /> },
-  { to: '/memory', label: 'Memory', icon: <Brain /> },
+  { to: routes.board(), label: 'Board', icon: <SquareKanban /> },
+  { to: routes.memory(), label: 'Memory', icon: <Brain /> },
   {
     // Points at Settings, which is where an operator most often means to go;
     // the section's own strip carries the other five.
-    to: '/settings',
+    to: routes.settings(),
     label: 'System',
     icon: <Settings />,
     matches: isSystemPath,
@@ -280,9 +281,27 @@ export function ContentHeader({
         {showSidebarToggle ? <SidebarToggle /> : null}
         {icon ? <span className="shrink-0 [&>svg]:size-4">{icon}</span> : null}
 
+        {/*
+          * The title keeps at least a third of the row.
+          *
+          * `flex-1` gives it the leftovers, and on a phone there were none: a
+          * workspace header carries a New-session button, a settings menu and
+          * the three-icon status cluster, so the name was truncated to a single
+          * letter — `M` over `C`. Nothing was clipped or covered, so no guard
+          * could see it; `truncate` was doing exactly what it is for.
+          *
+          * Only the subtitle changes here. Giving the title a guaranteed share
+          * — `basis-1/3`, or letting the actions shrink — was tried and made
+          * things worse: the actions then overlapped the phone status cluster
+          * and the bench could not click the bell. The crowding is real and
+          * unfixed; it belongs to the final pass, with a measurement rather
+          * than a guess.
+          */}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-heading text-ink">{title}</h1>
-          {subtitle ? <p className="truncate text-caption text-muted">{subtitle}</p> : null}
+          {subtitle ? (
+            <p className="hidden truncate text-caption text-muted sm:block">{subtitle}</p>
+          ) : null}
         </div>
 
         {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}

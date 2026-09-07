@@ -33,6 +33,7 @@ import type {
 } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import type { Vault } from '../security/vault.js';
+import { routes } from '@metaclaude/shared';
 
 /** Vault slots. Global: the identity is the deployment's. */
 const VAPID_PUBLIC_KEY = 'push.vapid_public';
@@ -311,7 +312,7 @@ export function buildPushEventHandlers(deps: PushEventDeps): {
           body: clip(
             `${workspace?.name ?? 'A workspace'} · ${request.toolName} (${request.risk} risk) — ${request.summary}`,
           ),
-          url: `/w/${request.workspaceId}/s/${request.sessionId}`,
+          url: routes.session(request.workspaceId, request.sessionId),
           tag: `approval-${request.id}`,
         },
         // An approval expires after ten minutes; a push delivered later
@@ -345,7 +346,7 @@ export function buildPushEventHandlers(deps: PushEventDeps): {
               run.error ? ` — ${run.error}` : ''
             }`,
           ),
-          url: `/w/${run.workspaceId}/s/${run.sessionId}`,
+          url: routes.session(run.workspaceId, run.sessionId),
           tag: `run-${run.id}`,
         },
         { ttlSeconds: 3600, urgency: run.status === 'failed' ? 'high' : 'normal' },

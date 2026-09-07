@@ -25,6 +25,7 @@ import type { EventBus } from '../kernel/bus.js';
 import type { Kernel } from '../kernel/kernel.js';
 import type { SessionRepo, WorkspaceRepo } from '../kernel/repositories.js';
 import { isValidCron, nextFireTime, parseCron } from './cron.js';
+import { routes } from '@metaclaude/shared';
 
 export class SchedulerError extends Error {
   constructor(
@@ -515,7 +516,7 @@ export class Scheduler {
         level: 'error',
         title: 'Automation disabled',
         message: `"${row.name}" failed ${consecutive} times in a row and was switched off.`,
-        href: `/automations`,
+        href: routes.automations(),
       });
     }
     this.publish(this.get(row.id) as Automation);

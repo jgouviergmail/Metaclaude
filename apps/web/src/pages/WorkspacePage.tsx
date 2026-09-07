@@ -41,6 +41,7 @@ import { api, ApiError } from '@/lib/api';
 import { usePlural, useT } from '@/lib/i18n';
 import { useUiStore } from '@/lib/store';
 import { formatRelative } from '@/lib/utils';
+import { routes } from '@metaclaude/shared';
 
 export function WorkspacePage() {
   const plural = usePlural();
@@ -67,7 +68,7 @@ export function WorkspacePage() {
     mutationFn: () => api.createSession({ workspaceId }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
-      navigate(`/w/${workspaceId}/s/${result.session.id}`);
+      navigate(routes.session(workspaceId, result.session.id));
     },
     onError: () => toast.error(t('Could not start a session.')),
   });
@@ -88,7 +89,7 @@ export function WorkspacePage() {
       void queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] });
       void queryClient.invalidateQueries({ queryKey: ['claude-cli-sessions', workspaceId] });
       setShowCliSessions(false);
-      navigate(`/w/${workspaceId}/s/${result.session.id}`);
+      navigate(routes.session(workspaceId, result.session.id));
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('Could not adopt that session.')),
@@ -129,7 +130,7 @@ export function WorkspacePage() {
       <AppShell>
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
           <p className="text-body text-muted">{t('That workspace could not be loaded.')}</p>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces')}>{t(
+          <Button variant="secondary" size="sm" onClick={() => navigate(routes.workspaces())}>{t(
             'All workspaces',
           )}</Button>
         </div>
@@ -180,7 +181,7 @@ export function WorkspacePage() {
 
       <Page width="standard">
           {workspace.description ? (
-            <p className="text-[13.5px] leading-relaxed text-muted">{workspace.description}</p>
+            <p className="text-body leading-relaxed text-muted">{workspace.description}</p>
           ) : null}
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -248,7 +249,7 @@ export function WorkspacePage() {
                       <Badge tone={entry.kind === 'modified' ? 'warning' : 'neutral'}>
                         {entry.kind === 'modified' ? 'M' : 'U'}
                       </Badge>
-                      <code className="min-w-0 truncate font-mono text-[12px] text-muted">
+                      <code className="min-w-0 truncate font-mono text-caption text-muted">
                         {entry.path}
                       </code>
                     </li>
@@ -263,7 +264,7 @@ export function WorkspacePage() {
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setShowCliSessions(true)}>
                   <TerminalSquare className="size-4" aria-hidden />{t('From the CLI')}</Button>
-                <span className="text-[12px] text-subtle">{sessions.length}</span>
+                <span className="text-caption text-subtle">{sessions.length}</span>
               </div>
             </div>
 
@@ -278,14 +279,14 @@ export function WorkspacePage() {
                 {sessions.map((session) => (
                   <li key={session.id}>
                     <Link
-                      to={`/w/${workspaceId}/s/${session.id}`}
+                      to={routes.session(workspaceId, session.id)}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-raised"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13.5px] font-medium text-ink">
+                        <p className="truncate text-body font-medium text-ink">
                           {session.title || t('New session')}
                         </p>
-                        <p className="text-[11.5px] text-subtle">
+                        <p className="text-caption text-subtle">
                           {plural(session.runCount, '{n} run', '{n} runs')} ·{' '}
                           {formatRelative(session.lastActivityAt)}
                         </p>
@@ -327,7 +328,7 @@ export function WorkspacePage() {
             <Spinner className="size-5" />
           </div>
         ) : cliSessions.isError ? (
-          <p className="py-4 text-[13px] text-muted">{t(
+          <p className="py-4 text-body text-muted">{t(
             "The CLI's session store could not be read.",
           )}</p>
         ) : (
@@ -337,7 +338,7 @@ export function WorkspacePage() {
             onAdopt={(claudeSessionId) => adoptSession.mutate(claudeSessionId)}
             onOpen={(sessionId) => {
               setShowCliSessions(false);
-              navigate(`/w/${workspaceId}/s/${sessionId}`);
+              navigate(routes.session(workspaceId, sessionId));
             }}
           />
         )}
@@ -504,7 +505,7 @@ function WorkspaceSettingsModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+            <span className="mb-1.5 block text-body font-medium text-ink">{t(
               'Default model',
             )}</span>
             <Menu
@@ -528,7 +529,7 @@ function WorkspaceSettingsModal({
           </div>
 
           <div>
-            <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+            <span className="mb-1.5 block text-body font-medium text-ink">{t(
               'Default effort',
             )}</span>
             <Menu
@@ -555,7 +556,7 @@ function WorkspaceSettingsModal({
         {locked ? (
           <p
             role="note"
-            className="rounded-lg border border-line bg-accent-soft px-3 py-2 text-[12px] leading-relaxed text-ink"
+            className="rounded-lg border border-line bg-accent-soft px-3 py-2 text-caption leading-relaxed text-ink"
           >
             {t(
               'This is Metaclaude’s own workspace. Its tool lists are fixed: it uses its own tools and never gets a shell. The permission mode is yours — under "Don’t ask" it acts on its pre-approved tools without waiting for you; Bypass is never offered here.',
@@ -564,7 +565,7 @@ function WorkspaceSettingsModal({
         ) : null}
 
         <div>
-          <span className="mb-1.5 block text-[13px] font-medium text-ink">{t(
+          <span className="mb-1.5 block text-body font-medium text-ink">{t(
             'Default permission mode',
           )}</span>
           <Menu
@@ -596,8 +597,8 @@ function WorkspaceSettingsModal({
         </div>
 
         <fieldset className="space-y-3">
-          <legend className="text-[13px] font-semibold text-ink">{t('Pre-approved tools')}</legend>
-          <p className="text-[12px] leading-relaxed text-muted">
+          <legend className="text-body font-semibold text-ink">{t('Pre-approved tools')}</legend>
+          <p className="text-caption leading-relaxed text-muted">
             {t(
               'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright.',
             )}
@@ -631,7 +632,7 @@ function WorkspaceSettingsModal({
         <MenuSeparator />
 
         <fieldset className="space-y-3">
-          <legend className="text-[13px] font-semibold text-ink">{t('Learning')}</legend>
+          <legend className="text-body font-semibold text-ink">{t('Learning')}</legend>
 
           <CheckboxField
             checked={draft.memoryEnabled}
@@ -672,7 +673,7 @@ function WorkspaceSettingsModal({
         <MenuSeparator />
 
         <fieldset className="space-y-3">
-          <legend className="text-[13px] font-semibold text-ink">{t('Autonomy')}</legend>
+          <legend className="text-body font-semibold text-ink">{t('Autonomy')}</legend>
 
           <CheckboxField
             checked={draft.autoWorkBoard}
@@ -696,7 +697,7 @@ function WorkspaceSettingsModal({
         <MenuSeparator />
 
         <fieldset className="space-y-3">
-          <legend className="text-[13px] font-semibold text-ink">claude.ai</legend>
+          <legend className="text-body font-semibold text-ink">claude.ai</legend>
 
           <CheckboxField
             checked={draft.mirrorSessions}
@@ -711,10 +712,10 @@ function WorkspaceSettingsModal({
         <MenuSeparator />
 
         <fieldset className="space-y-2">
-          <legend className="text-[13px] font-semibold text-ink">{t(
+          <legend className="text-body font-semibold text-ink">{t(
             'Marketplace plugins',
           )}</legend>
-          <p className="text-[12px] text-muted">
+          <p className="text-caption text-muted">
             {t(
               'Plugins the CLI installs from the marketplaces added under Plugins. Enabled ones load into every run of this workspace.',
             )}
@@ -763,7 +764,7 @@ function WorkspaceSettingsModal({
         </div>
 
         <div>
-          <p className="text-[13px] font-medium text-ink">{t('Answer language')}</p>
+          <p className="text-body font-medium text-ink">{t('Answer language')}</p>
           <p className="mb-1.5 text-caption leading-relaxed text-muted">
             {t(
               'Subagents carry English prompts, so delegated work comes back in English however you wrote the request. Pinning a language settles the whole run, delegations included. Code and command output are never translated.',
@@ -801,7 +802,7 @@ function WorkspaceSettingsModal({
             value={draft.systemPromptAppend}
             onChange={(event) => update('systemPromptAppend', event.target.value)}
             rows={5}
-            className="mt-1.5 font-mono text-[12.5px]"
+            className="mt-1.5 font-mono text-caption"
           />
         </Label>
       </div>

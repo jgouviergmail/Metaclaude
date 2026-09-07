@@ -33,6 +33,7 @@ import { api, ApiError } from '@/lib/api';
 import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn, formatRelative } from '@/lib/utils';
 import { usePlural, useT, type TranslateFn } from '@/lib/i18n';
+import { routes } from '@metaclaude/shared';
 
 export function SessionList({
   workspaceId,
@@ -90,7 +91,7 @@ export function SessionList({
       toast.success(t('Session archived'));
       // Archiving drops the session out of the list; staying on it would leave
       // the transcript pointing at something the sidebar no longer offers.
-      if (id === activeSessionId) navigate(`/w/${workspaceId}`);
+      if (id === activeSessionId) navigate(routes.workspace(workspaceId));
     },
     onError: (error) => fail(error, t('Could not archive the session.')),
   });
@@ -119,7 +120,7 @@ export function SessionList({
     onSuccess: (_data, id) => {
       invalidate();
       toast.success(t('Session deleted'));
-      if (id === activeSessionId) navigate(`/w/${workspaceId}`, { replace: true });
+      if (id === activeSessionId) navigate(routes.workspace(workspaceId), { replace: true });
     },
     onError: (error) => fail(error, t('Could not delete the session.')),
   });
@@ -134,10 +135,10 @@ export function SessionList({
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-2 border-b border-line px-3 py-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-subtle">{t(
+          <h2 className="text-caption font-semibold uppercase tracking-wide text-subtle">{t(
             'Sessions',
           )}</h2>
-          <span className="text-[11px] tabular-nums text-subtle">{sessions.length}</span>
+          <span className="text-caption tabular-nums text-subtle">{sessions.length}</span>
 
           <Button
             variant="ghost"
@@ -164,7 +165,7 @@ export function SessionList({
               onChange={(event) => setFilter(event.target.value)}
               placeholder={t('Filter sessions')}
               aria-label={t('Filter sessions')}
-              className="h-8 pl-8 text-[13px]"
+              className="h-8 pl-8 text-body"
             />
           </div>
         ) : null}
@@ -185,7 +186,7 @@ export function SessionList({
             className="py-10"
           />
         ) : visible.length === 0 ? (
-          <p className="px-3 py-8 text-center text-[13px] text-muted">
+          <p className="px-3 py-8 text-center text-body text-muted">
             {t('No session matches “{filter}”.', { filter: filter.trim() })}
           </p>
         ) : (
@@ -215,17 +216,17 @@ export function SessionList({
             onToggle={(event) => setShowArchived((event.target as HTMLDetailsElement).open)}
             className="rounded-lg bg-sunken/40 px-2.5 py-2"
           >
-            <summary className="cursor-pointer text-[11.5px] font-medium text-muted">
+            <summary className="cursor-pointer text-caption font-medium text-muted">
               {plural(archivedCount, 'Archived session ({n})', 'Archived sessions ({n})')}
             </summary>
             {archivedQuery.isLoading ? (
-              <p className="mt-2 text-[11.5px] text-subtle">{t('Loading')}</p>
+              <p className="mt-2 text-caption text-subtle">{t('Loading')}</p>
             ) : (
               <ul className="mt-2 space-y-1">
                 {(archivedQuery.data?.sessions ?? []).map((archivedSession) => (
                   <li key={archivedSession.id} className="flex items-center gap-1">
                     <Link
-                      to={`/w/${workspaceId}/s/${archivedSession.id}`}
+                      to={routes.session(workspaceId, archivedSession.id)}
                       className={cn(
                         'min-w-0 flex-1 truncate rounded px-1 py-1 text-caption text-muted hover:text-ink',
                         TOUCH_TARGET_Y,
@@ -407,7 +408,7 @@ function SessionRow({
       }}
     >
       <Link
-        to={`/w/${workspaceId}/s/${session.id}`}
+        to={routes.session(workspaceId, session.id)}
         aria-current={active ? 'page' : undefined}
         className={cn(
           'block rounded-lg py-2 pl-2.5 pr-9 transition-colors',
@@ -421,7 +422,7 @@ function SessionRow({
           <StatusDot status={session.status} />
           <span
             className={cn(
-              'min-w-0 flex-1 truncate text-[13px] leading-tight',
+              'min-w-0 flex-1 truncate text-body leading-tight',
               active ? 'font-medium text-ink' : unread ? 'font-medium text-ink' : 'text-muted group-hover:text-ink',
             )}
           >
@@ -439,7 +440,7 @@ function SessionRow({
           ) : null}
         </div>
 
-        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-subtle">
+        <div className="mt-1 flex items-center gap-1.5 text-caption text-subtle">
           <span>{formatRelative(session.lastActivityAt)}</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">

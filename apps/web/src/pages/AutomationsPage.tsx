@@ -53,6 +53,7 @@ import { api, ApiError } from '@/lib/api';
 import { TOUCH_TARGET } from '@/components/ui/touch-target';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
+import { routes } from '@metaclaude/shared';
 
 /** Ready-made schedules, so nobody has to remember cron syntax to get started. */
 /**
@@ -200,7 +201,7 @@ export function AutomationsPage() {
                   </Button>
                 ) : (
                   <Link
-                    to="/workspaces"
+                    to={routes.workspaces()}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-raised px-3 text-body font-medium text-ink hover:bg-line"
                   >
                     {t('Go to workspaces')}
@@ -294,7 +295,7 @@ export function AutomationsPage() {
                       ) : null}
                       {automation.sessionId ? (
                         <Link
-                          to={`/w/${automation.workspaceId}/s/${automation.sessionId}`}
+                          to={routes.session(automation.workspaceId, automation.sessionId)}
                           className={QUIET_LINK}
                         >
                           {t('Open session')}

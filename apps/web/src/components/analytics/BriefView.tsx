@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/primitives';
 import { TOUCH_TARGET_TEXT } from '@/components/ui/touch-target';
 import { cn, formatRelative, formatTokens } from '@/lib/utils';
 import { usePlural, useT, type PluralFn, type TranslateFn } from '@/lib/i18n';
+import { routes } from '@metaclaude/shared';
 
 /**
  * The board line's fragments, in the order the operator triages them.
@@ -127,7 +128,7 @@ export function BriefView({ brief }: { brief: Brief }) {
 
       {brief.board && boardParts(brief.board, t, plural).length > 0 ? (
         <Link
-          to="/board"
+          to={routes.board()}
           className={cn(
             'group flex items-center gap-2 text-caption text-muted hover:text-ink',
             // A line of text, not a box: its height is the line's, and the
@@ -150,7 +151,7 @@ export function BriefView({ brief }: { brief: Brief }) {
           {brief.failures.map((failure) => (
             <li key={failure.runId}>
               <Link
-                to={`/w/${failure.workspaceId}/s/${failure.sessionId}`}
+                to={routes.session(failure.workspaceId, failure.sessionId)}
                 className="group flex items-center gap-3 py-2"
               >
                 <Badge tone="danger" className="shrink-0">

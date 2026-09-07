@@ -44,8 +44,8 @@ export function CliSessionList({
       {sessions.map((session) => (
         <li key={session.sessionId} className="flex items-center gap-3 py-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13.5px] font-medium text-ink">{session.summary}</p>
-            <p className="flex items-center gap-2 text-[11.5px] text-subtle">
+            <p className="truncate text-body font-medium text-ink">{session.summary}</p>
+            <p className="flex items-center gap-2 text-caption text-subtle">
               <span>{formatRelative(session.lastModified)}</span>
               {session.gitBranch ? (
                 <span className="inline-flex items-center gap-1">
@@ -55,7 +55,7 @@ export function CliSessionList({
               ) : null}
             </p>
             {session.firstPrompt ? (
-              <p className="mt-0.5 truncate text-[12px] text-muted">{session.firstPrompt}</p>
+              <p className="mt-0.5 truncate text-caption text-muted">{session.firstPrompt}</p>
             ) : null}
           </div>
           {session.adoptedBy ? (

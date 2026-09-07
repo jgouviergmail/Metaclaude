@@ -27,6 +27,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useT } from '@/lib/i18n';
 import { api } from '@/lib/api';
 import { cn, formatRelative } from '@/lib/utils';
+import { routes } from '@metaclaude/shared';
 
 interface Action {
   id: string;
@@ -76,30 +77,30 @@ export function CommandPalette() {
   const actions: Action[] = [
     { id: 'nav-dashboard', label: 'Dashboard', icon: <LayoutDashboard />, group: t(
       'Go to',
-    ), run: go('/') },
+    ), run: go(routes.dashboard()) },
     { id: 'nav-workspaces', label: 'Workspaces', icon: <FolderGit2 />, group: t(
       'Go to',
-    ), run: go('/workspaces') },
+    ), run: go(routes.workspaces()) },
     { id: 'nav-board', label: 'Board', icon: <SquareKanban />, group: t(
       'Go to',
-    ), run: go('/board') },
-    { id: 'nav-memory', label: 'Memory', icon: <Brain />, group: t('Go to'), run: go('/memory') },
+    ), run: go(routes.board()) },
+    { id: 'nav-memory', label: 'Memory', icon: <Brain />, group: t('Go to'), run: go(routes.memory()) },
     { id: 'nav-automations', label: 'Automations', icon: <Timer />, group: t(
       'Go to',
-    ), run: go('/automations') },
+    ), run: go(routes.automations()) },
     { id: 'nav-agents', label: 'Agents & skills', icon: <Bot />, group: t(
       'Go to',
-    ), run: go('/agents') },
+    ), run: go(routes.agents()) },
     { id: 'nav-analytics', label: 'Analytics', icon: <Activity />, group: t(
       'Go to',
-    ), run: go('/analytics') },
+    ), run: go(routes.analytics()) },
     { id: 'nav-plugins', label: 'Plugins', icon: <Blocks />, group: t(
       'Go to',
-    ), run: go('/plugins') },
-    { id: 'nav-help', label: 'Help', icon: <CircleHelp />, group: t('Go to'), run: go('/help') },
+    ), run: go(routes.plugins()) },
+    { id: 'nav-help', label: 'Help', icon: <CircleHelp />, group: t('Go to'), run: go(routes.help()) },
     { id: 'nav-settings', label: 'Settings', icon: <Settings />, group: t(
       'Go to',
-    ), run: go('/settings') },
+    ), run: go(routes.settings()) },
     {
       id: 'new-workspace',
       label: t('New workspace'),
@@ -123,7 +124,7 @@ export function CommandPalette() {
         />
       ),
       group: 'Workspaces',
-      run: go(`/w/${workspace.id}`),
+      run: go(routes.workspace(workspace.id)),
     });
   }
 
@@ -136,7 +137,7 @@ export function CommandPalette() {
       hint: `${run.status} · ${formatRelative(run.startedAt)}`,
       icon: <MessageSquare />,
       group: t('Recent sessions'),
-      run: go(`/w/${run.workspaceId}/s/${run.sessionId}`),
+      run: go(routes.session(run.workspaceId, run.sessionId)),
     });
   }
 

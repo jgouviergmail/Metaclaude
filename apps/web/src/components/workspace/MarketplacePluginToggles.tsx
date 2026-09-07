@@ -28,7 +28,7 @@ export function MarketplacePluginToggles({
 
   if (available.length === 0 && orphans.length === 0) {
     return (
-      <p className="text-[12px] text-muted">
+      <p className="text-caption text-muted">
         {t('No marketplace offers plugins yet — add one under Plugins.')}
       </p>
     );
@@ -37,7 +37,7 @@ export function MarketplacePluginToggles({
   const row = (key: string, on: boolean, detail: ReactNode): ReactNode => (
     <li key={key} className="flex items-center gap-3 py-1.5">
       <div className="min-w-0 flex-1">
-        <code className="font-mono text-[12.5px] text-ink">{key}</code>
+        <code className="font-mono text-caption text-ink">{key}</code>
         {detail}
       </div>
       <Switch
@@ -55,7 +55,7 @@ export function MarketplacePluginToggles({
           plugin.key,
           enabled[plugin.key] === true,
           plugin.description ? (
-            <p className="truncate text-[11.5px] text-muted">{plugin.description}</p>
+            <p className="truncate text-caption text-muted">{plugin.description}</p>
           ) : null,
         ),
       )}
@@ -63,7 +63,7 @@ export function MarketplacePluginToggles({
         row(
           key,
           true,
-          <p className="text-[11.5px] text-warning">
+          <p className="text-caption text-warning">
             <Badge tone="warning" className="mr-1.5">
               {t('source missing')}
             </Badge>

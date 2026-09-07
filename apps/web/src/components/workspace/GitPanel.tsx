@@ -123,14 +123,14 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
       ) : null}
 
       {data && data.ahead > 0 ? (
-        <span className="flex items-center gap-0.5 text-[11px] tabular-nums text-muted">
+        <span className="flex items-center gap-0.5 text-caption tabular-nums text-muted">
           <ArrowUp className="size-3" aria-hidden />
           <span aria-label={`${data.ahead} commits ahead`}>{data.ahead}</span>
         </span>
       ) : null}
 
       {data && data.behind > 0 ? (
-        <span className="flex items-center gap-0.5 text-[11px] tabular-nums text-muted">
+        <span className="flex items-center gap-0.5 text-caption tabular-nums text-muted">
           <ArrowDown className="size-3" aria-hidden />
           <span aria-label={`${data.behind} commits behind`}>{data.behind}</span>
         </span>
@@ -211,10 +211,10 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
           placeholder={t('Commit message')}
           aria-label={t('Commit message')}
           rows={2}
-          className="text-[13px]"
+          className="text-body"
         />
         <div className="flex items-center gap-2">
-          <span className="text-[11px] tabular-nums text-subtle">
+          <span className="text-caption tabular-nums text-subtle">
             {data.staged.length} {t('staged')}
           </span>
           <Button
@@ -268,10 +268,10 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
                   )}
                   aria-hidden
                 />
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
+                <span className="text-caption font-semibold uppercase tracking-wide text-subtle">
                   {t(section.label)}
                 </span>
-                <span className="text-[11px] tabular-nums text-subtle">{paths.length}</span>
+                <span className="text-caption tabular-nums text-subtle">{paths.length}</span>
               </button>
 
               {open ? (
@@ -307,7 +307,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
                 <Spinner />
               </div>
             ) : diff.isError ? (
-              <p className="px-1 py-4 text-center text-[12.5px] text-danger">
+              <p className="px-1 py-4 text-center text-caption text-danger">
                 {diff.error instanceof ApiError
                   ? diff.error.message
                   : t('That diff could not be loaded.')}
@@ -315,7 +315,7 @@ export function GitPanel({ workspaceId, onClose }: { workspaceId: string; onClos
             ) : diff.data.diff.trim() === '' ? (
               // `git diff` says nothing about a path it has never seen, which is
               // exactly the case for every untracked file.
-              <p className="px-1 py-4 text-center text-[12.5px] text-muted">
+              <p className="px-1 py-4 text-center text-caption text-muted">
                 {t(
                   'No diff to show — an untracked file has no previous version to compare against.',
                 )}
@@ -366,9 +366,9 @@ function FileRow({
           selected ? 'bg-accent-soft' : 'hover:bg-raised',
         )}
       >
-        <span className="truncate font-mono text-[12px] text-ink">{name}</span>
+        <span className="truncate font-mono text-caption text-ink">{name}</span>
         {directory ? (
-          <span className="min-w-0 shrink truncate font-mono text-[11px] text-subtle">
+          <span className="min-w-0 shrink truncate font-mono text-caption text-subtle">
             {directory.replace(/\/$/, '')}
           </span>
         ) : null}
@@ -403,7 +403,7 @@ function RecentCommits({
   const t = useT();
   return (
     <section className="p-2">
-      <h3 className="px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-subtle">
+      <h3 className="px-1.5 py-1 text-caption font-semibold uppercase tracking-wide text-subtle">
         {t('Recent commits')}
       </h3>
 
@@ -412,18 +412,18 @@ function RecentCommits({
           <Spinner />
         </div>
       ) : commits.length === 0 ? (
-        <p className="px-1.5 py-3 text-[12.5px] text-muted">{t('No commits yet.')}</p>
+        <p className="px-1.5 py-3 text-caption text-muted">{t('No commits yet.')}</p>
       ) : (
         <ul className="space-y-0.5">
           {commits.map((entry) => (
             <li key={entry.hash} className="rounded-md px-1.5 py-1.5 hover:bg-raised">
               <div className="flex items-baseline gap-2">
-                <code className="shrink-0 font-mono text-[11px] text-accent">
+                <code className="shrink-0 font-mono text-caption text-accent">
                   {entry.hash.slice(0, 7)}
                 </code>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12.5px] text-ink">{entry.subject}</p>
-                  <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-subtle">
+                  <p className="truncate text-caption text-ink">{entry.subject}</p>
+                  <p className="mt-0.5 flex items-center gap-1.5 text-caption text-subtle">
                     <span className="truncate">{entry.author}</span>
                     <span aria-hidden>·</span>
                     <span className="shrink-0">{formatRelative(entry.date)}</span>
@@ -483,8 +483,8 @@ function ConnectRepository({
       </div>
 
       <div className="space-y-1">
-        <h3 className="text-[15px] font-semibold text-ink">{t('No repository yet')}</h3>
-        <p className="max-w-sm text-[13px] text-muted">
+        <h3 className="text-title font-semibold text-ink">{t('No repository yet')}</h3>
+        <p className="max-w-sm text-body text-muted">
           {t('Clone one into this workspace, or start tracking the files that are already here.')}
         </p>
       </div>
@@ -504,7 +504,7 @@ function ConnectRepository({
             if (event.key === 'Enter' && url.trim()) connect.mutate(url.trim());
           }}
         />
-        <p className="text-[12px] text-subtle">
+        <p className="text-caption text-subtle">
           {t('https or ssh. A private repository needs its credentials already on the server.')}
         </p>
       </div>

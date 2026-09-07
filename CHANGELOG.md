@@ -11,6 +11,29 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.61.0] — 2026-09-07
+
+### Changed
+
+- **Every path in the interface comes from one contract.** The web app owns the
+  router and the API sends people into it — a push notification points at a
+  session, Google's consent returns to a settings tab, an insight links a
+  workspace's memories — and those strings were written by hand on both sides,
+  in files that never meet. A rename in the router would have left the
+  notifications on the 404 screen, silently, on a phone.
+  `packages/shared/src/routes.ts` is now the one place, both apps build from
+  it, and a ratchet refuses a path written by hand. No URL changed: an operator
+  has bookmarks and a notification sent last week still has to open the right
+  session, so every string that ships is pinned by a test.
+- Ids are encoded into a path rather than pasted into it. Nothing changes today
+  — ids come from a safe alphabet — which is when to do it: an unencoded
+  segment is a way out of the path it belongs to.
+- Seventy-six literal text sizes across the workspaces screens and their panels
+  become scale roles.
+- The design bench visits `/workspaces` and a workspace, which it never did —
+  the two screens this release changes most.
+- A workspace's path is hidden on a phone rather than truncated to `C`.
+
 ## [0.60.1] — 2026-09-06
 
 ### Fixed

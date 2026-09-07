@@ -11,6 +11,7 @@ import { socket } from '@/lib/socket';
 import { useAuthStore, useUiStore, type ThemeMode } from '@/lib/store';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { initials } from '@/lib/utils';
+import { routes } from '@metaclaude/shared';
 
 const THEMES: Array<{ value: ThemeMode; label: string; icon: React.ReactNode }> = [
   { value: 'light', label: 'Light', icon: <Sun /> },
@@ -33,7 +34,7 @@ export function UserMenu() {
     }
     socket.dispose();
     setUser(null);
-    navigate('/login', { replace: true });
+    navigate(routes.login(), { replace: true });
     toast.success(t('Signed out'));
   };
 
@@ -94,7 +95,7 @@ export function UserMenu() {
       </MenuItem>
 
       <MenuSeparator />
-      <MenuItem icon={<Settings />} onSelect={() => navigate('/settings')}>
+      <MenuItem icon={<Settings />} onSelect={() => navigate(routes.settings())}>
         {t('Settings')}
       </MenuItem>
       <MenuItem icon={<LogOut />} tone="danger" onSelect={() => void signOut()}>

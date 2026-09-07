@@ -24,6 +24,7 @@ import {
 } from '@/lib/store';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { LoginPage } from '@/pages/LoginPage';
+import { routePattern, routes } from '@metaclaude/shared';
 
 // Login and the dashboard stay eager: one is the first screen an anonymous
 // visitor sees, the other is where every authenticated load lands, and making
@@ -63,7 +64,7 @@ export function App() {
     setUnauthenticatedHandler(() => {
       setUser(null);
       socket.dispose();
-      navigate('/login', { replace: true });
+      navigate(routes.login(), { replace: true });
     });
 
     // `quiet` so the probe itself does not trigger the redirect above — an
@@ -146,7 +147,7 @@ export function App() {
               // after it. See the note in `lib/i18n.tsx`.
               title: APPROVAL_NEEDED,
               message: frame.request.summary,
-              href: `/w/${frame.request.workspaceId}/s/${frame.request.sessionId}`,
+              href: routes.session(frame.request.workspaceId, frame.request.sessionId),
             });
             // The app-icon badge counts from the server's list, not the
             // session store — refresh it the moment the count changed.
@@ -214,8 +215,8 @@ export function App() {
   if (status === 'anonymous') {
     return (
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path={routes.login()} element={<LoginPage />} />
+        <Route path="*" element={<Navigate to={routes.login()} replace />} />
       </Routes>
     );
   }
@@ -234,20 +235,20 @@ export function App() {
         }
       >
         <Routes>
-          <Route path="/login" element={<Navigate to="/" replace />} />
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/workspaces" element={<WorkspacesPage />} />
-          <Route path="/w/:workspaceId" element={<WorkspacePage />} />
-          <Route path="/w/:workspaceId/s/:sessionId" element={<SessionPage />} />
-          <Route path="/board" element={<BoardPage />} />
-          <Route path="/memory" element={<MemoryPage />} />
-          <Route path="/automations" element={<AutomationsPage />} />
-          <Route path="/agents" element={<AgentsPage />} />
-          <Route path="/plugins" element={<PluginsPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/help" element={<HelpPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path={routes.login()} element={<Navigate to={routes.dashboard()} replace />} />
+          <Route path={routes.dashboard()} element={<DashboardPage />} />
+          <Route path={routes.workspaces()} element={<WorkspacesPage />} />
+          <Route path={routePattern.workspace} element={<WorkspacePage />} />
+          <Route path={routePattern.session} element={<SessionPage />} />
+          <Route path={routes.board()} element={<BoardPage />} />
+          <Route path={routes.memory()} element={<MemoryPage />} />
+          <Route path={routes.automations()} element={<AutomationsPage />} />
+          <Route path={routes.agents()} element={<AgentsPage />} />
+          <Route path={routes.plugins()} element={<PluginsPage />} />
+          <Route path={routes.analytics()} element={<AnalyticsPage />} />
+          <Route path={routes.help()} element={<HelpPage />} />
+          <Route path={routes.settings()} element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to={routes.dashboard()} replace />} />
         </Routes>
       </Suspense>
     </>

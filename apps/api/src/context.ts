@@ -95,6 +95,7 @@ import { Steward } from './services/steward.js';
 import { seedSystemAutomation } from './services/system-automation.js';
 import { readGenerated, SYSTEM_WORKSPACE_SAFETY, SystemWorkspace } from './services/system-workspace.js';
 import { relocateWorkspaces, WorkspaceService } from './services/workspaces.js';
+import { routes } from '@metaclaude/shared';
 
 export interface AppContext {
   config: Config;
@@ -339,7 +340,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
         .notify({
           title: 'Retrieval is lexical-only',
           body: `The embedding model ${id} did not load: ${reason}. Memory and knowledge search match words until it does.`,
-          url: '/settings',
+          url: routes.settings(),
           tag: 'embeddings-fallback',
         })
         .catch((error: unknown) => log.warn({ err: error }, 'could not notify the embeddings fallback'));

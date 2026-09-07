@@ -68,7 +68,7 @@ export function NotePreview({
 
       {me && (incoming.length > 0 || outgoing.length > 0) ? (
         <section className="border-t border-line px-4 py-3 sm:px-6" aria-label={t('Local graph')}>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t(
+          <h3 className="text-caption font-semibold uppercase tracking-wide text-subtle">{t(
             'Graph',
           )}</h3>
           <LocalGraph note={me} incoming={incoming} outgoing={outgoing} onOpenNote={onOpenNote} />
@@ -76,7 +76,7 @@ export function NotePreview({
       ) : null}
 
       <section className="border-t border-line px-4 py-3 sm:px-6" aria-label={t('Backlinks')}>
-        <h3 className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-subtle">
+        <h3 className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-subtle">
           <Link2 className="size-3.5" aria-hidden />
           {t('Backlinks')}
           {backlinks.data ? <span>({backlinks.data.backlinks.length})</span> : null}
@@ -90,9 +90,9 @@ export function NotePreview({
                   onClick={() => onOpenNote(entry.path)}
                   className="block w-full rounded-lg border border-line px-3 py-2 text-left transition-colors hover:border-accent"
                 >
-                  <span className="block text-[13px] font-medium text-ink">{entry.title}</span>
+                  <span className="block text-body font-medium text-ink">{entry.title}</span>
                   {entry.context ? (
-                    <span className="mt-0.5 block truncate text-[12px] text-muted">
+                    <span className="mt-0.5 block truncate text-caption text-muted">
                       {entry.context}
                     </span>
                   ) : null}
@@ -101,10 +101,10 @@ export function NotePreview({
             ))}
           </ul>
         ) : (
-          <p className="mt-1.5 text-[12.5px] text-muted">{t('Nothing links here yet.')}</p>
+          <p className="mt-1.5 text-caption text-muted">{t('Nothing links here yet.')}</p>
         )}
         {me && me.unresolved.length > 0 ? (
-          <p className="mt-3 flex items-start gap-1.5 text-[12px] text-muted">
+          <p className="mt-3 flex items-start gap-1.5 text-caption text-muted">
             <Unlink className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
               {t('Links to notes that do not exist yet:')}{' '}
@@ -191,7 +191,7 @@ function LocalGraph({
         x={NODE_W / 2}
         y={NODE_H / 2 + 4}
         textAnchor="middle"
-        className={cn('text-[11px]', tone === 'center' ? 'font-medium' : '')}
+        className={cn('text-caption', tone === 'center' ? 'font-medium' : '')}
         fill={tone === 'center' ? 'var(--mc-accent)' : 'var(--mc-text)'}
       >
         {truncate(entry.title)}
@@ -229,7 +229,7 @@ function LocalGraph({
         {right.map((entry, index) => node(entry, NODE_W * 2 + GAP * 2, rowY(index, right.length), 'side'))}
       </svg>
       {incoming.length > MAX_SIDE || outgoing.length > MAX_SIDE ? (
-        <p className="mt-1 text-[11.5px] text-subtle">
+        <p className="mt-1 text-caption text-subtle">
           {t('Showing {shownIn} of {totalIn} in, {shownOut} of {totalOut} out.', {
             shownIn: Math.min(incoming.length, MAX_SIDE),
             totalIn: incoming.length,

@@ -25,6 +25,7 @@ import { GoogleOAuthError } from '../integrations/google/oauth.js';
 import { syncGoogleMcpServer } from '../integrations/google/registration.js';
 import { GoogleConnectService } from '../integrations/google/service.js';
 import { RESTRICTED_GRANTS } from '../integrations/google/scopes.js';
+import { routes } from '@metaclaude/shared';
 
 const ConnectRequest = z
   .object({
@@ -64,13 +65,13 @@ function settleAt(origin: string, outcome: 'connected' | 'failed', detail?: stri
   const query = new URLSearchParams({ google: outcome });
   if (detail) query.set('reason', detail.slice(0, 300));
   try {
-    const url = new URL('/settings', origin);
+    const url = new URL(routes.settings(), origin);
     url.search = query.toString();
     return url.toString();
   } catch {
     // No usable Host header at all: a relative redirect still lands right,
     // since the browser is already standing on the deployment.
-    return `/settings?${query.toString()}`;
+    return `${routes.settings()}?${query.toString()}`;
   }
 }
 

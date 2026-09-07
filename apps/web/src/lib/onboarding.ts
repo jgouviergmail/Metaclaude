@@ -1,3 +1,4 @@
+import { routes } from '@metaclaude/shared';
 /**
  * The getting-set-up checklist, as a pure function.
  *
@@ -36,42 +37,42 @@ export function onboardingSteps(input: OnboardingInput): OnboardingStep[] {
       label: 'Pair Claude',
       detail: 'Sign in with your Pro or Max account — nothing runs without it.',
       done: input.authenticated,
-      href: '/settings',
+      href: routes.settings(),
     },
     {
       key: 'workspace',
       label: 'Create a workspace',
       detail: 'A directory plus the agent policy that applies inside it.',
       done: input.workspaces > 0,
-      href: '/workspaces',
+      href: routes.workspaces(),
     },
     {
       key: 'run',
       label: 'Run the agent once',
       detail: 'Open a session and ask for something small; watch it work.',
       done: input.hasRuns,
-      href: '/workspaces',
+      href: routes.workspaces(),
     },
     {
       key: 'totp',
       label: 'Turn on two-factor auth',
       detail: 'This server is on the network; your account should need more than a password.',
       done: input.totpEnabled,
-      href: '/settings',
+      href: routes.settings(),
     },
     {
       key: 'push',
       label: 'Enable notifications',
       detail: 'A push when a run waits on your approval — the phone is the point.',
       done: input.pushDevices > 0,
-      href: '/settings',
+      href: routes.settings(),
     },
     {
       key: 'updater',
       label: 'Install the host updater',
       detail: 'Re-run deploy/install-app.sh once; updates become one button here.',
       done: input.updaterAvailable,
-      href: '/settings',
+      href: routes.settings(),
     },
   ];
 }
