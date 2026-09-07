@@ -11,6 +11,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.62.1] — 2026-09-07
+
+### Fixed
+
+- The bench seeded a transcript event under a name the schema does not have —
+  `assistant_thinking` where `domain.ts` says `thinking`. The row was written
+  and the screen ignored it, which looked exactly like the preference for
+  showing reasoning being off, and I said so. With the right name the block
+  renders, and the session screenshot finally shows what a run actually looks
+  like.
+
 ## [0.62.0] — 2026-09-07
 
 ### Changed

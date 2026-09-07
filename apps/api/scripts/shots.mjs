@@ -226,7 +226,11 @@ if (lastRun) {
       text: 'Reprends la mise en page du board : les colonnes débordent sur un téléphone.',
     },
     {
-      kind: 'assistant_thinking',
+      // `thinking`, not `assistant_thinking`: the schema in `domain.ts` names it
+      // that, and the wrong name was written here and accepted in silence — the
+      // row landed, the screen ignored it, and it looked exactly like the
+      // preference being off. Read the schema rather than the neighbour's name.
+      kind: 'thinking',
       text: 'The columns are fixed-width and the row does not scroll. Check the container first.',
     },
     {
