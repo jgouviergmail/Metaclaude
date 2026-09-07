@@ -472,7 +472,7 @@ export function PageHeader({
   return (
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-gutter sm:px-6">
       <div className="min-w-0 space-y-1">
-        <h1 className="truncate text-lg font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="truncate text-title text-ink">{title}</h1>
         {description ? (
           <p className="text-body leading-relaxed text-muted">{description}</p>
         ) : null}
@@ -568,5 +568,53 @@ export function Stat({
       </p>
       {hint ? <p className="mt-1 text-caption text-muted">{hint}</p> : null}
     </div>
+  );
+}
+
+/**
+ * The same figures, read down a column instead of across four boxes.
+ *
+ * `Stat` is a box, and four of them in a row are four more objects competing
+ * with everything else on a screen that already has ten. A big-number tile
+ * earns its weight when the figures *are* the point of the page; on the
+ * dashboard the point is what is happening and what is waiting on a person,
+ * so the numbers belong beside that rather than above it.
+ */
+export function StatList({
+  items,
+  className,
+}: {
+  items: {
+    label: string;
+    value: ReactNode;
+    hint?: ReactNode;
+    tone?: 'success' | 'warning' | 'danger';
+  }[];
+  className?: string;
+}) {
+  return (
+    <dl className={cn('divide-y divide-line', className)}>
+      {items.map((item) => (
+        <div key={item.label} className="flex items-baseline justify-between gap-3 py-2">
+          <dt className="min-w-0 text-body text-muted">
+            {item.label}
+            {item.hint ? (
+              <span className="ml-1.5 text-caption text-subtle">{item.hint}</span>
+            ) : null}
+          </dt>
+          <dd
+            className={cn(
+              'shrink-0 text-title tabular-nums',
+              item.tone === 'success' && 'text-success',
+              item.tone === 'warning' && 'text-warning',
+              item.tone === 'danger' && 'text-danger',
+              !item.tone && 'text-ink',
+            )}
+          >
+            {item.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

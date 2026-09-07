@@ -13,7 +13,13 @@ import { ArrowUpCircle, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/Modal';
-import { Badge, Button, Card, CardHeader, QUIET_LINK, Spinner } from '@/components/ui/primitives';
+import {
+  Badge,
+  Button,
+  QUIET_LINK,
+  Spinner,
+} from '@/components/ui/primitives';
+import { Section } from '@/components/ui/layout';
 import { cn } from '@/lib/utils';
 import { api, ApiError } from '@/lib/api';
 import { nextUpdateWatch, type UpdateWatch } from '@/lib/update-watch';
@@ -80,32 +86,31 @@ export function UpdateCard() {
     status?.available === true && check?.updateAvailable === true && check.latest !== null && !applying;
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Updates')}
-        description={t(
-          'Compares this version against the latest published release. Applying runs the same health-gated, auto-rolling-back deploy as CI.',
-        )}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={updateQuery.isFetching}
-              onClick={() => void updateQuery.refetch()}
-            >
-              {t('Check')}
+    <Section
+      title={t('Updates')}
+      description={t(
+        'Compares this version against the latest published release. Applying runs the same health-gated, auto-rolling-back deploy as CI.',
+      )}
+      actions={
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={updateQuery.isFetching}
+            onClick={() => void updateQuery.refetch()}
+          >
+            {t('Check')}
+          </Button>
+          {canApply ? (
+            <Button variant="primary" size="sm" onClick={() => setConfirming(true)}>
+              <ArrowUpCircle className="size-3.5" aria-hidden />
+              {t('Apply')} {check?.latest}
             </Button>
-            {canApply ? (
-              <Button variant="primary" size="sm" onClick={() => setConfirming(true)}>
-                <ArrowUpCircle className="size-3.5" aria-hidden />
-                {t('Apply')} {check?.latest}
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
-      <div className="space-y-2 px-4 pb-4 text-caption">
+          ) : null}
+        </div>
+      }
+    >
+      <div className="space-y-2 text-caption">
         {!result ? (
           <p className="text-subtle">{t('Not checked yet.')}</p>
         ) : 'disabled' in result ? (
@@ -197,6 +202,6 @@ export function UpdateCard() {
           if (check?.latest) apply.mutate(check.latest);
         }}
       />
-    </Card>
+    </Section>
   );
 }

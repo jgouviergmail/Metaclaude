@@ -1,6 +1,6 @@
 {
   "metrics": {
-    "tests": 3142,
+    "tests": 3145,
     "testFiles": 224,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
@@ -18,14 +18,15 @@
     "defaultingPartials": 0,
     "untranslatedTableReads": 0,
     "controlBytesInSource": 0,
-    "literalTextSizes": 10,
+    "literalTextSizes": 9,
     "pageWidths": 2,
     "adHocTabs": 0,
     "tokenBypass": 0,
     "undefinedClasses": 0,
     "clampWithPadding": 0,
     "displayBesideDensityHelp": 0,
-    "hardcodedRoutes": 0
+    "hardcodedRoutes": 0,
+    "boxedSections": 1
   },
   "updated": "2026-09-07"
 }

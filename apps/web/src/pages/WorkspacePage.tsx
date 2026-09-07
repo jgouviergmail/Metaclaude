@@ -6,7 +6,7 @@
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Page } from '@/components/ui/layout';
+import { Page, Section } from '@/components/ui/layout';
 import { GitBranch, Loader2, Plus, Settings2, TerminalSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -28,7 +28,6 @@ import { Modal } from '@/components/ui/Modal';
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   Input,
   Label,
@@ -232,15 +231,14 @@ export function WorkspacePage() {
           </div>
 
           {git?.isRepo && (git.modified.length > 0 || git.untracked.length > 0) ? (
-            <Card>
-              <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-                <GitBranch className="size-4 shrink-0 text-muted" aria-hidden />
-                <h2 className="text-body font-semibold text-ink">{t('Uncommitted changes')}</h2>
-                <Badge tone="warning" className="ml-auto">
-                  {git.modified.length + git.untracked.length}
-                </Badge>
-              </div>
-              <ul className="max-h-56 overflow-y-auto px-4 py-2">
+            <Section
+              title={t('Uncommitted changes')}
+              icon={<GitBranch className="text-muted" />}
+              actions={
+                <Badge tone="warning">{git.modified.length + git.untracked.length}</Badge>
+              }
+            >
+              <ul className="max-h-56 overflow-y-auto">
                 {[...git.modified.map((p) => ({ path: p, kind: 'modified' as const })),
                   ...git.untracked.map((p) => ({ path: p, kind: 'untracked' as const }))]
                   .slice(0, 40)
@@ -255,19 +253,21 @@ export function WorkspacePage() {
                     </li>
                   ))}
               </ul>
-            </Card>
+            </Section>
           ) : null}
 
-          <Card>
-            <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-              <h2 className="text-body font-semibold text-ink">{t('Sessions')}</h2>
-              <div className="flex items-center gap-2">
+          <Section
+            title={t('Sessions')}
+            actions={
+              <>
                 <Button variant="ghost" size="sm" onClick={() => setShowCliSessions(true)}>
-                  <TerminalSquare className="size-4" aria-hidden />{t('From the CLI')}</Button>
+                  <TerminalSquare className="size-4" aria-hidden />
+                  {t('From the CLI')}
+                </Button>
                 <span className="text-caption text-subtle">{sessions.length}</span>
-              </div>
-            </div>
-
+              </>
+            }
+          >
             {sessions.length === 0 ? (
               <EmptyState
                 icon={<Loader2 className="animate-spin" />}
@@ -280,7 +280,7 @@ export function WorkspacePage() {
                   <li key={session.id}>
                     <Link
                       to={routes.session(workspaceId, session.id)}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-raised"
+                      className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-raised"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-body font-medium text-ink">
@@ -301,7 +301,7 @@ export function WorkspacePage() {
                 ))}
               </ul>
             )}
-          </Card>
+          </Section>
       </Page>
 
       <WorkspaceSettingsModal

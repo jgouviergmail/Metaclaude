@@ -19,11 +19,11 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
-import { SYSTEM_PATHS, SystemTabs } from './SystemTabs';
+import { isSystemPath, SYSTEM_PATHS, SystemTabs } from './SystemTabs';
 
 describe('SystemTabs', () => {
   it('lists every screen of the section', () => {
-    render(<SystemTabs />, { route: '/settings' });
+    render(<SystemTabs />, { route: '/automations' });
     const nav = screen.getByRole('navigation', { name: 'System sections' });
     expect(nav.querySelectorAll('a')).toHaveLength(SYSTEM_PATHS.length);
   });
@@ -46,20 +46,33 @@ describe('SystemTabs', () => {
       '/agents',
       '/plugins',
       '/analytics',
-      '/settings',
       '/help',
     ]);
   });
 
-  it('scrolls rather than wrapping, because six French labels do not fit a phone', () => {
-    render(<SystemTabs />, { route: '/settings' });
+  /*
+   * Settings is deliberately absent, and `isSystemPath` has to agree.
+   *
+   * The strip and the rail read the same list, so dropping the entry alone
+   * would have left `/settings` matching nothing — no current chip, and the
+   * rail highlighting no section at all on the screen an operator opens most.
+   * Its URL is untouched: what changed is which group owns it.
+   */
+  it('no longer counts Settings as one of its screens', () => {
+    expect(SYSTEM_PATHS.map((entry) => entry.to)).not.toContain('/settings');
+    expect(isSystemPath('/settings')).toBe(false);
+    expect(isSystemPath('/automations')).toBe(true);
+  });
+
+  it('scrolls rather than wrapping, because five French labels do not fit a phone', () => {
+    render(<SystemTabs />, { route: '/automations' });
     expect(screen.getByRole('navigation', { name: 'System sections' }).className).toContain(
       'overflow-x-auto',
     );
   });
 
   it('does not claim to be a tab strip, since each entry changes the route', () => {
-    render(<SystemTabs />, { route: '/settings' });
+    render(<SystemTabs />, { route: '/automations' });
     expect(screen.queryAllByRole('tab')).toHaveLength(0);
   });
 });
@@ -67,14 +80,14 @@ describe('SystemTabs', () => {
 /**
  * Two levels of navigation, two registers.
  *
- * Settings carries six tabs of its own. Drawn in the same register as this
+ * Agents carries four tabs of its own. Drawn in the same register as this
  * strip they stacked into two identical scrolling rows — ninety pixels of a
  * phone's height, with nothing saying which moved between screens and which
  * moved within one. Chips here, underline there.
  */
 describe('the section strip reads as a different level from a page tab strip', () => {
   it('uses chips rather than the underline a tab strip uses', () => {
-    render(<SystemTabs />, { route: '/settings' });
+    render(<SystemTabs />, { route: '/automations' });
     const current = screen
       .getAllByRole('link')
       .find((link) => link.getAttribute('aria-current') === 'page') as HTMLElement;
@@ -87,7 +100,7 @@ describe('the section strip reads as a different level from a page tab strip', (
 /**
  * Where you are has to be visible.
  *
- * Six French labels are wider than a phone, so the strip scrolls — and it
+ * Five French labels are wider than a phone, so the strip scrolls — and it
  * scrolls from the left, which put the current chip off-screen on every
  * System screen at 390px. A strip that does not show your position is not
  * navigation; it is a row of links.
@@ -121,7 +134,7 @@ describe('the current section is brought into view', () => {
  */
 describe('the chips are reachable with a thumb', () => {
   it('carries the coarse-pointer hit area the small controls use', () => {
-    render(<SystemTabs />, { route: '/settings' });
+    render(<SystemTabs />, { route: '/automations' });
     for (const link of screen.getAllByRole('link')) {
       expect(link.className).toContain('pointer-coarse:before:');
     }

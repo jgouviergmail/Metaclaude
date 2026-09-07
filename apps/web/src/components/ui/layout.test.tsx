@@ -18,7 +18,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
 import { useUiStore } from '@/lib/store';
-import { Grid, Page, PageBody, Section } from './layout';
+import { FLUSH_TABLE, Grid, Page, PageBody, Section } from './layout';
 
 // The density lives on the store and on the root element, and no render tears
 // either down: a case that sets one and walks away hands the next case a
@@ -246,3 +246,27 @@ describe('a section description follows the density', () => {
   });
 });
 
+
+/**
+ * `FLUSH_TABLE` — a table lined up with the heading that names it.
+ *
+ * Inside a `<Card>` the cell padding matched the card's own, so the indent
+ * looked deliberate. Inside a `<Section>` there is nothing to match: the first
+ * column sits four units right of its heading and the last stops short of the
+ * rule. This asserts the shape rather than the rendering, because happy-dom
+ * lays nothing out and an arbitrary variant is not something it resolves.
+ */
+describe('FLUSH_TABLE', () => {
+  it('neutralises the outer cells only, on both th and td', () => {
+    expect(FLUSH_TABLE).toContain(':first-child]:pl-0');
+    expect(FLUSH_TABLE).toContain(':last-child]:pr-0');
+    expect(FLUSH_TABLE).toContain('th,td');
+  });
+
+  it('touches nothing between the edges, so columns keep their gutter', () => {
+    // A blanket `[&_td]:px-0` would collapse every column against the next;
+    // what makes this safe is that it names first and last and nothing else.
+    expect(FLUSH_TABLE).not.toMatch(/\[&_:is\(th,td\)\]/);
+    expect(FLUSH_TABLE).not.toContain('px-0');
+  });
+});

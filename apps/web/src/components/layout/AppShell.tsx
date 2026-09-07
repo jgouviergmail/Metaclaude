@@ -12,6 +12,7 @@
  */
 
 import {
+  Boxes,
   Brain,
   FolderGit2,
   LayoutDashboard,
@@ -35,6 +36,22 @@ import { routes, WORKSPACE_PREFIX } from '@metaclaude/shared';
 interface NavEntry {
   to: string;
   label: string;
+  /**
+   * What the phone tab bar shows, when the full name does not fit.
+   *
+   * Six cells at 390px are 65px each, and measured with a Range rather than
+   * guessed: `Dashboard` inks 60px and `Workspaces` 69 — a 2px gutter between
+   * two labels that then read as one run-on string. Nothing reports it, and
+   * nothing should: neither is clipped, neither overlaps, no ancestor
+   * overflows. It is simply unreadable, which only an eye and a ruler catch.
+   * `scripts/measure-tabbar.mjs` is the ruler.
+   *
+   * French needed none of this — it says `Accueil` and `Espaces`, not
+   * `Tableau de bord` and `Espaces de travail`, and its tightest gutter is
+   * 16px. So the short forms are what the French labels already are, said in
+   * English; the rail and every accessible name keep the full one.
+   */
+  short?: string;
   icon: ReactNode;
   /**
    * Routes this entry owns beyond its own path.
@@ -62,33 +79,42 @@ function isCurrent(entry: NavEntry, pathname: string): boolean {
 }
 
 /**
- * Five sections, and every one of them on the phone.
+ * Six sections, and every one of them on the phone.
  *
  * There were ten, which does not fit a tab bar, so four lived behind a "More"
  * sheet — and *which* four was decided by the available space rather than by
- * meaning. Six of the ten were the same kind of thing: how this deployment is
- * configured and inspected, never what an operator works in. They are one
- * section now, `SYSTEM_PATHS`, and the rail and the tab bar hold the same five
- * in the same order. Nothing is one tap further away than anything else.
+ * meaning. Five of the ten were the same kind of thing: what this deployment
+ * can do and how it is inspected, never what an operator works in. They are
+ * one section, `SYSTEM_PATHS`.
+ *
+ * Settings is the sixth entry rather than the head of that group. Grouping it
+ * under System was convenient and wrong twice over: it is the screen an
+ * operator reaches for most deliberately, so putting it one tap deeper taxed
+ * the common case, and "System" then named both the group *and* a tab inside
+ * Settings. The rail and the tab bar hold the same six in the same order;
+ * nothing is one tap further away than anything else.
  */
 const NAV: NavEntry[] = [
-  { to: routes.dashboard(), label: 'Dashboard', icon: <LayoutDashboard /> },
+  { to: routes.dashboard(), label: 'Dashboard', short: 'Overview', icon: <LayoutDashboard /> },
   {
     to: routes.workspaces(),
     label: 'Workspaces',
+    short: 'Spaces',
     icon: <FolderGit2 />,
     matches: (path) => path === routes.workspaces() || path.startsWith(WORKSPACE_PREFIX),
   },
   { to: routes.board(), label: 'Board', icon: <SquareKanban /> },
   { to: routes.memory(), label: 'Memory', icon: <Brain /> },
   {
-    // Points at Settings, which is where an operator most often means to go;
-    // the section's own strip carries the other five.
-    to: routes.settings(),
+    // Points at Automations, the first of the group's own strip. The cog
+    // belongs to Settings — it is what everyone means by it — so this takes
+    // the stacked boxes: what the deployment is made of.
+    to: routes.automations(),
     label: 'System',
-    icon: <Settings />,
+    icon: <Boxes />,
     matches: isSystemPath,
   },
+  { to: routes.settings(), label: 'Settings', icon: <Settings /> },
 ];
 
 export function AppShell({
@@ -211,6 +237,8 @@ export function AppShell({
                 key={entry.to}
                 to={entry.to}
                 aria-current={current ? 'page' : undefined}
+                // The visible text may be the short form; the name never is.
+                aria-label={t(entry.label)}
                 className={cn(
                   // Platform floor for a bottom bar: 24px icons, 11px labels.
                   // An installed PWA renders these raw — no browser text
@@ -222,7 +250,7 @@ export function AppShell({
                 )}
               >
                 {entry.icon}
-                {t(entry.label).split(' ')[0]}
+                {t(entry.short ?? entry.label).split(' ')[0]}
               </Link>
             );
           })}
@@ -270,7 +298,7 @@ export function ContentHeader({
    *
    * It lives here rather than in each page's body so that it sits above the
    * scroll — a strip that scrolled away with the content would stop being
-   * navigation. Six screens pass the same `<SystemTabs />`, which is what
+   * navigation. Five screens pass the same `<SystemTabs />`, which is what
    * makes them read as one section without moving a single URL.
    */
   tabs?: ReactNode;
@@ -298,7 +326,17 @@ export function ContentHeader({
           * than a guess.
           */}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-heading text-ink">{title}</h1>
+          {/*
+            * `title`, not `heading`.
+            *
+            * A page's h1 was 13.5px — the same size as the section headings
+            * under it and smaller than the 16px of `PageHeader`, which is the
+            * *other* header in this app and names the same thing. One role
+            * cannot have two sizes: whichever screen you were on, either its
+            * title was undersized or its sections were oversized relative to
+            * it. 16px still fits the 56px bar with a subtitle under it.
+            */}
+          <h1 className="truncate text-title text-ink">{title}</h1>
           {subtitle ? (
             <p className="hidden truncate text-caption text-muted sm:block">{subtitle}</p>
           ) : null}

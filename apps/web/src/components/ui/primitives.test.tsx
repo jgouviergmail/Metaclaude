@@ -13,7 +13,7 @@ import { createRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders as render } from '@/test/render';
 import { useUiStore } from '@/lib/store';
-import { CardHeader, Input, Label, Meter, Select, Textarea } from './primitives';
+import { CardHeader, Input, Label, Meter, Select, StatList, Textarea } from './primitives';
 
 describe('Label', () => {
   it('keeps the hint out of the field name', () => {
@@ -304,5 +304,56 @@ describe('Label', () => {
     expect(screen.getByText('Name').tagName).toBe('LABEL');
     expect(screen.getByText('Name').textContent).toBe('Name');
     expect(screen.getByText('Lowercase and dashes.').id).toBe('field-hint');
+  });
+});
+
+/**
+ * `StatList` — the four dashboard figures, read down a column.
+ *
+ * A definition list rather than rows of `<div>`, because that is what these
+ * are: a term and its value. The pairing is the only thing a screen reader can
+ * use here, and nothing on screen would show it missing.
+ */
+describe('StatList', () => {
+  const items = [
+    { label: 'Active runs', value: 3, hint: '2 queued', tone: 'success' as const },
+    { label: 'Cost, 7 days', value: '$1.80' },
+  ];
+
+  it('pairs every label with its value', () => {
+    const { container } = render(<StatList items={items} />);
+
+    const terms = [...container.querySelectorAll('dt')].map((el) => el.textContent);
+    const values = [...container.querySelectorAll('dd')].map((el) => el.textContent);
+
+    expect(container.querySelector('dl')).not.toBeNull();
+    expect(terms).toHaveLength(2);
+    expect(values).toEqual(['3', '$1.80']);
+    expect(terms[0]).toContain('Active runs');
+  });
+
+  it('puts the hint beside the label, not inside the value', () => {
+    // The value column is read as a figure; a hint pushed into it makes the
+    // number unreadable at a glance and breaks the tabular alignment.
+    const { container } = render(<StatList items={items} />);
+    expect(container.querySelector('dt')?.textContent).toContain('2 queued');
+    expect(container.querySelector('dd')?.textContent).toBe('3');
+  });
+
+  it('colours the value by tone, and leaves an untoned one alone', () => {
+    const { container } = render(<StatList items={items} />);
+    const values = [...container.querySelectorAll('dd')];
+    expect(values[0]!.className).toContain('text-success');
+    expect(values[1]!.className).toContain('text-ink');
+    expect(values[1]!.className).not.toContain('text-success');
+  });
+
+  it('sizes the figure at the title role and keeps the digits tabular', () => {
+    // `cn` extends tailwind-merge with the scale; a role that loses to the
+    // colour beside it is the defect that hid the whole type scale once.
+    const { container } = render(<StatList items={items} />);
+    const value = container.querySelector('dd') as HTMLElement;
+    expect(value.className).toContain('text-title');
+    expect(value.className).toContain('tabular-nums');
   });
 });

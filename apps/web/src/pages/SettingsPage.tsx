@@ -3,7 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Page } from '@/components/ui/layout';
+import { Page, Section } from '@/components/ui/layout';
 import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import {
   Check,
@@ -21,7 +21,6 @@ import { useState } from 'react';
 import { type Lang, type TranslateFn, useI18n, usePlural, useT } from '@/lib/i18n';
 import { toast } from 'sonner';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
-import { SystemTabs } from '@/components/layout/SystemTabs';
 import { TotpQr } from '@/components/auth/TotpQr';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
@@ -38,13 +37,11 @@ import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import {
   Badge,
   Button,
-  Card,
-  CardHeader,
   EmptyState,
   Input,
   Label,
   Spinner,
-  Stat,
+  StatList,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { CheckboxField, SegmentedControl } from '@/components/ui/controls';
@@ -79,7 +76,6 @@ export function SettingsPage() {
   return (
     <AppShell>
       <ContentHeader
-        tabs={<SystemTabs />}
         title={t('Settings')}
         subtitle={user ? t(
           'Signed in as {name} ({role})',
@@ -191,12 +187,11 @@ function PasswordCard() {
   const tooShort = next.length > 0 && next.length < 12;
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Password')}
-        description={t('Changing it signs out every device, including this one.')}
-      />
-      <div className="space-y-4 p-4">
+    <Section
+      title={t('Password')}
+      description={t('Changing it signs out every device, including this one.')}
+    >
+      <div className="space-y-4">
         <Label htmlFor="pw-current">
           {t('Current password')}
           <Input
@@ -253,7 +248,7 @@ function PasswordCard() {
           {t('Change password')}
         </Button>
       </div>
-    </Card>
+    </Section>
   );
 }
 
@@ -312,25 +307,24 @@ function TotpCard() {
   });
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Two-factor authentication')}
-        description={t(
-          'A second factor is what keeps a leaked password from becoming a compromised agent OS.',
-        )}
-        actions={
-          user?.totpEnabled ? (
-            <Badge tone="success">
-              <ShieldCheck className="size-3" aria-hidden />
-              {t('on')}
-            </Badge>
-          ) : (
-            <Badge tone="warning">{t('off')}</Badge>
-          )
-        }
-      />
+    <Section
+      title={t('Two-factor authentication')}
+      description={t(
+        'A second factor is what keeps a leaked password from becoming a compromised agent OS.',
+      )}
+      actions={
+        user?.totpEnabled ? (
+          <Badge tone="success">
+            <ShieldCheck className="size-3" aria-hidden />
+            {t('on')}
+          </Badge>
+        ) : (
+          <Badge tone="warning">{t('off')}</Badge>
+        )
+      }
+    >
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3">
         {user?.totpEnabled ? (
           <>
             <p className="text-body text-muted">
@@ -538,7 +532,7 @@ function TotpCard() {
           />
         </Label>
       </Modal>
-    </Card>
+    </Section>
   );
 }
 
@@ -572,23 +566,22 @@ function SessionsCard() {
   const sessions = data?.sessions ?? [];
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Signed-in devices')}
-        description={t('Anything you do not recognise should be signed out immediately.')}
-        actions={
-          sessions.length > 1 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              loading={revokeOthers.isPending}
-              onClick={() => revokeOthers.mutate()}
-            >
-              {t('Sign out others')}
-            </Button>
-          ) : null
-        }
-      />
+    <Section
+      title={t('Signed-in devices')}
+      description={t('Anything you do not recognise should be signed out immediately.')}
+      actions={
+        sessions.length > 1 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            loading={revokeOthers.isPending}
+            onClick={() => revokeOthers.mutate()}
+          >
+            {t('Sign out others')}
+          </Button>
+        ) : null
+      }
+    >
 
       {isLoading ? (
         <div className="flex justify-center py-8">
@@ -597,7 +590,7 @@ function SessionsCard() {
       ) : (
         <ul className="divide-y divide-line">
           {sessions.map((session) => (
-            <li key={session.id} className="flex items-center gap-3 px-4 py-3">
+            <li key={session.id} className="flex items-center gap-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-body text-ink">
                   <span className="truncate">{describeUserAgent(session.userAgent, t)}</span>
@@ -622,7 +615,7 @@ function SessionsCard() {
           ))}
         </ul>
       )}
-    </Card>
+    </Section>
   );
 }
 
@@ -679,12 +672,11 @@ export function AppearanceCard() {
   ];
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Appearance')}
-        description={t('The theme and the transcript options live in this browser only.')}
-      />
-      <div className="space-y-5 p-4">
+    <Section
+      title={t('Appearance')}
+      description={t('The theme and the transcript options live in this browser only.')}
+    >
+      <div className="space-y-5">
         <div>
           <SegmentedControl
             label={t('Language')}
@@ -730,7 +722,7 @@ export function AppearanceCard() {
           />
         </div>
       </div>
-    </Card>
+    </Section>
   );
 }
 
@@ -752,24 +744,23 @@ function DoctorCard() {
   });
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Doctor')}
-        description={t(
-          'Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations.',
-        )}
-        actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={doctorQuery.isFetching}
-            onClick={() => void doctorQuery.refetch()}
-          >
-            {t('Run checks')}
-          </Button>
-        }
-      />
-      <div className="px-4 pb-4">
+    <Section
+      title={t('Doctor')}
+      description={t(
+        'Every self-check the system knows how to run — database, audit chain, vault, disk, CLI, automations.',
+      )}
+      actions={
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={doctorQuery.isFetching}
+          onClick={() => void doctorQuery.refetch()}
+        >
+          {t('Run checks')}
+        </Button>
+      }
+    >
+      <div>
         {doctorQuery.data ? (
           <DoctorReportView report={doctorQuery.data} />
         ) : doctorQuery.isError ? (
@@ -778,7 +769,7 @@ function DoctorCard() {
           <p className="text-caption text-subtle">{t('Not run yet.')}</p>
         )}
       </div>
-    </Card>
+    </Section>
   );
 }
 
@@ -800,22 +791,40 @@ function SystemCard() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <Stat label={t('Version')} value={data.version} />
-        <Stat label={t('Uptime')} value={formatDuration(data.uptimeMs)} />
-        {/* The clock every cron expression is read in. A schedule typed for
-            eight on a UTC host fired at ten in Paris, and nothing said which. */}
-        <Stat label={t('Server timezone')} value={data.timezone} hint={t('Cron schedules are read in it.')} />
-      </div>
+      {/*
+        * Three facts, listed rather than tiled.
+        *
+        * Three big-number tiles in a two-column grid leave one orphaned on its
+        * own row, and none of the three is a number worth a 24px display face
+        * — a version string, an uptime and a timezone are things you look up,
+        * not figures you monitor. `Stat` stays where the dashboard uses it,
+        * for what actually moves.
+        */}
+      <Section title={t('Deployment')}>
+        <StatList
+          items={[
+            { label: t('Version'), value: data.version },
+            { label: t('Uptime'), value: formatDuration(data.uptimeMs) },
+            {
+              // The clock every cron expression is read in. A schedule typed
+              // for eight on a UTC host fired at ten in Paris, and nothing
+              // said which.
+              label: t('Server timezone'),
+              value: data.timezone,
+              hint: t('Cron schedules are read in it.'),
+            },
+          ]}
+        />
+      </Section>
       {/* The same three meters the dashboard shows, from the same payload.
           Two separate renderings of "how full is the disk" would eventually
           disagree, and the one nobody is looking at would be the wrong one. */}
       <ResourceMeters resources={data.resources} />
 
-      <Card>
-        <CardHeader title={t(
-          'Claude CLI',
-        )} description={t('Every agent run goes through this binary.')} />
+      <Section
+        title={t('Claude CLI')}
+        description={t('Every agent run goes through this binary.')}
+      >
         <dl className="divide-y divide-line">
           <DefinitionRow label={t('Available')}>
             {data.claudeCli.available ? (
@@ -849,14 +858,13 @@ function SystemCard() {
             </div>
           </DefinitionRow>
         </dl>
-      </Card>
+      </Section>
 
       <ClaudeCredentialCard />
 
       <NotificationsCard />
 
-      <Card>
-        <CardHeader title={t('Kernel')} />
+      <Section title={t('Kernel')}>
         <dl className="divide-y divide-line">
           <DefinitionRow label={t('Active runs')}>{data.activeRuns}</DefinitionRow>
           <DefinitionRow label={t('Queued runs')}>{data.queuedRuns}</DefinitionRow>
@@ -865,14 +873,14 @@ function SystemCard() {
             <RetrievalStatus status={data.retrieval} />
           </DefinitionRow>
         </dl>
-      </Card>
+      </Section>
     </div>
   );
 }
 
 function DefinitionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+    <div className="flex items-center justify-between gap-4 py-2">
       <dt className="text-body text-muted">{label}</dt>
       <dd className="text-body font-medium text-ink">{children}</dd>
     </div>
@@ -914,27 +922,26 @@ function AuditCard() {
   const entries = data?.entries ?? [];
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Audit log')}
-        description={t(
-          'Every entry commits to the hash of the one before it, so an edit anywhere invalidates everything after.',
-        )}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            loading={verifying}
-            onClick={() => {
-              setVerifying(true);
-              verify.mutate();
-            }}
-          >
-            <ScrollText className="size-4" aria-hidden />
-            {t('Verify chain')}
-          </Button>
-        }
-      />
+    <Section
+      title={t('Audit log')}
+      description={t(
+        'Every entry commits to the hash of the one before it, so an edit anywhere invalidates everything after.',
+      )}
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          loading={verifying}
+          onClick={() => {
+            setVerifying(true);
+            verify.mutate();
+          }}
+        >
+          <ScrollText className="size-4" aria-hidden />
+          {t('Verify chain')}
+        </Button>
+      }
+    >
 
       {isLoading ? (
         <div className="flex justify-center py-8">
@@ -946,7 +953,7 @@ function AuditCard() {
         <div className="max-h-[28rem] overflow-y-auto">
           <ul className="divide-y divide-line">
             {entries.map((entry) => (
-              <li key={entry.id} className="flex items-start gap-3 px-4 py-2.5">
+              <li key={entry.id} className="flex items-start gap-3 py-2">
                 <Badge tone={entry.outcome === 'success' ? 'neutral' : 'danger'}>
                   {entry.outcome === 'success' ? (
                     <Check className="size-2.5" aria-hidden />
@@ -976,7 +983,7 @@ function AuditCard() {
           </ul>
         </div>
       )}
-    </Card>
+    </Section>
   );
 }
 

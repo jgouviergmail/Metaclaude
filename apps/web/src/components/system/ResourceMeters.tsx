@@ -79,57 +79,69 @@ export function ResourceMeters({
       : null;
 
   return (
-    <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-3', className)}>
-      <ResourceMeter
-        label={t('CPU')}
-        icon={<Cpu />}
-        ratio={cpuRatio}
-        detail={
-          cpuRatio !== null
-            ? resources?.cpu.cores
-              ? plural(resources.cpu.cores, 'of {n} core', 'of {n} cores')
+    /*
+     * A container query, not a viewport one.
+     *
+     * `sm:grid-cols-3` asks how wide the *window* is, and the window knows
+     * nothing about the column this sits in: on the dashboard's 304px aside
+     * at a 1440px viewport it laid three meters across, and every reading was
+     * truncated to `Not mea…` and `350 GB f…`. The question the layout is
+     * actually asking is how much room *this block* has, which is what
+     * `@container` answers. Settings, where it spans the page, is unchanged.
+     */
+    <div className={cn('@container', className)}>
+      <div className="grid grid-cols-1 gap-3 @sm:grid-cols-3">
+        <ResourceMeter
+          label={t('CPU')}
+          icon={<Cpu />}
+          ratio={cpuRatio}
+          detail={
+            cpuRatio !== null
+              ? resources?.cpu.cores
+                ? plural(resources.cpu.cores, 'of {n} core', 'of {n} cores')
+                : undefined
+              : platformCanMeasure
+                ? t('Measuring…')
+                : t('Not measurable here')
+          }
+          hint={
+            resources?.cpu.load1 != null
+              ? t('host load {n}', { n: resources.cpu.load1.toFixed(2) })
               : undefined
-            : platformCanMeasure
-              ? t('Measuring…')
+          }
+        />
+        <ResourceMeter
+          // `RAM`, not `Memory`: the catalogue keys on the English string, and
+          // `Memory` is already the navigation entry for the long-term memory
+          // page. Reusing it would label this meter "Mémoire" in French.
+          label={t('RAM')}
+          icon={<MemoryStick />}
+          ratio={memoryRatio}
+          detail={
+            usedBytes != null && limitBytes != null
+              ? `${formatBytes(usedBytes)} / ${formatBytes(limitBytes)}`
               : t('Not measurable here')
-        }
-        hint={
-          resources?.cpu.load1 != null
-            ? t('host load {n}', { n: resources.cpu.load1.toFixed(2) })
-            : undefined
-        }
-      />
-      <ResourceMeter
-        // `RAM`, not `Memory`: the catalogue keys on the English string, and
-        // `Memory` is already the navigation entry for the long-term memory
-        // page. Reusing it would label this meter "Mémoire" in French.
-        label={t('RAM')}
-        icon={<MemoryStick />}
-        ratio={memoryRatio}
-        detail={
-          usedBytes != null && limitBytes != null
-            ? `${formatBytes(usedBytes)} / ${formatBytes(limitBytes)}`
-            : t('Not measurable here')
-        }
-        hint={
-          resources?.memory.rssBytes != null
-            ? t('this app {n}', { n: formatBytes(resources.memory.rssBytes) })
-            : undefined
-        }
-      />
-      <ResourceMeter
-        label={t('Disk')}
-        icon={<HardDrive />}
-        ratio={diskRatio}
-        detail={
-          freeBytes != null && totalBytes != null
-            ? t('{free} free of {total}', {
-                free: formatBytes(freeBytes),
-                total: formatBytes(totalBytes),
-              })
-            : t('Not measurable here')
-        }
-      />
+          }
+          hint={
+            resources?.memory.rssBytes != null
+              ? t('this app {n}', { n: formatBytes(resources.memory.rssBytes) })
+              : undefined
+          }
+        />
+        <ResourceMeter
+          label={t('Disk')}
+          icon={<HardDrive />}
+          ratio={diskRatio}
+          detail={
+            freeBytes != null && totalBytes != null
+              ? t('{free} free of {total}', {
+                  free: formatBytes(freeBytes),
+                  total: formatBytes(totalBytes),
+                })
+              : t('Not measurable here')
+          }
+        />
+      </div>
     </div>
   );
 }

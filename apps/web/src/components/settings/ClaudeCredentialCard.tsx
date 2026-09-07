@@ -17,7 +17,12 @@ import { toast } from 'sonner';
 import type { ClaudePairingStart } from '@metaclaude/shared';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { CopyableCode } from '@/components/ui/CopyableCode';
-import { Button, Card, CardHeader, Input, Label } from '@/components/ui/primitives';
+import {
+  Button,
+  Input,
+  Label,
+} from '@/components/ui/primitives';
+import { Section } from '@/components/ui/layout';
 import { api, ApiError } from '@/lib/api';
 import { Trans, useT } from '@/lib/i18n';
 import { cn, formatRelative } from '@/lib/utils';
@@ -107,14 +112,13 @@ export function ClaudeCredentialCard() {
   const stored = status.data?.source === 'stored';
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Claude credentials')}
-        description={t(
-          'What every agent run authenticates with. Stored encrypted, never written to a file.',
-        )}
-      />
-      <div className="space-y-5 px-4 pb-4">
+    <Section
+      title={t('Claude credentials')}
+      description={t(
+        'What every agent run authenticates with. Stored encrypted, never written to a file.',
+      )}
+    >
+      <div className="space-y-5">
         {/* ---------------------- The CLI's own sign-in --------------------- */}
         {/* `claude auth login` run in the container is the one credential
             Anthropic grants the session-sync scopes to — and any token
@@ -328,7 +332,7 @@ export function ClaudeCredentialCard() {
         danger
         onConfirm={() => clear.mutate()}
       />
-    </Card>
+    </Section>
   );
 }
 

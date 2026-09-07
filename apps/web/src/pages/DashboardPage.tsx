@@ -6,14 +6,11 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Grid, Page } from '@/components/ui/layout';
+import { Page, Section } from '@/components/ui/layout';
 import {
   Activity,
   AlertTriangle,
   Brain,
-  CheckCircle2,
-  Coins,
-  Cpu,
   FolderGit2,
   Plus,
   ShieldQuestion,
@@ -30,7 +27,7 @@ import { MetaclaudeCard } from '@/components/dashboard/MetaclaudeCard';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { SystemPulse } from '@/components/dashboard/SystemPulse';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
-import { Badge, Button, Card, EmptyState, QUIET_LINK, Spinner, Stat, Tooltip } from '@/components/ui/primitives';
+import { Badge, Button, Card, EmptyState, QUIET_LINK, Spinner, StatList, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { INSIGHT_TONE, isLearned } from '@/lib/insights';
 import { describeRetrieval } from '@/lib/retrieval';
@@ -155,204 +152,225 @@ export function DashboardPage() {
       />
 
       <Page width="wide">
-          {/* The opening line: what the OS is doing right now, and its
-              24-hour heartbeat — before anything else on the page. */}
-          <SystemPulse
-            activeRuns={activeRuns.length}
-            queuedRuns={system?.queuedRuns ?? 0}
-            approvals={approvals.length}
-            lastFinishedAt={runs.find((run) => run.finishedAt !== null)?.finishedAt ?? null}
-          />
+        {/* The opening line: what the OS is doing right now, and its
+            24-hour heartbeat — before anything else on the page. */}
+        <SystemPulse
+          activeRuns={activeRuns.length}
+          queuedRuns={system?.queuedRuns ?? 0}
+          approvals={approvals.length}
+          lastFinishedAt={runs.find((run) => run.finishedAt !== null)?.finishedAt ?? null}
+        />
 
-          <GettingStartedCard />
+        <GettingStartedCard />
 
-          {/* The operator's second: a composer that opens a run of the system
-              workspace. Before the warnings and the metrics, because when there
-              is no time this is the one control that stands in for the rest. */}
-          <MetaclaudeCard />
-
-          {/* Credential warning: without this the first run just fails opaquely. */}
-          {system && !system.claudeCli.authenticated ? (
-            <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning-soft/40 p-4">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
-              <div className="min-w-0 space-y-1 text-body leading-relaxed">
-                <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
-                <p className="text-muted">
-                  {t('Pair it from')}{' '}
-                  <Link to={routes.settings()} className={cn('font-medium underline-offset-2', QUIET_LINK)}>
-                    {t('Settings → System')}
-                  </Link>
-                  {t(
-                    ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from',
-                  )}{' '}
-                  <code className="rounded bg-raised px-1 font-mono text-caption">{t(
-                    'claude setup-token',
-                  )}</code>{' '}
-                  {t('can be pasted there too.')}
-                </p>
-              </div>
+        {/*
+          * What is waiting on a person, above the fold and outside the columns.
+          *
+          * These two keep a card, and a tinted one: a card says "a separate
+          * object you can act on", which is what an unauthenticated CLI and a
+          * pending approval are. Everything below is a section — spending a
+          * border on all eleven blocks spent it on none of them.
+          */}
+        {system && !system.claudeCli.authenticated ? (
+          <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning-soft/40 p-4">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
+            <div className="min-w-0 space-y-1 text-body leading-relaxed">
+              <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
+              <p className="text-muted">
+                {t('Pair it from')}{' '}
+                <Link to={routes.settings()} className={cn('font-medium underline-offset-2', QUIET_LINK)}>
+                  {t('Settings → System')}
+                </Link>
+                {t(
+                  ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from',
+                )}{' '}
+                <code className="rounded bg-raised px-1 font-mono text-caption">{t(
+                  'claude setup-token',
+                )}</code>{' '}
+                {t('can be pasted there too.')}
+              </p>
             </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {/* The brief: what happened, what needs a human. Owner-only, since
-              it embeds the doctor. */}
-          {briefQuery.data ? (
-            <Card>
-              <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-                <h2 className="text-body font-semibold text-ink">{t('The brief')}</h2>
-                <span className="text-caption text-subtle">{t('last 24 hours')}</span>
-              </div>
-              <div className="px-4 py-3">
+        {approvals.length > 0 ? (
+          <Card className="border-warning/40 bg-warning-soft/25">
+            <div className="flex items-center gap-2 border-b border-warning/25 px-4 py-3">
+              <ShieldQuestion className="size-4 shrink-0 text-warning" aria-hidden />
+              <h2 className="text-title text-ink">
+                {plural(
+                  approvals.length,
+                  '{n} action waiting for you',
+                  '{n} actions waiting for you',
+                )}
+              </h2>
+            </div>
+            <ul className="divide-y divide-line">
+              {approvals.map((approval) => (
+                <li key={approval.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <Badge tone={approval.risk === 'high' ? 'danger' : 'warning'}>
+                    {approval.risk}
+                  </Badge>
+                  <code className="min-w-0 flex-1 truncate font-mono text-caption text-ink">
+                    {approval.summary}
+                  </code>
+                  <div className="flex shrink-0 gap-1.5">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      // Not `void`: `decideApproval` awaits the HTTP fallback
+                      // and throws on any non-2xx, so an unhandled rejection
+                      // would leave the operator with a tap that did nothing
+                      // and no way to know.
+                      onClick={() => {
+                        decideApproval(approval.id, false).catch((error: unknown) => {
+                          toast.error(
+                            error instanceof ApiError
+                              ? error.message
+                              : t('Could not send that decision.'),
+                          );
+                        });
+                      }}
+                    >
+                      {t('Deny')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      onClick={() =>
+                        navigate(routes.session(approval.workspaceId, approval.sessionId))
+                      }
+                    >
+                      {t('Review')}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
+
+        {/*
+          * Two columns on a wide screen, and that is the change.
+          *
+          * Eleven full-width bands stacked down a 1100px column put the
+          * workspaces and the history two screens below the fold, each row
+          * carrying 900px of empty space in its middle. What is happening
+          * reads on the left; what the system *is* — its figures, its machine,
+          * its projects, what it has learnt — sits beside it.
+          */}
+        <div className="grid gap-section lg:grid-cols-[minmax(0,1fr)_19rem]">
+          <div className="min-w-0 space-y-section">
+            {/* The operator's first control: a composer that opens a run of
+                the system workspace. A card, because it is an object. */}
+            <MetaclaudeCard />
+
+            {briefQuery.data ? (
+              <Section
+                title={t('The brief')}
+                icon={<Activity className="text-accent" />}
+                actions={<span className="text-caption text-subtle">{t('last 24 hours')}</span>}
+              >
                 <BriefView brief={briefQuery.data} />
-              </div>
-            </Card>
-          ) : null}
+              </Section>
+            ) : null}
 
-          {/* Pending approvals — the only thing that blocks an agent. */}
-          {approvals.length > 0 ? (
-            <Card className="border-warning/40 bg-warning-soft/25">
-              <div className="flex items-center gap-2 border-b border-warning/25 px-4 py-3">
-                <ShieldQuestion className="size-4 shrink-0 text-warning" aria-hidden />
-                <h2 className="text-body font-semibold text-ink">
-                  {plural(
-                    approvals.length,
-                    '{n} action waiting for you',
-                    '{n} actions waiting for you',
-                  )}
-                </h2>
-              </div>
-              <ul className="divide-y divide-line">
-                {approvals.map((approval) => (
-                  <li key={approval.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <Badge tone={approval.risk === 'high' ? 'danger' : 'warning'}>
-                      {approval.risk}
-                    </Badge>
-                    <code className="min-w-0 flex-1 truncate font-mono text-caption text-ink">
-                      {approval.summary}
-                    </code>
-                    <div className="flex shrink-0 gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        // Not `void`: `decideApproval` awaits the HTTP fallback
-                        // and throws on any non-2xx, so an unhandled rejection
-                        // would leave the operator with a tap that did nothing
-                        // and no way to know. The card in the session view
-                        // reports failure by re-enabling its buttons; this row
-                        // has none to re-enable, so it says so.
-                        onClick={() => {
-                          decideApproval(approval.id, false).catch((error: unknown) => {
-                            toast.error(
-                              error instanceof ApiError
-                                ? error.message
-                                : t('Could not send that decision.'),
-                            );
-                          });
-                        }}
-                      >
-                        {t('Deny')}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="xs"
-                        onClick={() =>
-                          navigate(routes.session(approval.workspaceId, approval.sessionId))
-                        }
-                      >
-                        {t('Review')}
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : null}
+            <AdvisorCard />
 
-          {/* Metrics */}
-          {/* The advisor's inbox — proposals waiting on a decision, and the
-              button that asks for a fresh analysis. */}
-          <AdvisorCard />
+            {activeRuns.length > 0 ? (
+              <Section title={t('In flight')} icon={<Activity className="text-accent" />}>
+                <ul className="divide-y divide-line">
+                  {activeRuns.map((run) => (
+                    <RunRow key={run.id} run={run} live />
+                  ))}
+                </ul>
+              </Section>
+            ) : null}
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat
-              label={t('Active runs')}
-              value={system?.activeRuns ?? 0}
-              hint={system?.queuedRuns ? t(
-                '{n} queued',
-                { n: system.queuedRuns },
-              ) : t('Nothing queued')}
-              icon={<Cpu />}
-              tone={system && system.activeRuns > 0 ? 'success' : undefined}
-            />
-            <Stat
-              label={t('Cost, 7 days')}
-              value={formatCost(summary?.totalCostUsd ?? 0)}
-              hint={t('{n} runs', { n: summary?.totalRuns ?? 0 })}
-              icon={<Coins />}
-            />
-            <Stat
-              label={t('Success rate')}
-              value={summary ? formatPercent(summary.successRate) : '—'}
-              hint={
-                summary?.medianDurationMs
-                  ? t('median {d}', { d: formatDuration(summary.medianDurationMs) })
-                  : undefined
+            <Section
+              title={t('Recent runs')}
+              icon={<Timer className="text-muted" />}
+              actions={
+                <Link to={routes.analytics()} className={cn('text-caption', QUIET_LINK)}>
+                  {t('Analytics')}
+                </Link>
               }
-              icon={<CheckCircle2 />}
-              tone={
-                summary && summary.totalRuns > 0
-                  ? summary.successRate >= 0.8
-                    ? 'success'
-                    : summary.successRate >= 0.5
-                      ? 'warning'
-                      : 'danger'
-                  : undefined
-              }
-            />
-            <Stat
-              label={t('Memories')}
-              value={system?.memoryCount ?? 0}
-              hint={t(describeRetrieval(system?.retrieval).label)}
-              icon={<Brain />}
-            />
+            >
+              {runs.length === 0 ? (
+                <EmptyState
+                  title={t('No runs yet')}
+                  description={t('Start a session to see history here.')}
+                />
+              ) : (
+                <ul className="divide-y divide-line">
+                  {runs
+                    .filter((run) => !activeRuns.includes(run))
+                    .slice(0, 12)
+                    .map((run) => (
+                      <RunRow key={run.id} run={run} />
+                    ))}
+                </ul>
+              )}
+            </Section>
           </div>
 
-          {/* The machine itself. Below the work it is doing, because the
-              question "what is running?" comes before "can the box take it?"
-              — and above the history, because it is the only part of this
-              screen that can turn into an incident. */}
-          <ResourceMeters resources={system?.resources} />
+          <aside className="min-w-0 space-y-section">
+            <Section title={t('Activity')}>
+              <StatList
+                items={[
+                  {
+                    label: t('Active runs'),
+                    value: system?.activeRuns ?? 0,
+                    hint: system?.queuedRuns
+                      ? t('{n} queued', { n: system.queuedRuns })
+                      : undefined,
+                    tone: system && system.activeRuns > 0 ? 'success' : undefined,
+                  },
+                  {
+                    label: t('Cost, 7 days'),
+                    value: formatCost(summary?.totalCostUsd ?? 0),
+                    hint: t('{n} runs', { n: summary?.totalRuns ?? 0 }),
+                  },
+                  {
+                    label: t('Success rate'),
+                    value: summary ? formatPercent(summary.successRate) : '—',
+                    hint: summary?.medianDurationMs
+                      ? t('median {d}', { d: formatDuration(summary.medianDurationMs) })
+                      : undefined,
+                    tone:
+                      summary && summary.totalRuns > 0
+                        ? summary.successRate >= 0.8
+                          ? 'success'
+                          : summary.successRate >= 0.5
+                            ? 'warning'
+                            : 'danger'
+                        : undefined,
+                  },
+                  {
+                    label: t('Memories'),
+                    value: system?.memoryCount ?? 0,
+                    hint: t(describeRetrieval(system?.retrieval).label),
+                  },
+                ]}
+              />
+            </Section>
 
-          {/* In-flight work */}
-          {activeRuns.length > 0 ? (
-            <Card>
-              <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-                <Activity className="size-4 shrink-0 text-accent" aria-hidden />
-                <h2 className="text-body font-semibold text-ink">{t('In flight')}</h2>
-              </div>
-              <ul className="divide-y divide-line">
-                {activeRuns.map((run) => (
-                  <RunRow key={run.id} run={run} live />
-                ))}
-              </ul>
-            </Card>
-          ) : null}
+            {/* The machine itself. Below the work it is doing, because the
+                question "what is running?" comes before "can the box take
+                it?" */}
+            <ResourceMeters resources={system?.resources} />
 
-          <Grid cols={3} from="lg">
-            {/* Workspaces */}
-            <Card className="lg:col-span-2">
-              <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <FolderGit2 className="size-4 shrink-0 text-muted" aria-hidden />
-                  <h2 className="text-body font-semibold text-ink">{t('Workspaces')}</h2>
-                </div>
+            <Section
+              title={t('Workspaces')}
+              icon={<FolderGit2 className="text-muted" />}
+              actions={
                 <Link to={routes.workspaces()} className={cn('text-caption', QUIET_LINK)}>
                   {t('View all')}
                 </Link>
-              </div>
-
+              }
+            >
               {workspacesQuery.isLoading ? (
-                <div className="flex justify-center py-10">
+                <div className="flex justify-center py-6">
                   <Spinner />
                 </div>
               ) : workspaces.length === 0 ? (
@@ -380,10 +398,10 @@ export function DashboardPage() {
                     <li key={workspace.id}>
                       <Link
                         to={routes.workspace(workspace.id)}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-raised"
+                        className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-raised"
                       >
                         <span
-                          className="size-8 shrink-0 rounded-lg"
+                          className="size-6 shrink-0 rounded-md"
                           style={{ background: workspace.color }}
                           aria-hidden
                         />
@@ -403,37 +421,32 @@ export function DashboardPage() {
                   ))}
                 </ul>
               )}
-            </Card>
+            </Section>
 
-            {/* What it has been learning */}
-            <Card>
-              <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <Zap className="size-4 shrink-0 text-thinking" aria-hidden />
-                  <h2 className="text-body font-semibold text-ink">{t('Recently learned')}</h2>
-                </div>
+            <Section
+              title={t('Recently learned')}
+              icon={<Zap className="text-thinking" />}
+              actions={
                 <Link to={routes.memory()} className={cn('text-caption', QUIET_LINK)}>
                   {t('Review')}
                 </Link>
-              </div>
-
+              }
+            >
               {learned.length === 0 ? (
                 <EmptyState
                   title={t('Nothing new')}
                   description={t(
                     'After each run, Metaclaude reflects on what happened and records anything worth remembering.',
                   )}
-                  className="py-8"
+                  className="py-6"
                 />
               ) : (
                 <ul className="divide-y divide-line">
                   {learned.map((insight) => (
-                    <li key={insight.id} className="px-4 py-3">
-                      <div className="flex items-start gap-2">
-                        <Badge tone={INSIGHT_TONE[insight.kind]}>
-                          {insight.kind.replace('_', ' ')}
-                        </Badge>
-                      </div>
+                    <li key={insight.id} className="py-2">
+                      <Badge tone={INSIGHT_TONE[insight.kind]}>
+                        {insight.kind.replace('_', ' ')}
+                      </Badge>
                       <p className="mt-1.5 text-body leading-snug text-ink">{insight.title}</p>
                       <p className="mt-0.5 text-caption text-subtle">
                         {formatRelative(insight.createdAt)}
@@ -442,42 +455,23 @@ export function DashboardPage() {
                   ))}
                 </ul>
               )}
-            </Card>
-          </Grid>
-
-          {/* History */}
-          <Card>
-            <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-              <div className="flex items-center gap-2">
-                <Timer className="size-4 shrink-0 text-muted" aria-hidden />
-                <h2 className="text-body font-semibold text-ink">{t('Recent runs')}</h2>
-              </div>
-              <Link to={routes.analytics()} className={cn('text-caption', QUIET_LINK)}>
-                {t('Analytics')}
-              </Link>
-            </div>
-
-            {runs.length === 0 ? (
-              <EmptyState title={t(
-                'No runs yet',
-              )} description={t('Start a session to see history here.')} />
-            ) : (
-              <ul className="divide-y divide-line">
-                {runs
-                  .filter((run) => !activeRuns.includes(run))
-                  .slice(0, 12)
-                  .map((run) => (
-                    <RunRow key={run.id} run={run} />
-                  ))}
-              </ul>
-            )}
-          </Card>
+            </Section>
+          </aside>
+        </div>
       </Page>
     </AppShell>
   );
 }
 
 /* -------------------------------------------------------------------------- */
+
+/** The status dot's colour, by tone. A `Record` so a new tone fails the build. */
+const DOT: Record<'success' | 'danger' | 'warning' | 'accent', string> = {
+  success: 'bg-success',
+  danger: 'bg-danger',
+  warning: 'bg-warning',
+  accent: 'bg-accent',
+};
 
 function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
   const t = useT();
@@ -494,10 +488,21 @@ function RunRow({ run, live = false }: { run: Run; live?: boolean }) {
     <li>
       <Link
         to={routes.session(run.workspaceId, run.sessionId)}
-        className="flex items-center gap-3 px-4 py-2.5 hover:bg-raised"
+        className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-raised"
       >
+        {/*
+          * A dot, not a pill.
+          *
+          * Twelve rows carried twelve `succeeded` badges — twelve repetitions
+          * of the one thing every row has in common, drawn louder than the
+          * prompt that distinguishes them. The eye needs the exception, and
+          * the exception was the quietest element on the list. Colour carries
+          * it now and the word stays in the accessible name, because a colour
+          * alone is not a status.
+          */}
         <span className={cn('relative shrink-0', live && 'pulse-ring rounded-full')}>
-          <Badge tone={tone}>{t(run.status)}</Badge>
+          <span className={cn('block size-2 rounded-full', DOT[tone])} aria-hidden />
+          <span className="sr-only">{t(run.status)}</span>
         </span>
 
         <p className="min-w-0 flex-1 truncate text-body text-ink">

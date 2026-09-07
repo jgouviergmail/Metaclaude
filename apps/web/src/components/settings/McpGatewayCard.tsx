@@ -20,14 +20,13 @@ import { CheckboxField } from '@/components/ui/controls';
 import {
   Badge,
   Button,
-  Card,
-  CardHeader,
   EmptyState,
   Input,
   Label,
   Skeleton,
   Spinner,
 } from '@/components/ui/primitives';
+import { Section } from '@/components/ui/layout';
 import { api } from '@/lib/api';
 import { type TranslateFn, useT } from '@/lib/i18n';
 import { formatDateTime, formatRelative } from '@/lib/utils';
@@ -131,32 +130,31 @@ export function McpGatewayCard() {
     list.includes(value) ? list.filter((one) => one !== value) : [...list, value];
 
   return (
-    <Card>
-      <CardHeader
-        title={t('MCP access for other applications')}
-        description={t(
-          'Connect another application to this agent. A token can reach only the workspaces you name, and never more than the ceiling you set.',
-        )}
-        actions={
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              // The list this dialog is chosen from decides what the server is
-              // asked for, and a workspace deleted since the page loaded is a
-              // 400 the operator cannot read: the id was never on screen.
-              // Re-asked on opening, which is the only moment it matters.
-              void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-              setDrafting(true);
-            }}
-          >
-            <KeyRound className="size-4" aria-hidden />
-            {t('New token')}
-          </Button>
-        }
-      />
+    <Section
+      title={t('MCP access for other applications')}
+      description={t(
+        'Connect another application to this agent. A token can reach only the workspaces you name, and never more than the ceiling you set.',
+      )}
+      actions={
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => {
+            // The list this dialog is chosen from decides what the server is
+            // asked for, and a workspace deleted since the page loaded is a
+            // 400 the operator cannot read: the id was never on screen.
+            // Re-asked on opening, which is the only moment it matters.
+            void queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+            setDrafting(true);
+          }}
+        >
+          <KeyRound className="size-4" aria-hidden />
+          {t('New token')}
+        </Button>
+      }
+    >
 
-      <div className="space-y-3 px-4 pb-4">
+      <div className="space-y-3">
         {/* What to paste into the other application. Shown once, above the
             list, because it is the same for every token. */}
         {/* Three states, not two. `endpoint.data?.url` is also falsy while the
@@ -200,7 +198,7 @@ export function McpGatewayCard() {
           {all.map((token) => {
             const state = tokenState(token);
             return (
-              <li key={token.id} className="flex items-start gap-3 px-4 py-3">
+              <li key={token.id} className="flex items-start gap-3 py-2.5">
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="flex flex-wrap items-center gap-2 text-body text-ink">
                     <span className="truncate font-medium">{token.name}</span>
@@ -488,6 +486,6 @@ export function McpGatewayCard() {
           if (revoking) revoke.mutate(revoking.id);
         }}
       />
-    </Card>
+    </Section>
   );
 }

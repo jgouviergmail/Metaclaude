@@ -144,11 +144,17 @@ describe('what is happening now', () => {
     });
     renderWithProviders(<DashboardPage />);
 
-    // Scoped to the In-flight card: a finished run legitimately appears
+    // Scoped to the In-flight block: a finished run legitimately appears
     // further down under recent activity, so asserting on the whole page
     // would pass for the wrong reason.
-    const heading = await screen.findByText('In flight');
-    const card = heading.closest('div')?.parentElement as HTMLElement;
+    //
+    // Asked of the accessibility tree rather than by walking `closest('div')
+    // .parentElement`, which described the innards of a `<Card>` and broke the
+    // day the block became a `<Section>` — while the behaviour it covers had
+    // not moved at all. `Section` renders a `<section aria-labelledby>`, which
+    // *is* a named region, so this is both sturdier and a stronger claim: the
+    // grouping a screen reader announces is the grouping under test.
+    const card = await screen.findByRole('region', { name: 'In flight' });
 
     expect(card.textContent).toContain('prompt run_1');
     expect(card.textContent).toContain('prompt run_2');

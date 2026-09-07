@@ -1536,6 +1536,39 @@ function classNameValues(source) {
  */
 const DISPLAY_UTILITY = /\b(?:block|inline-block|flex|inline-flex|grid|inline-grid|hidden|contents)\b/;
 
+/**
+ * A titled group still wearing a box.
+ *
+ * `<Card><CardHeader …/>` is the shape `Section` exists to replace: a heading,
+ * a rule under it, a body — the same thing a section is, drawn as a separate
+ * object. Twenty-one of them shipped across Settings, Analytics and a
+ * workspace, so ten blocks on one screen all claimed the same weight and
+ * nothing led the eye. Border, fill and shadow each say "a separate object";
+ * spending them on every block spends them on none.
+ *
+ * The ceiling is one, not zero, and the one is deliberate: the dashboard's
+ * setup checklist is dismissible — an object you close, not a group you read.
+ *
+ * Measured on the *source order* rather than by counting the two separately:
+ * a screen may legitimately hold a card and, elsewhere, a section heading.
+ * What this catches is the header sitting immediately inside the card.
+ */
+function countBoxedSections() {
+  let n = 0;
+  for (const file of tracked('apps/web/src/*')) {
+    if (!file.endsWith('.tsx') || file.includes('.test.')) continue;
+    const text = read(file);
+    // `<Card` … `<CardHeader` with only whitespace and the card's own props
+    // between them: any real element in between makes it something else.
+    const re = /<Card(?:\s[^>]*)?>\s*<CardHeader[\s/>]/g;
+    for (const match of text.matchAll(re)) {
+      n += 1;
+      note('box ', file, match[0].replace(/\s+/g, ' '));
+    }
+  }
+  return n;
+}
+
 function countDisplayBesideDensityHelp() {
   let n = 0;
   for (const file of tracked('apps/web/src/*')) {
@@ -1769,6 +1802,12 @@ const METRICS = [
     direction: 'down',
     label: 'paths written by hand instead of built from the shared contract',
     measure: countHardcodedRoutes,
+  },
+  {
+    key: 'boxedSections',
+    direction: 'down',
+    label: 'a titled group boxed in a Card instead of a Section',
+    measure: countBoxedSections,
   },
   {
     key: 'displayBesideDensityHelp',

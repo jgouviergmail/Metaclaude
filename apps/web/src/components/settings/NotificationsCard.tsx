@@ -14,7 +14,11 @@ import { BellRing } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { usePlural, useT } from '@/lib/i18n';
-import { Badge, Button, Card, CardHeader } from '@/components/ui/primitives';
+import {
+  Badge,
+  Button,
+} from '@/components/ui/primitives';
+import { Section } from '@/components/ui/layout';
 import { api, ApiError } from '@/lib/api';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
 
@@ -107,14 +111,13 @@ export function NotificationsCard() {
   });
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Notifications')}
-        description={t(
-          'A push when a run waits on your approval, and when a run you started ends. Automations stay silent by design.',
-        )}
-      />
-      <div className="space-y-3 px-4 pb-4">
+    <Section
+      title={t('Notifications')}
+      description={t(
+        'A push when a run waits on your approval, and when a run you started ends. Automations stay silent by design.',
+      )}
+    >
+      <div className="space-y-3">
         {!supported ? (
           <p className="text-caption leading-relaxed text-muted">
             {t(
@@ -162,6 +165,6 @@ export function NotificationsCard() {
           </>
         )}
       </div>
-    </Card>
+    </Section>
   );
 }

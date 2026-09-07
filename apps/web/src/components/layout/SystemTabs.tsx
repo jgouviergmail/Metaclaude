@@ -4,8 +4,13 @@
  * Six screens were six top-level rail entries out of ten — automations, agents,
  * plugins, analytics, settings, help — and ten does not fit a phone's tab bar,
  * so four of them lived behind a "More" sheet chosen by the available space
- * rather than by meaning. They belong together: none is something an operator
- * *works in*, all six are how the deployment is configured and inspected.
+ * rather than by meaning.
+ *
+ * Five of them belong together: none is something an operator *works in*, all
+ * five are what the deployment can do and how it is inspected. Settings is not
+ * one of them, and grouping it here was a mistake of convenience: it is where
+ * an operator goes deliberately, most often, and by name. It has its own rail
+ * entry now, so the strip below is five.
  *
  * Their URLs deliberately do not change. `apps/api` builds links to `/settings`
  * for the Google OAuth return and to `/automations` for a scheduler
@@ -17,15 +22,15 @@
  * route, so a screen reader is told what is true — a navigation landmark whose
  * current entry carries `aria-current="page"`.
  *
- * Chips, not an underlined strip, and that is not decoration either. Settings
- * carries six tabs of its own, and the first version of this drew both in the
+ * Chips, not an underlined strip, and that is not decoration either. Agents
+ * carries four tabs of its own, and the first version of this drew both in the
  * same register: two scrolling strips stacked, identical, ninety pixels of a
  * phone's height, with nothing saying which one moved between screens and
  * which one moved within a screen. Two levels of navigation exist here, so
  * they read as two.
  */
 
-import { Activity, Bot, LifeBuoy, Plug, Settings, Timer } from 'lucide-react';
+import { Activity, Bot, LifeBuoy, Plug, Timer } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
@@ -39,13 +44,12 @@ export interface SystemPath {
   icon: ReactNode;
 }
 
-/** The six, in the order they are shown. Exported so the rail can own them. */
+/** The five, in the order they are shown. Exported so the rail can own them. */
 export const SYSTEM_PATHS: readonly SystemPath[] = [
   { to: routes.automations(), label: 'Automations', icon: <Timer /> },
   { to: routes.agents(), label: 'Agents & skills', icon: <Bot /> },
   { to: routes.plugins(), label: 'Plugins', icon: <Plug /> },
   { to: routes.analytics(), label: 'Analytics', icon: <Activity /> },
-  { to: routes.settings(), label: 'Settings', icon: <Settings /> },
   { to: routes.help(), label: 'Help', icon: <LifeBuoy /> },
 ];
 
@@ -62,7 +66,7 @@ export function SystemTabs({ className }: { className?: string }) {
   /*
    * Bring the current chip into view.
    *
-   * Six French labels are wider than a phone, so the strip scrolls — and it
+   * Five French labels are wider than a phone, so the strip scrolls — and it
    * scrolls from the left, which put the current chip off-screen on every
    * System screen at 390px: the one thing a section strip exists to show was
    * the one thing it did not. `nearest` on the block axis so the page itself
@@ -76,7 +80,7 @@ export function SystemTabs({ className }: { className?: string }) {
   return (
     <nav
       aria-label={t('System sections')}
-      // Scrolls rather than wraps: six French labels do not fit 390px, and a
+      // Scrolls rather than wraps: five French labels do not fit 390px, and a
       // strip that wraps to two rows pushes the content down on every phone.
       // `scripts/responsive.mjs` tolerates a control outside the frame only
       // when an ancestor genuinely scrolls, which is what makes this a choice.

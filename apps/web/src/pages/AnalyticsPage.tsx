@@ -8,7 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Page, Section } from '@/components/ui/layout';
+import { FLUSH_TABLE, Page, Section } from '@/components/ui/layout';
 import { Activity, CalendarRange, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -37,7 +37,6 @@ import {
   Badge,
   Button,
   Card,
-  CardHeader,
   EmptyState,
   Skeleton,
   Stat,
@@ -278,19 +277,18 @@ export function AnalyticsPage() {
           {/* Independent of the analytics query on purpose: the quota picture
               exists even in a period with no runs, and is most needed when the
               wall is close — which is not when someone is browsing history. */}
-          <Card>
-            <CardHeader
-              title={t('Subscription quota')}
-              description={
-                usageQuery.data?.subscriptionType
-                  ? t(
-                    "The {subscriptionType} plan's windows, as the CLI reports them.",
-                    { subscriptionType: usageQuery.data.subscriptionType },
-                  )
-                  : t('The plan windows, as the CLI reports them.')
-              }
-            />
-            <div className="px-4 pb-4">
+          <Section
+            title={t('Subscription quota')}
+            description={
+              usageQuery.data?.subscriptionType
+                ? t(
+                  "The {subscriptionType} plan's windows, as the CLI reports them.",
+                  { subscriptionType: usageQuery.data.subscriptionType },
+                )
+                : t('The plan windows, as the CLI reports them.')
+            }
+          >
+            <div>
               {usageQuery.isLoading ? (
                 <Skeleton className="h-24 rounded-xl" />
               ) : usageQuery.data ? (
@@ -299,7 +297,7 @@ export function AnalyticsPage() {
                 <p className="text-caption text-subtle">{t('The quota could not be read.')}</p>
               )}
             </div>
-          </Card>
+          </Section>
 
           {analyticsQuery.isLoading ? (
             <div className="space-y-6">
@@ -491,28 +489,26 @@ export function AnalyticsPage() {
                 the place of the filter that already answered theirs.
               */}
               {scope === 'all' ? (
-                <Card>
-                  <CardHeader
-                    title={t('Where the usage went')}
-                    description={t(
-                      'Every workspace over this period, ranked by tokens. On a subscription this is the view that matters: the per-workspace filter tells you what one cost, and only this tells you which one is spending the ceiling.',
-                    )}
-                  />
-                  <div className="px-4 pb-4">
+                <Section
+                  title={t('Where the usage went')}
+                  description={t(
+                    'Every workspace over this period, ranked by tokens. On a subscription this is the view that matters: the per-workspace filter tells you what one cost, and only this tells you which one is spending the ceiling.',
+                  )}
+                >
+                  <div>
                     <WorkspaceUsageBars rows={summary.byWorkspace} />
                   </div>
-                </Card>
+                </Section>
               ) : null}
 
               {/* ---------------------------- Breakdowns ----------------------- */}
               <div className="grid gap-3 lg:grid-cols-2">
-                <Card>
-                  <CardHeader
-                    title={t('By model')}
-                    description={t('Where the spend and the successes actually went.')}
-                  />
+                <Section
+                  title={t('By model')}
+                  description={t('Where the spend and the successes actually went.')}
+                >
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[22rem] text-body">
+                    <table className={cn('w-full min-w-[22rem] text-body', FLUSH_TABLE)}>
                       <thead>
                         <tr className="text-eyebrow text-left uppercase text-subtle">
                           <th className="px-4 py-2 font-semibold">{t('Model')}</th>
@@ -541,17 +537,16 @@ export function AnalyticsPage() {
                       </tbody>
                     </table>
                   </div>
-                </Card>
+                </Section>
 
-                <Card>
-                  <CardHeader
-                    title={t('By category')}
-                    description={t(
-                      'The classifier labels every prompt before it runs, and the learner keeps a separate policy per label — so a category with few runs is simply one it has not had much chance to tune.',
-                    )}
-                  />
+                <Section
+                  title={t('By category')}
+                  description={t(
+                    'The classifier labels every prompt before it runs, and the learner keeps a separate policy per label — so a category with few runs is simply one it has not had much chance to tune.',
+                  )}
+                >
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[22rem] text-body">
+                    <table className={cn('w-full min-w-[22rem] text-body', FLUSH_TABLE)}>
                       <thead>
                         <tr className="text-eyebrow text-left uppercase text-subtle">
                           <th className="px-4 py-2 font-semibold">{t('Category')}</th>
@@ -574,7 +569,7 @@ export function AnalyticsPage() {
                       </tbody>
                     </table>
                   </div>
-                </Card>
+                </Section>
               </div>
             </>
           )}
@@ -662,15 +657,14 @@ function PolicyCard({
   const ordered = [...arms].sort((a, b) => posteriorMean(b) - posteriorMean(a));
 
   return (
-    <Card>
-      <CardHeader
-        title={category}
-        description={explanation || t('No explanation recorded for this category yet.')}
-        actions={<Badge tone="neutral">{trials} {t('trials')}</Badge>}
-      />
+    <Section
+      title={category}
+      description={explanation || t('No explanation recorded for this category yet.')}
+      actions={<Badge tone="neutral">{trials} {t('trials')}</Badge>}
+    >
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-body">
+        <table className={cn('w-full min-w-[34rem] text-body', FLUSH_TABLE)}>
           <thead>
             <tr className="text-eyebrow text-left uppercase text-subtle">
               <th className="px-4 py-2 font-semibold">{t('Model')}</th>
@@ -719,7 +713,7 @@ function PolicyCard({
           </tbody>
         </table>
       </div>
-    </Card>
+    </Section>
   );
 }
 

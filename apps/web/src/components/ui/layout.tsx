@@ -179,6 +179,24 @@ export function Section({
 }
 
 /* -------------------------------------------------------------------------- */
+/* Table                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A table flush with the section that titles it.
+ *
+ * Cell padding is what keeps columns apart, so `px-4` on every cell is right
+ * — except on the two that touch the edges, where it becomes an indent. Inside
+ * a `<Card>` that indent lined up with the card's own padding and looked
+ * deliberate; inside a `<Section>` there is no padding to line up with, so the
+ * first column sits four units right of the heading above it and the last one
+ * stops short of the rule. Applied to the table, not to each cell, so a new
+ * column cannot forget it.
+ */
+export const FLUSH_TABLE =
+  '[&_:is(th,td):first-child]:pl-0 [&_:is(th,td):last-child]:pr-0';
+
+/* -------------------------------------------------------------------------- */
 /* Grid                                                                        */
 /* -------------------------------------------------------------------------- */
 

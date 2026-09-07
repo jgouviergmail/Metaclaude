@@ -17,6 +17,20 @@ import { PASSWORD, REPO_ROOT, startServer, USERNAME } from './harness.mjs';
 const OUT = process.argv[2] ?? 'shots';
 mkdirSync(OUT, { recursive: true });
 
+/*
+ * A subset, for iterating on one screen.
+ *
+ * The full bench is a ten-minute run, which quietly makes it an instrument you
+ * look at once at the end rather than one you design with — and a bench nobody
+ * runs mid-change is how a whole redesign shipped without its screens being
+ * looked at. `SHOTS_ONLY=dashboard` and `SHOTS_PASSES=dark,dark-mobile` cut it
+ * to seconds. Both empty means everything, so a full run is unchanged.
+ */
+const ONLY = (process.env.SHOTS_ONLY ?? '').split(',').filter(Boolean);
+const PASSES = (process.env.SHOTS_PASSES ?? '').split(',').filter(Boolean);
+/** A pass is named by what its files are suffixed with: `dark`, `dark-mobile-fr`. */
+const wanted = (theme, suffix) => PASSES.length === 0 || PASSES.includes(`${theme}${suffix}`);
+
 const WEB_DIST = join(REPO_ROOT, 'apps', 'web', 'dist');
 if (!existsSync(join(WEB_DIST, 'index.html'))) {
   console.error('Run pnpm build first.');
@@ -305,6 +319,7 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 
 async function shoot(theme, viewport, suffix, options = {}) {
+  if (!wanted(theme, suffix)) return;
   const { density = 'compact', locale = 'en-US' } = options;
   // colorScheme, not localStorage: the app follows the system by default,
   // and headless Chromium's default is light. The locale is pinned for the
@@ -361,6 +376,7 @@ async function shoot(theme, viewport, suffix, options = {}) {
     ['/settings', 'google-connection', 'Connections'],
   ];
   for (const [path, name, tab] of screens) {
+    if (ONLY.length && !ONLY.includes(name)) continue;
     /*
      * A tab is opened by its *name*, and the names are English.
      *
@@ -407,6 +423,7 @@ async function shoot(theme, viewport, suffix, options = {}) {
  * Nothing here asserts; the output is for eyes, like the rest of this bench.
  */
 async function shootDialogs(theme, viewport, suffix) {
+  if (!wanted(theme, `${suffix}-dialogs`)) return;
   const page = await browser.newPage({ viewport, colorScheme: theme, locale: 'en-US' });
   await page.goto(`${server.baseUrl}/login`, { waitUntil: 'networkidle' });
   await page.fill('input[name="username"], #username', USERNAME);

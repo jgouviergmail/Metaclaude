@@ -747,6 +747,29 @@ restates the code is noise; one that records a decision or a trap is not.
   something mutates the DOM — proved by four crossed cases. So a responsive
   test passes or fails depending on whether React happened to re-render in
   between. Set the width **before** the render, never after.
+- **Renaming a value is not changing it, and a ratchet cannot tell them
+  apart.** Twelve lots turned `text-[13px]` into `text-body` — which is
+  13px — `divide-[var(--mc-border)]` into `divide-line`, a `<div className=
+  "grid">` into `<Grid>`. Every check went green, `literalTextSizes` fell
+  from 360 to 10, and the deployed dashboard was identical to the previous
+  release *pixel for pixel*; the operator's first words on seeing it were
+  "I see no difference — all that work for this?". The ratchets measure
+  consistency, and the consistency was already there. Nothing in the suite
+  can answer "does this look different", so a redesign has to be judged on a
+  before/after capture of the screen the operator opens first, and on nothing
+  else. `scripts/shots.mjs` now takes `SHOTS_ONLY` / `SHOTS_PASSES` for
+  exactly that reason — a ten-minute bench gets looked at once, at the end.
+
+- **A primitive written against a defect, and then not applied, leaves the
+  defect *and* the impression of having fixed it.** `Section` — "a titled band,
+  separated by a rule rather than enclosed in a box" — carries a comment
+  counting the 138 bordered blocks it exists to remove, and shipped applied
+  **9 times out of 97**: never on Settings, which had sixteen, never on
+  Analytics, which had fourteen, never on the dashboard. Reading the source
+  suggested the problem was solved; the count said it was not. So after
+  introducing a primitive, count its uses against its intended sites in the
+  same session — `boxedSections` is that count made permanent for this one.
+
 - **`window.innerWidth` lies under mobile emulation.** It reports the *visual*
   viewport, which widens with the content that overflows: measured at 530 for a
   `documentElement.clientWidth` of 390. The worse the defect, the better it

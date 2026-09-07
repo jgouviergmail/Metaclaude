@@ -15,7 +15,13 @@ import { toast } from 'sonner';
 import type { PasskeyRecord } from '@metaclaude/shared';
 import { usePlural, useT } from '@/lib/i18n';
 import { Modal } from '@/components/ui/Modal';
-import { Badge, Button, Card, CardHeader, Input, Label } from '@/components/ui/primitives';
+import {
+  Badge,
+  Button,
+  Input,
+  Label,
+} from '@/components/ui/primitives';
+import { Section } from '@/components/ui/layout';
 import { api, ApiError } from '@/lib/api';
 import { createPasskey, isCeremonyCancelled, passkeyDomainOk, passkeySupported } from '@/lib/passkeys';
 
@@ -74,19 +80,18 @@ export function PasskeysCard() {
   const list = passkeys.data?.passkeys ?? [];
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Passkeys')}
-        description={t(
-          "Sign in with your device's own unlock — Face ID, a fingerprint, a security key — instead of the password.",
-        )}
-        actions={
-          list.length > 0 ? (
-            <Badge tone="success">{plural(list.length, '{n} key enrolled', '{n} keys enrolled')}</Badge>
-          ) : null
-        }
-      />
-      <div className="space-y-3 px-4 pb-4">
+    <Section
+      title={t('Passkeys')}
+      description={t(
+        "Sign in with your device's own unlock — Face ID, a fingerprint, a security key — instead of the password.",
+      )}
+      actions={
+        list.length > 0 ? (
+          <Badge tone="success">{plural(list.length, '{n} key enrolled', '{n} keys enrolled')}</Badge>
+        ) : null
+      }
+    >
+      <div className="space-y-3">
         {!supported ? (
           <p className="text-caption leading-relaxed text-muted">
             {t(
@@ -247,6 +252,6 @@ export function PasskeysCard() {
           />
         </Label>
       </Modal>
-    </Card>
+    </Section>
   );
 }

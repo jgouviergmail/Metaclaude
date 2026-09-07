@@ -1,7 +1,7 @@
 /**
  * The shell's promise on a phone: every section reachable with a thumb.
  *
- * The tab bar holds the five primary sections; everything else must be one
+ * The tab bar holds the six primary sections; everything else must be one
  * tap behind "More" — five screens used to have no touch entry point at
  * all, reachable only by URL or the command palette.
  */
@@ -16,27 +16,31 @@ import { AppShell, ContentHeader } from './AppShell';
 const SECONDARY = ['Automations', 'Agents & skills', 'Plugins', 'Analytics', 'Help'];
 
 describe('AppShell navigation', () => {
-  it('offers the same five sections in the rail and in the phone tab bar', () => {
-    // There is no sixth entry and no sheet: ten sections did not fit a tab bar,
-    // so four were hidden behind "More" by the available space rather than by
-    // meaning. Six of the ten are one section now.
+  it('offers the same six sections in the rail and in the phone tab bar', () => {
+    // There is no seventh entry and no sheet: ten sections did not fit a tab
+    // bar, so four were hidden behind "More" by the available space rather
+    // than by meaning. Five of the ten are one section now, and Settings —
+    // the screen reached most deliberately — keeps an entry of its own.
     renderWithProviders(<AppShell>content</AppShell>);
 
     const bars = screen.getAllByRole('navigation', { name: 'Sections' });
     expect(bars).toHaveLength(2); // the rail and the tab bar
 
-    for (const label of ['Dashboard', 'Workspaces', 'Board', 'Memory', 'System']) {
-      expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
+    // By accessible name, not by visible text: the tab bar shortens two of
+    // the labels to fit six cells across a phone, and the name is the part
+    // that must not change.
+    for (const label of ['Dashboard', 'Workspaces', 'Board', 'Memory', 'System', 'Settings']) {
+      expect(screen.getAllByLabelText(label).length, label).toBeGreaterThanOrEqual(2);
     }
     for (const bar of bars) {
-      expect(within(bar).getAllByRole('link').length).toBeLessThanOrEqual(6); // 5 + the logo
+      expect(within(bar).getAllByRole('link').length).toBeLessThanOrEqual(7); // 6 + the logo
     }
   });
 
-  it('reaches the six System screens from the section itself, not from the rail', () => {
+  it('reaches the five System screens from the section itself, not from the rail', () => {
     // The rail no longer carries them, so the section's own strip has to — and
-    // it is the thing that makes them one section rather than six entries.
-    renderWithProviders(<SystemTabs />, { route: '/settings' });
+    // it is the thing that makes them one section rather than five entries.
+    renderWithProviders(<SystemTabs />, { route: '/automations' });
     const strip = within(screen.getByRole('navigation', { name: 'System sections' }));
     for (const label of SECONDARY) {
       expect(strip.getByRole('link', { name: new RegExp(label) })).toBeDefined();
@@ -108,13 +112,13 @@ describe('AppShell navigation', () => {
     expect(css).toContain('env(safe-area-inset-top)');
   });
 
-  it('keeps the rail down to the five, on every screen width', () => {
+  it('keeps the rail down to the six, on every screen width', () => {
     renderWithProviders(<AppShell>content</AppShell>);
     const rail = screen
       .getAllByRole('navigation', { name: 'Sections' })
       .find((bar) => !bar.className.includes('fixed')) as HTMLElement;
-    // Five sections plus the logo, and nothing that used to be hidden.
-    expect(within(rail).getAllByRole('link')).toHaveLength(6);
+    // Six sections plus the logo, and nothing that used to be hidden.
+    expect(within(rail).getAllByRole('link')).toHaveLength(7);
     for (const label of SECONDARY) {
       expect(within(rail).queryByLabelText(label)).toBeNull();
     }
@@ -150,19 +154,19 @@ describe('the current section', () => {
 });
 
 /**
- * Five sections, and no "More".
+ * Six sections, and no "More".
  *
  * Ten top-level entries did not fit a phone's tab bar, so four lived behind a
  * sheet — and which four was decided by the available space rather than by
- * meaning. Six of them were the same kind of thing: how the deployment is
- * configured and inspected, not what an operator works in. They are one
- * section now, so the rail and the tab bar hold the same five, in the same
- * order, and nothing is one tap further away than anything else.
+ * meaning. Five of them were the same kind of thing: what the deployment can
+ * do and how it is inspected, not what an operator works in. They are one
+ * section, so the rail and the tab bar hold the same six, in the same order,
+ * and nothing is one tap further away than anything else.
  */
-describe('the five sections', () => {
-  it('shows five in the rail and the same five on the phone', () => {
+describe('the six sections', () => {
+  it('shows six in the rail and the same six on the phone', () => {
     renderWithProviders(<AppShell>content</AppShell>);
-    for (const label of ['Dashboard', 'Workspaces', 'Board', 'Memory', 'System']) {
+    for (const label of ['Dashboard', 'Workspaces', 'Board', 'Memory', 'System', 'Settings']) {
       expect(screen.getAllByLabelText(label).length).toBeGreaterThan(0);
     }
   });
@@ -172,8 +176,8 @@ describe('the five sections', () => {
     expect(screen.queryByLabelText('More sections')).toBeNull();
   });
 
-  it('marks System as current on each of its six screens', () => {
-    for (const route of ['/automations', '/agents', '/plugins', '/analytics', '/settings', '/help']) {
+  it('marks System as current on each of its five screens', () => {
+    for (const route of ['/automations', '/agents', '/plugins', '/analytics', '/help']) {
       const { unmount } = renderWithProviders(<AppShell>content</AppShell>, { route });
       const entries = screen.getAllByLabelText('System');
       expect(
@@ -189,13 +193,82 @@ describe('the five sections', () => {
     const entries = screen.getAllByLabelText('System');
     expect(entries.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
   });
+
+  /*
+   * Settings left the System group, and both halves of that have to hold.
+   *
+   * It was the group's `to`, so the rail pointed at `/settings` while the
+   * strip listed it sixth — the entry an operator reaches for most often sat
+   * one tap deeper than the four beside it, and "System" named both the group
+   * and a tab inside Settings. Testing only that Settings lights up would
+   * pass just as well if System lit up too, which is the state this replaces.
+   */
+  it('marks Settings as current on its own screen, and System not at all', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/settings' });
+
+    const settings = screen.getAllByLabelText('Settings');
+    expect(settings.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+
+    const system = screen.getAllByLabelText('System');
+    expect(system.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
+  });
+
+  /*
+   * The two labels the phone shortens.
+   *
+   * Six cells at 390px are 65px each; `Dashboard` inks 60px and `Workspaces`
+   * 69, leaving a 2px gutter between them — measured with a Range by
+   * `scripts/measure-tabbar.mjs`, not estimated. Nothing in the responsive
+   * guard reports it and nothing should: neither label is clipped, neither
+   * overlaps, no ancestor overflows. It is only unreadable.
+   *
+   * French never had the problem — it already says `Accueil` and `Espaces` —
+   * so the short forms are those two labels said in English. What must not
+   * follow the text is the accessible name: a tab announced as "Overview"
+   * would not be findable by the section it opens.
+   */
+  it('shortens two labels on the phone and keeps their names intact', () => {
+    renderWithProviders(<AppShell>content</AppShell>);
+    const tabBar = screen
+      .getAllByRole('navigation', { name: 'Sections' })
+      .find((bar) => bar.className.includes('fixed')) as HTMLElement;
+
+    expect(within(tabBar).getByText('Overview')).toBeDefined();
+    expect(within(tabBar).getByText('Spaces')).toBeDefined();
+    expect(within(tabBar).queryByText('Dashboard')).toBeNull();
+    expect(within(tabBar).queryByText('Workspaces')).toBeNull();
+
+    // Named by the section, whatever the cell shows.
+    expect(within(tabBar).getByRole('link', { name: 'Dashboard' })).toBeDefined();
+    expect(within(tabBar).getByRole('link', { name: 'Workspaces' })).toBeDefined();
+  });
+
+  it('leaves the four that fit alone, in both places', () => {
+    // A short form is a concession to width, not a style: applying it where
+    // the full label fits would be a second vocabulary for the same thing.
+    renderWithProviders(<AppShell>content</AppShell>);
+    const tabBar = screen
+      .getAllByRole('navigation', { name: 'Sections' })
+      .find((bar) => bar.className.includes('fixed')) as HTMLElement;
+    for (const label of ['Board', 'Memory', 'System', 'Settings']) {
+      expect(within(tabBar).getByText(label), label).toBeDefined();
+    }
+  });
+
+  it('sends the System entry to the first screen of its own strip', () => {
+    // Not to `/settings`, which is no longer in the group and would land the
+    // operator on a screen the strip does not list.
+    renderWithProviders(<AppShell>content</AppShell>);
+    const entry = screen.getAllByLabelText('System')[0] as HTMLElement;
+    expect(entry.getAttribute('href')).toBe('/automations');
+  });
 });
 
 /**
  * The rail and the tab bar are the same list, and that is now structural.
  *
  * A `primary` flag used to say which sections the phone could afford. With ten
- * it discriminated; with five every entry carried it and the flag was a
+ * it discriminated; with six every entry carried it and the flag was a
  * distinction without a difference — the kind of dead branch that reads as a
  * choice long after it stopped being one. It is gone, and this is what
  * replaces it: one list, rendered twice, in one order.
@@ -217,7 +290,7 @@ describe('one list, two renderings', () => {
       .map((link) => link.getAttribute('href'));
 
     expect(railSections).toEqual(tabSections);
-    expect(tabSections).toHaveLength(5);
+    expect(tabSections).toHaveLength(6);
   });
 });
 

@@ -1854,6 +1854,10 @@ export const fr: Record<string, string> = {
   'Automations are silent by default so the machinery never wakes you. Tick this for the ones whose whole point is to be read — a morning brief computed at eight and read at six has ten hours.':
     'Les automations sont silencieuses par défaut, pour que la mécanique ne vous réveille jamais. Cochez pour celles qui n’existent que pour être lues — un brief du matin calculé à huit heures et lu à dix-huit a dix heures.',
   'Server timezone': 'Fuseau horaire du serveur',
+  'Deployment': 'Déploiement',
+  'Overview': 'Accueil',
+  'Spaces': 'Espaces',
+  'Activity': 'Activité',
   'Cron schedules are read in it.': 'Les plannings cron y sont lus.',
   Standing: 'Convention',
   Durable: 'Durable',

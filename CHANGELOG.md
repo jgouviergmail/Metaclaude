@@ -11,6 +11,63 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.65.0] — 2026-09-07
+
+### Changed
+
+- **Settings leaves the System group and becomes its own section.** It was the
+  group's landing screen, so the rail pointed at `/settings` while the strip
+  listed it sixth — the screen an operator reaches for most deliberately sat
+  one tap deeper than the four beside it, and "System" named both the group
+  *and* a tab inside Settings. Six sections now, the same six in the rail and
+  in the phone tab bar, and the System entry lands on Automations. No URL
+  moved.
+- **The dashboard reads in two columns.** Eleven full-width bands stacked down
+  a 1100px column put the workspaces, the figures and the history two screens
+  below the fold, and every row of the run list carried 900px of empty space in
+  its middle. What is happening reads on the left; what the system *is* — its
+  figures, its machine, its projects, what it has learnt — sits beside it. The
+  four stat tiles become a list, because the point of that screen is what needs
+  a person, not the numbers.
+- **A run's status is a dot, not a pill.** Twelve rows carried twelve
+  `succeeded` badges — twelve repetitions of the one thing every row has in
+  common, drawn louder than the prompt that distinguishes them, so the single
+  red failure was the quietest thing on the list. Colour carries it now and the
+  word stays in the accessible name. Rows go from 45px to 35px.
+- **Twenty-one titled groups stop being boxes.** `Section` was written during
+  the redesign against exactly this — 138 bordered blocks, none leading the eye
+  — and then applied nine times out of ninety-seven, never on Settings, never
+  on Analytics. Settings' eight groups, its six cards' worth of components,
+  Analytics' five and a workspace's two are sections now: a heading, a rule,
+  the content. What kept a card is what a card is for — an object you act on, a
+  chart, an empty state, a tool.
+- **One size for a page title.** `ContentHeader` set its `h1` at 13.5px, the
+  same as the section headings under it; `PageHeader` — the other header in
+  this app, naming the same thing — set 18px. One role cannot have two sizes.
+  Both are the `title` role now, and the literal-size ratchet drops to 9.
+
+### Fixed
+
+- The resource meters were laid three across in a 304px column and every
+  reading was truncated to `Not mea…` and `350 GB f…`. `sm:grid-cols-3` asks
+  how wide the *window* is, which knows nothing about the column the block sits
+  in; a container query asks the block. Settings, where it spans the page, is
+  unchanged.
+
+### Added
+
+- `boxedSections`, a ratchet that counts a `<CardHeader>` sitting directly
+  inside a `<Card>` — the shape `Section` replaces. Its ceiling is one, and the
+  one is deliberate: the setup checklist is dismissible, which makes it an
+  object rather than a group.
+- `StatList` beside `Stat`, for figures read down a column rather than across
+  four tiles, and `FLUSH_TABLE`, which pulls a table's outer cells flush with
+  the heading that names it — a card's padding used to justify that indent and
+  there is no card any more.
+- The screenshot bench takes `SHOTS_ONLY` and `SHOTS_PASSES`. A ten-minute run
+  is an instrument you look at once at the end; seconds make it one you design
+  with, which is the difference between catching a defect and shipping it.
+
 ## [0.64.1] — 2026-09-07
 
 ### Fixed

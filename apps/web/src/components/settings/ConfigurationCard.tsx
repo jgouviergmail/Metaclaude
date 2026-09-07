@@ -22,7 +22,14 @@ import { toast } from 'sonner';
 import type { RuntimeSettingRecord } from '@metaclaude/shared';
 
 import { Menu, MenuItem } from '@/components/ui/Menu';
-import { Badge, Button, Card, CardHeader, Input, Label, Spinner } from '@/components/ui/primitives';
+import {
+  Badge,
+  Button,
+  Input,
+  Label,
+  Spinner,
+} from '@/components/ui/primitives';
+import { Section } from '@/components/ui/layout';
 import { api, ApiError } from '@/lib/api';
 import { usePlural, useT } from '@/lib/i18n';
 import { formatRelative } from '@/lib/utils';
@@ -143,13 +150,12 @@ export function ConfigurationCard() {
   });
 
   return (
-    <Card>
-      <CardHeader
-        title={t('Configuration')}
-        description={t(
-          'What this server does on its own, changed without a restart. A value saved here takes effect on the next run and outranks the environment — the row says what it is shadowing, so nothing here disagrees with your .env in silence.',
-        )}
-      />
+    <Section
+      title={t('Configuration')}
+      description={t(
+        'What this server does on its own, changed without a restart. A value saved here takes effect on the next run and outranks the environment — the row says what it is shadowing, so nothing here disagrees with your .env in silence.',
+      )}
+    >
 
       {query.isLoading ? (
         <div className="flex justify-center p-6">
@@ -171,7 +177,7 @@ export function ConfigurationCard() {
                     : null;
 
             return (
-              <div key={record.key} className="px-4 py-3.5">
+              <div key={record.key} className="py-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                   <div className="min-w-0 sm:flex-1">
                     {/*
@@ -249,7 +255,7 @@ export function ConfigurationCard() {
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3 border-t border-line px-4 py-3">
+      <div className="flex items-center justify-end gap-3 border-t border-line pt-3">
         {changed.length > 0 ? (
           <span className="text-caption text-muted">
             {plural(changed.length, '{n} unsaved change', '{n} unsaved changes')}
@@ -272,7 +278,7 @@ export function ConfigurationCard() {
           {t('Save changes')}
         </Button>
       </div>
-    </Card>
+    </Section>
   );
 }
 
