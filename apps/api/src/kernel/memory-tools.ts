@@ -31,7 +31,7 @@
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
 import type { Memory, MemorySearchResult } from '@metaclaude/shared';
-import { MemoryKind, MemoryShelf } from '@metaclaude/shared';
+import { MemoryKind, MemoryShelf, mcpToolName } from '@metaclaude/shared';
 import { z } from 'zod';
 
 /** What the tools need from the store — `MemoryStore` satisfies it as it is. */
@@ -201,7 +201,7 @@ export const MEMORY_TOOL_CATALOGUE: ReadonlyArray<{ name: string; ring: 1 | 2; d
 
 /** The names as the CLI and the broker see them. */
 export function memoryToolNames(): string[] {
-  return MEMORY_TOOL_CATALOGUE.map((entry) => `mcp__${MEMORY_SERVER_NAME}__${entry.name}`);
+  return MEMORY_TOOL_CATALOGUE.map((entry) => mcpToolName(MEMORY_SERVER_NAME, entry.name));
 }
 
 export function buildMemoryServer(

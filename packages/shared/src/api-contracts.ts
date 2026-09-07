@@ -904,6 +904,57 @@ export type SystemResources = z.infer<typeof SystemResources>;
  * status drops, and the `instructions` string the protocol has for "what this
  * server is for". Never a health signal.
  */
+/**
+ * The MCP tools a workspace could pre-approve, server by server.
+ *
+ * Computed on the server, deliberately. Which servers reach a workspace is a
+ * rule the runtime already owns (`RegistryService.listMcpServers`), and a copy
+ * of it in the browser would be a second spelling free to disagree — the more
+ * so as that rule is about to gain a per-workspace attachment. The interface
+ * therefore receives an answer, not the ingredients for one.
+ *
+ * `qualified` is what a pre-approval list stores and what the CLI reports;
+ * `bare` is what the operator reads. Both are sent because building one from
+ * the other in the browser is exactly the hand-spelled prefix that has been
+ * wrong here before.
+ */
+export const WorkspaceMcpTool = z.object({
+  bare: z.string(),
+  qualified: z.string(),
+  description: z.string(),
+});
+export type WorkspaceMcpTool = z.infer<typeof WorkspaceMcpTool>;
+
+export const WorkspaceMcpServerTools = z.object({
+  id: z.string(),
+  name: z.string(),
+  /**
+   * When this server last said what it offers, or null if it never has.
+   *
+   * Null is not an error and not an empty server: nobody has asked it yet.
+   * The panel says so and offers to ask, because a server whose tools are
+   * unknown would otherwise render as a server with no tools — which reads as
+   * broken and is the reason an operator would give up on the screen.
+   */
+  describedAt: Millis.nullable(),
+  /**
+   * A server Metaclaude mounts itself rather than one the operator registered.
+   *
+   * There is nothing to ask such a server: its tools are a table in this
+   * repository, so the panel offers no "list its tools" action for it. It is
+   * listed all the same, because the question the screen answers — what runs
+   * without a card here — has the same answer whoever built the server.
+   */
+  internal: z.boolean().default(false),
+  tools: z.array(WorkspaceMcpTool),
+});
+export type WorkspaceMcpServerTools = z.infer<typeof WorkspaceMcpServerTools>;
+
+export const WorkspaceMcpToolsResponse = z.object({
+  servers: z.array(WorkspaceMcpServerTools),
+});
+export type WorkspaceMcpToolsResponse = z.infer<typeof WorkspaceMcpToolsResponse>;
+
 export const McpServerDescription = z.object({
   instructions: z.string().nullable(),
   serverName: z.string().nullable(),

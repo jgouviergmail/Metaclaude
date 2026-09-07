@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { listSessions } from '@anthropic-ai/claude-agent-sdk';
-import { APP_VERSION, SYSTEM_TOPIC, type RetrievalStatus } from '@metaclaude/shared';
+import { APP_VERSION, SYSTEM_TOPIC, mcpToolName, type RetrievalStatus } from '@metaclaude/shared';
 import type { ClaudeUsage } from '@metaclaude/shared';
 import type { Logger } from 'pino';
 import type { Config } from './config.js';
@@ -491,17 +491,17 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     preapproved: () => [...systemToolNames(), ...boardToolNames(), ...advisorToolNames()],
     tools: () => [
       ...SYSTEM_TOOLS.map((entry) => ({
-        name: `mcp__${SYSTEM_SERVER_NAME}__${entry.name}`,
+        name: mcpToolName(SYSTEM_SERVER_NAME, entry.name),
         ring: entry.ring,
         description: entry.description,
       })),
       ...BOARD_TOOL_CATALOGUE.map((entry) => ({
         ...entry,
-        name: `mcp__${BOARD_SERVER_NAME}__${entry.name}`,
+        name: mcpToolName(BOARD_SERVER_NAME, entry.name),
       })),
       ...ADVISOR_TOOL_CATALOGUE.map((entry) => ({
         ...entry,
-        name: `mcp__${ADVISOR_SERVER_NAME}__${entry.name}`,
+        name: mcpToolName(ADVISOR_SERVER_NAME, entry.name),
       })),
     ],
     log: (level, message, data) => log[level](data ?? {}, message),
@@ -520,8 +520,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   // cannot re-read, and its reflexion was the source of most of the state
   // notes measured in production — so such a run is not reflected on.
   const readOnlyTools = new Set<string>([
-    ...SYSTEM_TOOLS.filter((entry) => entry.ring === 1).map((entry) => `mcp__${SYSTEM_SERVER_NAME}__${entry.name}`),
-    ...BOARD_TOOL_CATALOGUE.filter((entry) => entry.ring === 1).map((entry) => `mcp__${BOARD_SERVER_NAME}__${entry.name}`),
+    ...SYSTEM_TOOLS.filter((entry) => entry.ring === 1).map((entry) => mcpToolName(SYSTEM_SERVER_NAME, entry.name)),
+    ...BOARD_TOOL_CATALOGUE.filter((entry) => entry.ring === 1).map((entry) => mcpToolName(BOARD_SERVER_NAME, entry.name)),
     // Not `Task`: a subagent's own calls are not in these events, so a run
     // that delegated could have changed something this list cannot see.
     'Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'ToolSearch', 'WebFetch', 'WebSearch', 'TodoWrite',

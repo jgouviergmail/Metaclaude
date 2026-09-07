@@ -40,6 +40,7 @@ import {
   ATTACHMENT_LIMITS,
   MAX_TOOL_RESULT_CHARS,
   isPreapprovedTool,
+  mcpToolName,
   newId,
   reviewToolNames,
 } from '@metaclaude/shared';
@@ -48,7 +49,7 @@ import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
-import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
+import { advisorToolNames, buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
 import {
   DIRECTORY_CONTEXT_MINIMUM,
   delegationPeers,
@@ -62,8 +63,8 @@ import {
  * reports all have to agree, and three spellings of one string is how they
  * stop agreeing.
  */
-const DELEGATION_SERVER_NAME = 'metaclaude';
-import { buildBoardServer, type BoardFacade } from './board-tools.js';
+export const DELEGATION_SERVER_NAME = 'metaclaude';
+import { boardToolNames, buildBoardServer, type BoardFacade } from './board-tools.js';
 import {
   MEMORY_SERVER_NAME,
   buildMemoryServer,
@@ -611,10 +612,33 @@ export class AgentSupervisor {
     const preapproved = [...review.allowed];
     if (this.mountsMemory(request.workspace)) {
       preapproved.push(
-        `mcp__${MEMORY_SERVER_NAME}__memory_search`,
-        `mcp__${MEMORY_SERVER_NAME}__memory_write`,
+        mcpToolName(MEMORY_SERVER_NAME, 'memory_search'),
+        mcpToolName(MEMORY_SERVER_NAME, 'memory_write'),
       );
     }
+    /*
+     * The board and the proposal tools, in memory's tier and for its reason.
+     *
+     * Measured on a live deployment: under `dontAsk` a run receives its ticked
+     * built-ins plus memory and nothing else, because the CLI answers "denied,
+     * nothing is pre-approved" itself. So a scheduled automation could not
+     * file a card on its own board, nor propose the automation it had just
+     * concluded was needed — every night, silently, with the run still landing
+     * as a success.
+     *
+     * Every write in these two is reversible and local to the workspace: a
+     * card lands on a board the operator reads, a proposal lands in an inbox,
+     * and an automation a proposal creates arrives *disabled*. What replaces
+     * the approval card is the transcript note the broker seam writes, so the
+     * run still says what it did without being asked — the same trade memory
+     * already makes, and the reason `onGrantUsed` exists.
+     *
+     * `delegate` is deliberately not here. It is the same in-process family
+     * and a different tier: it spends another workspace's quota and starts a
+     * full run there with nobody watching. That one stays an explicit tick.
+     */
+    if (this.deps.board) preapproved.push(...boardToolNames());
+    if (this.deps.advisor) preapproved.push(...advisorToolNames());
     return { mode, preapproved: preapproved.filter((name) => !cut.has(name)), forbidden };
   }
 
@@ -663,7 +687,7 @@ export class AgentSupervisor {
     // honoured, and nothing else is assumed.
     if (
       resolved.mode === 'dontAsk' &&
-      !resolved.preapproved.includes(`mcp__${DELEGATION_SERVER_NAME}__delegate`)
+      !resolved.preapproved.includes(mcpToolName(DELEGATION_SERVER_NAME, 'delegate'))
     ) {
       return silent;
     }

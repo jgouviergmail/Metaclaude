@@ -308,3 +308,138 @@ describe('a partial patch leaves alone what it does not name', () => {
     });
   });
 });
+
+/**
+ * The MCP tools a workspace could pre-approve.
+ *
+ * The endpoint exists because the rule it answers — which servers reach a
+ * workspace — belongs to the runtime, and a copy of it in the browser would be
+ * free to disagree the day that rule changes. So what is pinned here is that
+ * the answer *matches the mounting rule*, not merely that the route returns a
+ * list: a global server reaches the workspace, another workspace's does not,
+ * and a disabled one is absent because it is never mounted.
+ *
+ * The defect all this exists for: under `dontAsk` the CLI refuses everything
+ * not pre-approved, and the interface could only ever tick seven built-ins —
+ * so an operator with a working MCP server had no way to make it run
+ * unattended, and nothing on the screen said why.
+ */
+describe('the MCP tools a workspace can pre-approve', () => {
+  const tools = async (): Promise<{
+    servers: Array<{
+      name: string;
+      describedAt: number | null;
+      tools: Array<{ bare: string; qualified: string; description: string }>;
+    }>;
+  }> => {
+    const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/mcp-tools`, {
+      headers: { cookie: cookies },
+    });
+    expect(response.status).toBe(200);
+    return (await response.json()) as never;
+  };
+
+  /** Register a server and, when tools are given, record what it says it offers. */
+  const server = async (
+    name: string,
+    options: { enabled?: boolean; workspaceId?: string | null; toolNames?: string[] } = {},
+  ): Promise<string> => {
+    const created = await post('/api/mcp', {
+      name,
+      transport: 'stdio',
+      command: '/bin/true',
+      args: [],
+      ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
+      ...(options.enabled === false ? { enabled: false } : {}),
+    });
+    expect(created.status).toBe(201);
+    const id = ((await created.json()) as { server: { id: string } }).server.id;
+
+    if (options.toolNames) {
+      // Straight into the store rather than through a probe: what is under test
+      // is which servers the route reports, not whether a stdio server answers.
+      context.registry.saveDescription(id, {
+        instructions: null,
+        tools: options.toolNames.map((tool) => ({ name: tool, description: `Does ${tool}.` })),
+      });
+    }
+    return id;
+  };
+
+  it('offers a global server’s tools, fully qualified', async () => {
+    await server('mailer', { toolNames: ['send', 'search'] });
+
+    const found = (await tools()).servers.find((one) => one.name === 'mailer');
+
+    expect(found).toBeTruthy();
+    expect(found!.tools.map((tool) => tool.qualified)).toEqual([
+      'mcp__mailer__send',
+      'mcp__mailer__search',
+    ]);
+    expect(found!.tools[0]!.bare).toBe('send');
+    expect(found!.describedAt).toBeTypeOf('number');
+  });
+
+  it('leaves out a server this workspace does not have', async () => {
+    const other = await post('/api/workspaces', { name: 'Elsewhere' });
+    const otherId = ((await other.json()) as { workspace: { id: string } }).workspace.id;
+    await server('theirs', { workspaceId: otherId, toolNames: ['peek'] });
+
+    expect((await tools()).servers.map((one) => one.name)).not.toContain('theirs');
+  });
+
+  it('leaves out a disabled server, which nothing mounts', async () => {
+    // Ticking a box that decides nothing is worse than the box being absent:
+    // the operator would believe the tool runs unattended, and it would not.
+    await server('paused', { enabled: false, toolNames: ['idle'] });
+
+    expect((await tools()).servers.map((one) => one.name)).not.toContain('paused');
+  });
+
+  /**
+   * A server nobody has described yet is listed with no tools and a null date.
+   * Hiding it would be worse: the operator would look for it, not find it, and
+   * have no way to learn that the fix is to ask the server what it offers.
+   */
+  it('lists a server nobody has asked yet, and says as much', async () => {
+    await server('silent');
+
+    const found = (await tools()).servers.find((one) => one.name === 'silent');
+
+    expect(found).toBeTruthy();
+    expect(found!.describedAt).toBeNull();
+    expect(found!.tools).toEqual([]);
+  });
+
+  /**
+   * The delegation tool, which Metaclaude mounts itself and which no registry
+   * row describes. It is the one in-process tool an operator must be able to
+   * tick: under `Don't ask` nothing unapproved runs, so a workspace in that
+   * mode could not consult another one at all — and nothing on the screen
+   * could say why, because the picker only ever knew the registry.
+   */
+  it('offers the delegation tool once there is somebody to consult', async () => {
+    await post('/api/workspaces', { name: 'A peer', description: 'Does peer things.' });
+
+    const found = (await tools()).servers.find((one) => one.name === 'metaclaude');
+
+    expect(found).toBeTruthy();
+    expect(found!.tools.map((tool) => tool.qualified)).toEqual(['mcp__metaclaude__delegate']);
+    expect(found!.describedAt).toBeNull();
+  });
+
+  it('names a tool exactly as the pre-approval list stores it', async () => {
+    // The round trip that matters: what this endpoint offers has to be what a
+    // PATCH can store and what `isPreapprovedTool` later matches.
+    await server('under_scored', { toolNames: ['do_thing'] });
+    const found = (await tools()).servers.find((one) => one.name === 'under_scored')!;
+
+    await patch(`/api/workspaces/${workspaceId}`, {
+      settings: { allowedTools: [found.tools[0]!.qualified] },
+    });
+
+    expect(await storedSettings()).toMatchObject({
+      allowedTools: ['mcp__under_scored__do_thing'],
+    });
+  });
+});

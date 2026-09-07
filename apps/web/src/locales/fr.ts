@@ -330,6 +330,17 @@ export const fr: Record<string, string> = {
   'Peer directory budget': 'Budget de l’annuaire des pairs',
   'Characters of the directory of other workspaces injected into every run that may delegate, so the agent knows who it can consult and what for. Around twenty workspaces all keep their description at this size; past that the names remain and the descriptions go together. 0 switches delegation between workspaces off.':
     'Nombre de caractères de l’annuaire des autres workspaces injectés dans chaque run pouvant déléguer, pour que l’agent sache qui il peut consulter et à quel sujet. À cette taille une vingtaine de workspaces gardent tous leur description ; au-delà les noms restent et les descriptions disparaissent ensemble. 0 désactive la délégation entre workspaces.',
+  '{ticked} of {total}': '{ticked} sur {total}',
+  'built in': 'intégré',
+  'tools unknown': 'outils inconnus',
+  '{n} tool, none pre-approved': '{n} outil, aucun pré-approuvé',
+  '{n} tools, none pre-approved': '{n} outils, aucun pré-approuvé',
+  'Nobody has asked this server what it offers yet, so there is nothing to tick. Asking opens one connection to it.':
+    'Personne n’a encore demandé à ce serveur ce qu’il propose, il n’y a donc rien à cocher. La demande ouvre une connexion vers lui.',
+  'List its tools': 'Lister ses outils',
+  'Asking…': 'Interrogation…',
+  'Tick all': 'Tout cocher',
+  'Untick all': 'Tout décocher',
   'Other workspaces': 'Autres workspaces',
   'Let other workspaces consult this one': 'Laisser les autres workspaces consulter celui-ci',
   'Another project’s agent can ask this workspace a question and get its answer — a full run here, under this workspace’s own memory, conventions and permission mode, and behind an approval like any other tool. The description above is what tells it when to ask: without one this workspace stays reachable but is not listed. Metaclaude’s own steward reaches every workspace whatever this says.':
@@ -342,8 +353,8 @@ export const fr: Record<string, string> = {
 
   /* Workspace : outils pré-approuvés */
   'Pre-approved tools': 'Outils pré-approuvés',
-  'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright.':
-    'Un outil coché s’exécute sans sa carte d’approbation, dans tous les modes sauf Plan. C’est aussi la seule chose qu’un run sans surveillance peut utiliser : en mode « Ne pas demander » — là où atterrissent les automatisations et la passerelle MCP — tout ce qui n’est pas coché ici est refusé d’emblée.',
+  'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright. Metaclaude’s own board, proposal and memory tools are always allowed where they are mounted, and say so in the transcript rather than raising a card.':
+    'Un outil coché s’exécute sans sa carte d’approbation, dans tous les modes sauf Plan. C’est aussi la seule chose qu’un run sans surveillance peut utiliser : en mode « Ne pas demander » — là où atterrissent les automatisations et la passerelle MCP — tout ce qui n’est pas coché ici est refusé d’emblée. Les outils de board, de proposition et de mémoire de Metaclaude sont toujours autorisés là où ils sont montés, et le disent dans le transcript au lieu de lever une carte.',
   'Reads a page the agent names. The container fetches it directly.':
     'Lit une page que l’agent désigne. Le conteneur va la chercher lui-même.',
   'Searches the web. The search runs upstream; the container makes no request itself.':

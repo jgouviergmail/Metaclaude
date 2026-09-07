@@ -11,6 +11,63 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.71.0] — 2026-09-07
+
+### Added
+
+- **A workspace can pre-approve the tools its MCP servers offer.** Under
+  *Don't ask* — where automations and the gateway land — the CLI answers
+  "denied, nothing is pre-approved" itself, so only names on the workspace's
+  list ever run. The interface could tick exactly seven built-ins, and nothing
+  else: an operator with a working MCP server had no way to use it unattended,
+  and the screen gave no reason. Reported from a live deployment, where mail
+  retrieval worked under *Ask* and stopped dead under *Don't ask*. The
+  pre-approval group now lists each of the workspace's enabled servers as a
+  fold — the tool's own name, its description, and a count on the summary so
+  folding never hides whether a server decides anything — with *Tick all* and
+  *Untick all* per server. The mechanism never needed changing: the system
+  workspace has pre-approved forty-six `mcp__…` names since it shipped. It was
+  only the screen that could not name one.
+- **A server nobody has asked yet says so, and offers to ask.** Its tools are
+  stored from the last describe, so a server never tested has none — which
+  would otherwise render as a server that offers nothing, and read as broken.
+- `GET /api/workspaces/:id/mcp-tools` answers which servers reach a workspace
+  and what each offers, computed with `RegistryService.listMcpServers` — the
+  same call the runtime makes when it mounts them. The rule is not restated in
+  the browser, deliberately: it is about to gain a per-workspace attachment,
+  and a second spelling of it would be free to disagree.
+- `mcpToolName(server, tool)` in `packages/shared`, beside the parser that
+  takes such a name apart and pinned to it by a round-trip test. The
+  `mcp__<server>__<tool>` prefix was spelled by hand in six places once, and
+  every one of them was wrong about a server named `my_server`.
+- **The delegation tool is tickable too.** It is mounted by Metaclaude rather
+  than registered by the operator, so the registry knew nothing about it and
+  the picker could not offer it — which meant a workspace in *Don't ask* could
+  not consult another one at all, and the screen said nothing about why. Listed
+  as a built-in server, badged as such, and offered only where there is
+  somebody to consult. Deliberately a tick rather than a grant: delegating
+  spends another workspace's quota and starts a full run there with nobody
+  watching, which is the operator's call to make once.
+- `mcpToolName` is now the only place the `mcp__server__tool` prefix is built.
+  It was spelled by hand in nine, across the five tool servers and the
+  container.
+
+### Fixed
+
+- **An automation could not report on its own board.** Under *Don't ask* a run
+  receives its ticked built-ins plus the two memory tools and nothing else, so
+  the board and proposal tools — mounted, described, and never pre-approved —
+  were refused outright. A scheduled run could not file the card it had just
+  decided to file, nor propose the automation it had concluded was needed;
+  every night, silently, with the run still landing as a success. Found on a
+  live deployment while diagnosing something else. They now sit in the tier
+  memory already occupied: every write in them is reversible and local to the
+  workspace — a card lands on a board the operator reads, a proposal lands in
+  an inbox, an automation a proposal creates arrives *disabled* — so they run
+  without a card in every mode and say so in the transcript instead. The tests
+  are derived from the tool catalogues, so a tool added to either server
+  tomorrow is covered the day it is added.
+
 ## [0.70.0] — 2026-09-07
 
 ### Added

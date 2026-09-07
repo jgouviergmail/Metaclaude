@@ -13,7 +13,7 @@
  */
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
-import { AutomationTrigger, MemoryKind, MemoryShelf, PermissionMode, RunStatus, RuntimeSettingKey } from '@metaclaude/shared';
+import { AutomationTrigger, MemoryKind, MemoryShelf, PermissionMode, RunStatus, RuntimeSettingKey, mcpToolName } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { Steward, StewardActor } from '../services/steward.js';
 import { StewardError } from '../services/steward.js';
@@ -456,7 +456,7 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
 
 /** The names as the CLI and the broker see them — what the system workspace pre-approves. */
 export function systemToolNames(): string[] {
-  return SYSTEM_TOOLS.map((entry) => `mcp__${SYSTEM_SERVER_NAME}__${entry.name}`);
+  return SYSTEM_TOOLS.map((entry) => mcpToolName(SYSTEM_SERVER_NAME, entry.name));
 }
 
 /** Bind every tool to one facade and one run — what a test drives directly. */

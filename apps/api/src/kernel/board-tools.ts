@@ -10,7 +10,7 @@
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
 import type { BoardTask, TaskComment } from '@metaclaude/shared';
-import { TaskKind, TaskPriority, TaskStatus } from '@metaclaude/shared';
+import { TaskKind, TaskPriority, TaskStatus, mcpToolName } from '@metaclaude/shared';
 import { z } from 'zod';
 import type { CreateTaskInput, UpdateTaskInput } from '../services/board.js';
 
@@ -192,7 +192,7 @@ export const BOARD_TOOL_CATALOGUE: ReadonlyArray<{ name: string; ring: 1 | 2; de
 
 /** The names as the CLI and the broker see them. */
 export function boardToolNames(): string[] {
-  return BOARD_TOOL_CATALOGUE.map((entry) => `mcp__${BOARD_SERVER_NAME}__${entry.name}`);
+  return BOARD_TOOL_CATALOGUE.map((entry) => mcpToolName(BOARD_SERVER_NAME, entry.name));
 }
 
 export function buildBoardServer(

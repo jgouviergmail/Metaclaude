@@ -12,7 +12,7 @@
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
 import type { AdvisorProposal, Automation } from '@metaclaude/shared';
-import { AutomationTrigger, LibraryCategory } from '@metaclaude/shared';
+import { AutomationTrigger, LibraryCategory, mcpToolName } from '@metaclaude/shared';
 import { z } from 'zod';
 
 /** What the tools need from the advisor — the service satisfies it. */
@@ -191,7 +191,7 @@ export const ADVISOR_TOOL_CATALOGUE: ReadonlyArray<{ name: string; ring: 1 | 2; 
 
 /** The names as the CLI and the broker see them. */
 export function advisorToolNames(): string[] {
-  return ADVISOR_TOOL_CATALOGUE.map((entry) => `mcp__${ADVISOR_SERVER_NAME}__${entry.name}`);
+  return ADVISOR_TOOL_CATALOGUE.map((entry) => mcpToolName(ADVISOR_SERVER_NAME, entry.name));
 }
 
 export function buildAdvisorServer(

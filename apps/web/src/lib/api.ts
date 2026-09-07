@@ -81,6 +81,7 @@ import {
   type User,
   type UserRole,
   type Workspace,
+  type WorkspaceMcpToolsResponse,
   type WorkspaceSettings,
 } from '@metaclaude/shared';
 
@@ -328,6 +329,16 @@ export const api = {
 
   deleteWorkspace: (id: string, purge: boolean) =>
     request<{ ok: boolean }>(`/api/workspaces/${id}${qs({ purge })}`, { method: 'DELETE' }),
+
+  /**
+   * The MCP tools this workspace could pre-approve, already scoped and named.
+   *
+   * The server answers rather than the browser deciding: which servers reach a
+   * workspace is the runtime's rule, and the qualified `mcp__server__tool`
+   * name has been spelled wrong by hand here before.
+   */
+  workspaceMcpTools: (id: string) =>
+    request<WorkspaceMcpToolsResponse>(`/api/workspaces/${id}/mcp-tools`),
 
   /* ------------------------------ Sessions ---------------------------- */
   createSession: (body: {

@@ -1,7 +1,7 @@
 /** Constants shared by the API and the web app. */
 
 export const APP_NAME = 'Metaclaude';
-export const APP_VERSION = '0.70.0';
+export const APP_VERSION = '0.71.0';
 
 /**
  * How long a machine token may live. A year is the outer bound, not a default.
@@ -89,6 +89,19 @@ export function splitToolName(name: string): { server: string | null; bare: stri
 /** The tool's own name, with any MCP server prefix removed. */
 export function bareToolName(name: string): string {
   return splitToolName(name).bare;
+}
+
+/**
+ * The name the CLI reports for a tool an MCP server offers.
+ *
+ * Beside the parser rather than at the call site, and for the reason the note
+ * above `MCP_TOOL` gives: the prefix was spelled by hand in six places once
+ * already, and every one of them was wrong about a server named `my_server`.
+ * A pre-approval list stores exactly this string, so a builder that disagreed
+ * with the parser would produce entries that never match a call.
+ */
+export function mcpToolName(server: string, tool: string): string {
+  return `mcp__${server}__${tool}`;
 }
 
 /** The outcome of vetting a list of tool names. */

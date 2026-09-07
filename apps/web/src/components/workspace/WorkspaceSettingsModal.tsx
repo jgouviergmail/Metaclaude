@@ -26,6 +26,7 @@ import { MarketplacePluginToggles } from '@/components/workspace/MarketplacePlug
 import { SessionList } from '@/components/workspace/SessionList';
 import { CheckboxField } from '@/components/ui/controls';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
+import { McpToolPicker } from '@/components/registry/McpToolPicker';
 import { Modal } from '@/components/ui/Modal';
 import {
   Button,
@@ -120,6 +121,33 @@ export function WorkspaceSettingsModal({
       setDraftDescription(description);
     }
   }, [open, complete, name, description]);
+
+  /*
+   * The MCP tools this workspace could pre-approve.
+   *
+   * Asked of the server, which computes *which* servers reach this workspace
+   * with the same call the runtime makes when it mounts them. Refetched on
+   * open rather than cached across openings: a server can be enabled or
+   * disabled from another screen at any moment, and a picker offering a server
+   * that is no longer mounted ticks boxes that decide nothing.
+   */
+  const mcpToolsQuery = useQuery({
+    queryKey: ['workspace-mcp-tools', workspaceId],
+    queryFn: () => api.workspaceMcpTools(workspaceId),
+    enabled: open,
+    refetchOnMount: 'always',
+  });
+
+  const [describing, setDescribing] = useState<string | null>(null);
+  const describe = useMutation({
+    mutationFn: (serverId: string) => api.describeMcpServer(serverId),
+    onMutate: (serverId: string) => setDescribing(serverId),
+    onSettled: () => setDescribing(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspace-mcp-tools', workspaceId] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   // What the enabled marketplaces offer, as plugin@marketplace keys. Only
   // fetched while the dialog is open — this is the one screen that needs it.
@@ -305,7 +333,7 @@ export function WorkspaceSettingsModal({
           <legend className="text-body font-semibold text-ink">{t('Pre-approved tools')}</legend>
           <p className="text-caption leading-relaxed text-muted">
             {t(
-              'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright.',
+              'A ticked tool runs without its approval card, in every mode but Plan. This is also the only thing an unattended run can use: under "Don’t ask" — where automations and the MCP gateway land — everything not ticked here is refused outright. Metaclaude’s own board, proposal and memory tools are always allowed where they are mounted, and say so in the transcript rather than raising a card.',
             )}
           </p>
           <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
@@ -332,6 +360,21 @@ export function WorkspaceSettingsModal({
               />
             ))}
           </div>
+
+          {/*
+            The same list, for the tools an MCP server offers. Kept in this
+            fieldset rather than one of its own because it answers the same
+            question — what runs without a card, and what an unattended run may
+            use — and a second heading would suggest a second rule.
+          */}
+          <McpToolPicker
+            servers={mcpToolsQuery.data?.servers ?? []}
+            selected={draft.allowedTools}
+            onChange={(next) => update('allowedTools', next)}
+            onDescribe={(serverId) => describe.mutate(serverId)}
+            describing={describing}
+            disabled={locked}
+          />
         </fieldset>
 
         <MenuSeparator />

@@ -6,6 +6,7 @@ import {
   bareToolName,
   isPreapprovedTool,
   languageForPath,
+  mcpToolName,
   reviewToolNames,
   splitToolName,
 } from './constants.js';
@@ -136,5 +137,39 @@ describe('isPreapprovedTool', () => {
     expect(isPreapprovedTool(['search'], 'mcp__github__search')).toBe(false);
     expect(isPreapprovedTool(['mcp__github__search'], 'mcp__github__search')).toBe(true);
     expect(isPreapprovedTool(['mcp__github__search'], 'mcp__gitlab__search')).toBe(false);
+  });
+});
+
+
+describe('mcpToolName', () => {
+  /**
+   * The builder beside the parser, and pinned to it.
+   *
+   * Six places used to spell the `mcp__<server>__<tool>` prefix by hand, and
+   * the note above `MCP_TOOL` records what that cost: a server named
+   * `my_server` fell through every one of them. A name that is *built* by the
+   * same module that takes it apart cannot drift from it, and the round trip
+   * is the assertion rather than the shape of the string.
+   */
+  it('round-trips through the parser, underscores in the server name included', () => {
+    for (const [server, tool] of [
+      ['google', 'gmail_search'],
+      ['my_server', 'list_things'],
+      ['metaclaude_system', 'system_run_ask'],
+      ['a-b.c', 'x'],
+    ] as const) {
+      const built = mcpToolName(server, tool);
+
+      expect(splitToolName(built)).toEqual({ server, bare: tool });
+    }
+  });
+
+  it('produces a name the pre-approval list accepts', () => {
+    // A name the operator can store is the whole point: `reviewToolNames`
+    // refuses anything outside `[A-Za-z0-9_.-]`, so a builder that emitted a
+    // separator it rejects would make every MCP tool unpre-approvable.
+    const built = mcpToolName('google', 'gmail_search');
+
+    expect(reviewToolNames([built])).toEqual({ allowed: [built], rejected: [] });
   });
 });

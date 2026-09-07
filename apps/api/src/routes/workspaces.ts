@@ -16,6 +16,7 @@ import {
   RewindRequest,
   ToolControls,
   WorkspaceSettings,
+  mcpToolName,
   patchSchema,
 } from '@metaclaude/shared';
 import { z } from 'zod';
@@ -32,6 +33,8 @@ import {
   requireOwner,
 } from '../http/guards.js';
 import { spreadInt, spreadTimestamp } from '../http/query.js';
+import { delegationPeers } from '../kernel/context.js';
+import { DELEGATION_SERVER_NAME } from '../kernel/supervisor.js';
 
 export function registerWorkspaceRoutes(app: App, context: AppContext): void {
   const mustGetWorkspace = (id: string) => mustGetWorkspaceFrom(context, id);
@@ -119,6 +122,78 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
       });
     },
   );
+
+  /**
+   * The MCP tools this workspace could pre-approve, server by server.
+   *
+   * Answered here rather than assembled in the browser, and that is the point
+   * of the endpoint. *Which* servers reach a workspace is a rule the runtime
+   * owns — `RegistryService.listMcpServers`, the same call `resolve()` makes
+   * when it mounts them — and a second spelling of it in the interface would
+   * be free to disagree the day that rule gains a per-workspace attachment.
+   * So the screen is handed an answer, never the ingredients.
+   *
+   * Only enabled servers: a disabled one is not mounted, so pre-approving its
+   * tools would tick boxes that decide nothing.
+   */
+  app.get<{ Params: { id: string } }>('/api/workspaces/:id/mcp-tools', async (request, reply) => {
+    const workspace = mustGetWorkspace(request.params.id);
+
+
+    /*
+     * The delegation tool, which Metaclaude mounts itself.
+     *
+     * Listed because it is the one in-process tool an operator must be able to
+     * tick: under `Don't ask` nothing unapproved runs, so a workspace in that
+     * mode could not consult another one at all and the screen said nothing
+     * about why. The board, the proposal and the memory tools are not here —
+     * they are pre-approved whenever they are mounted, so there is no choice
+     * to offer, only a fact the fieldset states.
+     *
+     * Offered exactly when the tool would be mounted: `delegationPeers` is the
+     * same call the supervisor makes, so a deployment with nobody to consult
+     * does not show a tick that decides nothing.
+     */
+    const peers = delegationPeers(context.workspaceRepo.list(), workspace.id);
+    const internal = peers.length > 0
+      ? [
+          {
+            id: DELEGATION_SERVER_NAME,
+            name: DELEGATION_SERVER_NAME,
+            describedAt: null,
+            internal: true,
+            tools: [
+              {
+                bare: 'delegate',
+                qualified: mcpToolName(DELEGATION_SERVER_NAME, 'delegate'),
+                description:
+                  'Ask another workspace of this Metaclaude to work on something and return its ' +
+                  'answer. Ticking it lets an unattended run start a full run elsewhere with ' +
+                  'nobody watching.',
+              },
+            ],
+          },
+        ]
+      : [];
+
+    const servers = context.registry
+      .listMcpServers(workspace.id)
+      .filter((server) => server.enabled)
+      .map((server) => ({
+        id: server.id,
+        name: server.name,
+        describedAt: server.described?.at ?? null,
+        // A server nobody has asked yet has no tools here, and the screen says
+        // so rather than rendering it as a server that offers nothing.
+        tools: (server.described?.tools ?? []).map((tool) => ({
+          bare: tool.name,
+          qualified: mcpToolName(server.name, tool.name),
+          description: tool.description,
+        })),
+      }));
+
+    return reply.send({ servers: [...internal, ...servers] });
+  });
 
   const UpdateWorkspace = z.object({
     name: z.string().min(1).max(120).optional(),

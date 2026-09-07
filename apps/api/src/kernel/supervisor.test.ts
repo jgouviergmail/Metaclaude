@@ -14,6 +14,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '@metaclaude/shared';
 import { WorkspaceSettings } from '@metaclaude/shared';
+import { boardToolNames } from './board-tools.js';
+import { advisorToolNames } from './advisor-tools.js';
 import {
   AgentSupervisor,
   buildUserContent,
@@ -353,6 +355,7 @@ function makeSupervisor(
   extra: {
     delegation?: unknown;
     board?: unknown;
+    advisor?: unknown;
     memory?: unknown;
     steward?: unknown;
     runTimeoutMs?: number;
@@ -371,6 +374,7 @@ function makeSupervisor(
     query: query as never,
     ...(extra.delegation ? { delegation: extra.delegation as never } : {}),
     ...(extra.board ? { board: extra.board as never } : {}),
+    ...(extra.advisor ? { advisor: extra.advisor as never } : {}),
     ...(extra.memory ? { memory: extra.memory as never } : {}),
     ...(extra.steward ? { steward: extra.steward as never } : {}),
   });
@@ -2822,5 +2826,97 @@ describe('the memory tools', () => {
       steward: { workspaceId: () => makeRequest().workspace.id, facade: () => ({}) },
     });
     expect(serversOf(opened)).not.toContain('metaclaude_memory');
+  });
+});
+
+/**
+ * The board and the proposal tools run without a card, like memory.
+ *
+ * Measured on a live deployment, and invisible until someone looked: under
+ * `Don't ask` a run receives its ticked built-ins plus the two memory tools
+ * and *nothing else*, because the CLI answers "denied, nothing is
+ * pre-approved" itself. So a scheduled automation in such a workspace could
+ * not file a card on its own board, nor propose the automation it had just
+ * concluded was needed — silently, every night, with the run still landing as
+ * a success.
+ *
+ * The tier is the same one memory already sits in, and the reason is the same:
+ * every write here is reversible and local to the workspace. A card lands on a
+ * board the operator reads; a proposal lands in an inbox and an automation it
+ * proposes arrives *disabled*. What replaces the approval card is the
+ * transcript note the seam writes, so the run still says what it did without
+ * asking.
+ *
+ * Deliberately not `delegate`, which is in the same in-process family and is
+ * not in this tier: it spends another workspace's quota and starts a full run
+ * there with nobody watching. That one stays an explicit tick.
+ */
+describe('the tools that never raise a card', () => {
+  const board = { list: () => [], get: () => null, create: async () => ({}), update: async () => ({}) };
+  const advisor = { propose: async () => ({}), proposeAutomation: async () => ({}) };
+
+  /** Drive one tool through the seam and report whether the broker was reached. */
+  const asks = async (
+    tool: string,
+    extra: Parameters<typeof makeSupervisor>[2],
+  ): Promise<boolean> => {
+    let reached = false;
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(
+      query,
+      {
+        request: async () => {
+          reached = true;
+          return { behavior: 'allow' };
+        },
+      },
+      extra,
+    );
+    const run = supervisor.execute(makeRequest(), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    const opts = control.opened[0] as {
+      canUseTool: (name: string, input: unknown, extra: { toolUseID: string }) => Promise<unknown>;
+    };
+    await opts.canUseTool(tool, {}, { toolUseID: 'tu_1' });
+    control.finish();
+    await run;
+    return reached;
+  };
+
+  /*
+   * Derived from the catalogues rather than listed here. A tool added to either
+   * server tomorrow is covered the day it is added — which is the failure this
+   * whole block exists for: a capability that is mounted, never pre-approved,
+   * and refused in the one mode where nobody is there to be asked.
+   */
+  it.each(boardToolNames())('lets %s run without asking', async (tool) => {
+    expect(await asks(tool, { board })).toBe(false);
+  });
+
+  it.each(advisorToolNames())('lets %s run without asking', async (tool) => {
+    expect(await asks(tool, { advisor })).toBe(false);
+  });
+
+  it('still asks for a tool outside the tier', async () => {
+    // The control that makes the cases above mean something: the seam is
+    // reached at all, and it is the pre-approval that skips it.
+    expect(await asks('Bash', { board, advisor })).toBe(true);
+  });
+
+  it('still asks before delegating, which spends another workspace’s quota', async () => {
+    const delegation = {
+      peers: () => [{ ...workspace, id: 'ws_peer', slug: 'peer', description: 'A peer.' }],
+      budget: () => 3000,
+      run: async () => {
+        throw new Error('not called');
+      },
+    };
+    expect(await asks('mcp__metaclaude__delegate', { delegation })).toBe(true);
+  });
+
+  it('says nothing about a board it did not mount', async () => {
+    // Pre-approving a tool that is not there would put a name in the CLI's
+    // managed settings for a server it cannot see, which is noise at best.
+    expect(await asks(boardToolNames()[0]!, {})).toBe(true);
   });
 });
