@@ -244,3 +244,59 @@ describe('reopening a session', () => {
   });
 });
 
+
+/**
+ * Four icon actions and a status cluster leave a phone's header no room.
+ *
+ * At 390px the title was truncated to `Workin…`: the header carries Files,
+ * Source control, New session, Delete session, then the connection badge, the
+ * bell and the avatar. Nothing is clipped or covered, so no guard reports it —
+ * `truncate` is doing exactly what it is for, on a name that is the only thing
+ * saying which session you are in.
+ *
+ * The panels take the whole screen at that width anyway, so on a phone the two
+ * toggles and the destructive action move into a menu and only `+` stays. The
+ * actions are declared once and rendered twice: a second copy is how the two
+ * would come to disagree.
+ */
+describe('the header on a phone', () => {
+  it('keeps every action reachable, whatever the width', async () => {
+    page();
+    await screen.findByRole('button', { name: 'New session' });
+
+    // The wide form: one button each.
+    for (const name of ['Files', 'Source control', 'New session', 'Delete session']) {
+      expect(screen.getByRole('button', { name }), name).toBeDefined();
+    }
+  });
+
+  it('offers the secondary ones in a menu, and only on a phone', async () => {
+    page();
+    const trigger = await screen.findByRole('button', { name: 'Session actions' });
+    // The class, not a selector: escaping a `:` inside `querySelector` is a
+    // happy-dom minefield and the contract is the class itself.
+    expect(trigger.parentElement?.className).toContain('sm:hidden');
+
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+    // A toggle is announced as a toggle: `MenuItem` with `selected` renders
+    // `menuitemcheckbox`, which is why this asks for both roles.
+    const items = [...(await screen.findAllByRole('menuitemcheckbox')), ...screen.queryAllByRole('menuitem')];
+    const names = items.map((item) => item.textContent);
+    expect(names.join(' | ')).toContain('Files');
+    expect(names.join(' | ')).toContain('Source control');
+    expect(names.join(' | ')).toContain('Delete session');
+  });
+
+  it('leaves the wide buttons out of the phone layout', async () => {
+    page();
+    const files = await screen.findByRole('button', { name: 'Files' });
+    // happy-dom lays nothing out, so what a test can hold is the class
+    // contract; `scripts/responsive.mjs` measures the result in a browser.
+    // Walk up to the row that decides the layout rather than guessing a depth:
+    // `Tooltip` wraps the button, so the class is two ancestors away.
+    let row: HTMLElement | null = files;
+    while (row && !row.className.includes('sm:flex')) row = row.parentElement;
+    expect(row?.className).toContain('hidden');
+  });
+});

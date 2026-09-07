@@ -183,12 +183,12 @@ export const ToolCallCard = memo(function ToolCallCard({
           {iconFor(call.name)}
         </span>
 
-        <span className="shrink-0 text-[13px] font-medium text-ink">{t(label)}</span>
+        <span className="shrink-0 text-body font-medium text-ink">{t(label)}</span>
 
         {detail ? (
           <code
             className={cn(
-              'min-w-0 flex-1 truncate text-[12.5px] text-muted',
+              'min-w-0 flex-1 truncate text-caption text-muted',
               isCommand && 'font-mono',
             )}
           >
@@ -199,7 +199,7 @@ export const ToolCallCard = memo(function ToolCallCard({
         )}
 
         {call.durationMs !== null && call.durationMs > 1500 ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-subtle">
+          <span className="shrink-0 text-caption tabular-nums text-subtle">
             {formatDuration(call.durationMs)}
           </span>
         ) : null}
@@ -211,7 +211,7 @@ export const ToolCallCard = memo(function ToolCallCard({
         <div className="space-y-3 border-t border-line bg-sunken px-3 py-3">
           <section>
             <div className="mb-1.5 flex items-center justify-between">
-              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
+              <h4 className="text-caption font-semibold uppercase tracking-wide text-subtle">
                 {t('Input')}
               </h4>
               <Tooltip content={copied ? 'Copied' : t('Copy input')}>
@@ -228,20 +228,20 @@ export const ToolCallCard = memo(function ToolCallCard({
                 </button>
               </Tooltip>
             </div>
-            <pre className="max-h-64 overflow-auto rounded-md bg-surface p-2.5 font-mono text-[12px] leading-relaxed text-ink">
+            <pre className="max-h-64 overflow-auto rounded-md bg-surface p-2.5 font-mono text-caption leading-relaxed text-ink">
               {formatInput(call.input, isCommand)}
             </pre>
           </section>
 
           {call.result ? (
             <section>
-              <h4 className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-subtle">
+              <h4 className="mb-1.5 flex items-center gap-2 text-caption font-semibold uppercase tracking-wide text-subtle">
                 {t('Result')}
                 {call.resultIsError ? <Badge tone="danger">{t('error')}</Badge> : null}
               </h4>
               <pre
                 className={cn(
-                  'max-h-80 overflow-auto rounded-md p-2.5 font-mono text-[12px] leading-relaxed',
+                  'max-h-80 overflow-auto rounded-md p-2.5 font-mono text-caption leading-relaxed',
                   call.resultIsError
                     ? 'bg-danger-soft text-ink'
                     : 'bg-surface text-ink',

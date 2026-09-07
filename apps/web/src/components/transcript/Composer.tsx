@@ -68,7 +68,7 @@ export interface ToolPickerOptions {
  * `scripts/responsive.mjs`. The tone stays with each caller, which is the only
  * part that genuinely differs.
  */
-const PILL = `inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium ${TOUCH_TARGET_Y}`;
+const PILL = `inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-caption font-medium ${TOUCH_TARGET_Y}`;
 
 export function Composer({
   value,
@@ -269,10 +269,10 @@ export function Composer({
                       index === slashIndex ? 'bg-accent-soft' : 'hover:bg-sunken',
                     )}
                   >
-                    <code className="shrink-0 font-mono text-[13px] font-medium text-ink">
+                    <code className="shrink-0 font-mono text-body font-medium text-ink">
                       /{command.name}
                     </code>
-                    <span className="min-w-0 truncate text-[12px] text-muted">
+                    <span className="min-w-0 truncate text-caption text-muted">
                       {command.description}
                     </span>
                   </button>
@@ -299,7 +299,7 @@ export function Composer({
             aria-label={t('Prompt')}
             className={cn(
               'block w-full resize-none bg-transparent px-4 pt-3 pb-2',
-              'text-[15px] leading-relaxed text-ink placeholder:text-subtle',
+              'text-title leading-relaxed text-ink placeholder:text-subtle',
               'focus:outline-none disabled:opacity-60',
             )}
           />
@@ -312,7 +312,7 @@ export function Composer({
                 <li
                   key={item.key}
                   className={cn(
-                    'inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[12px]',
+                    'inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-caption',
                     item.status === 'error'
                       ? 'border-danger bg-danger-soft text-danger'
                       : 'border-line bg-raised text-muted',
@@ -609,7 +609,7 @@ export function Composer({
         </div>
 
         {value.ultracode && offerUltracode ? (
-          <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-accent">
+          <p className="mt-2 flex items-center gap-1.5 text-caption text-accent">
             <Network className="size-3" aria-hidden />
             {t(
               'Ultracode: this message fans out across sub-agents at maximum effort. Expect multi-agent token spend.',
@@ -617,7 +617,7 @@ export function Composer({
           </p>
         ) : null}
         {steered > 0 ? (
-          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11.5px] text-accent">
+          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-caption text-accent">
             <Wrench className="size-3" aria-hidden />
             {[
               controls && controls.requiredSkills.length > 0
@@ -635,12 +635,12 @@ export function Composer({
           </p>
         ) : null}
         {value.permissionMode === 'bypassPermissions' ? (
-          <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-danger">
+          <p className="mt-2 flex items-center gap-1.5 text-caption text-danger">
             <Zap className="size-3" aria-hidden />
             {t('Bypass mode: the agent will run commands and edit files without asking.')}
           </p>
         ) : value.permissionMode === 'plan' ? (
-          <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted">
+          <p className="mt-2 flex items-center gap-1.5 text-caption text-muted">
             <Brain className="size-3" aria-hidden />
             {t('Plan mode: the agent will research and propose, but execute nothing.')}
           </p>

@@ -7,7 +7,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Files, GitBranch, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Files, GitBranch, MoreVertical, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -52,6 +52,7 @@ import { useSessionStore, useUiStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 import { routes } from '@metaclaude/shared';
+import { Menu, MenuItem } from '@/components/ui/Menu';
 
 type SidePanel = 'none' | 'files' | 'git';
 
@@ -332,6 +333,38 @@ export function SessionPage() {
     );
   }
 
+  /*
+   * The header's secondary actions, as data.
+   *
+   * Two panel toggles and a destructive one. The wide layout draws them as
+   * buttons, the phone puts them in a menu, and both read this — `pressed`
+   * carries the toggle state so the menu can announce it as a toggle rather
+   * than as a plain command.
+   */
+  const SECONDARY = [
+    {
+      key: 'files',
+      label: t('Files'),
+      icon: <Files className="size-4" />,
+      pressed: panel === 'files',
+      onSelect: () => setPanel(panel === 'files' ? 'none' : 'files'),
+    },
+    {
+      key: 'git',
+      label: t('Source control'),
+      icon: <GitBranch className="size-4" />,
+      pressed: panel === 'git',
+      onSelect: () => setPanel(panel === 'git' ? 'none' : 'git'),
+    },
+    {
+      key: 'delete',
+      label: t('Delete session'),
+      icon: <Trash2 className="size-4" />,
+      pressed: undefined as boolean | undefined,
+      onSelect: () => setConfirmDelete(true),
+    },
+  ];
+
   return (
     <AppShell sidebar={sidebar}>
       <ContentHeader
@@ -348,31 +381,34 @@ export function SessionPage() {
         }
         actions={
           <>
-            <Tooltip content={t('Files')}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t('Files')}
-                aria-pressed={panel === 'files'}
-                onClick={() => setPanel(panel === 'files' ? 'none' : 'files')}
-                className={cn(panel === 'files' && 'bg-accent-soft text-accent')}
-              >
-                <Files className="size-4" />
-              </Button>
-            </Tooltip>
-
-            <Tooltip content={t('Source control')}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t('Source control')}
-                aria-pressed={panel === 'git'}
-                onClick={() => setPanel(panel === 'git' ? 'none' : 'git')}
-                className={cn(panel === 'git' && 'bg-accent-soft text-accent')}
-              >
-                <GitBranch className="size-4" />
-              </Button>
-            </Tooltip>
+            {/*
+              * Declared once, rendered twice.
+              *
+              * At 390px the header carried four icon buttons plus the phone's
+              * status cluster, and the title — the only thing saying which
+              * session you are in — was truncated to `Workin…`. Nothing was
+              * clipped or covered, so no guard could report it. The two panel
+              * toggles take the whole screen at that width anyway, and deleting
+              * a session is not something you reach for in a hurry, so on a
+              * phone they move into a menu and only `+` stays. A second copy of
+              * the four is how the two forms would come to disagree.
+              */}
+            <div className="hidden items-center gap-1.5 sm:flex">
+              {SECONDARY.map((action) => (
+                <Tooltip key={action.key} content={action.label}>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={action.label}
+                    {...(action.pressed === undefined ? {} : { 'aria-pressed': action.pressed })}
+                    onClick={action.onSelect}
+                    className={cn(action.pressed && 'bg-accent-soft text-accent')}
+                  >
+                    {action.icon}
+                  </Button>
+                </Tooltip>
+              ))}
+            </div>
 
             <Tooltip content={t('New session')}>
               <Button
@@ -386,16 +422,27 @@ export function SessionPage() {
               </Button>
             </Tooltip>
 
-            <Tooltip content={t('Delete session')}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t('Delete session')}
-                onClick={() => setConfirmDelete(true)}
+            <div className="sm:hidden">
+              <Menu
+                align="end"
+                trigger={
+                  <Button variant="ghost" size="icon-sm" aria-label={t('Session actions')}>
+                    <MoreVertical className="size-4" />
+                  </Button>
+                }
               >
-                <Trash2 className="size-4" />
-              </Button>
-            </Tooltip>
+                {SECONDARY.map((action) => (
+                  <MenuItem
+                    key={action.key}
+                    icon={action.icon}
+                    {...(action.pressed === undefined ? {} : { selected: action.pressed })}
+                    onSelect={action.onSelect}
+                  >
+                    {action.label}
+                  </MenuItem>
+                ))}
+              </Menu>
+            </div>
           </>
         }
       />
@@ -418,7 +465,7 @@ export function SessionPage() {
                     key={suggestion}
                     type="button"
                     onClick={() => submitRun.mutate(t(suggestion))}
-                    className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] text-muted transition-colors hover:border-accent hover:text-ink"
+                    className="rounded-full border border-line bg-surface px-3 py-1.5 text-caption text-muted transition-colors hover:border-accent hover:text-ink"
                   >
                     <Sparkles className="mr-1 inline size-3" aria-hidden />
                     {t(suggestion)}

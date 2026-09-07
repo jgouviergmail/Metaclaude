@@ -181,13 +181,13 @@ export function ApprovalCard({
             >
               {t(risk.label)}
             </Badge>
-            <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[11px] text-muted">
+            <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-caption text-muted">
               {request.toolName}
             </code>
 
             {remaining > 0 ? (
               <Tooltip content={t('Unanswered prompts are declined automatically.')}>
-                <span className="ml-auto flex cursor-help items-center gap-1 text-[11px] tabular-nums text-subtle">
+                <span className="ml-auto flex cursor-help items-center gap-1 text-caption tabular-nums text-subtle">
                   <Clock className="size-3" aria-hidden />
                   {formatCountdown(remaining)}
                 </span>
@@ -195,7 +195,7 @@ export function ApprovalCard({
             ) : null}
           </div>
 
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">{t(risk.blurb)}</p>
+          <p className="mt-1 text-body leading-relaxed text-muted">{t(risk.blurb)}</p>
         </div>
       </div>
 
@@ -205,13 +205,13 @@ export function ApprovalCard({
         className="mx-4 mt-3 overflow-hidden rounded-lg border border-line bg-surface"
       >
         {command ? (
-          <pre className="max-h-52 overflow-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink">
+          <pre className="max-h-52 overflow-auto px-3 py-2.5 font-mono text-caption leading-relaxed text-ink">
             {command}
           </pre>
         ) : (
           <div className="space-y-1 px-3 py-2.5">
-            <p className="text-[13px] text-ink">{request.summary}</p>
-            <pre className="max-h-40 overflow-auto font-mono text-[11.5px] text-muted">
+            <p className="text-body text-ink">{request.summary}</p>
+            <pre className="max-h-40 overflow-auto font-mono text-caption text-muted">
               {safeJson(request.input)}
             </pre>
           </div>
@@ -219,7 +219,7 @@ export function ApprovalCard({
       </div>
 
       {request.reason ? (
-        <p className="mx-4 mt-2 text-[12px] leading-relaxed text-muted">
+        <p className="mx-4 mt-2 text-caption leading-relaxed text-muted">
           <span className="font-medium text-ink">{t('Why you are being asked:')} </span>
           {request.reason}
         </p>
@@ -238,7 +238,7 @@ export function ApprovalCard({
         >
           <X className="size-4" aria-hidden />
           {t('Deny')}
-          <kbd className="ml-1 hidden rounded bg-black/20 px-1 text-[10px] sm:inline">{t(
+          <kbd className="ml-1 hidden rounded bg-black/20 px-1 text-caption sm:inline">{t(
             'Esc',
           )}</kbd>
         </Button>
@@ -250,7 +250,7 @@ export function ApprovalCard({
 
         {/* "Always allow" is withheld for high-risk calls by design. */}
         {request.risk !== 'high' ? (
-          <label className="ml-auto flex cursor-pointer select-none items-center gap-2 text-[12px] text-muted">
+          <label className="ml-auto flex cursor-pointer select-none items-center gap-2 text-caption text-muted">
             <input
               type="checkbox"
               checked={remember}
@@ -260,7 +260,7 @@ export function ApprovalCard({
             {t('Remember for this session')}
           </label>
         ) : (
-          <span className="ml-auto text-[11px] text-danger">
+          <span className="ml-auto text-caption text-danger">
             {t('High-risk actions are always asked individually.')}
           </span>
         )}

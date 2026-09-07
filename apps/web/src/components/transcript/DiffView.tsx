@@ -75,11 +75,11 @@ export const DiffView = memo(function DiffView({
           <FileDiff className="size-3.5 shrink-0 text-subtle" aria-hidden />
         )}
 
-        <code className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-ink">
+        <code className="min-w-0 flex-1 truncate font-mono text-caption text-ink">
           {path ?? 'changes'}
         </code>
 
-        <span className="flex shrink-0 items-center gap-2 text-[11px] tabular-nums">
+        <span className="flex shrink-0 items-center gap-2 text-caption tabular-nums">
           {stats.additions > 0 ? (
             <span className="flex items-center gap-0.5 text-success">
               <Plus className="size-3" aria-hidden />
@@ -97,7 +97,7 @@ export const DiffView = memo(function DiffView({
 
       {visible.length > 0 && !nothingToShow ? (
         <div className="overflow-x-auto border-t border-line">
-          <table className="w-full border-collapse font-mono text-[12px] leading-[1.55]">
+          <table className="w-full border-collapse font-mono text-caption leading-[1.55]">
             <tbody>
               {visible.map((line, index) => (
                 <DiffRow key={index} line={line} />
@@ -109,7 +109,7 @@ export const DiffView = memo(function DiffView({
             <button
               type="button"
               onClick={() => setExpanded(true)}
-              className="w-full bg-sunken py-1.5 text-[11px] text-muted hover:bg-raised hover:text-ink"
+              className="w-full bg-sunken py-1.5 text-caption text-muted hover:bg-raised hover:text-ink"
             >
               {t('Show {n} more lines', { n: lines.length - visible.length })}
             </button>

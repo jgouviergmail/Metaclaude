@@ -225,7 +225,7 @@ export function MessageStream({
 function WorkingIndicator() {
   const t = useT();
   return (
-    <div className="flex items-center gap-2.5 text-[13px] text-muted" role="status">
+    <div className="flex items-center gap-2.5 text-body text-muted" role="status">
       <span className="relative flex size-2">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-70" />
         <span className="relative inline-flex size-2 rounded-full bg-accent" />

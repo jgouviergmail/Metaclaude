@@ -61,15 +61,15 @@ export const SubagentEvent = memo(function SubagentEvent({
     >
       <div className="flex flex-wrap items-center gap-2">
         <CornerDownRight className="size-3.5 shrink-0 text-info" aria-hidden />
-        <span className="text-[13px] font-medium text-ink">{event.agentName}</span>
+        <span className="text-body font-medium text-ink">{event.agentName}</span>
         <Badge tone={status.tone}>
           {status.icon}
           {status.label}
         </Badge>
-        <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">{event.description}</span>
+        <span className="min-w-0 flex-1 truncate text-caption text-muted">{event.description}</span>
       </div>
       {event.summary ? (
-        <p className="mt-1.5 border-l-2 border-line pl-2.5 text-[12.5px] leading-relaxed text-muted">
+        <p className="mt-1.5 border-l-2 border-line pl-2.5 text-caption leading-relaxed text-muted">
           {event.summary}
         </p>
       ) : null}
@@ -114,7 +114,7 @@ export function DelegationStrip({ events }: { events: TranscriptEvent[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] uppercase tracking-wide text-subtle">{t('Delegated to')}</span>
+      <span className="text-caption uppercase tracking-wide text-subtle">{t('Delegated to')}</span>
       {delegates.map((delegate) => {
         const status = STATUS[delegate.status];
         return (
@@ -122,7 +122,7 @@ export function DelegationStrip({ events }: { events: TranscriptEvent[] }) {
             key={delegate.agentName}
             data-testid={`delegation-${delegate.agentName}`}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[11.5px]',
+              'inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-caption',
               delegate.status === 'error'
                 ? 'border-danger/30 bg-danger-soft/50 text-ink'
                 : 'border-line bg-raised text-muted',

@@ -1762,6 +1762,7 @@ export const fr: Record<string, string> = {
   'queued': 'en file',
   'waiting for approval': 'en attente d’approbation',
   'interrupted': 'interrompue',
+  'Session actions': 'Actions de la session',
   'Show less': 'Voir moins',
   'Show more': 'Voir plus',
   used: 'utilisée',

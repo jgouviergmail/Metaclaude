@@ -66,7 +66,7 @@ function MessageAttachment({
   const chip = (
     <span
       className={cn(
-        'inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-1 text-[12px] text-muted',
+        'inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-1 text-caption text-muted',
         url && 'hover:border-accent hover:text-ink',
       )}
     >
@@ -99,7 +99,7 @@ export const UserMessage = memo(function UserMessage({
       <div className="flex max-w-[min(46rem,88%)] items-start gap-2.5">
         <div className="min-w-0 rounded-2xl rounded-tr-md border border-accent/20 bg-accent-soft px-4 py-2.5">
           {/* User text is plain, not markdown: they typed it, we show it verbatim. */}
-          <p className="whitespace-pre-wrap break-words text-[15px] leading-[1.65] text-ink">
+          <p className="whitespace-pre-wrap break-words text-title leading-[1.65] text-ink">
             {event.text}
           </p>
           {event.attachments.length > 0 ? (
@@ -182,11 +182,11 @@ export const ThinkingBlock = memo(function ThinkingBlock({
           aria-hidden
         />
         <Brain className="size-3.5 shrink-0 text-thinking" aria-hidden />
-        <span className="shrink-0 text-[12px] font-medium text-thinking">
+        <span className="shrink-0 text-caption font-medium text-thinking">
           {streaming ? t('Thinking…') : t('Reasoning')}
         </span>
         {!expanded ? (
-          <span className="min-w-0 flex-1 truncate text-[12px] text-muted">{preview}</span>
+          <span className="min-w-0 flex-1 truncate text-caption text-muted">{preview}</span>
         ) : null}
       </button>
 
@@ -194,7 +194,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         <div className="border-t border-thinking/20 px-3 py-2.5">
           <p
             className={cn(
-              'whitespace-pre-wrap break-words font-mono text-[12.5px] leading-[1.65] text-muted',
+              'whitespace-pre-wrap break-words font-mono text-caption leading-[1.65] text-muted',
               streaming && 'caret',
             )}
           >
@@ -223,15 +223,15 @@ export const TodoList = memo(function TodoList({
     <div className="rounded-lg border border-line bg-surface">
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <ListChecks className="size-3.5 shrink-0 text-accent" aria-hidden />
-        <span className="text-[13px] font-medium text-ink">{t('Plan')}</span>
-        <span className="ml-auto text-[11px] tabular-nums text-subtle">
+        <span className="text-body font-medium text-ink">{t('Plan')}</span>
+        <span className="ml-auto text-caption tabular-nums text-subtle">
           {done}/{total}
         </span>
       </div>
 
       <ol className="space-y-1.5 px-3 py-2.5">
         {event.items.map((item, index) => (
-          <li key={`${index}-${item.content}`} className="flex items-start gap-2 text-[13px]">
+          <li key={`${index}-${item.content}`} className="flex items-start gap-2 text-body">
             <span className="mt-[3px] shrink-0" aria-hidden>
               {item.status === 'completed' ? (
                 <span className="flex size-3.5 items-center justify-center rounded-full bg-success/20 text-success">
@@ -322,7 +322,7 @@ export const SystemNote = memo(function SystemNote({
       // difference between reading it and scrolling past it.
       role={event.level === 'error' ? 'alert' : undefined}
       className={cn(
-        'flex items-start gap-2 rounded-lg border px-3 py-2 text-[12.5px] leading-relaxed',
+        'flex items-start gap-2 rounded-lg border px-3 py-2 text-caption leading-relaxed',
         event.level === 'error' && 'border-danger/25 bg-danger-soft/40 text-ink',
         event.level === 'warn' && 'border-warning/25 bg-warning-soft/40 text-ink',
         event.level === 'info' && 'border-line bg-raised text-muted',
@@ -380,7 +380,7 @@ export const ResultFooter = memo(function ResultFooter({
       {event.error ? (
         <div
           className={cn(
-            'flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px] leading-relaxed',
+            'flex items-start gap-2 rounded-lg border px-3 py-2 text-body leading-relaxed',
             failed ? 'border-danger/30 bg-danger-soft/50' : 'border-warning/30 bg-warning-soft/50',
           )}
         >
@@ -392,7 +392,7 @@ export const ResultFooter = memo(function ResultFooter({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-subtle">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-caption text-subtle">
         <Badge tone={failed ? 'danger' : interrupted ? 'warning' : 'success'}>
           {event.status}
         </Badge>

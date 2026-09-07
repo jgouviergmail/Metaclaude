@@ -207,6 +207,58 @@ for (let hoursAgo = 23; hoursAgo >= 0; hoursAgo -= 1) {
   }
 }
 
+/*
+ * A transcript worth photographing.
+ *
+ * The bench created runs but never any events, so the session screen — the one
+ * with the composer, the tool cards and the approvals — was always the empty
+ * state. Judging `TranscriptItem`, `ToolCallCard` and `Delegation` by eye was
+ * therefore impossible, which is how a whole lot's worth of density went
+ * unlooked-at. A user message, a reply with prose and code, and a tool call is
+ * enough to see the rhythm.
+ */
+const lastRun = context.runRepo.listBySession(session.id).at(-1);
+if (lastRun) {
+  const TRANSCRIPT = [
+    {
+      kind: 'user_message',
+      attachments: [],
+      text: 'Reprends la mise en page du board : les colonnes débordent sur un téléphone.',
+    },
+    {
+      kind: 'assistant_thinking',
+      text: 'The columns are fixed-width and the row does not scroll. Check the container first.',
+    },
+    {
+      kind: 'tool_call',
+      name: 'Read',
+      status: 'ok',
+      input: JSON.stringify({ file_path: 'apps/web/src/pages/BoardPage.tsx' }),
+      result: 'const COLUMNS = [...] // 5 columns at 288px each',
+    },
+    {
+      kind: 'assistant_text',
+      streaming: false,
+      text: `Le conteneur est en \`flex\` sans \`overflow-x\`, donc les cinq colonnes à 288px débordent dès 390px de large.
+
+\`\`\`tsx
+<div className="flex gap-3 overflow-x-auto">
+\`\`\`
+
+Cela rend le défilement horizontal explicite plutôt que subi.`,
+    },
+  ];
+  TRANSCRIPT.forEach((event, seq) => {
+    context.transcriptRepo.append(session.id, {
+      ...event,
+      id: `evt_shot${seq}`,
+      runId: lastRun.id,
+      seq,
+      at: now - 240_000 + seq * 1000,
+    });
+  });
+}
+
 // Policy arms with distinct shapes: settled, promising-but-uncertain, poor.
 const ARMS = [
   ['engineering', 'sonnet', 'high', 34, 8, 40],
@@ -266,6 +318,7 @@ async function shoot(theme, viewport, suffix) {
     ['/', 'dashboard'],
     ['/workspaces', 'workspaces'],
     [`/w/${ws.id}`, 'workspace'],
+    [`/w/${ws.id}/s/${session.id}`, 'session'],
     ['/memory', 'memory'],
     ['/analytics', 'analytics'],
     ['/board', 'board'],

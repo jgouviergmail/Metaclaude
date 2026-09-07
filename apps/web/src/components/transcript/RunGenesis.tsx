@@ -83,7 +83,7 @@ export function RunGenesis({ run }: { run: Run }) {
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
         className={cn(
-          'group flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-1.5 py-1 text-[11.5px]',
+          'group flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-1.5 py-1 text-caption',
           'text-subtle transition-colors hover:bg-raised hover:text-muted',
           TOUCH_TARGET_Y,
         )}
@@ -116,7 +116,7 @@ export function RunGenesis({ run }: { run: Run }) {
       </button>
 
       {open ? (
-        <div className="mc-card mt-1 space-y-3 rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed">
+        <div className="mc-card mt-1 space-y-3 rounded-xl border border-line bg-surface p-3 text-caption leading-relaxed">
           {genesis.isLoading ? (
             <Skeleton className="h-16 rounded-lg" />
           ) : genesis.data ? (

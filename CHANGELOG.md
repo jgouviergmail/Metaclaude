@@ -11,6 +11,27 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.62.0] — 2026-09-07
+
+### Changed
+
+- The session header fits a phone. It carried four icon actions plus the
+  connection badge, the bell and the avatar, and the title — the only thing
+  saying which session you are in — was truncated to `Workin…`. Nothing was
+  clipped or covered, so no guard reported it: `truncate` was doing exactly
+  what it is for. The two panel toggles take the whole screen at that width
+  anyway and deleting a session is not something you reach for in a hurry, so
+  on a phone they move into a menu and only `+` stays. The four are declared
+  once and rendered twice, because a second copy is how the two forms come to
+  disagree — and the menu announces a toggle as a toggle.
+- Fifty-six literal text sizes across the transcript, the composer, the
+  approval card and the diff view become scale roles. None of the 121 tests
+  covering them moved, which is what a mechanical change should look like.
+- The design bench opens a session, with a transcript. It created runs but
+  never any events, so that screen was always the empty state — judging the
+  transcript, the tool cards and the composer by eye was impossible, which is
+  how a whole lot's worth of density went unlooked-at.
+
 ## [0.61.1] — 2026-09-07
 
 ### Changed

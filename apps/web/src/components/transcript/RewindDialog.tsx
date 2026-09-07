@@ -124,7 +124,7 @@ export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindD
       }
     >
       {preview === null ? (
-        <div className="flex items-center gap-3 py-6 text-[13px] text-muted">
+        <div className="flex items-center gap-3 py-6 text-body text-muted">
           <Spinner className="size-4" />
           {t('Checking what this would restore…')}
         </div>
@@ -133,7 +133,7 @@ export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindD
       ) : outcome ? (
         <Outcome result={outcome} />
       ) : empty ? (
-        <p className="py-4 text-[13px] leading-relaxed text-muted">
+        <p className="py-4 text-body leading-relaxed text-muted">
           {t('This run made no file changes, so there is nothing to undo.')}
         </p>
       ) : (
@@ -148,7 +148,7 @@ export function RewindDialog({ open, onOpenChange, onPreview, onApply }: RewindD
 function Notice({ tone, text }: { tone: 'warning' | 'success'; text: string }) {
   return (
     <div
-      className={`flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-[13px] leading-relaxed text-ink ${
+      className={`flex items-start gap-2.5 rounded-lg px-3 py-2.5 text-body leading-relaxed text-ink ${
         tone === 'warning' ? 'bg-warning-soft' : 'bg-success-soft'
       }`}
     >
@@ -165,7 +165,7 @@ function Notice({ tone, text }: { tone: 'warning' | 'success'; text: string }) {
 function DiffSummary({ result }: { result: RewindResult }) {
   const plural = usePlural();
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] tabular-nums text-muted">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption tabular-nums text-muted">
       <span className="flex items-center gap-1.5">
         <FileDiff className="size-3.5 text-accent" aria-hidden />
         {plural(result.filesChanged.length, '{n} file', '{n} files')}
@@ -186,7 +186,7 @@ function FileList({ paths }: { paths: string[] }) {
   return (
     <ul className="max-h-56 space-y-0.5 overflow-y-auto rounded-lg border border-line bg-raised p-2">
       {paths.map((path) => (
-        <li key={path} className="truncate font-mono text-[12px] text-ink" title={path}>
+        <li key={path} className="truncate font-mono text-caption text-ink" title={path}>
           {path}
         </li>
       ))}
@@ -200,7 +200,7 @@ function Changes({ result }: { result: RewindResult }) {
     <div className="space-y-3">
       <DiffSummary result={result} />
       <FileList paths={result.filesChanged} />
-      <p className="text-[12px] leading-relaxed text-muted">
+      <p className="text-caption leading-relaxed text-muted">
         {t(
           'This cannot be undone from here. Anything written since the run finished is overwritten too — the restore is to the point the run began, not a merge.',
         )}
