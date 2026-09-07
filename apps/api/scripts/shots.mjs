@@ -420,6 +420,23 @@ async function shootDialogs(theme, viewport, suffix) {
     ['/memory', 'dialog-memory', 'Add memory'],
     ['/board', 'dialog-task', 'New task'],
   ];
+  /*
+   * The command palette is deliberately absent, and this note is so nobody
+   * spends the afternoon adding it again.
+   *
+   * It opens on Ctrl+K, the dialog mounts — `[role="dialog"]` is there — and a
+   * headless capture shows the dimmed page with nothing on it, at half a second
+   * and at a second and a half. Shipping that picture would be worse than
+   * having none: an empty overlay filed under `dialog-palette` looks exactly
+   * like coverage.
+   *
+   * It matters because a mechanical size pass once put a font size on the
+   * palette's *container* rather than on the heading its variants target, and
+   * every command inherited 10.5px. Nothing failed — a class list is not a
+   * place a test looks, and no guard reaches a dialog opened by a shortcut.
+   * That one was found by reading the diff.
+   */
+
   for (const [path, name, opener] of dialogs) {
     await page.goto(`${server.baseUrl}${path}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(700);

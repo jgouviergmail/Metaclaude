@@ -106,7 +106,13 @@ export function NotificationBell() {
                             {item.message}
                           </p>
                         </div>
-                        <span className="shrink-0 text-eyebrow text-subtle">
+                        {/*
+                          * A timestamp, not an eyebrow: the size pass mapped
+                          * 10.5px onto the new role, and the role carries a
+                          * 600 weight and wide tracking that belong to a
+                          * capital label above a group, not to `3 min ago`.
+                          */}
+                        <span className="shrink-0 text-caption text-subtle">
                           {formatRelative(item.at)}
                         </span>
                       </div>

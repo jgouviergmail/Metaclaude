@@ -11,6 +11,21 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.63.1] — 2026-09-07
+
+### Fixed
+
+- Every command in the palette rendered at 10.5 pixels. The pass that gave the
+  eyebrow its role saw `uppercase` in a class list and put the size on the
+  *container*, where the heading's own styling lives in
+  `[&_[cmdk-group-heading]]:` variants aimed at a descendant — so the container
+  set a font size the whole list inherited, and the heading kept its old one.
+  Nothing failed: a class list is not a place a test looks, and no guard
+  reaches a dialog opened by a keyboard shortcut. Found by reading the diff.
+- A notification's timestamp was styled as an eyebrow. The same pass mapped
+  10.5 pixels onto the new role, and the role carries the 600 weight and wide
+  tracking that belong to a capital label above a group, not to `3 min ago`.
+
 ## [0.63.0] — 2026-09-07
 
 ### Fixed

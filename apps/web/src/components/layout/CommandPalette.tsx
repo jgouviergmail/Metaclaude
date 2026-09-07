@@ -171,7 +171,15 @@ export function CommandPalette() {
           <Command.Group
             key={group}
             heading={t(group)}
-            className="text-eyebrow mb-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-caption [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-subtle"
+            /*
+              * The eyebrow belongs to the *heading*, which cmdk renders as a
+              * descendant — hence the variants. A mechanical pass that saw
+              * `uppercase` in this class list prepended `text-eyebrow` to the
+              * container instead, where font-size inherits: every command in
+              * the palette rendered at 10.5px, and the heading kept its old
+              * size. Nothing failed; a class list is not a place a test looks.
+              */
+            className="mb-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-eyebrow [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-subtle"
           >
             {actions
               .filter((action) => action.group === group)
