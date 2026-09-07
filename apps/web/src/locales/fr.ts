@@ -1025,6 +1025,25 @@ export const fr: Record<string, string> = {
   'Extension type': 'Type d’extension',
   'New skill': 'Nouvelle skill',
   'No skills in this scope': 'Aucune skill dans cette portée',
+  'All statuses': 'Tous',
+  Active: 'Actifs',
+  Inactive: 'Inactifs',
+  'Skill availability': 'Disponibilité des skills',
+  'Subagent availability': 'Disponibilité des sous-agents',
+  'Server availability': 'Disponibilité des serveurs',
+  'Nothing in this state': 'Rien dans cet état',
+  'There are skills in this scope, but none matching that filter.':
+    'Il y a des skills dans cette portée, mais aucune ne correspond à ce filtre.',
+  'There are subagents in this scope, but none matching that filter.':
+    'Il y a des sous-agents dans cette portée, mais aucun ne correspond à ce filtre.',
+  'There are servers in this scope, but none matching that filter.':
+    'Il y a des serveurs dans cette portée, mais aucun ne correspond à ce filtre.',
+  'Show all': 'Tout afficher',
+  Applied: 'Appliqués',
+  'Insights already applied': 'Enseignements déjà appliqués',
+  'Installed — open it in Skills': 'Installé — ouvrir dans Skills',
+  'Applied — its effect is in the memory list above.':
+    'Appliqué — son effet est dans la liste de souvenirs ci-dessus.',
   'Delete this skill?': 'Supprimer cette skill ?',
   'Save skill': 'Enregistrer la skill',
   'Use when reviewing a database migration before it ships.':

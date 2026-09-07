@@ -287,6 +287,43 @@ export function DashboardPage() {
               </Section>
             ) : null}
 
+            {/* Above the run list, and in the main column rather than the
+                rail: what the system learned yesterday is read before what it
+                ran, and in the rail it sat below the fold on every screen. */}
+            <Section
+              title={t('Recently learned')}
+              icon={<Zap className="text-thinking" />}
+              actions={
+                <Link to={routes.memory()} className={cn('text-caption', QUIET_LINK)}>
+                  {t('Review')}
+                </Link>
+              }
+            >
+              {learned.length === 0 ? (
+                <EmptyState
+                  title={t('Nothing new')}
+                  description={t(
+                    'After each run, Metaclaude reflects on what happened and records anything worth remembering.',
+                  )}
+                  className="py-6"
+                />
+              ) : (
+                <ul className="divide-y divide-line">
+                  {learned.map((insight) => (
+                    <li key={insight.id} className="py-2">
+                      <Badge tone={INSIGHT_TONE[insight.kind]}>
+                        {insight.kind.replace('_', ' ')}
+                      </Badge>
+                      <p className="mt-1.5 text-body leading-snug text-ink">{insight.title}</p>
+                      <p className="mt-0.5 text-caption text-subtle">
+                        {formatRelative(insight.createdAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
             <Section
               title={t('Recent runs')}
               icon={<Timer className="text-muted" />}
@@ -417,40 +454,6 @@ export function DashboardPage() {
                           {formatRelative(workspace.updatedAt)}
                         </span>
                       </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Section>
-
-            <Section
-              title={t('Recently learned')}
-              icon={<Zap className="text-thinking" />}
-              actions={
-                <Link to={routes.memory()} className={cn('text-caption', QUIET_LINK)}>
-                  {t('Review')}
-                </Link>
-              }
-            >
-              {learned.length === 0 ? (
-                <EmptyState
-                  title={t('Nothing new')}
-                  description={t(
-                    'After each run, Metaclaude reflects on what happened and records anything worth remembering.',
-                  )}
-                  className="py-6"
-                />
-              ) : (
-                <ul className="divide-y divide-line">
-                  {learned.map((insight) => (
-                    <li key={insight.id} className="py-2">
-                      <Badge tone={INSIGHT_TONE[insight.kind]}>
-                        {insight.kind.replace('_', ' ')}
-                      </Badge>
-                      <p className="mt-1.5 text-body leading-snug text-ink">{insight.title}</p>
-                      <p className="mt-0.5 text-caption text-subtle">
-                        {formatRelative(insight.createdAt)}
-                      </p>
                     </li>
                   ))}
                 </ul>

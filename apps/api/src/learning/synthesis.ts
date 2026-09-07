@@ -15,6 +15,7 @@
 import type { Insight, Memory } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
+import { toSkillName } from '../services/registry.js';
 
 export class SynthesisError extends Error {
   constructor(
@@ -116,6 +117,18 @@ export class SkillSynthesizer {
       return null;
     }
 
+    // Named the way the registry will name it, so what the operator approves
+    // is what gets created — the alternative is a proposal that reads
+    // `collaborate_with_reviewers` and refuses to install under that name.
+    const name = toSkillName(output.name);
+    if (!name) {
+      this.deps.log('info', 'skill synthesis declined: the proposed name is unusable', {
+        workspaceId,
+        proposed: output.name,
+      });
+      return null;
+    }
+
     const id = newId('insight');
     const now = this.deps.now ? this.deps.now() : Date.now();
     this.deps.db
@@ -126,10 +139,10 @@ export class SkillSynthesizer {
       .run(
         id,
         workspaceId,
-        `Proposed skill: ${output.name.trim()}`.slice(0, 300),
+        `Proposed skill: ${name}`.slice(0, 300),
         (output.description ?? '').slice(0, 20_000),
         JSON.stringify({
-          name: output.name.trim(),
+          name,
           description: output.description?.trim() ?? '',
           body: output.body,
         }),

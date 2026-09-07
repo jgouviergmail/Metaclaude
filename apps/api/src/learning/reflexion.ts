@@ -23,6 +23,7 @@ import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import type { GateCandidate, GateDecision, Gatekeeper } from './gatekeeper.js';
 import type { MemoryStore } from './memory.js';
+import { toSkillName } from '../services/registry.js';
 
 /* -------------------------------------------------------------------------- */
 /* Schema                                                                      */
@@ -287,15 +288,20 @@ export class ReflexionEngine {
     // operator's review queue. Auto-installing generated instructions into
     // every future run is exactly the kind of unreviewed drift we refuse.
     if (output.skillProposal?.name && output.skillProposal.body) {
-      this.recordInsight({
-        workspaceId: run.workspaceId,
-        runId: run.id,
-        kind: 'skill_proposal',
-        title: `Proposed skill: ${output.skillProposal.name}`,
-        body: output.skillProposal.description,
-        confidence: 0.6,
-        payload: JSON.stringify(output.skillProposal),
-      });
+      // Named the way the registry will name it: a proposal whose name the
+      // registry refuses is one the operator can approve and never install.
+      const name = toSkillName(output.skillProposal.name);
+      if (name) {
+        this.recordInsight({
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          kind: 'skill_proposal',
+          title: `Proposed skill: ${name}`,
+          body: output.skillProposal.description,
+          confidence: 0.6,
+          payload: JSON.stringify({ ...output.skillProposal, name }),
+        });
+      }
     }
 
     return written;

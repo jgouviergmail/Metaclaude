@@ -44,6 +44,11 @@ import { LIBRARY_CATEGORIES } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { SystemTabs } from '@/components/layout/SystemTabs';
 import { BulkActions } from '@/components/registry/BulkActions';
+import {
+  AvailabilityFilter,
+  filterByAvailability,
+  type Availability,
+} from '@/components/registry/AvailabilityFilter';
 import { McpToolList } from '@/components/registry/McpToolList';
 import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel';
 import { CheckboxField, Switch } from '@/components/ui/controls';
@@ -271,6 +276,7 @@ function SkillsTab({
   const t = useT();
   const [editing, setEditing] = useState<SkillDraft | null>(null);
   const [deleting, setDeleting] = useState<SkillDefinition | null>(null);
+  const [availability, setAvailability] = useState<Availability>('all');
 
   const query = useQuery({
     queryKey: ['skills', workspaceId ?? null],
@@ -319,7 +325,8 @@ function SkillsTab({
     onError: (error) => toast.error(messageFor(error, t('Could not change that skill.'))),
   });
 
-  const skills = query.data?.skills ?? [];
+  const all = query.data?.skills ?? [];
+  const skills = filterByAvailability(all, availability);
 
   return (
     <div className="space-y-4">
@@ -343,19 +350,29 @@ function SkillsTab({
 
       {/* The scope matches the listing exactly — absent means global here, as
           the GET resolves it — so the buttons cannot reach further than the
-          rows above them. */}
-      <div className="flex justify-end">
-        <BulkActions
-          kind="skill"
-          items={skills}
-          workspaceId={workspaceId ?? null}
-          onChanged={onChanged}
-        />
-      </div>
+          rows above them. The filter narrows the same list the buttons act on,
+          which is why they take `skills` and not `all`: "disable all" has to
+          mean the rows on screen. */}
+      {all.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <AvailabilityFilter
+            value={availability}
+            onChange={setAvailability}
+            items={all}
+            label={t('Skill availability')}
+          />
+          <BulkActions
+            kind="skill"
+            items={skills}
+            workspaceId={workspaceId ?? null}
+            onChanged={onChanged}
+          />
+        </div>
+      ) : null}
 
       {query.isLoading ? (
         <ListSkeleton />
-      ) : skills.length === 0 ? (
+      ) : all.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Sparkles />}
@@ -363,6 +380,19 @@ function SkillsTab({
             description={t(
               'Write one, or accept a skill proposal from the Memory page — the reflexion pass drafts them from runs that went well.',
             )}
+          />
+        </Card>
+      ) : skills.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Sparkles />}
+            title={t('Nothing in this state')}
+            description={t('There are skills in this scope, but none matching that filter.')}
+            action={
+              <Button size="sm" variant="secondary" onClick={() => setAvailability('all')}>
+                {t('Show all')}
+              </Button>
+            }
           />
         </Card>
       ) : (
@@ -629,6 +659,7 @@ function AgentsTab({
   const t = useT();
   const [editing, setEditing] = useState<AgentDraft | null>(null);
   const [deleting, setDeleting] = useState<AgentDefinitionRecord | null>(null);
+  const [availability, setAvailability] = useState<Availability>('all');
 
   const query = useQuery({
     queryKey: ['agents', workspaceId ?? null],
@@ -683,7 +714,8 @@ function AgentsTab({
     onError: (error) => toast.error(messageFor(error, t('Could not change that subagent.'))),
   });
 
-  const agents = query.data?.agents ?? [];
+  const all = query.data?.agents ?? [];
+  const agents = filterByAvailability(all, availability);
 
   return (
     <div className="space-y-4">
@@ -713,18 +745,26 @@ function AgentsTab({
         }
       />
 
-      <div className="flex justify-end">
-        <BulkActions
-          kind="agent"
-          items={agents}
-          workspaceId={workspaceId ?? null}
-          onChanged={onChanged}
-        />
-      </div>
+      {all.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <AvailabilityFilter
+            value={availability}
+            onChange={setAvailability}
+            items={all}
+            label={t('Subagent availability')}
+          />
+          <BulkActions
+            kind="agent"
+            items={agents}
+            workspaceId={workspaceId ?? null}
+            onChanged={onChanged}
+          />
+        </div>
+      ) : null}
 
       {query.isLoading ? (
         <ListSkeleton />
-      ) : agents.length === 0 ? (
+      ) : all.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Bot />}
@@ -732,6 +772,19 @@ function AgentsTab({
             description={t(
               'Define one to give a recurring job — code review, release notes, dependency triage — its own instructions.',
             )}
+          />
+        </Card>
+      ) : agents.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Bot />}
+            title={t('Nothing in this state')}
+            description={t('There are subagents in this scope, but none matching that filter.')}
+            action={
+              <Button size="sm" variant="secondary" onClick={() => setAvailability('all')}>
+                {t('Show all')}
+              </Button>
+            }
           />
         </Card>
       ) : (
@@ -1328,6 +1381,7 @@ function McpTab({
   const plural = usePlural();
   const [editing, setEditing] = useState<McpDraft | null>(null);
   const [deleting, setDeleting] = useState<McpServerRecord | null>(null);
+  const [availability, setAvailability] = useState<Availability>('all');
 
   const t = useT();
   const queryClient = useQueryClient();
@@ -1673,7 +1727,8 @@ function McpTab({
     onError: (error) => toast.error(messageFor(error, t('Could not delete that server.'))),
   });
 
-  const servers = query.data?.servers ?? [];
+  const all = query.data?.servers ?? [];
+  const servers = filterByAvailability(all, availability);
 
   /**
    * The words to show for one server: this page's test if it ran, otherwise
@@ -1736,9 +1791,18 @@ function McpTab({
         }
       />
 
+      {all.length > 0 ? (
+        <AvailabilityFilter
+          value={availability}
+          onChange={setAvailability}
+          items={all}
+          label={t('Server availability')}
+        />
+      ) : null}
+
       {query.isLoading ? (
         <ListSkeleton />
-      ) : servers.length === 0 ? (
+      ) : all.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Plug />}
@@ -1746,6 +1810,19 @@ function McpTab({
             description={t(
               'Connect one to give the agent tools this system does not ship with — a database, an issue tracker, an internal API.',
             )}
+          />
+        </Card>
+      ) : servers.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Plug />}
+            title={t('Nothing in this state')}
+            description={t('There are servers in this scope, but none matching that filter.')}
+            action={
+              <Button size="sm" variant="secondary" onClick={() => setAvailability('all')}>
+                {t('Show all')}
+              </Button>
+            }
           />
         </Card>
       ) : (
@@ -2046,7 +2123,7 @@ function ConnectorDirectory({ onInstalled }: { onInstalled: () => void }) {
      * things `Section` decides correctly, and the prose then follows the
      * density like every other explanation in the app.
      */
-    <Section title={t('Connector directory')} className="pt-2" description={
+    <Section title={t('Connector directory')} description={
         t(
           'Servers this repository has read the documentation for — the exact endpoint and the exact name of the credential it wants. Every one authenticates with something you can paste, because a run has no browser to complete an OAuth consent in; that is also why your claude.ai connectors cannot be imported. Adding one writes the server globally — the scope selector above does not apply — seals your credential in the vault, and leaves it disabled.',
         )

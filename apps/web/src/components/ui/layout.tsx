@@ -129,15 +129,22 @@ export interface SectionProps {
 }
 
 /**
- * A titled band, separated by a rule rather than enclosed in a box.
+ * A titled block: a tinted header band over its content, enclosed.
  *
- * This is the piece that changes how the app reads. There were 138 bordered
- * boxes — 67 `<Card>` and 71 hand-written borders — so every block carried the
- * same visual weight and nothing led the eye. Border, fill and shadow each say
- * "separate object"; spending them on everything spends them on nothing.
+ * This began as the opposite — a band separated by a rule and deliberately
+ * *not* boxed, because 138 bordered boxes meant every block carried the same
+ * weight and nothing led the eye. The reasoning was sound and the result was
+ * not, for a reason the count could not see: the boxes never all went. A card
+ * is still right where a block is an object one acts on, so the dashboard kept
+ * `MetaclaudeCard` and `AdvisorCard` boxed while the brief and the run list
+ * beside them were bands — and the distinction the eye actually reads there is
+ * not "object versus group", it is "finished versus unfinished". The operator
+ * read it as a missing border, twice, on two different screens.
  *
- * A card is still right where a block genuinely is a separate object one can
- * act on. A group of settings is not that; it is a section.
+ * So the rule that survives is consistency, not economy: every titled block is
+ * enclosed, and `Card` is what a block *inside* one is. The header still bleeds
+ * to the edges (`-mx-3 px-3` against the section's own `px-3`), which is what
+ * keeps the band a band rather than a boxed title.
  */
 export function Section({
   title,
@@ -155,22 +162,22 @@ export function Section({
   // control belongs on the title's baseline, the prose under it.
   const help = useDisclosedDescription(description, typeof title === 'string' ? title : undefined);
   return (
-    <section aria-labelledby={`${id}-title`} className={className}>
+    <section
+      aria-labelledby={`${id}-title`}
+      className={cn('mc-card rounded-xl border border-line bg-surface px-3 pb-3', className)}
+    >
       {/*
         * A tinted band, bled to the section's edges.
         *
-        * The rule alone separates a section from the one above it; it does not
-        * say where a section *starts*, which is the question on a settings
-        * screen carrying eight of them. A light opaque band answers it at a
-        * glance without enclosing the content — the point of a section is that
-        * it is not a box.
+        * `-mx-3 px-3` cancels the section's own padding exactly, so the tint
+        * reaches the border on both sides and reads as a band rather than a
+        * highlighted word — while the heading inside it still lines up with
+        * the content below, which is what `FLUSH_TABLE` relies on.
         *
-        * `-mx-3 px-3` so the tint reaches past the text on both sides and
-        * reads as a band rather than a highlighted word; the rounded top
-        * finishes it. `rounded-t-lg` only: the bottom is the rule, and a
-        * radius there would detach the band from the content it introduces.
+        * `rounded-t-xl` matches the enclosure's radius; the bottom stays
+        * square because the rule under it is where the content begins.
         */}
-      <header className="-mx-3 flex items-start justify-between gap-4 rounded-t-lg border-b border-section-line bg-section px-3 pb-2 pt-2">
+      <header className="-mx-3 flex items-start justify-between gap-4 rounded-t-xl border-b border-section-line bg-section px-3 pb-2 pt-2">
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             {icon ? (

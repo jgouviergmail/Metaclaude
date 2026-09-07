@@ -37,6 +37,36 @@ export class RegistryError extends Error {
   }
 }
 
+/**
+ * A *proposed* skill name, made installable.
+ *
+ * `upsertSkill` accepts lowercase letters, digits and dashes, and refuses
+ * anything else — which is right for a name an operator typed into the form,
+ * and wrong for one a model wrote. A model asked for a skill name answers
+ * `collaborate_with_reviewers` about as readily as the dashed spelling, and
+ * the underscore was refused at *install* — after the proposal had been
+ * drafted, shown, named on screen and approved. The operator's click then
+ * produced an error about a naming rule they had no part in breaking, on the
+ * one screen offering no way to correct it.
+ *
+ * So every automatic proposal goes through this, both when it is drafted (so
+ * the name on screen is the name that will exist) and when it is accepted (so
+ * proposals drafted before this existed can still be installed). Returns the
+ * empty string when nothing usable survives; the caller reports that rather
+ * than inventing a name.
+ */
+export function toSkillName(proposed: string): string {
+  return proposed
+    .normalize('NFD')
+    // Combining marks: `é` is `e` plus one of these, and dropping them keeps
+    // the letter instead of turning a French word into a row of dashes.
+    .replace(/[\u0300-\u036f]/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .slice(0, 64)
+    .replace(/^-+|-+$/g, '');
+}
+
 /* -------------------------------------------------------------------------- */
 /* Rows                                                                        */
 /* -------------------------------------------------------------------------- */

@@ -996,3 +996,124 @@ describe('looking back at insights already decided', () => {
     expect(screen.queryByRole('heading', { name: /awaiting review/i })).toBeNull();
   });
 });
+
+/**
+ * What the shelf shows before anything is asked of it.
+ *
+ * An operator opens this page with two questions — how much is there, and
+ * under which project — and a wall of cards answers neither. The headings do,
+ * so the tiers start folded. The exception is the one case where a fold is a
+ * lie: a narrowed list folded shut hides exactly the rows the operator
+ * narrowed to.
+ */
+describe('the tiers', () => {
+  it('starts folded, so the headings are what is read first', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    // happy-dom does not hide the children of a closed <details>, so the card
+    // being findable proves nothing — the element's own `open` is the claim.
+    const tier = screen.getByTestId('memory-tier-global') as HTMLDetailsElement;
+    expect(tier.open).toBe(false);
+  });
+
+  it('unfolds while a keyword filter is narrowing the list', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+    expect((screen.getByTestId('memory-tier-global') as HTMLDetailsElement).open).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Filter memories by keyword'), {
+      target: { value: 'préavis' },
+    });
+
+    // Debounced by 250ms before the filter is applied.
+    await waitFor(() =>
+      expect((screen.getByTestId('memory-tier-global') as HTMLDetailsElement).open).toBe(true),
+    );
+  });
+
+  it('keeps a fold the operator chose, rather than reopening it on the next render', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    const tier = screen.getByTestId('memory-tier-global') as HTMLDetailsElement;
+    tier.open = true;
+    fireEvent(tier, new Event('toggle'));
+    await waitFor(() =>
+      expect((screen.getByTestId('memory-tier-global') as HTMLDetailsElement).open).toBe(true),
+    );
+  });
+});
+
+/**
+ * The insight cards, and the two things they could not say.
+ *
+ * A lesson is a proposal *about somewhere*, so deciding on one without knowing
+ * where it was learned is guesswork — and installing a skill proposal made the
+ * card vanish from all three views this page used to offer, with a toast as
+ * the only evidence anything had happened.
+ */
+describe('an insight card', () => {
+  const insight = (over: Record<string, unknown> = {}) => ({
+    id: 'ins_9',
+    workspaceId: 'ws_1',
+    runId: null,
+    kind: 'lesson',
+    title: 'Les migrations sont append-only',
+    body: 'le corps',
+    confidence: 0.7,
+    status: 'new',
+    payload: null,
+    createdAt: 0,
+    ...over,
+  });
+
+  const workspace = {
+    id: 'ws_1',
+    name: 'Facturation',
+    slug: 'facturation',
+    color: '#123456',
+  } as unknown as Workspace;
+
+  it('names the workspace it was learned in', async () => {
+    apiMock.workspaces.mockResolvedValue({ workspaces: [workspace] });
+    apiMock.insights.mockResolvedValue({ insights: [insight()] });
+
+    renderWithProviders(<MemoryPage />);
+    const card = (await screen.findByText('Les migrations sont append-only')).closest(
+      '.mc-card',
+    ) as HTMLElement;
+    expect(within(card).getByText('Facturation')).toBeDefined();
+  });
+
+  it('says "Global" for an insight that belongs to no project', async () => {
+    apiMock.insights.mockResolvedValue({ insights: [insight({ workspaceId: null })] });
+
+    renderWithProviders(<MemoryPage />);
+    const card = (await screen.findByText('Les migrations sont append-only')).closest(
+      '.mc-card',
+    ) as HTMLElement;
+    expect(within(card).getByText('Global')).toBeDefined();
+  });
+
+  it('offers an applied skill proposal the way to what it installed', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [
+        insight({
+          kind: 'skill_proposal',
+          status: 'applied',
+          title: 'Proposed skill: collaborate-with-reviewers',
+          payload: JSON.stringify({ name: 'collaborate-with-reviewers', description: '', body: '' }),
+        }),
+      ],
+    });
+
+    renderWithProviders(<MemoryPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Applied' }));
+
+    const link = await screen.findByRole('link', { name: /Installed/ });
+    expect(link.getAttribute('href')).toBe('/agents');
+    // Installing again would only hit the registry's unique-name conflict.
+    expect(screen.queryByRole('button', { name: 'Install skill' })).toBeNull();
+  });
+});

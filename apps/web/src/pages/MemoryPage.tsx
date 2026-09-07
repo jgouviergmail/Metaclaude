@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Check,
   ChevronDown,
+  ChevronRight,
   Filter,
   Folder,
   Globe,
@@ -245,12 +246,16 @@ function sourceHrefOf(
 }
 
 /**
- * The three states an insight can be looked at in.
+ * The four states an insight can be looked at in.
  *
- * `applied` is deliberately not offered: it is what a consolidation becomes
- * once its merge has run, and the rows it acted on are in the memory list
- * above — a fourth filter would be a list of things whose effect is already
- * visible elsewhere.
+ * `applied` was deliberately left out, and that was wrong. The reasoning held
+ * for the kind it was written about — a consolidation becomes `applied` when
+ * its merge has run, and the rows it acted on are in the memory list above, so
+ * its effect is visible without a filter for it. A **skill proposal** becomes
+ * `applied` too, and its effect is on another screen entirely: installing one
+ * removed the card from the only three views this page offered, leaving a
+ * toast as the sole evidence that anything had happened. An operator reported
+ * it as a proposal that vanished on the click, which is exactly what it was.
  *
  * Each carries its own heading, because "Insights awaiting review" over a list
  * of rejected ones is a lie the eye reads before the chips.
@@ -259,6 +264,7 @@ const INSIGHT_STATUS_FILTERS = [
   { value: 'new' as const, label: 'Awaiting review', heading: 'Insights awaiting review' },
   { value: 'accepted' as const, label: 'Kept', heading: 'Insights you kept' },
   { value: 'rejected' as const, label: 'Rejected', heading: 'Insights you rejected' },
+  { value: 'applied' as const, label: 'Applied', heading: 'Insights already applied' },
 ];
 
 type InsightStatus = (typeof INSIGHT_STATUS_FILTERS)[number]['value'];
@@ -291,6 +297,21 @@ export function MemoryPage() {
    * is for. Not persisted: the default is the list, every time.
    */
   const [showConstellation, setShowConstellation] = useState(false);
+
+  /**
+   * Which tiers are unfolded. Empty means all folded, which is the default.
+   *
+   * A deployment that has been running a while shows this page as a wall of
+   * cards, and the two questions it is opened with — how much is there, and
+   * under which project — are answered by the headings alone. Not persisted:
+   * the page reopens folded, deliberately, the same choice the constellation
+   * makes above.
+   *
+   * The exception is a search: folding a filtered list hides the very rows the
+   * filter was typed to find, so a filter unfolds every tier the operator has
+   * not decided about themselves.
+   */
+  const [openTiers, setOpenTiers] = useState<Record<string, boolean>>({});
 
   // Typing should not fire a request per keystroke; 250ms is below the point
   // where the list feels detached from the box.
@@ -597,6 +618,9 @@ export function MemoryPage() {
   );
   const retired = memories.filter((memory) => memory.retiredAt !== null);
   const tiers = tiersOf(live, workspaces, t);
+  // Folded is the default; a narrowed list is not, because a fold would hide
+  // exactly the rows the operator narrowed to.
+  const tiersUnfolded = filter.trim() !== '' || kind !== 'all' || shelf !== 'all';
   const insights = insightsQuery.data?.insights ?? [];
   const scopeLabel =
     scope === 'all'
@@ -984,17 +1008,38 @@ export function MemoryPage() {
                     pinned, then confidence, which interleaves the two and
                     leaves an operator unable to tell which is which. The
                     heading is the answer: structure, not a badge to notice. */}
-                {tiers.map((tier) => (
-                  <section
-                    key={tier.workspaceId ?? 'global'}
-                    className="space-y-2"
-                    aria-labelledby={`tier-${tier.workspaceId ?? 'global'}`}
+                {tiers.map((tier) => {
+                  const key = tier.workspaceId ?? 'global';
+                  const shown = openTiers[key] ?? tiersUnfolded;
+                  return (
+                  <details
+                    key={key}
+                    data-testid={`memory-tier-${key}`}
+                    className="group space-y-2"
+                    open={shown}
+                    // `toggle` fires for a programmatic change too, so an echo
+                    // of what this render already asked for would record a
+                    // decision the operator never made — and a filter that
+                    // unfolds the tiers would leave them unfolded for good.
+                    onToggle={(event) => {
+                      const next = event.currentTarget.open;
+                      setOpenTiers((current) =>
+                        next === shown ? current : { ...current, [key]: next },
+                      );
+                    }}
                   >
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-line pb-1.5">
+                    <summary className={cn(
+                      'flex cursor-pointer list-none flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-line pb-1.5',
+                      TOUCH_TARGET_Y,
+                    )}>
                       <h3
-                        id={`tier-${tier.workspaceId ?? 'global'}`}
+                        id={`tier-${key}`}
                         className="flex items-center gap-1.5 text-body font-semibold text-ink"
                       >
+                        <ChevronRight
+                          className="size-3.5 text-subtle transition-transform group-open:rotate-90"
+                          aria-hidden
+                        />
                         {tier.workspaceId === null ? (
                           <Globe className="size-3.5 text-info" aria-hidden />
                         ) : (
@@ -1010,7 +1055,7 @@ export function MemoryPage() {
                           ? t('Recalled in every workspace')
                           : t('Recalled only here')}
                       </span>
-                    </div>
+                    </summary>
 
                     {tier.memories.map((memory) => (
                       <MemoryCard
@@ -1028,8 +1073,9 @@ export function MemoryPage() {
                         sourceHref={sourceHrefOf(memory, memoryQuery.data?.sources)}
                       />
                     ))}
-                  </section>
-                ))}
+                  </details>
+                  );
+                })}
               </div>
             )}
 
@@ -1164,6 +1210,13 @@ export function MemoryPage() {
                       <Badge tone={INSIGHT_TONE[insight.kind]}>
                         {insight.kind.replace('_', ' ')}
                       </Badge>
+                      {/* Which project it was learned in. The list unions the
+                          tiers exactly as the memory list does — and a lesson
+                          is a proposal about somewhere, so deciding on one
+                          without knowing where it came from is guesswork. The
+                          consolidation card has carried this from the start;
+                          this one did not. */}
+                      <ScopeBadge workspaceId={insight.workspaceId} workspaces={workspaces} />
                       <span className="text-caption text-muted">
                         {t('confidence')} {formatPercent(insight.confidence)}
                       </span>
@@ -1250,7 +1303,29 @@ export function MemoryPage() {
                       })()}
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* An applied proposal has nothing left to decide, and
+                          offering `Install skill` again would only hit the
+                          registry's unique-name conflict. What it owes the
+                          operator is the way to what it produced — which lives
+                          on another screen, and is the whole reason installing
+                          one felt like losing it. */}
+                      {insight.status === 'applied' ? (
+                        insight.kind === 'skill_proposal' ? (
+                          <Link
+                            to={routes.agents()}
+                            className={cn('inline-flex items-center gap-1.5 text-caption font-medium', QUIET_LINK)}
+                          >
+                            <Sparkles className="size-3.5" aria-hidden />
+                            {t('Installed — open it in Skills')}
+                          </Link>
+                        ) : (
+                          <p className="text-caption text-subtle">
+                            {t('Applied — its effect is in the memory list above.')}
+                          </p>
+                        )
+                      ) : (
+                      <>
                       <Button
                         size="sm"
                         variant="success"
@@ -1287,6 +1362,8 @@ export function MemoryPage() {
                           {t('Install skill')}
                         </Button>
                       ) : null}
+                      </>
+                      )}
                     </div>
                   </Card>
                   );

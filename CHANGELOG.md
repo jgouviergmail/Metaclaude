@@ -11,6 +11,61 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.69.0] — 2026-09-07
+
+### Added
+
+- **A filter on the three extension tabs.** Skills, subagents and MCP servers
+  now carry `All statuses · Active · Inactive`, each chip with its own count,
+  so "is anything switched off here?" is answered without a click. One
+  component for the three, for the reason `BulkActions` is one component: a
+  segmented row copied per tab is a row that loses `[&>*]:shrink-0` in one of
+  the copies and squeezes its chips on a phone. The bulk buttons take the
+  *filtered* list — they promise to act on the rows on screen, and that
+  promise is what "delete all" rests on.
+- **An `Applied` view for insights, and the way to what an installed proposal
+  produced.** Installing a proposed skill sets the insight to `applied`, which
+  no filter offered — so the card left every view on the click and a toast was
+  the only evidence anything had happened. The reasoning that omitted it held
+  for consolidations, whose effect is in the memory list above; a skill's
+  effect is on another screen. The applied card now links to it, and no longer
+  offers `Install` a second time, which could only hit the registry's
+  unique-name conflict.
+
+### Changed
+
+- **A section is enclosed again.** `Section` was deliberately a band separated
+  by a rule rather than a box, to stop 138 bordered blocks carrying identical
+  weight. The reasoning was sound and the result was not, because the boxes
+  never all went: the dashboard kept `MetaclaudeCard` and `AdvisorCard` boxed
+  while the brief and the run list beside them were bands, and what the eye
+  read there was not "object versus group" but "finished versus unfinished" —
+  reported as a missing border, twice, on two different screens. The header
+  band stays, bled to the enclosure's edges.
+- **The memory tiers start folded.** This page is opened with two questions —
+  how much is there, and under which project — and the headings answer both;
+  a wall of cards answers neither. A keyword, kind or shelf filter unfolds
+  them, because a narrowed list folded shut hides exactly what was narrowed
+  to.
+- **`Recently learned` moved above `Recent runs`**, and out of the rail into
+  the main column: what the system learned is read before what it ran, and in
+  the rail it sat below the fold on every screen.
+- **An insight card names the workspace it was learned in.** The list unions
+  the tiers exactly as the memory list does, and a lesson is a proposal about
+  somewhere; the consolidation card has carried this from the start.
+
+### Fixed
+
+- **A proposed skill whose name a model spelled with underscores could be
+  approved and never installed.** `upsertSkill` takes lowercase letters,
+  digits and dashes — right for a name an operator typed into the form, wrong
+  for one a model wrote — and the refusal landed at *install*, after the
+  proposal had been drafted, shown, named on screen and approved, on the one
+  screen offering no way to correct it. `toSkillName` now normalises at both
+  ends: when a proposal is drafted, so the name shown is the name that will
+  exist, and when one is accepted, so proposals already in the queue can still
+  be installed.
+
 ## [0.68.0] — 2026-09-07
 
 ### Added

@@ -29,7 +29,7 @@ import { z } from 'zod';
 import type { Db } from '../db/index.js';
 import type { RunRepo, SessionRepo, WorkspaceRepo } from '../kernel/repositories.js';
 import type { LibraryService } from '../library/service.js';
-import type { Registry } from './registry.js';
+import { toSkillName, type Registry } from './registry.js';
 import type { Scheduler } from './scheduler.js';
 
 export class AdvisorError extends Error {
@@ -363,9 +363,14 @@ export class AdvisorService {
     let appliedId: string | null = null;
     if (proposal.kind === 'skill') {
       const payload = parsed.data as z.infer<typeof SkillPayload>;
+      // The advisor writes the name, not the operator, so a spelling the
+      // registry refuses is corrected rather than thrown back at whoever
+      // clicked Accept.
+      const name = toSkillName(payload.name);
+      if (!name) throw new AdvisorError('That proposal names no usable skill.', 422);
       appliedId = this.deps.registry.upsertSkill({
         workspaceId: null,
-        name: payload.name,
+        name,
         description: payload.description,
         body: payload.body,
         ...(payload.category !== undefined ? { category: payload.category as never } : {}),

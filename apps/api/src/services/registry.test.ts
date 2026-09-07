@@ -4,7 +4,7 @@ import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
 import { defaultWorkspaceSettings, WorkspaceRepo } from '../kernel/repositories.js';
 import { Vault } from '../security/vault.js';
-import { Registry, RegistryError } from './registry.js';
+import { Registry, RegistryError, toSkillName } from './registry.js';
 
 let db: Db;
 let vault: Vault;
@@ -1318,5 +1318,45 @@ describe('MCP servers — what a test learned', () => {
 
     const listed = registry.listMcpServers(null).find((one) => one.id === server.id);
     expect(listed!.described!.instructions).toBe('Read notes with it.');
+  });
+});
+
+/**
+ * The rule the registry enforces, applied where a model wrote the name.
+ *
+ * `upsertSkill` refuses anything but lowercase letters, digits and dashes, and
+ * that is right for a name an operator typed. `toSkillName` is what stands
+ * between that rule and a proposal nobody typed.
+ */
+describe('toSkillName', () => {
+  it('leaves a name the registry already accepts alone', () => {
+    expect(toSkillName('revue-de-migration')).toBe('revue-de-migration');
+  });
+
+  it('turns the separators a model reaches for into dashes', () => {
+    expect(toSkillName('collaborate_with_reviewers')).toBe('collaborate-with-reviewers');
+    expect(toSkillName('Release Notes')).toBe('release-notes');
+    expect(toSkillName('  --revue--  ')).toBe('revue');
+  });
+
+  it('keeps the letter under an accent rather than dropping the word', () => {
+    // The naive rule replaces every non-ASCII run with a dash, which turns
+    // `préavis résilié` into `pr-avis r-sili-` — unreadable, and installable,
+    // which is worse than a refusal.
+    expect(toSkillName('Préavis résilié')).toBe('preavis-resilie');
+  });
+
+  it('respects the registry\'s own ceiling, with no dash left dangling', () => {
+    // Cut at 64, then trimmed again: the cut can land on a dash, and a
+    // trailing one is exactly what `upsertSkill` would refuse.
+    const name = toSkillName(`${'a'.repeat(63)}-suite`);
+    expect(name.length).toBeLessThanOrEqual(64);
+    expect(name.endsWith('-')).toBe(false);
+    expect(/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)).toBe(true);
+  });
+
+  it('answers the empty string when nothing usable survives', () => {
+    // Never a made-up name: the caller reports it instead.
+    expect(toSkillName('!!! ???')).toBe('');
   });
 });

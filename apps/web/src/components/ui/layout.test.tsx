@@ -116,13 +116,24 @@ describe('Section', () => {
     expect(screen.getByRole('region', { name: 'Conservation' })).toBeDefined();
   });
 
-  it('separates with a rule rather than enclosing in a box', () => {
-    // The point of the redesign: 138 bordered boxes made every block the same
-    // weight, so nothing led the eye. A section is a heading and a line.
+  it('encloses its content, and bleeds the header band to the enclosure', () => {
+    // Reversed deliberately — see the note on `Section`. Half the dashboard's
+    // blocks were boxed and half were not, and the operator read the unboxed
+    // half as unfinished rather than as "not an object".
+    //
+    // The `-mx-3` against the section's own `px-3` is the load-bearing half:
+    // without it the band stops short of the border and reads as a
+    // highlighted title, and the heading stops lining up with the content.
     const { container } = render(<Section title="Exécution">contenu</Section>);
     const region = container.querySelector('section') as HTMLElement;
-    expect(region.className).not.toContain('rounded-xl');
-    expect(region.querySelector('header')?.className).toContain('border-b');
+    expect(region.className).toContain('rounded-xl');
+    expect(region.className).toContain('border-line');
+    expect(region.className).toContain('px-3');
+
+    const header = region.querySelector('header') as HTMLElement;
+    expect(header.className).toContain('-mx-3');
+    expect(header.className).toContain('px-3');
+    expect(header.className).toContain('border-b');
   });
 
   it('keeps an icon out of the heading, where it would join the name', () => {
