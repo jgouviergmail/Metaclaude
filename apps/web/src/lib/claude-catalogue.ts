@@ -47,7 +47,14 @@ const FALLBACK_MODELS: PickerOption[] = [
   { value: 'opusplan', label: 'Opus plan', hint: 'Opus to plan, Sonnet to execute' },
 ];
 
-const EFFORT_LABELS: Array<{ value: EffortLevel; label: string }> = [
+/**
+ * Operator-facing names for the effort levels.
+ *
+ * Exported because the catalogue panel renders the CLI's own level strings, and
+ * rendering them raw put `low` and `high` on screen in English inside a French
+ * page. Every label here is a catalogue key - see `locales/fr.ts`.
+ */
+export const EFFORT_LABELS: Array<{ value: EffortLevel; label: string }> = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
@@ -56,6 +63,17 @@ const EFFORT_LABELS: Array<{ value: EffortLevel; label: string }> = [
 ];
 
 const DEFER: { value: null; label: string } = { value: null, label: 'Auto' };
+
+/**
+ * The operator-facing name for one effort level.
+ *
+ * Falls back to the raw value, because a level the catalogue has not named is
+ * better shown than hidden - the CLI may offer one before this list learns it.
+ * The result is a catalogue key, so callers pass it through `t()`.
+ */
+export function effortLabel(level: string): string {
+  return EFFORT_LABELS.find((entry) => entry.value === level)?.label ?? level;
+}
 
 export function modelOptions(catalogue: ClaudeCatalogue | undefined): PickerOption[] {
   const reported = (catalogue?.models ?? [])

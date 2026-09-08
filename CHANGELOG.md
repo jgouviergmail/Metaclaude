@@ -11,6 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.77.2] — 2026-09-08
+
+### Fixed
+
+- **The Claude catalogue showed the CLI's effort levels in English.**
+  `ClaudeCataloguePanel` rendered `supportedEffortLevels` raw, so `low` and
+  `xhigh` appeared as badges inside a French page. Latent since the panel was
+  written, and only visible when the CLI happens to report those levels — which
+  is why the browser check caught it on one release and not the one before, at
+  identical code and an identical SDK. The panel now names them through the
+  same catalogue the composer uses, and an unrecognised level still shows
+  rather than vanishing.
+
+  The gap worth recording is not the missing translation, it is that the unit
+  test *already supplied* `['low','high']` to this component and asserted
+  nothing about what was drawn from them. A browser check on a live CLI is a
+  slow and non-deterministic way to learn something a fixture had in hand all
+  along.
+
+
 ## [0.77.1] — 2026-09-08
 
 ### Corrected

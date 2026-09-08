@@ -29,6 +29,7 @@ import type { ReactNode } from 'react';
 import type { ClaudeCatalogue, ClaudeMcpServerStatus } from '@metaclaude/shared';
 import { Section } from '@/components/ui/layout';
 import { Badge, Button, Card, EmptyState, Spinner } from '@/components/ui/primitives';
+import { effortLabel } from '@/lib/claude-catalogue';
 import { cn, formatRelative } from '@/lib/utils';
 import { McpToolList } from './McpToolList';
 import { useT } from '@/lib/i18n';
@@ -189,7 +190,12 @@ export function ClaudeCataloguePanel({ catalogue, loading, onRefresh }: ClaudeCa
                 ) : null}
                 {model.supportedEffortLevels.map((level) => (
                   <Badge key={level} tone="neutral">
-                    {level}
+                    {/* The CLI's own strings - `low`, `xhigh` - are not copy.
+                        Rendered raw they put English words inside a French
+                        page, which is what the responsive check caught. An
+                        unknown level still shows, because a level the catalogue
+                        has not named is better seen than hidden. */}
+                    {t(effortLabel(level))}
                   </Badge>
                 ))}
               </>

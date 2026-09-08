@@ -136,6 +136,50 @@ describe('models, commands and subagents', () => {
     expect(screen.getByText('claude-opus-5')).toBeTruthy();
   });
 
+  it('names the effort levels in the operator’s language, not the CLI’s', () => {
+    // The CLI reports `low` and `xhigh`. Rendered raw, those are English words
+    // inside a French page — caught by the browser check, which is a slow and
+    // non-deterministic way to learn it: this very fixture already supplied
+    // `['low','high']` and nothing asserted on what was drawn from them.
+    setup({
+      models: [
+        {
+          value: 'opus',
+          displayName: 'Opus',
+          description: 'Deepest reasoning',
+          resolvedModel: 'claude-opus-5',
+          supportsEffort: true,
+          supportedEffortLevels: ['low', 'xhigh'],
+          supportsAdaptiveThinking: false,
+        },
+      ],
+    });
+
+    expect(screen.getByText('Low')).toBeTruthy();
+    expect(screen.getByText('Very high')).toBeTruthy();
+    expect(screen.queryByText('xhigh')).toBeNull();
+  });
+
+  it('still shows a level the catalogue has not learned yet', () => {
+    // A level the CLI offers before this list names it is better seen than
+    // hidden — the operator can then tell us about it.
+    setup({
+      models: [
+        {
+          value: 'opus',
+          displayName: 'Opus',
+          description: '',
+          resolvedModel: null,
+          supportsEffort: true,
+          supportedEffortLevels: ['ludicrous' as never],
+          supportsAdaptiveThinking: false,
+        },
+      ],
+    });
+
+    expect(screen.getByText('ludicrous')).toBeTruthy();
+  });
+
   it('shows commands with their argument hint', () => {
     setup({ commands: [{ name: 'review', description: 'Review the diff', argumentHint: '[path]', aliases: [] }] });
 
