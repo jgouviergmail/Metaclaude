@@ -161,6 +161,19 @@ describe('the drop zone', () => {
     await waitFor(() => expect(apiMock.knowledge.upload).toHaveBeenCalledTimes(2));
   });
 
+  it('gives the picker link a hit area a thumb can find', async () => {
+    // Measured by `check:responsive` in a real browser, in both languages:
+    // "choose them 72x16 offers 16" and "choisissez-les 79x16 offers 16",
+    // against a floor of 32. It is a link inside a sentence, so it is as tall
+    // as its line and no more — the case `TOUCH_TARGET_TEXT` exists for, and
+    // the same one the dashboard's "Settings → System" link failed at. Only a
+    // browser can measure it, so what a test here can hold is the class that
+    // asks for it, which is the difference between a fix and a coincidence.
+    renderWithProviders(<KnowledgeUploadZone reach={GLOBAL} onUploaded={vi.fn()} />);
+    const link = screen.getByRole('button', { name: /choose them/i });
+    expect(link.className).toContain('before:-inset-y-2.5');
+  });
+
   it('refuses a file larger than the cap without sending it', async () => {
     renderWithProviders(<KnowledgeUploadZone reach={GLOBAL} onUploaded={vi.fn()} />);
 

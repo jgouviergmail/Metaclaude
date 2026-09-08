@@ -11,6 +11,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.83.2] — 2026-09-08
+
+### Fixed
+
+- **The only way into the library without a mouse was too small to press.** In
+  the drop zone, *choose them* is a link inside a sentence, so it is as tall as
+  its line and no more: measured in a real browser at 16px of hit area against
+  a floor of 32, in both languages. Anyone who cannot drag a file — which is
+  everyone on a phone — had a 16px target for the one control that opens the
+  file picker.
+
 ## [0.83.1] — 2026-09-08
 
 ### Fixed

@@ -22,7 +22,7 @@ import { FileUp, Loader2, Upload, X } from 'lucide-react';
 import type { ExtensionReach, KnowledgeDocumentMeta } from '@metaclaude/shared';
 
 import { Button } from '@/components/ui/primitives';
-import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
+import { TOUCH_TARGET_TEXT, TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { api, ApiError } from '@/lib/api';
 import { bufferToBase64 } from '@/lib/attachments';
 import { usePlural, useT } from '@/lib/i18n';
@@ -183,7 +183,17 @@ export function KnowledgeUploadZone({
           {t('Drop files here, or')}{' '}
           <button
             type="button"
-            className="font-medium text-accent underline-offset-2 hover:underline"
+            // A link inside a sentence is as tall as its line — 16px, half
+            // the floor a thumb needs — and this is the only way into the
+            // library for anyone who does not drag files. Measured by
+            // `check:responsive` at "72x16 offers 16" in English and "79x16"
+            // in French. `TOUCH_TARGET_TEXT` rather than `_Y`, whose 6px would
+            // leave it at 28: what sits above and below here is prose, which
+            // takes no presses of its own, so reaching into it steals nothing.
+            className={cn(
+              'font-medium text-accent underline-offset-2 hover:underline',
+              TOUCH_TARGET_TEXT,
+            )}
             onClick={() => input.current?.click()}
           >
             {t('choose them')}
