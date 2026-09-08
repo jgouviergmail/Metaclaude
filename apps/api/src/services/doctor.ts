@@ -91,6 +91,22 @@ export interface DoctorDeps {
    */
   credential: () => { mode: string; signInEndsAt: number | null };
   /**
+   * Whether a document's original file is still on disk.
+   *
+   * Injected, like every other filesystem probe here: what belongs in this
+   * file is the judgement about what a missing one *means*, and that is what
+   * the tests exercise.
+   */
+  knowledgeFileExists: (sha256: string, mime: string) => boolean;
+  /**
+   * Which engine reads PDFs — poppler's version, or null for the fallback.
+   *
+   * Worth a line on this screen because the two differ in a way an operator
+   * cannot see from the outside: the fallback leaves a typesetter's
+   * hyphenation in the text, so words split across a line stop being findable.
+   */
+  pdfEngine: () => string | null;
+  /**
    * What retrieval is *actually* running with, versus what was configured.
    *
    * These differ silently today: `METACLAUDE_EMBEDDINGS=local` falls back to
@@ -175,6 +191,7 @@ export class Doctor {
     await examine('public-url', () => this.publicUrl());
     await examine('claude-cli', () => this.claudeCli());
     await examine('retrieval', () => this.retrieval());
+    await examine('knowledge-files', () => this.knowledgeFiles());
     await examine('memory', () => this.memory());
     await examine('reflexion', () => this.reflexion());
     await examine('runs', () => this.runs());
@@ -387,6 +404,61 @@ export class Doctor {
       detail:
         'A sentence-transformer: retrieval bridges a question to an answer that shares no words with it.' +
         waitingNote,
+    };
+  }
+
+  /**
+   * The knowledge library's originals, and what reads them.
+   *
+   * A document whose file is gone still answers every search — its text is in
+   * the database, and retrieval never touches the disk. What it cannot do is
+   * be downloaded or re-extracted, and nothing else in the product would ever
+   * mention it: the failure is entirely silent until somebody presses a button
+   * that then does not work.
+   */
+  private knowledgeFiles(): DoctorCheck {
+    const engine = this.deps.pdfEngine();
+    const engineNote =
+      engine === null
+        ? 'PDFs are read by the built-in fallback: a word its typesetter split across two lines stays split, ' +
+          'so it is findable by neither half. Install poppler-utils to restore it — the image ships with it, ' +
+          'so this is a hand-built or development host.'
+        : `PDFs are read by poppler ${engine}.`;
+
+    const rows = this.deps.db
+      .prepare<[], { id: string; title: string; source_sha256: string; source_mime: string }>(
+        `SELECT id, title, source_sha256, source_mime FROM documents
+         WHERE source_sha256 IS NOT NULL ORDER BY title, id`,
+      )
+      .all();
+
+    const missing = rows.filter(
+      (row) => !this.deps.knowledgeFileExists(row.source_sha256, row.source_mime),
+    );
+
+    if (missing.length === 0) {
+      return {
+        name: 'knowledge-files',
+        status: engine === null ? 'warn' : 'ok',
+        summary:
+          rows.length === 0
+            ? 'No document came from an uploaded file.'
+            : `${rows.length} original${rows.length === 1 ? '' : 's'} on disk.`,
+        detail: engineNote,
+      };
+    }
+
+    // Bounded: a lost volume would otherwise print the whole library into a
+    // status screen, where the count is the answer and the names are context.
+    const named = missing.slice(0, 10).map((row) => row.title);
+    const rest = missing.length - named.length;
+    return {
+      name: 'knowledge-files',
+      status: 'warn',
+      summary: `${missing.length} of ${rows.length} originals are missing from this server.`,
+      detail:
+        `Their text is still searchable; what they cannot do is be downloaded or re-extracted. ` +
+        `${named.join(', ')}${rest > 0 ? `, and ${rest} more` : ''}. ${engineNote}`,
     };
   }
 

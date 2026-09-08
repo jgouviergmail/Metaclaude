@@ -57,6 +57,7 @@ import { countStale, createRebuildTrigger, reindexStale } from './learning/reind
 import { KnowledgeStore } from './learning/knowledge.js';
 import { KnowledgeFileStore } from './learning/knowledge-files.js';
 import { WorkerExtractor, type Extractor } from './learning/extract/worker-extractor.js';
+import { popplerVersion } from './learning/extract/pdf.js';
 import { ReflexionEngine } from './learning/reflexion.js';
 import { createGateCall, Gatekeeper } from './learning/gatekeeper.js';
 import { AuditLog } from './security/audit.js';
@@ -402,6 +403,16 @@ export async function createAppContext(
   // parses bytes a stranger chose, and a zip bomb or a three-thousand-page
   // PDF must not pause the loop that supervises live runs.
   const extractor = options.extractor ?? new WorkerExtractor();
+  // Probed once, here: a binary does not appear on PATH while the process
+  // runs, and `-v` spawns a subprocess — which the doctor would otherwise do
+  // on every report, and the doctor is a page an operator refreshes.
+  const pdfEngineVersion = popplerVersion();
+  if (pdfEngineVersion === null) {
+    log.warn(
+      'poppler pdftotext is not installed: PDFs will be read by the built-in fallback, which leaves a ' +
+        'typesetter’s hyphenation in place. The shipped image installs poppler-utils.',
+    );
+  }
   const classifier = new TaskClassifier(db, embedder);
   const policy = new PolicyLearner(db);
   const availability = new ModelAvailability(db);
@@ -991,6 +1002,8 @@ export async function createAppContext(
     vault,
     dataDir: config.dataDir,
     workspacesDir: config.workspacesDir,
+    knowledgeFileExists: (sha256, mime) => knowledgeFiles.exists(sha256, mime),
+    pdfEngine: () => pdfEngineVersion,
     diskFree: async (path) => {
       const stats = await statfs(path);
       return Number(stats.bavail) * Number(stats.bsize);

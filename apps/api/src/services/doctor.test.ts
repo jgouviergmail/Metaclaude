@@ -33,6 +33,8 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     reachOut: async () => ({ ok: true, detail: 'HTTP 405 in 12 ms' }),
     credential: () => ({ mode: 'oauth', signInEndsAt: null }),
     embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512, state: 'ready', lastError: null, pending: { memories: 0, documents: 0, exemplars: 0 } }),
+    knowledgeFileExists: () => true,
+    pdfEngine: () => 'poppler-22.12.0',
     activeRuns: () => 1,
     queuedRuns: () => 0,
     publicUrl: () => 'https://metaclaude.example.com',
@@ -71,12 +73,90 @@ describe('a healthy system', () => {
       'public-url',
       'claude-cli',
       'retrieval',
+      'knowledge-files',
       'memory',
       'reflexion',
       'runs',
       'automations',
     ]);
     expect(report.checks.every((check) => check.status === 'ok')).toBe(true);
+  });
+});
+
+/**
+ * A document whose original is gone still answers every search — its text is
+ * in the database. What it cannot do is be downloaded or re-extracted, and
+ * nothing else in the product would ever say so.
+ */
+describe('the knowledge-files check', () => {
+  const document = (id: string, sha: string | null): void => {
+    db.prepare(
+      `INSERT INTO documents (id, workspace_id, title, content, content_hash, enabled,
+         chunk_count, embedding_model, created_at, updated_at, source_name, source_mime, source_sha256)
+       VALUES (?, NULL, ?, 'x', ?, 1, 0, '', 0, 0, ?, 'application/pdf', ?)`,
+    ).run(id, id, id, sha ? `${id}.pdf` : null, sha);
+  };
+
+  it('is ok when every original is where it should be', async () => {
+    document('bail', 'hash-1');
+    document('collé', null);
+
+    const report = await makeDoctor().run();
+    const check = report.checks.find((one) => one.name === 'knowledge-files')!;
+
+    expect(check.status).toBe('ok');
+    expect(check.summary).toMatch(/1 (document|original)/);
+  });
+
+  it('is ok, and says so plainly, when no document came from a file at all', async () => {
+    document('collé', null);
+    const check = (await makeDoctor().run()).checks.find((one) => one.name === 'knowledge-files')!;
+    expect(check.status).toBe('ok');
+  });
+
+  it('warns and names the documents whose originals are missing', async () => {
+    document('bail', 'hash-1');
+    document('assurance', 'hash-2');
+    document('collé', null);
+
+    const check = (await makeDoctor({ knowledgeFileExists: () => false }).run()).checks.find(
+      (one) => one.name === 'knowledge-files',
+    )!;
+
+    expect(check.status).toBe('warn');
+    expect(check.summary).toContain('2');
+    expect(check.detail).toContain('bail');
+    expect(check.detail).toContain('assurance');
+    // The pasted document is not a missing file and must not be listed as one.
+    expect(check.detail).not.toContain('collé');
+  });
+
+  it('bounds the list, so a lost volume does not print the whole library', async () => {
+    for (let index = 0; index < 30; index += 1) document(`doc-${index}`, `hash-${index}`);
+
+    const check = (await makeDoctor({ knowledgeFileExists: () => false }).run()).checks.find(
+      (one) => one.name === 'knowledge-files',
+    )!;
+
+    expect(check.summary).toContain('30');
+    expect(check.detail!.split(', ').length).toBeLessThanOrEqual(11);
+    expect(check.detail).toMatch(/more|…/);
+  });
+
+  it('names the PDF engine, and warns when it is the fallback', async () => {
+    // The fallback reads a PDF differently — it leaves a typesetter's
+    // hyphenation in place — so which engine is answering is a fact an
+    // operator has to be able to see.
+    const withPoppler = (await makeDoctor().run()).checks.find(
+      (one) => one.name === 'knowledge-files',
+    )!;
+    expect(withPoppler.detail).toContain('poppler-22.12.0');
+
+    const without = (await makeDoctor({ pdfEngine: () => null }).run()).checks.find(
+      (one) => one.name === 'knowledge-files',
+    )!;
+    expect(without.status).toBe('warn');
+    expect(without.detail).toMatch(/poppler-utils/);
   });
 });
 
