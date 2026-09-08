@@ -11,7 +11,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Page } from '@/components/ui/layout';
 import {
   AlertTriangle,
-  ChevronDown,
   Clock,
   Filter,
   MoreVertical,
@@ -27,6 +26,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { AvailabilityFilter, filterByAvailability, type Availability } from '@/components/registry/AvailabilityFilter';
 import { BulkActions } from '@/components/registry/BulkActions';
 import { FILTER_ROW } from '@/components/ui/layout';
+import { ReachBadge } from '@/components/registry/ReachBadge';
+import { WorkspaceScopeFilter } from '@/components/registry/WorkspaceScopeFilter';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -211,33 +212,14 @@ export function AutomationsPage() {
                 again the English.
               */}
               <div className={cn(FILTER_ROW, 'gap-2')}>
-                <Menu
-                  side="bottom"
-                  trigger={
-                    <Button variant="secondary" size="sm">
-                      <Filter className="size-4" aria-hidden />
-                      <span className="max-w-40 truncate">
-                        {scope === 'all' ? t('All workspaces') : workspaceName(scope)}
-                      </span>
-                      <ChevronDown className="size-3.5" aria-hidden />
-                    </Button>
-                  }
-                >
-                  <MenuLabel>{t('Workspace')}</MenuLabel>
-                  <MenuItem selected={scope === 'all'} onSelect={() => setScope('all')}>
-                    {t('All workspaces')}
-                  </MenuItem>
-                  {workspaces.length > 0 ? <MenuSeparator /> : null}
-                  {workspaces.map((workspace) => (
-                    <MenuItem
-                      key={workspace.id}
-                      selected={scope === workspace.id}
-                      onSelect={() => setScope(workspace.id)}
-                    >
-                      {workspace.name}
-                    </MenuItem>
-                  ))}
-                </Menu>
+                <WorkspaceScopeFilter
+                  value={scope}
+                  onChange={setScope}
+                  workspaces={workspaces}
+                  // An automation belongs to a workspace by schema, so
+                  // there is no global tier to offer here.
+                  withGlobal={false}
+                />
 
                 <AvailabilityFilter
                   value={availability}
@@ -356,6 +338,18 @@ export function AutomationsPage() {
                           </span>
                         </Tooltip>
                       ) : null}
+                      {/* Where it lives, as a badge rather than buried in the
+                          sentence below. The name was already there and read as
+                          prose — under "all workspaces" what an operator scans
+                          is a column, and the same badge the registry screens
+                          use is what makes that column legible across them. An
+                          automation belongs to exactly one workspace by schema,
+                          so this is the degenerate case of the same control. */}
+                      <ReachBadge
+                        global={false}
+                        workspaceIds={[automation.workspaceId]}
+                        workspaces={workspaces}
+                      />
                       {!automation.enabled ? <Badge tone="neutral">{t('paused')}</Badge> : null}
                       {automation.lastStatus ? (
                         <Badge tone={RUN_STATUS_TONE[automation.lastStatus]}>
@@ -365,7 +359,7 @@ export function AutomationsPage() {
                     </div>
 
                     <p className="mt-1 text-caption text-muted">
-                      {workspaceName(automation.workspaceId)} · {describeTrigger(automation.trigger)}
+                      {describeTrigger(automation.trigger)}
                     </p>
 
                     {/*

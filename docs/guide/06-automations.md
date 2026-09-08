@@ -44,6 +44,10 @@ trigger to build watchers that get better at what they watch.
 
 ## Finding one, and switching many at once
 
+Each automation carries a badge naming the workspace it belongs to — the same
+badge the skills, subagents and MCP servers use, so one glance answers "where
+does this live" on any of those screens.
+
 Past a dozen automations the list stops being readable, so it filters two ways:
 by workspace, and by status — **All statuses**, **Active**, **Inactive**. The
 counts on the status chips are of the workspace you have scoped to, so

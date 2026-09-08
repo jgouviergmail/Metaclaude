@@ -87,6 +87,15 @@ exposes it to five that have no business seeing it — an MCP server especially,
 since its credentials travel with it. Writing it out three times instead gives
 you three copies that drift the moment one is edited.
 
+**Seeing the library whole.** The scope control above each list — the same one
+on every screen, in the row with the other filters — has three answers: *every
+workspace*, meaning everything wherever it is attached; *global*, meaning what
+reaches all of them; or one workspace, meaning its own plus the globals it also
+mounts. The first is the one to reach for when the question is "where does this
+live", because each row then carries a badge saying so: **Global**, the
+workspace's own colour and name, a count when there are several, or **no
+workspace** when it is attached to none.
+
 **Attached to nothing** is a state an extension can hold: it stays in the
 library and is mounted nowhere. Useful for parking something you are still
 drafting — and because it is also a state you can arrive at by unticking the

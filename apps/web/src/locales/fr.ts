@@ -1305,6 +1305,8 @@ export const fr: Record<string, string> = {
 
   /* ── Agents et skills ───────────────────────────────────────────────── */
   'Available in every workspace': 'Disponible dans tous les workspaces',
+  'Everything, wherever it is attached': 'Tout, quel que soit son rattachement',
+  'No workspace': 'Aucun workspace',
   'Its own definitions, plus the global ones': 'Ses propres définitions, plus les globales',
   "Enabled skills are written into the workspace's .claude/skills/ directory before every run, which is how the Claude CLI discovers them — nothing is injected into the prompt.":
     'Les skills activées sont écrites dans le répertoire .claude/skills/ du workspace avant chaque run : c’est ainsi que le CLI Claude les découvre — rien n’est injecté dans le prompt.',

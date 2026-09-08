@@ -794,8 +794,16 @@ export const api = {
     }),
 
   /* ----------------------------- Registry ----------------------------- */
-  skills: (workspaceId?: string) =>
-    request<{ skills: SkillDefinition[] }>(`/api/skills${qs({ workspaceId })}`),
+  /**
+   * `scope: 'all'` lists every definition whatever it is attached to.
+   *
+   * The route has understood it since the reach became a many-to-many; nothing
+   * asked for it, so the widest view a management screen could reach was
+   * "global", and a skill attached to one workspace was invisible everywhere
+   * else. `workspaceId` alone still means "that workspace plus the globals".
+   */
+  skills: (workspaceId?: string, scope?: 'all' | 'global') =>
+    request<{ skills: SkillDefinition[] }>(`/api/skills${qs({ workspaceId, scope })}`),
   saveSkill: (body: Record<string, unknown>) =>
     request<{ skill: SkillDefinition }>('/api/skills', { method: 'POST', body }),
   deleteSkill: (id: string) => request<{ ok: boolean }>(`/api/skills/${id}`, { method: 'DELETE' }),
@@ -809,8 +817,8 @@ export const api = {
   bulkSkills: (body: BulkRegistryInput) =>
     request<{ changed: number }>('/api/skills/bulk', { method: 'POST', body }),
 
-  agents: (workspaceId?: string) =>
-    request<{ agents: AgentDefinitionRecord[] }>(`/api/agents${qs({ workspaceId })}`),
+  agents: (workspaceId?: string, scope?: 'all' | 'global') =>
+    request<{ agents: AgentDefinitionRecord[] }>(`/api/agents${qs({ workspaceId, scope })}`),
   saveAgent: (body: Record<string, unknown>) =>
     request<{ agent: AgentDefinitionRecord }>('/api/agents', { method: 'POST', body }),
   deleteAgent: (id: string) => request<{ ok: boolean }>(`/api/agents/${id}`, { method: 'DELETE' }),
@@ -876,8 +884,8 @@ export const api = {
       body: secret ? { name, secret } : { name },
     }),
 
-  mcpServers: (workspaceId?: string) =>
-    request<{ servers: McpServerRecord[] }>(`/api/mcp${qs({ workspaceId })}`),
+  mcpServers: (workspaceId?: string, scope?: 'all' | 'global') =>
+    request<{ servers: McpServerRecord[] }>(`/api/mcp${qs({ workspaceId, scope })}`),
   saveMcpServer: (body: Record<string, unknown>) =>
     request<{ server: McpServerRecord }>('/api/mcp', { method: 'POST', body }),
   deleteMcpServer: (id: string) => request<{ ok: boolean }>(`/api/mcp/${id}`, { method: 'DELETE' }),

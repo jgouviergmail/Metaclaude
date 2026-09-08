@@ -14,13 +14,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { FILTER_ROW, Page, Section } from '@/components/ui/layout';
+import { WorkspaceScopeFilter } from '@/components/registry/WorkspaceScopeFilter';
 import {
   Archive,
   Brain,
   Layers,
   RotateCcw,
   Check,
-  ChevronDown,
   ChevronRight,
   Filter,
   Folder,
@@ -642,46 +642,6 @@ export function MemoryPage() {
               side="bottom"
               align="end"
               trigger={
-                <Button variant="ghost" size="sm" aria-label={t(
-                  'Memory scope: {scope}',
-                  { scope: scopeLabel },
-                )}>
-                  <Filter className="size-4" />
-                  <span className="hidden sm:inline">{scopeLabel}</span>
-                  <ChevronDown className="size-3.5" aria-hidden />
-                </Button>
-              }
-            >
-              <MenuLabel>{t('Scope')}</MenuLabel>
-              <MenuItem selected={scope === 'all'} onSelect={() => setScope('all')}>
-                {t('All memory')}
-              </MenuItem>
-              <MenuItem
-                selected={scope === 'global'}
-                description={t('Memories that apply everywhere')}
-                onSelect={() => setScope('global')}
-              >
-                {t('Global only')}
-              </MenuItem>
-              {(workspacesQuery.data?.workspaces.length ?? 0) > 0 ? <MenuSeparator /> : null}
-              {workspacesQuery.data?.workspaces.map((workspace) => (
-                <MenuItem
-                  key={workspace.id}
-                  selected={scope === workspace.id}
-                  onSelect={() => setScope(workspace.id)}
-                  icon={
-                    <WorkspaceAvatar color={workspace.color} icon={workspace.icon} className="mt-0.5" />
-                  }
-                >
-                  {workspace.name}
-                </MenuItem>
-              ))}
-            </Menu>
-
-            <Menu
-              side="bottom"
-              align="end"
-              trigger={
                 <Button variant="ghost" size="sm" aria-label={t('Memory maintenance')}>
                   <Wrench className="size-4" />
                   <span className="hidden md:inline">{t('Maintenance')}</span>
@@ -779,6 +739,14 @@ export function MemoryPage() {
                 placeholder={t('e.g. migration, tsconfig, deploy')}
                 aria-label={t('Filter memories by keyword')}
               />
+
+              {/* The widest question, in the row where the other filters are.
+                  It used to sit in the page header beside the title, which is
+                  the one place an operator does not look for a filter — and it
+                  changes the listing more than either of the two below it. */}
+              <div className={cn(FILTER_ROW, 'gap-2')}>
+                <WorkspaceScopeFilter value={scope} onChange={setScope} workspaces={workspaces} />
+              </div>
 
               <FilterGroup
                 label={t('Filter by memory kind')}

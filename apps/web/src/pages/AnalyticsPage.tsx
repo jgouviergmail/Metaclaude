@@ -8,9 +8,9 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
-import { FLUSH_TABLE, Page, Section } from '@/components/ui/layout';
-import { Activity, CalendarRange, ChevronDown, Filter, RotateCcw } from 'lucide-react';
+import { FILTER_ROW, FLUSH_TABLE, Page, Section } from '@/components/ui/layout';
+import { WorkspaceScopeFilter } from '@/components/registry/WorkspaceScopeFilter';
+import { Activity, CalendarRange, ChevronDown, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
   Area,
@@ -32,7 +32,7 @@ import { WorkspaceUsageBars } from '@/components/analytics/WorkspaceUsageBars';
 import { BetaCurve } from '@/components/analytics/BetaCurve';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { SystemTabs } from '@/components/layout/SystemTabs';
-import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
+import { Menu, MenuItem, MenuLabel } from '@/components/ui/Menu';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import {
   Badge,
@@ -233,43 +233,24 @@ export function AnalyticsPage() {
               ))}
             </Menu>
 
-            <Menu
-              side="bottom"
-              align="end"
-              trigger={
-                <Button variant="ghost" size="sm" aria-label={t(
-                  'Scope: {scope}',
-                  { scope: scopeLabel },
-                )}>
-                  <Filter className="size-4" />
-                  <span className="hidden md:inline">{scopeLabel}</span>
-                  <ChevronDown className="size-3.5" aria-hidden />
-                </Button>
-              }
-            >
-              <MenuLabel>{t('Scope')}</MenuLabel>
-              <MenuItem selected={scope === 'all'} onSelect={() => setScope('all')}>
-                {t('All workspaces')}
-              </MenuItem>
-              {(workspacesQuery.data?.workspaces.length ?? 0) > 0 ? <MenuSeparator /> : null}
-              {workspacesQuery.data?.workspaces.map((workspace) => (
-                <MenuItem
-                  key={workspace.id}
-                  selected={scope === workspace.id}
-                  onSelect={() => setScope(workspace.id)}
-                  icon={
-                    <WorkspaceAvatar color={workspace.color} icon={workspace.icon} className="mt-0.5" />
-                  }
-                >
-                  {workspace.name}
-                </MenuItem>
-              ))}
-            </Menu>
           </>
         }
       />
 
       <Page width="wide">
+          {/* The same control, in the same shape, as the three registry
+              screens. Analytics ranks runs and a run belongs to a workspace, so
+              there is no global tier to offer — homogeneous where that is true,
+              rather than an option returning an empty list forever. */}
+          <div className={cn(FILTER_ROW, 'gap-2')}>
+            <WorkspaceScopeFilter
+              value={scope}
+              onChange={setScope}
+              workspaces={workspacesQuery.data?.workspaces ?? []}
+              withGlobal={false}
+            />
+          </div>
+
           {/* Independent of the analytics query on purpose: the quota picture
               exists even in a period with no runs, and is most needed when the
               wall is close — which is not when someone is browsing history. */}

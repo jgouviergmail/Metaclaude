@@ -284,7 +284,9 @@ describe('maintenance', () => {
     renderWithProviders(<MemoryPage />);
     await screen.findByText('Préavis de résiliation');
 
-    const scopeTrigger = screen.getByRole('button', { name: /Memory scope/ });
+    // `Scope:`, not `Memory scope:` — the control is now the one every screen
+    // shares, which is the point: one label, one shape, one place.
+    const scopeTrigger = screen.getByRole('button', { name: /^Scope:/ });
     fireEvent.pointerDown(scopeTrigger, { button: 0, ctrlKey: false });
     fireEvent.click(scopeTrigger);
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Alpha/ }));

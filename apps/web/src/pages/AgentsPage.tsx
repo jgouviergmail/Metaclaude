@@ -9,7 +9,6 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import {
   BookOpen,
   Bot,
@@ -27,7 +26,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import type {
   AgentDefinitionRecord,
@@ -51,10 +50,16 @@ import {
   type Availability,
 } from '@/components/registry/AvailabilityFilter';
 import { McpToolList } from '@/components/registry/McpToolList';
+import { ReachBadge } from '@/components/registry/ReachBadge';
+import {
+  scopeLabel,
+  WorkspaceScopeFilter,
+  type WorkspaceScope,
+} from '@/components/registry/WorkspaceScopeFilter';
 import { ClaudeCataloguePanel } from '@/components/registry/ClaudeCataloguePanel';
 import { CheckboxField, Switch } from '@/components/ui/controls';
-import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
-import { PageBody, Section } from '@/components/ui/layout';
+import { Menu, MenuItem, MenuLabel } from '@/components/ui/Menu';
+import { FILTER_ROW, PageBody, Section } from '@/components/ui/layout';
 import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { ReachPicker } from '@/components/registry/ReachPicker';
@@ -122,11 +127,22 @@ export function AgentsPage() {
   const queryClient = useQueryClient();
   const t = useT();
 
-  /** `global` = unscoped definitions only; a workspace id = that workspace plus globals. */
-  const [scope, setScope] = useState<string>('global');
+  /*
+   * `all` = every definition wherever attached; `global` = the unattached tier;
+   * a workspace id = that workspace plus the globals it also mounts.
+   *
+   * `all` is the default because this is a management screen: its first job is
+   * to show the library whole. Before it existed the widest answer was
+   * `global`, so a skill attached to one workspace was invisible from every
+   * other scope and there was no view that listed everything — which is what
+   * the reach badge on each row now makes readable.
+   */
+  const [scope, setScope] = useState<WorkspaceScope>('all');
   const [tab, setTab] = useState<TabKey>('skills');
 
-  const workspaceId = scope === 'global' ? undefined : scope;
+  const workspaceId = scope === 'all' || scope === 'global' ? undefined : scope;
+  const scopeParam: 'all' | 'global' | undefined =
+    scope === 'all' ? 'all' : scope === 'global' ? 'global' : undefined;
 
   const workspacesQuery = useQuery({
     queryKey: ['workspaces'],
@@ -134,10 +150,19 @@ export function AgentsPage() {
     staleTime: 60_000,
   });
 
-  const scopeLabel =
-    scope === 'global'
-      ? 'Global'
-      : (workspacesQuery.data?.workspaces.find((w) => w.id === scope)?.name ?? 'Workspace');
+  const workspaces = workspacesQuery.data?.workspaces ?? [];
+  const label = scopeLabel(scope, workspaces, t);
+
+  /*
+   * Built once here and *placed* by each tab, rather than drilled down as
+   * `scope` + `onChange` + `workspaces` into four components. It has to sit in
+   * the same row as the tab's own filter — that is the whole point, the control
+   * that changes the listing most was the one that did not look like a filter —
+   * and only one tab is mounted at a time, so one element is enough.
+   */
+  const scopeFilter = (
+    <WorkspaceScopeFilter value={scope} onChange={setScope} workspaces={workspaces} />
+  );
 
   const invalidate = (key: string): void => {
     void queryClient.invalidateQueries({ queryKey: [key] });
@@ -148,47 +173,8 @@ export function AgentsPage() {
       <ContentHeader
         tabs={<SystemTabs />}
         title={t('Agents & skills')}
-        subtitle={scopeLabel}
+        subtitle={label}
         icon={<Bot />}
-        actions={
-          <Menu
-            side="bottom"
-            align="end"
-            trigger={
-              <Button variant="ghost" size="sm" aria-label={t(
-                'Scope: {scope}',
-                { scope: scopeLabel },
-              )}>
-                <Filter className="size-4" />
-                <span className="hidden sm:inline">{scopeLabel}</span>
-                <ChevronDown className="size-3.5" aria-hidden />
-              </Button>
-            }
-          >
-            <MenuLabel>{t('Scope')}</MenuLabel>
-            <MenuItem
-              selected={scope === 'global'}
-              description={t('Available in every workspace')}
-              onSelect={() => setScope('global')}
-            >
-              {t('Global')}
-            </MenuItem>
-            {(workspacesQuery.data?.workspaces.length ?? 0) > 0 ? <MenuSeparator /> : null}
-            {workspacesQuery.data?.workspaces.map((workspace) => (
-              <MenuItem
-                key={workspace.id}
-                selected={scope === workspace.id}
-                description={t('Its own definitions, plus the global ones')}
-                onSelect={() => setScope(workspace.id)}
-                icon={
-                  <WorkspaceAvatar color={workspace.color} icon={workspace.icon} className="mt-0.5" />
-                }
-              >
-                {workspace.name}
-              </MenuItem>
-            ))}
-          </Menu>
-        }
       />
 
       <div className="flex-1 overflow-y-auto">
@@ -224,7 +210,9 @@ export function AgentsPage() {
             <TabPanel value="skills">
               <SkillsTab
                 workspaceId={workspaceId}
-                workspaces={workspacesQuery.data?.workspaces ?? []}
+                scopeParam={scopeParam}
+                scopeFilter={scopeFilter}
+                workspaces={workspaces}
                 onChanged={() => invalidate('skills')}
               />
             </TabPanel>
@@ -232,13 +220,20 @@ export function AgentsPage() {
             <TabPanel value="agents">
               <AgentsTab
                 workspaceId={workspaceId}
-                workspaces={workspacesQuery.data?.workspaces ?? []}
+                scopeParam={scopeParam}
+                scopeFilter={scopeFilter}
+                workspaces={workspaces}
                 onChanged={() => invalidate('agents')}
               />
             </TabPanel>
 
             <TabPanel value="mcp">
-              <McpTab workspaceId={workspaceId} onChanged={() => invalidate('mcp-servers')} />
+              <McpTab
+                workspaceId={workspaceId}
+                scopeParam={scopeParam}
+                scopeFilter={scopeFilter}
+                onChanged={() => invalidate('mcp-servers')}
+              />
             </TabPanel>
 
             <TabPanel value="library">
@@ -281,10 +276,16 @@ interface SkillDraft {
 
 function SkillsTab({
   workspaceId,
+  scopeParam,
+  scopeFilter,
   workspaces,
   onChanged,
 }: {
   workspaceId: string | undefined;
+  /** `all` or `global` when no workspace is named; see the page's scope state. */
+  scopeParam: 'all' | 'global' | undefined;
+  /** The page's one scope control, placed in this tab's own filter row. */
+  scopeFilter: ReactNode;
   workspaces: readonly { id: string; name: string; color: string; icon?: string }[];
   onChanged: () => void;
 }) {
@@ -294,8 +295,10 @@ function SkillsTab({
   const [availability, setAvailability] = useState<Availability>('all');
 
   const query = useQuery({
-    queryKey: ['skills', workspaceId ?? null],
-    queryFn: () => api.skills(workspaceId),
+    // The scope is part of the key: `all` and `global` are different listings
+    // and a shared key would serve one for the other.
+    queryKey: ['skills', workspaceId ?? scopeParam ?? null],
+    queryFn: () => api.skills(workspaceId, scopeParam),
   });
 
   const save = useMutation({
@@ -382,22 +385,29 @@ function SkillsTab({
           rows above them. The filter narrows the same list the buttons act on,
           which is why they take `skills` and not `all`: "disable all" has to
           mean the rows on screen. */}
-      {all.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <AvailabilityFilter
-            value={availability}
-            onChange={setAvailability}
-            items={all}
-            label={t('Skill availability')}
-          />
+      {/* The scope shows even on an empty listing: hiding it with the rest is
+          how an operator ends up stuck inside a workspace that has nothing. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className={cn(FILTER_ROW, 'gap-2')}>
+          {scopeFilter}
+          {all.length > 0 ? (
+            <AvailabilityFilter
+              value={availability}
+              onChange={setAvailability}
+              items={all}
+              label={t('Skill availability')}
+            />
+          ) : null}
+        </div>
+        {all.length > 0 ? (
           <BulkActions
             kind="skill"
             items={skills}
             workspaceId={workspaceId ?? null}
             onChanged={onChanged}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {query.isLoading ? (
         <ListSkeleton />
@@ -438,7 +448,17 @@ function SkillsTab({
                     {skill.category !== 'general' ? (
                       <Badge tone="info">{t(CATEGORY_LABELS[skill.category])}</Badge>
                     ) : null}
-                    {skill.workspaceId === null ? <Badge tone="neutral">{t('global')}</Badge> : null}
+                    {/* The reach as it really is, not the legacy single
+                        column: an extension attaches to any number of
+                        workspaces, and `workspaceId === null` stopped being the
+                        whole answer the day it did. This is what makes the "all
+                        workspaces" listing readable — otherwise it is a flat
+                        list with no way to tell where anything lives. */}
+                    <ReachBadge
+                      global={skill.isGlobal}
+                      workspaceIds={skill.workspaceIds}
+                      workspaces={workspaces}
+                    />
                     {!skill.enabled ? <Badge tone="neutral">{t('disabled')}</Badge> : null}
                   </div>
                   <p className="text-body leading-relaxed text-muted">{skill.description}</p>
@@ -701,10 +721,14 @@ const AGENT_MODELS = ['default', 'opus', 'sonnet', 'haiku'] as const;
 
 function AgentsTab({
   workspaceId,
+  scopeParam,
+  scopeFilter,
   workspaces,
   onChanged,
 }: {
   workspaceId: string | undefined;
+  scopeParam: 'all' | 'global' | undefined;
+  scopeFilter: ReactNode;
   workspaces: readonly { id: string; name: string; color: string; icon?: string }[];
   onChanged: () => void;
 }) {
@@ -714,8 +738,8 @@ function AgentsTab({
   const [availability, setAvailability] = useState<Availability>('all');
 
   const query = useQuery({
-    queryKey: ['agents', workspaceId ?? null],
-    queryFn: () => api.agents(workspaceId),
+    queryKey: ['agents', workspaceId ?? scopeParam ?? null],
+    queryFn: () => api.agents(workspaceId, scopeParam),
   });
 
   const save = useMutation({
@@ -803,22 +827,27 @@ function AgentsTab({
         }
       />
 
-      {all.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <AvailabilityFilter
-            value={availability}
-            onChange={setAvailability}
-            items={all}
-            label={t('Subagent availability')}
-          />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className={cn(FILTER_ROW, 'gap-2')}>
+          {scopeFilter}
+          {all.length > 0 ? (
+            <AvailabilityFilter
+              value={availability}
+              onChange={setAvailability}
+              items={all}
+              label={t('Subagent availability')}
+            />
+          ) : null}
+        </div>
+        {all.length > 0 ? (
           <BulkActions
             kind="agent"
             items={agents}
             workspaceId={workspaceId ?? null}
             onChanged={onChanged}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {query.isLoading ? (
         <ListSkeleton />
@@ -856,7 +885,17 @@ function AgentsTab({
                     {agent.category !== 'general' ? (
                       <Badge tone="info">{t(CATEGORY_LABELS[agent.category])}</Badge>
                     ) : null}
-                    {agent.workspaceId === null ? <Badge tone="neutral">{t('global')}</Badge> : null}
+                    {/* The reach as it really is, not the legacy single
+                        column: an extension attaches to any number of
+                        workspaces, and `workspaceId === null` stopped being the
+                        whole answer the day it did. This is what makes the "all
+                        workspaces" listing readable — otherwise it is a flat
+                        list with no way to tell where anything lives. */}
+                    <ReachBadge
+                      global={agent.isGlobal}
+                      workspaceIds={agent.workspaceIds}
+                      workspaces={workspaces}
+                    />
                     {!agent.enabled ? <Badge tone="neutral">{t('disabled')}</Badge> : null}
                   </div>
                   <p className="text-body leading-relaxed text-muted">{agent.description}</p>
@@ -1450,9 +1489,13 @@ function OAuthButton({
 
 function McpTab({
   workspaceId,
+  scopeParam,
+  scopeFilter,
   onChanged,
 }: {
   workspaceId: string | undefined;
+  scopeParam: 'all' | 'global' | undefined;
+  scopeFilter: ReactNode;
   onChanged: () => void;
 }) {
   const plural = usePlural();
@@ -1542,8 +1585,8 @@ function McpTab({
   const [descriptions, setDescriptions] = useState<Record<string, McpServerDescription>>({});
 
   const query = useQuery({
-    queryKey: ['mcp-servers', workspaceId ?? null],
-    queryFn: () => api.mcpServers(workspaceId),
+    queryKey: ['mcp-servers', workspaceId ?? scopeParam ?? null],
+    queryFn: () => api.mcpServers(workspaceId, scopeParam),
   });
 
   /**
@@ -1874,14 +1917,17 @@ function McpTab({
         }
       />
 
-      {all.length > 0 ? (
-        <AvailabilityFilter
-          value={availability}
-          onChange={setAvailability}
-          items={all}
-          label={t('Server availability')}
-        />
-      ) : null}
+      <div className={cn(FILTER_ROW, 'gap-2')}>
+        {scopeFilter}
+        {all.length > 0 ? (
+          <AvailabilityFilter
+            value={availability}
+            onChange={setAvailability}
+            items={all}
+            label={t('Server availability')}
+          />
+        ) : null}
+      </div>
 
       {query.isLoading ? (
         <ListSkeleton />
@@ -1925,7 +1971,17 @@ function McpTab({
                     >
                       {live.get(server.name)?.status ?? server.status}
                     </Badge>
-                    {server.workspaceId === null ? <Badge tone="neutral">{t('global')}</Badge> : null}
+                    {/* The reach as it really is, not the legacy single
+                        column: an extension attaches to any number of
+                        workspaces, and `workspaceId === null` stopped being the
+                        whole answer the day it did. This is what makes the "all
+                        workspaces" listing readable — otherwise it is a flat
+                        list with no way to tell where anything lives. */}
+                    <ReachBadge
+                      global={server.isGlobal}
+                      workspaceIds={server.workspaceIds}
+                      workspaces={workspaces}
+                    />
                   </div>
 
                   <p className="break-all font-mono text-caption leading-relaxed text-muted">

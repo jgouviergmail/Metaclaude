@@ -11,6 +11,42 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.79.0] — 2026-09-08
+
+### Added
+
+- **A listing that shows the library whole, and says where each thing lives.**
+  The registry screens offered "Global" as their widest scope, meaning only the
+  definitions attached to no workspace in particular — so a skill attached to
+  one workspace was invisible from every other scope, and there was no view that
+  listed everything. The API has served `?scope=all` since the reach became a
+  many-to-many, with a comment saying exactly why it exists; nothing ever asked
+  for it. **All workspaces** is now the default on Agents & skills.
+
+  That view is only useful if a row says where it lives, so every row carries a
+  reach badge: **Global**, the workspace's own colour and name, a count with the
+  names on hover when there are several, or **no workspace** when it is attached
+  to none — a real state, reachable by unticking the last box, that an empty
+  badge would have read as "global". One component across skills, subagents, MCP
+  servers *and* automations, where it degenerates to the single workspace an
+  automation belongs to by schema. That last one was already on screen as prose
+  in the sentence under the name; as a badge it reads as a column.
+
+### Changed
+
+- **The workspace scope sits with the other filters now, on every screen.** It
+  lived in the page header beside the title on Agents & skills, Memory and
+  Analytics, while each screen's own filters sat in a row above the list — so
+  the one control that changes a listing most was the one that did not look like
+  a filter. One component, one label, one place. Analytics keeps two answers
+  rather than three: it ranks runs, a run belongs to a workspace, and a "global"
+  option there would return an empty list forever.
+
+  The scope control also stays visible when a listing is empty. Hiding it with
+  the rest of the filter row is how an operator ends up stuck inside a workspace
+  that has nothing in it.
+
+
 ## [0.78.0] — 2026-09-08
 
 ### Changed
