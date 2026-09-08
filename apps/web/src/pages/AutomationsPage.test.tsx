@@ -370,6 +370,64 @@ describe('editing an automation', () => {
     policy: { permissionMode: 'default', notify: true, model: 'claude-sonnet-5', effort: null },
   });
 
+  it('shows the workspace when editing, and moves the automation to another', async () => {
+    // It used to appear only at creation, so an existing automation's workspace
+    // was neither visible nor changeable — while a skill, a subagent and an MCP
+    // server all show their reach in their editor. An automation written for
+    // one project does turn out to suit another.
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [
+        { id: 'ws_a', name: 'Alpha', slug: 'alpha', color: '#6366f1' },
+        { id: 'ws_b', name: 'Beta', slug: 'beta', color: '#f59e0b' },
+      ],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+
+    // The current one is named, which it was not before at all.
+    const picker = await screen.findByRole('button', { name: /Alpha/ });
+    fireEvent.pointerDown(picker, { button: 0 });
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Beta/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(apiMock.updateAutomation).toHaveBeenCalled());
+    // On the payload, not the label: the picker's text falls back to the first
+    // entry, so it reads right whether the value travelled or was dropped.
+    const [, body] = apiMock.updateAutomation.mock.calls[0] as [string, { workspaceId?: string }];
+    expect(body.workspaceId).toBe('ws_b');
+  });
+
+  it('does not name the workspace in a patch that only renamed it', async () => {
+    // A patch naming the workspace on every save is a patch that writes "moved"
+    // into the audit log every time somebody fixes a typo.
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+
+    const name = await screen.findByLabelText('Name');
+    fireEvent.change(name, { target: { value: 'Revue du soir' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(apiMock.updateAutomation).toHaveBeenCalled());
+    const [, body] = apiMock.updateAutomation.mock.calls[0] as [
+      string,
+      { name?: string; workspaceId?: string },
+    ];
+    expect(body.name).toBe('Revue du soir');
+    expect(body.workspaceId).toBeUndefined();
+  });
+
   /**
    * The four trigger buttons must fit a phone.
    *

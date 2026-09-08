@@ -44,6 +44,14 @@ trigger to build watchers that get better at what they watch.
 
 ## Finding one, and switching many at once
 
+An automation belongs to one workspace, chosen when you create it and
+changeable afterwards from its editor — an automation written for one project
+often turns out to suit another, and workspaces get created after the
+automations that would serve them. Moving a **continuous** one ends its running
+session: that thread lives in the old workspace, with that project's files and
+permissions, so the next firing opens a fresh one on the other side. The editor
+says so before you save, and only when it applies.
+
 Each automation carries a badge naming the workspace it belongs to — the same
 badge the skills, subagents and MCP servers use, so one glance answers "where
 does this live" on any of those screens.

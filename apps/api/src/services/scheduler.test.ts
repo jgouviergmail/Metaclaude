@@ -270,6 +270,91 @@ describe('update / delete / list', () => {
     expect(updated.updatedAt).toBe(at(2024, 0, 15, 10, 0));
   });
 
+  it('moves an automation to another workspace', () => {
+    // An automation written for one project turns out to suit another, or a
+    // workspace is created after it. Refused outright until now, and the
+    // refusal protected something real — see the next two cases.
+    const other = workspaces.create({
+      name: 'Beta',
+      slug: 'beta',
+      description: '',
+      path: '/tmp/beta',
+      color: '#f59e0b',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+    const automation = make();
+
+    const moved = scheduler.update(automation.id, { workspaceId: other.id })!;
+
+    expect(moved.workspaceId).toBe(other.id);
+    expect(scheduler.list(other.id).map((a) => a.id)).toContain(automation.id);
+    expect(scheduler.list(workspace.id).map((a) => a.id)).not.toContain(automation.id);
+  });
+
+  it('ends the continuous thread on a move, because the session lives in the old workspace', () => {
+    // The invariant the old refusal was protecting. A continuous automation
+    // keeps writing into one session so context accumulates; carrying that
+    // session across would have it writing into a project it no longer belongs
+    // to, with that project's files and permissions.
+    const other = workspaces.create({
+      name: 'Beta',
+      slug: 'beta',
+      description: '',
+      path: '/tmp/beta',
+      color: '#f59e0b',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+    const automation = make({ continuous: true });
+    const session = sessions.create({
+      workspaceId: workspace.id,
+      title: 'Continuous',
+      model: 'default',
+      effort: null,
+      permissionMode: 'default',
+    });
+    db.prepare('UPDATE automations SET session_id = ? WHERE id = ?').run(session.id, automation.id);
+    expect(scheduler.get(automation.id)!.sessionId).toBe(session.id);
+
+    const moved = scheduler.update(automation.id, { workspaceId: other.id })!;
+
+    expect(moved.sessionId).toBeNull();
+    // Still continuous: the next firing opens a fresh session in the new
+    // workspace rather than turning the mode off behind the operator's back.
+    expect(moved.continuous).toBe(true);
+  });
+
+  it('keeps the continuous thread when the workspace does not change', () => {
+    // The complement, and the one a naive implementation breaks: an ordinary
+    // rename must not end the thread. Sending the same workspace id is what a
+    // form that posts every field does, so it must be a no-op.
+    const automation = make({ continuous: true });
+    const session = sessions.create({
+      workspaceId: workspace.id,
+      title: 'Continuous',
+      model: 'default',
+      effort: null,
+      permissionMode: 'default',
+    });
+    db.prepare('UPDATE automations SET session_id = ? WHERE id = ?').run(session.id, automation.id);
+
+    const renamed = scheduler.update(automation.id, {
+      name: 'Renamed',
+      workspaceId: workspace.id,
+    })!;
+
+    expect(renamed.sessionId).toBe(session.id);
+  });
+
+  it('refuses a move to a workspace that does not exist', () => {
+    const automation = make();
+    expect(() => scheduler.update(automation.id, { workspaceId: 'ws_nope' })).toThrow(
+      SchedulerError,
+    );
+    expect(scheduler.get(automation.id)!.workspaceId).toBe(workspace.id);
+  });
+
   it('validates a patched trigger and leaves the row untouched when it is bad', () => {
     const automation = make();
     expect(() =>

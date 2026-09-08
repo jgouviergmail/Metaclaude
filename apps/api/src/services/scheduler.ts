@@ -251,7 +251,7 @@ export class Scheduler {
    */
   update(
     id: string,
-    patch: Partial<Omit<Automation, 'id' | 'workspaceId' | 'policy'>> & {
+    patch: Partial<Omit<Automation, 'id' | 'policy'>> & {
       policy?: Partial<Automation['policy']>;
     },
   ): Automation | null {
@@ -259,18 +259,49 @@ export class Scheduler {
     if (!current) return null;
     if (patch.trigger) this.validateTrigger(patch.trigger);
 
+    /*
+     * Moving an automation to another workspace.
+     *
+     * It used to be refused outright — the type omitted `workspaceId` and the
+     * route omitted it from the patch schema — and the reason was sound rather
+     * than lazy: an automation is bound to its workspace in three ways, and a
+     * move that ignores any of them leaves it running somewhere it does not
+     * belong. What was missing is that the reason is fixable, and the need is
+     * ordinary: an automation written for one project turns out to suit
+     * another, or a workspace is created after it.
+     *
+     * The binding that actually breaks is the *continuous session*. A
+     * continuous automation keeps writing into one session so context
+     * accumulates, and that session lives in the old workspace — carrying it
+     * across would have the automation writing into a project it no longer
+     * belongs to, with that project's files and permissions. So a move ends the
+     * thread: the next firing opens a fresh session in the new workspace. That
+     * is a real consequence and the editor says so before the save.
+     */
+    const movedTo =
+      patch.workspaceId !== undefined && patch.workspaceId !== current.workspaceId
+        ? patch.workspaceId
+        : null;
+    if (movedTo !== null && !this.deps.workspaces.get(movedTo)) {
+      throw new SchedulerError('Unknown workspace.', 404);
+    }
+
     const trigger = patch.trigger ?? current.trigger;
     const enabled = patch.enabled ?? current.enabled;
 
     this.deps.db
       .prepare(
         `UPDATE automations SET
+           workspace_id = ?, session_id = ?,
            name = ?, description = ?, prompt = ?, trigger = ?, policy = ?, continuous = ?,
            max_consecutive_failures = ?, enabled = ?, next_run_at = ?,
            consecutive_failures = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(
+        movedTo ?? current.workspaceId,
+        // The continuous thread does not travel. Kept when it stays put.
+        movedTo !== null ? null : current.sessionId,
         patch.name ?? current.name,
         patch.description ?? current.description,
         patch.prompt ?? current.prompt,

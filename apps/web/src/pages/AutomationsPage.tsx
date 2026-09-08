@@ -28,6 +28,7 @@ import { BulkActions } from '@/components/registry/BulkActions';
 import { FILTER_ROW } from '@/components/ui/layout';
 import { ReachBadge } from '@/components/registry/ReachBadge';
 import { WorkspaceScopeFilter } from '@/components/registry/WorkspaceScopeFilter';
+import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -506,7 +507,8 @@ function AutomationEditor({
   onClose,
 }: {
   automation: Automation | null;
-  workspaces: Array<{ id: string; name: string }>;
+  /** Carries the colour and icon so the picker reads like the rest of the app. */
+  workspaces: Array<{ id: string; name: string; color: string; icon?: string }>;
   onClose: () => void;
 }) {
   const t = useT();
@@ -537,6 +539,10 @@ function AutomationEditor({
     automation?.trigger.type === 'event' ? (automation.trigger.filter ?? '') : '',
   );
   const [continuous, setContinuous] = useState(automation?.continuous ?? false);
+
+  const current = workspaces.find((workspace) => workspace.id === workspaceId);
+  /** Editing an existing automation and pointing it somewhere else. */
+  const moving = Boolean(automation) && workspaceId !== automation?.workspaceId;
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(
     automation?.policy.permissionMode ?? 'default',
   );
@@ -663,6 +669,10 @@ function AutomationEditor({
   const changed = (): Record<string, unknown> => {
     const patch: Record<string, unknown> = {};
     if (!automation) return patch;
+    // Only when it actually moved: sending the same id would be a no-op on the
+    // server, but a patch that names the workspace on every save is a patch
+    // that says "moved" in the audit log every time somebody fixes a typo.
+    if (workspaceId !== automation.workspaceId) patch.workspaceId = workspaceId;
     if (name.trim() !== automation.name) patch.name = name.trim();
     if (description.trim() !== automation.description) patch.description = description.trim();
     if (prompt.trim() !== automation.prompt) patch.prompt = prompt.trim();
@@ -762,29 +772,61 @@ function AutomationEditor({
           />
         </Label>
 
-        {!automation ? (
-          <div>
-            <span className="mb-1.5 block text-body font-medium text-ink">{t('Workspace')}</span>
-            <Menu
-              side="bottom"
-              trigger={
-                <Button variant="secondary" size="sm" className="w-full justify-between">
-                  {workspaces.find((w) => w.id === workspaceId)?.name ?? t('Choose a workspace')}
-                </Button>
-              }
-            >
-              {workspaces.map((workspace) => (
-                <MenuItem
-                  key={workspace.id}
-                  selected={workspace.id === workspaceId}
-                  onSelect={() => setWorkspaceId(workspace.id)}
-                >
-                  {workspace.name}
-                </MenuItem>
-              ))}
-            </Menu>
-          </div>
-        ) : null}
+        {/*
+          * Shown when editing too, and changeable.
+          *
+          * It used to appear only at creation, so an automation's workspace was
+          * neither visible nor movable afterwards — while a skill, a subagent
+          * and an MCP server all show their reach in their editor and let it be
+          * changed. The asymmetry had a real reason underneath (a continuous
+          * automation's session lives in its workspace) and the fix was to
+          * handle that in the move rather than to forbid the move: an
+          * automation written for one project does turn out to suit another,
+          * and workspaces are created after the automations that would serve
+          * them.
+          */}
+        <div>
+          <span className="mb-1.5 block text-body font-medium text-ink">{t('Workspace')}</span>
+          <Menu
+            side="bottom"
+            trigger={
+              <Button variant="secondary" size="sm" className="w-full justify-between">
+                <span className="flex items-center gap-2 truncate">
+                  {current ? (
+                    <WorkspaceAvatar color={current.color} icon={current.icon} />
+                  ) : null}
+                  {current?.name ?? t('Choose a workspace')}
+                </span>
+              </Button>
+            }
+          >
+            {workspaces.map((workspace) => (
+              <MenuItem
+                key={workspace.id}
+                selected={workspace.id === workspaceId}
+                onSelect={() => setWorkspaceId(workspace.id)}
+                icon={
+                  <WorkspaceAvatar
+                    color={workspace.color}
+                    icon={workspace.icon}
+                    className="mt-0.5"
+                  />
+                }
+              >
+                {workspace.name}
+              </MenuItem>
+            ))}
+          </Menu>
+          {/* The consequence, before the save rather than after it. Only a
+              continuous automation has a thread to lose, so only it is warned. */}
+          {moving && continuous ? (
+            <p className="mt-1.5 text-caption text-warning">
+              {t(
+                'Moving this automation ends its continuous session — the next firing starts a fresh one in the new workspace.',
+              )}
+            </p>
+          ) : null}
+        </div>
 
         <Label htmlFor="auto-prompt" hint={t('What the agent should do each time this fires.')}>
           {t('Prompt')}

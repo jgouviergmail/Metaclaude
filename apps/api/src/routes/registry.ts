@@ -654,19 +654,35 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
 
   app.patch<{ Params: { id: string } }>('/api/automations/:id', async (request, reply) => {
     const actor = requireOperator(request);
-    const parsed = patchSchema(AutomationInput).omit({ workspaceId: true }).safeParse(request.body);
+    /*
+     * `workspaceId` is patchable now, and it was deliberately not before.
+     *
+     * The old refusal protected a real invariant — a continuous automation's
+     * session lives in its workspace — and the fix was to handle that in the
+     * move rather than to forbid the move: `Scheduler.update` ends the thread
+     * when the workspace changes. What stays refused is a move to a workspace
+     * that does not exist, which the scheduler answers with a 404.
+     */
+    const parsed = patchSchema(AutomationInput).safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
 
     assertPermissionModeAllowed(context, parsed.data.policy?.permissionMode);
 
+    // Read before the write: a move is a change of reach, and an audit line
+    // saying only "updated" cannot answer "who moved this, and from where".
+    const before = context.scheduler.get(request.params.id);
     const automation = context.scheduler.update(request.params.id, parsed.data);
     if (!automation) throw new HttpError(404, 'Automation not found.');
 
+    const moved = before && before.workspaceId !== automation.workspaceId;
     context.audit.record({
       actor: actor.username,
       action: 'automation.update',
       target: automation.id,
       ipAddress: requestIp(context, request),
+      ...(moved
+        ? { detail: `${automation.name}: moved from ${before.workspaceId} to ${automation.workspaceId}` }
+        : {}),
     });
     return reply.send({ automation });
   });

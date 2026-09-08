@@ -1305,6 +1305,8 @@ export const fr: Record<string, string> = {
 
   /* ── Agents et skills ───────────────────────────────────────────────── */
   'Available in every workspace': 'Disponible dans tous les workspaces',
+  'Moving this automation ends its continuous session — the next firing starts a fresh one in the new workspace.':
+    'Déplacer cette automatisation met fin à sa session continue — le prochain déclenchement en ouvrira une nouvelle dans le nouveau workspace.',
   'Everything, wherever it is attached': 'Tout, quel que soit son rattachement',
   'No workspace': 'Aucun workspace',
   'Its own definitions, plus the global ones': 'Ses propres définitions, plus les globales',

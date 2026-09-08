@@ -11,6 +11,32 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.80.0] — 2026-09-08
+
+### Added
+
+- **An automation can be moved to another workspace.** Its workspace could be
+  chosen at creation and never again — the editor hid the control once the
+  automation existed, the route stripped `workspaceId` from the patch schema and
+  the scheduler's own type omitted it. So an automation was neither visibly
+  attached anywhere nor movable, while a skill, a subagent and an MCP server all
+  show their reach in their editor and let it be changed.
+
+  The refusal was protecting something real rather than being lazy: a
+  **continuous** automation keeps writing into one session so context
+  accumulates, and that session lives in its workspace — carrying it across
+  would have the automation writing into a project it no longer belongs to, with
+  that project's files and permissions. The fix is to handle that in the move
+  rather than to forbid the move. A move ends the thread and the next firing
+  opens a fresh session on the other side; the editor says so before the save,
+  and only for the automations it applies to. A move to a workspace that does
+  not exist is still refused, and the audit line names both ends of it.
+
+  The form sends `workspaceId` only when it actually changed. A patch that names
+  it on every save is a patch that writes "moved" into the audit log every time
+  somebody fixes a typo.
+
+
 ## [0.79.0] — 2026-09-08
 
 ### Added
