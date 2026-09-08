@@ -27,6 +27,7 @@
 import { createHash } from 'node:crypto';
 
 import { newId } from '@metaclaude/shared';
+import type { KnowledgeLocation, KnowledgePageUnit } from '@metaclaude/shared';
 
 import type { Db } from '../db/index.js';
 import { packEmbedding, toBool, tx, unpackEmbedding } from '../db/index.js';
@@ -82,6 +83,38 @@ export interface KnowledgeSearchResult {
   heading: string;
   text: string;
   score: number;
+}
+
+/**
+ * One passage a finished run was shown, as the genesis reads it back.
+ *
+ * `replaced` is true when the document has been edited or re-extracted since:
+ * the citation still names what the run saw, and says the text behind it has
+ * moved. A replaced passage keeps no heading and no location, because both
+ * lived on the chunk that is gone.
+ */
+export interface ConsultedPassage extends KnowledgeLocation {
+  chunkId: string;
+  documentId: string;
+  title: string;
+  heading: string;
+  score: number;
+  replaced: boolean;
+}
+
+interface ConsultedRow {
+  chunk_id: string;
+  document_id: string;
+  title: string;
+  page_unit: KnowledgePageUnit | null;
+  heading: string | null;
+  page_start: number | null;
+  page_end: number | null;
+  line_start: number | null;
+  line_end: number | null;
+  score: number;
+  /** SQLite has no boolean: `(c.id IS NULL)` comes back as 0 or 1. */
+  replaced: number;
 }
 
 export interface KnowledgeRetrievalOptions {
@@ -449,35 +482,57 @@ export class KnowledgeStore {
     return capPerDocument(results, MAX_PASSAGES_PER_DOCUMENT).slice(0, limit);
   }
 
-  /** Which passages a run actually saw — the genesis reads this back. */
+  /**
+   * Which passages a run actually saw — the genesis reads this back.
+   *
+   * The document id is written beside the chunk id on purpose: a passage is
+   * replaced wholesale whenever its document is edited or re-extracted, and a
+   * citation that cascaded away with it would rewrite the story of a finished
+   * run. The document outlives its passages; when it too is deleted, the
+   * citations go with it, which is the right answer for a document that no
+   * longer exists at all.
+   */
   recordUsage(runId: string, results: KnowledgeSearchResult[]): void {
     if (results.length === 0) return;
     tx(this.db, () => {
       const link = this.db.prepare(
-        'INSERT OR REPLACE INTO document_usages (run_id, chunk_id, score) VALUES (?, ?, ?)',
+        'INSERT OR REPLACE INTO document_usages (run_id, document_id, chunk_id, score) VALUES (?, ?, ?, ?)',
       );
-      for (const result of results) link.run(runId, result.chunkId, result.score);
+      for (const result of results) {
+        link.run(runId, result.documentId, result.chunkId, result.score);
+      }
     });
   }
 
-  consultedFor(
-    runId: string,
-  ): Array<{ chunkId: string; documentId: string; title: string; heading: string; score: number }> {
+  consultedFor(runId: string): ConsultedPassage[] {
     return this.db
-      .prepare<[string], { chunk_id: string; document_id: string; title: string; heading: string; score: number }>(
-        `SELECT u.chunk_id, c.document_id, d.title, c.heading, u.score
+      .prepare<[string], ConsultedRow>(
+        // LEFT JOIN on the chunk: it may have been replaced since, and the
+        // citation is still true of what the run was shown.
+        `SELECT u.chunk_id, u.document_id, d.title, d.page_unit,
+                c.heading, c.page_start, c.page_end, c.line_start, c.line_end,
+                u.score, (c.id IS NULL) AS replaced
          FROM document_usages u
-         JOIN document_chunks c ON c.id = u.chunk_id
-         JOIN documents d ON d.id = c.document_id
-         WHERE u.run_id = ? ORDER BY u.score DESC`,
+         JOIN documents d ON d.id = u.document_id
+         LEFT JOIN document_chunks c ON c.id = u.chunk_id
+         -- The chunk id breaks ties: score alone is not a total order, and a
+         -- genesis whose passages swap places between two readings of the
+         -- same finished run is a screen nobody can trust.
+         WHERE u.run_id = ? ORDER BY u.score DESC, u.chunk_id`,
       )
       .all(runId)
       .map((row) => ({
         chunkId: row.chunk_id,
         documentId: row.document_id,
         title: row.title,
-        heading: row.heading,
+        heading: row.heading ?? '',
         score: row.score,
+        replaced: toBool(row.replaced),
+        pageUnit: row.page_unit,
+        pageStart: row.page_start,
+        pageEnd: row.page_end,
+        lineStart: row.line_start,
+        lineEnd: row.line_end,
       }));
   }
 

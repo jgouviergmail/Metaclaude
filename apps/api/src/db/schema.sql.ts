@@ -1154,4 +1154,87 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_automations_family ON automations(family_id) WHERE family_id IS NOT NULL;
     `,
   },
+  {
+    version: 29,
+    name: 'knowledge_files',
+    sql: /* sql */ `
+      -- A document reaches several workspaces, and may come from a file.
+      --
+      -- The reach is the shape migration 26 gave skills, agents and MCP
+      -- servers, applied here for the same reason: a lease three projects
+      -- need had to be global or written three times, and three copies drift
+      -- the moment one is edited. is_global means everywhere including
+      -- workspaces created tomorrow; otherwise the join table is the explicit
+      -- set, which may be empty -- a document in the library, mounted
+      -- nowhere, which the single workspace_id column could not express.
+      -- Two cascading foreign keys make "a link naming a workspace that is
+      -- gone" inexpressible rather than somebody's job to remember.
+      --
+      -- workspace_id stays as the record of where a document was first filed.
+      -- Nothing resolves with it any more.
+      ALTER TABLE documents ADD COLUMN is_global INTEGER NOT NULL DEFAULT 0;
+
+      -- The uploaded file the text was extracted from; all null for a pasted
+      -- document. The bytes live at <dataDir>/knowledge/<source_sha256>.<ext>,
+      -- so the partial unique index below is what turns a second upload of the
+      -- same file into a 409 naming the first rather than into a copy -- and
+      -- it is partial because most documents have no file at all.
+      --
+      -- extractor names what produced the text ('pdf@poppler-22.12.0'), so a
+      -- document read by a weaker engine can be found and re-extracted.
+      -- page_unit is how this format counts: page, slide or sheet.
+      ALTER TABLE documents ADD COLUMN source_name   TEXT;
+      ALTER TABLE documents ADD COLUMN source_mime   TEXT;
+      ALTER TABLE documents ADD COLUMN source_bytes  INTEGER;
+      ALTER TABLE documents ADD COLUMN source_sha256 TEXT;
+      ALTER TABLE documents ADD COLUMN extractor     TEXT;
+      ALTER TABLE documents ADD COLUMN page_unit     TEXT;
+      CREATE UNIQUE INDEX idx_documents_source ON documents(source_sha256)
+        WHERE source_sha256 IS NOT NULL;
+
+      CREATE TABLE document_workspaces (
+        document_id  TEXT NOT NULL REFERENCES documents(id)  ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        PRIMARY KEY (document_id, workspace_id)
+      );
+      CREATE INDEX idx_document_workspaces_workspace ON document_workspaces(workspace_id);
+
+      -- Where each passage sits in documents.content: 1-based lines, and the
+      -- page span for a paged format. Null on every passage written before
+      -- this migration -- those are cited without a location until their
+      -- document is next rewritten, because re-chunking here would mean
+      -- re-embedding the whole library for a label.
+      ALTER TABLE document_chunks ADD COLUMN page_start INTEGER;
+      ALTER TABLE document_chunks ADD COLUMN page_end   INTEGER;
+      ALTER TABLE document_chunks ADD COLUMN line_start INTEGER;
+      ALTER TABLE document_chunks ADD COLUMN line_end   INTEGER;
+
+      UPDATE documents SET is_global = 1 WHERE workspace_id IS NULL;
+      INSERT INTO document_workspaces (document_id, workspace_id)
+        SELECT id, workspace_id FROM documents WHERE workspace_id IS NOT NULL;
+
+      -- What a run saw has to survive its passages being replaced.
+      --
+      -- document_usages cascaded off document_chunks, and a re-extraction
+      -- deletes every chunk of a document -- so improving an extractor would
+      -- have silently erased the citations of every past run that quoted it,
+      -- rewriting the story of finished work. The usage now names the
+      -- document, which outlives its passages, and keeps the chunk id as a
+      -- plain reference the reader LEFT JOINs. SQLite cannot add a foreign
+      -- key to an existing table, hence the rebuild rather than an ALTER.
+      CREATE TABLE document_usages_v2 (
+        run_id      TEXT NOT NULL REFERENCES runs(id)      ON DELETE CASCADE,
+        document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        chunk_id    TEXT NOT NULL,
+        score       REAL NOT NULL,
+        PRIMARY KEY (run_id, chunk_id)
+      );
+      INSERT INTO document_usages_v2 (run_id, document_id, chunk_id, score)
+        SELECT u.run_id, c.document_id, u.chunk_id, u.score
+        FROM document_usages u JOIN document_chunks c ON c.id = u.chunk_id;
+      DROP TABLE document_usages;
+      ALTER TABLE document_usages_v2 RENAME TO document_usages;
+      CREATE INDEX idx_document_usages_document ON document_usages(document_id);
+    `,
+  },
 ];

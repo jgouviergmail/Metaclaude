@@ -279,6 +279,56 @@ describe('crediting what a run saw', () => {
     store.recordUsage('run_1', []);
     expect(db.prepare('SELECT COUNT(*) AS n FROM document_usages').get()).toMatchObject({ n: 0 });
   });
+
+  it('names a passage the document has since replaced, rather than dropping it', async () => {
+    // Re-extracting a document rewrites every one of its chunks. The genesis
+    // of a run that quoted the old text must still say what it quoted, and
+    // say that the text behind it has moved — silently losing the row would
+    // rewrite the story of finished work.
+    const document = await store.upsert({
+      workspaceId: 'ws_a',
+      title: 'Bail',
+      content: LEASE,
+    });
+    seedRun('run_1', 'ws_a');
+    const results = await store.search('préavis résiliation', { workspaceId: 'ws_a' });
+    expect(results.length).toBeGreaterThan(0);
+    store.recordUsage('run_1', results);
+    expect(store.consultedFor('run_1').every((entry) => entry.replaced === false)).toBe(true);
+
+    await store.upsert({
+      id: document.id,
+      workspaceId: 'ws_a',
+      title: 'Bail',
+      content: '# Autre\n\nUn texte entièrement différent, sans rapport aucun.',
+    });
+
+    const consulted = store.consultedFor('run_1');
+    expect(consulted.length).toBe(results.length);
+    expect(consulted.every((entry) => entry.replaced)).toBe(true);
+    expect(consulted[0]!.title).toBe('Bail');
+    // The heading came off the chunk, which is gone; the document's name did not.
+    expect(consulted[0]!.documentId).toBe(document.id);
+  });
+
+  it('drops the citations of a document that was deleted outright', async () => {
+    // The other half of the same rule: a replaced passage is still a
+    // citation, a deleted document is not. The cascade does this — and the
+    // assertion has to establish the citations existed before it claims they
+    // went, or it passes on an empty database.
+    const document = await store.upsert({
+      workspaceId: 'ws_a',
+      title: 'Bail',
+      content: LEASE,
+    });
+    seedRun('run_1', 'ws_a');
+    store.recordUsage('run_1', await store.search('préavis résiliation', { workspaceId: 'ws_a' }));
+    expect(store.consultedFor('run_1').length).toBeGreaterThan(0);
+
+    store.delete(document.id);
+
+    expect(store.consultedFor('run_1')).toEqual([]);
+  });
 });
 
 describe('changing the embedding provider', () => {

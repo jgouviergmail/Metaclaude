@@ -705,8 +705,22 @@ export type RunGenesis = {
    * The knowledge-library passages this run was actually shown — what was
    * injected after the budget, not merely retrieved. Empty for runs that
    * predate the library, and for workspaces that switched it off.
+   *
+   * `replaced` marks a passage whose document has since been edited or
+   * re-extracted: the citation still names what the run saw, and says the
+   * text behind it has moved. Such a passage carries no heading and no
+   * location, both having lived on the chunk that is gone.
    */
-  documents: Array<{ chunkId: string; documentId: string; title: string; heading: string; score: number }>;
+  documents: Array<
+    KnowledgeLocation & {
+      chunkId: string;
+      documentId: string;
+      title: string;
+      heading: string;
+      score: number;
+      replaced: boolean;
+    }
+  >;
   /** The (category, model, effort) arm this run stood on; null when none matches. */
   arm: PolicyArm | null;
   /** The learner's own sentence about this category, empty when unlearned. */
