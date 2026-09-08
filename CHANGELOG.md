@@ -11,6 +11,42 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.76.1] — 2026-09-08
+
+### Fixed
+
+- **Two aggregates on the Analytics screen disagreed about what a token is.**
+  The summary counted all four counters after 0.75.0; the per-workspace ranking
+  beneath it still counted input and output only — about 6% of the bill —
+  so the chart meant to say which workspace is spending the ceiling was drawn
+  from the smallest part of it, next to a total that was drawn from the whole.
+  Both count the same four now.
+- **The documentation had drifted six releases behind, and three passages had
+  become false.** `docs/LEARNING.md` listed the bandit's arms as "deliberately
+  five" and named five — the fable pair has been there since Auto learned to
+  reach it, and `sonnet/medium` arrived in 0.75.0, making eight. It also said
+  retrieved memories are appended to the system prompt, which stopped being true
+  in 0.75.0 when they moved to the user message to keep the cached prefix
+  stable. And its rule for when the learner is consulted turned on `undefined`,
+  which is right for a caller that can omit the field and unavailable to a
+  picker that must send something.
+
+  That last one is worth naming plainly: the section already recorded this exact
+  defect in its scheduler form, and drew the general lesson — and the composer
+  went on committing it, one screen away, for every message a person typed. A
+  written lesson is not an applied one.
+
+### Added
+
+- **Documentation for six shipped features that had none**: the quota model
+  switch and what to do when a limit is reached (troubleshooting), where each
+  bandit arm opens and why (learning), the token count on a run's footer and
+  what makes one turn cost five times another (sessions), a workspace's colour
+  and icon (workspaces), filtering automations and switching many at once
+  (automations), and attaching one skill, subagent or MCP server to any number
+  of workspaces (extensibility).
+
+
 ## [0.76.0] — 2026-09-08
 
 ### Added

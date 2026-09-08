@@ -75,6 +75,23 @@ inert until you switch it on, and from then on yours: edit it, rename it,
 delete it like anything you wrote yourself. The library keeps the original,
 so a deleted copy can always be installed again.
 
+## Which workspaces an extension reaches
+
+A skill, a subagent or an MCP server reaches **any number of workspaces**, and
+its editor asks the question the same way in all three: *every workspace,
+including any created later*, or a list you tick one by one.
+
+That matters because the two obvious answers are both wrong for most
+extensions. Making something global to share it with three projects out of eight
+exposes it to five that have no business seeing it — an MCP server especially,
+since its credentials travel with it. Writing it out three times instead gives
+you three copies that drift the moment one is edited.
+
+**Attached to nothing** is a state an extension can hold: it stays in the
+library and is mounted nowhere. Useful for parking something you are still
+drafting — and because it is also a state you can arrive at by unticking the
+last box, the control says so in words rather than leaving you to notice.
+
 ## Categories
 
 Skills and subagents carry a **category**, in two groups. The domains of

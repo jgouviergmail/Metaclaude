@@ -11,6 +11,12 @@ connected to a repository later from its **Git** panel — into an empty
 directory it clones; into one with files it adds the remote and fetches,
 leaving the merge to you so nothing you have is silently overwritten.
 
+A workspace also carries a **colour and an icon**, chosen at creation and
+changeable afterwards from its Settings tab. They are not decoration: the colour
+is what the workspace switcher, the analytics ranking and the board cards use to
+tell one project from another at a glance, so two workspaces you move between
+often are worth making visibly different.
+
 Each workspace carries its own defaults — model, effort, permission mode,
 thinking budget, memory and reflexion toggles, tool allow/deny lists — under
 its **Settings** tab. Session-level and message-level choices override them.

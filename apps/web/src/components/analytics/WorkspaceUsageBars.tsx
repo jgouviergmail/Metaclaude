@@ -34,9 +34,15 @@ export function WorkspaceUsageBars({ rows }: { rows: WorkspaceUsage[] }) {
     );
   }
 
-  const totals = rows.map((row) => row.inputTokens + row.outputTokens);
+  const totals = rows.map(
+    (row) =>
+      row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheCreationTokens,
+  );
   // Both directions are billed, so a chart that plotted only input would rank
-  // a long-context reader above a workspace that wrote ten times as much.
+  // a long-context reader above a workspace that wrote ten times as much. And
+  // all four, not two: cache is where an agentic run's tokens actually are, so
+  // plotting input+output ranked workspaces on about 6% of their bill — and on
+  // the same screen as a summary that counted the whole of it.
   const heaviest = Math.max(...totals);
   const overall = totals.reduce((sum, value) => sum + value, 0);
   const comparable = rows.length > 1;

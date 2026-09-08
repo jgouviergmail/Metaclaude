@@ -172,12 +172,19 @@ export class AnalyticsService {
         costUsd: 0,
         inputTokens: 0,
         outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
         ok: 0,
       };
       workspace.runs += 1;
       workspace.costUsd += usage.costUsd;
       workspace.inputTokens += usage.inputTokens;
       workspace.outputTokens += usage.outputTokens;
+      // The same four the summary counts. Two aggregates over one set of runs
+      // that disagree about what a token is put contradictory numbers on one
+      // screen, and the per-workspace one was the smaller lie by ~50x.
+      workspace.cacheReadTokens += usage.cacheReadTokens ?? 0;
+      workspace.cacheCreationTokens += usage.cacheCreationTokens ?? 0;
       if (succeeded) workspace.ok += 1;
       byWorkspace.set(row.workspace_id, workspace);
 
@@ -223,6 +230,8 @@ export class AnalyticsService {
           costUsd: round(entry.costUsd, 6),
           inputTokens: entry.inputTokens,
           outputTokens: entry.outputTokens,
+          cacheReadTokens: entry.cacheReadTokens,
+          cacheCreationTokens: entry.cacheCreationTokens,
           successRate: entry.runs > 0 ? entry.ok / entry.runs : 0,
         }))
         // Cost first, tokens as the tie-break. A subscription reports no

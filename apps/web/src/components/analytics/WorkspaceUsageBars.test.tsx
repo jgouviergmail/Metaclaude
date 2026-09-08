@@ -27,6 +27,8 @@ const row = (over: Partial<Row> = {}): Row => ({
   costUsd: 1,
   inputTokens: 1000,
   outputTokens: 100,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
   successRate: 1,
   ...over,
 });
@@ -129,5 +131,30 @@ describe('WorkspaceUsageBars', () => {
     render(<WorkspaceUsageBars rows={[row()]} />);
 
     expect(screen.queryByText('100%')).toBeNull();
+  });
+
+  it('ranks on every billed token, cache included', () => {
+    // The defect: input+output only. Measured over 54 production runs those two
+    // are ~6% of the tokens, so a workspace whose whole cost is a long resumed
+    // session ranked below one that had barely run — on the same screen as a
+    // summary that counted all four.
+    render(
+      <WorkspaceUsageBars
+        rows={[
+          row({ workspaceId: 'ws_a', name: 'alpha', inputTokens: 100, outputTokens: 100 }),
+          row({
+            workspaceId: 'ws_b',
+            name: 'beta',
+            inputTokens: 10,
+            outputTokens: 10,
+            cacheReadTokens: 900_000,
+            cacheCreationTokens: 100_000,
+          }),
+        ]}
+      />,
+    );
+
+    // beta moved a million tokens against alpha's two hundred.
+    expect(screen.getByText('1.0M')).toBeTruthy();
   });
 });

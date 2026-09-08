@@ -87,6 +87,16 @@ effort, the permission mode, whether the learner made the choice, and an
 ultracode marker when it applied. Hover the model chip for the requested-vs-
 served detail.
 
+The token count beside it is **every token the turn was billed for**, not just
+what you typed and what came back. In an agentic loop those two are the small
+halves: each turn resends the whole conversation, so most of the bill is context
+read back from the prompt cache, and context written into it. Hover the figure
+for the four-way split — *in · out · cached · written*. What usually makes one
+turn cost five times another is the writing: a session's first turn, or one that
+arrives after the cache has expired, pays to write the context again, while a
+quick follow-up reads it back at a tenth of the price. If you are wondering why
+a short exchange was expensive, that is nearly always the answer.
+
 - **Rate it.** The thumbs on a finished run are the strongest signal the
   learner gets — your judgement overrides every automatic metric.
 - **Rewind it.** A run made with checkpointing on offers **Restore**: a

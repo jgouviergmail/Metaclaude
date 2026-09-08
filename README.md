@@ -287,6 +287,20 @@ category, using Thompson sampling over a Beta posterior. Reward combines
 success, cost, latency and your explicit thumbs up/down — which overrides
 everything else, because your judgement is the ground truth being learned.
 
+Arms do not start level. A uniform prior says an arm costing $2.10 a run is as
+plausible as one costing $0.07, and half the frontier is expensive — so each arm
+opens where the reward function itself says an ordinary success on it would land,
+given what it costs and how long it takes. You start low and let the evidence
+push you up. The prior is worth four pseudo-trials: two or three real runs
+overturn it.
+
+When the subscription refuses a model outright — one model's weekly allowance
+can run out while the others still serve — the run does not fail. It switches to
+the next arm the learner ranks, resumes the same conversation, and says so:
+*"Your subscription's limit for fable is reached, so this run switched to sonnet
+and carried on."* Three switches, then the failure stands; a global limit is
+never retried, because every model draws on it.
+
 The Analytics screen shows the posterior for every arm in plain language:
 *"Across 34 runs, sonnet at high effort performs best (82% expected quality,
 $0.041 and 47s on average)."* And a Reset button, because unlearning must be as
@@ -418,6 +432,13 @@ Analytics ranks every workspace against each other over the period — tokens,
 runs, cost where one was reported, and each one's share of the whole. The
 per-workspace filter tells you what one workspace cost; only this tells you
 which one is spending the ceiling.
+
+Tokens here means **every token billed**, cache included. In an agentic loop each
+turn resends the whole conversation, so what you typed and what came back are the
+small halves — measured over 54 runs of one deployment, 650k input and 172k
+output against 12.04M read back from the prompt cache and 1.41M written into it.
+A ranking drawn from input and output alone would be drawn from about 6% of the
+bill.
 
 ### Help that ships with the product
 A Help screen whose content is the repository's own: the user guide, the

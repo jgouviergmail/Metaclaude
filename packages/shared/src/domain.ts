@@ -1143,6 +1143,17 @@ export const WorkspaceUsage = z.object({
   costUsd: z.number().nonnegative(),
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
+  /**
+   * The cache halves, on the same footing as the summary's.
+   *
+   * Left out, this row counted about 6% of what a workspace actually moved
+   * while the summary above it counted all of it — so the same screen answered
+   * "how many tokens" two ways, and the ranking meant to say which workspace is
+   * spending the ceiling was drawn from the smallest part of the bill.
+   * Defaulted so a response serialised before the fields existed still parses.
+   */
+  cacheReadTokens: z.number().int().nonnegative().default(0),
+  cacheCreationTokens: z.number().int().nonnegative().default(0),
   successRate: z.number().min(0).max(1),
 });
 export type WorkspaceUsage = z.infer<typeof WorkspaceUsage>;

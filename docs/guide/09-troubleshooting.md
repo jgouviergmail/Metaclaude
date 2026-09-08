@@ -35,6 +35,31 @@ the run records as interrupted. A follow-up message resumes the same
 conversation. If every run does this, the deployment is behind: this exact
 symptom was a bug fixed in 0.1.0, and an operator rebuild picks up the fix.
 
+## "A run says it changed model, or that a limit is reached"
+
+Subscriptions meter each model separately as well as overall, so it is normal
+for one model to run out while the others keep working.
+
+When the exhausted window belongs to **one model**, Metaclaude does not fail the
+run. It switches to the next model its learner prefers, resumes the same
+conversation, and writes a line into the transcript saying which model is spent,
+when it frees up, and what took over — *"Your subscription's limit for fable is
+reached, so this run switched to sonnet and carried on (switch 1 of 3)."* The
+refused model is then avoided by later runs until its window resets, so you see
+that warning once rather than on every message.
+
+Three switches is the ceiling. Past that the run fails and says so: at that
+point the subscription genuinely has nothing left to offer the task.
+
+When the exhausted window is the **overall** one, no switch is attempted and the
+run fails immediately — *"Your overall usage limit is reached, not the limit for
+one model."* Every model draws on that window, so changing model would only buy
+three more refusals. Wait for the reset, which the message names.
+
+If you pinned a model explicitly and it is the spent one, the switch still
+happens: the alternative is a run that cannot start. Pin a different model, or
+leave the picker on **Auto**, to choose deliberately instead.
+
 ## "The model I expect is not in the picker"
 
 The picker lists what the **CLI inside the deployment** reports, not what

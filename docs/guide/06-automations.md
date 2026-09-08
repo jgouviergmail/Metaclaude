@@ -42,6 +42,22 @@ remembers what the Monday run learned. This is the loop primitive — a
 standing agent with a heartbeat — and it pairs naturally with an event
 trigger to build watchers that get better at what they watch.
 
+## Finding one, and switching many at once
+
+Past a dozen automations the list stops being readable, so it filters two ways:
+by workspace, and by status — **All statuses**, **Active**, **Inactive**. The
+counts on the status chips are of the workspace you have scoped to, so
+*"Inactive 0"* answers the question actually being asked: none *here*. The filter
+bar scrolls sideways rather than wrapping, so on a phone it stays one row and the
+list below it keeps its height.
+
+**Enable all** and **Disable all** act on *what the filter is currently
+showing*, not on everything you own — which is the point: turn off every
+automation in one workspace while a deployment settles, without touching the
+others. Enabling genuinely reschedules each one rather than only flipping a
+column, so a scheduled automation that was off for a week fires next at its
+next real slot instead of immediately trying to catch up.
+
 ## Guard rails
 
 Autonomy without rails is an incident generator, so the rails are built in:
