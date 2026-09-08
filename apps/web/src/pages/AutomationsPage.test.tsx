@@ -370,6 +370,62 @@ describe('editing an automation', () => {
     policy: { permissionMode: 'default', notify: true, model: 'claude-sonnet-5', effort: null },
   });
 
+  it('duplicates into another workspace, paused and with no history', async () => {
+    /*
+     * A copy, not a second attachment. An automation carries seven fields of
+     * execution state — its continuous session, its failure count, its next
+     * firing — and every one is per workspace, so reaching two from one row is
+     * a child table and a different subsystem.
+     *
+     * Paused on arrival: an automation fires unattended, and one that lands
+     * already armed in a workspace it was not written for is the surprise this
+     * screen's guard rails exist to prevent.
+     */
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [
+        { id: 'ws_a', name: 'Alpha', slug: 'alpha', color: '#6366f1' },
+        { id: 'ws_b', name: 'Beta', slug: 'beta', color: '#f59e0b' },
+      ],
+    });
+    apiMock.automations.mockResolvedValue({
+      automations: [automation({ runCount: 12, consecutiveFailures: 2, sessionId: 'ses_x' })],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Beta' }));
+
+    await waitFor(() => expect(apiMock.createAutomation).toHaveBeenCalled());
+    const [body] = apiMock.createAutomation.mock.calls[0] as [Record<string, unknown>];
+    expect(body.workspaceId).toBe('ws_b');
+    expect(body.prompt).toBe('Résume les tickets ouverts');
+    expect(body.enabled).toBe(false);
+    // None of the execution state travels: it belongs to the original's life.
+    expect(body).not.toHaveProperty('sessionId');
+    expect(body).not.toHaveProperty('runCount');
+    expect(body).not.toHaveProperty('consecutiveFailures');
+  });
+
+  it('does not offer to duplicate into the workspace it already lives in', async () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [{ id: 'ws_a', name: 'Alpha', slug: 'alpha', color: '#6366f1' }],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+
+    await screen.findByRole('menuitem', { name: 'Edit' });
+    // The only workspace is its own, so the whole section stays away rather
+    // than offering a copy that would land on top of the original.
+    expect(screen.queryByText('Duplicate to')).toBeNull();
+  });
+
   it('shows the workspace when editing, and moves the automation to another', async () => {
     // It used to appear only at creation, so an existing automation's workspace
     // was neither visible nor changeable — while a skill, a subagent and an MCP

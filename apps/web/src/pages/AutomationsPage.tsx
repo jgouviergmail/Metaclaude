@@ -150,6 +150,41 @@ export function AutomationsPage() {
       toast.error(error instanceof ApiError ? error.message : t('Could not run the automation.')),
   });
 
+  /**
+   * Copy an automation into another workspace.
+   *
+   * It lands **paused**, and that is the one decision worth arguing. An
+   * automation fires unattended; a copy that arrives already armed in a
+   * workspace whose files and permissions it has never seen, carrying a prompt
+   * written for a different project, is exactly the surprise the guard rails on
+   * this screen exist to prevent. Pausing costs one click and buys a reading of
+   * the prompt before anything runs.
+   *
+   * Nothing else travels: no session, no run count, no failure counter, no
+   * schedule history. The copy starts its own life, which is the honest
+   * consequence of it being a copy rather than a second attachment.
+   */
+  const duplicate = useMutation({
+    mutationFn: ({ automation, workspaceId }: { automation: Automation; workspaceId: string }) =>
+      api.createAutomation({
+        workspaceId,
+        name: automation.name,
+        description: automation.description,
+        prompt: automation.prompt,
+        trigger: automation.trigger,
+        continuous: automation.continuous,
+        maxConsecutiveFailures: automation.maxConsecutiveFailures,
+        policy: automation.policy,
+        enabled: false,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['automations'] });
+      toast.success(t('Duplicated, and paused — read the prompt before enabling it.'));
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : t('Could not duplicate it.')),
+  });
+
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteAutomation(id),
     onSuccess: () => {
@@ -458,6 +493,51 @@ export function AutomationsPage() {
                       }
                     >
                       <MenuItem onSelect={() => setEditing(automation)}>{t('Edit')}</MenuItem>
+                      {/*
+                        * A copy, not a second attachment — and the difference is
+                        * the schema rather than a shortcut.
+                        *
+                        * A skill attaches to any number of workspaces because it
+                        * is a definition: what gets mounted is identical
+                        * everywhere. An automation carries seven fields of
+                        * *execution* state — its continuous session, its failure
+                        * count, its next firing, whether it is paused — and every
+                        * one of them is per workspace. Reaching two workspaces
+                        * from one row would mean answering "does failing three
+                        * times here pause it there too", which is a child table
+                        * and a different subsystem.
+                        *
+                        * So the copy is honest about being a copy: it drifts, and
+                        * an automation's prompt usually should differ per project
+                        * anyway. It lands paused, because one that fires
+                        * unattended in a workspace it was not written for is the
+                        * kind of surprise this whole screen exists to avoid.
+                        */}
+                      {workspaces.filter((w) => w.id !== automation.workspaceId).length > 0 ? (
+                        <>
+                          <MenuSeparator />
+                          <MenuLabel>{t('Duplicate to')}</MenuLabel>
+                          {workspaces
+                            .filter((w) => w.id !== automation.workspaceId)
+                            .map((target) => (
+                            <MenuItem
+                              key={target.id}
+                              icon={
+                                <WorkspaceAvatar
+                                  color={target.color}
+                                  icon={target.icon}
+                                  className="mt-0.5"
+                                />
+                              }
+                              onSelect={() =>
+                                duplicate.mutate({ automation, workspaceId: target.id })
+                              }
+                            >
+                              {target.name}
+                            </MenuItem>
+                          ))}
+                        </>
+                      ) : null}
                       <MenuSeparator />
                       <MenuItem
                         icon={<Trash2 />}

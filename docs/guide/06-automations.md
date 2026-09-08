@@ -44,6 +44,23 @@ trigger to build watchers that get better at what they watch.
 
 ## Finding one, and switching many at once
 
+**Duplicate to** copies an automation into another workspace, from its own
+menu. It is a copy and not a second attachment, and the difference is the
+schema rather than a shortcut: a skill attaches to any number of workspaces
+because what gets mounted is identical everywhere, while an automation carries
+its own continuous session, failure count, next firing and paused state — all
+of them per workspace. Reaching two workspaces from one row would mean
+answering *"does failing three times here pause it there too"*, which is a
+different subsystem.
+
+So the copy starts its own life. Nothing travels but the definition: no
+history, no schedule, no failure counter. It lands **paused**, because an
+automation fires unattended and one that arrives already armed in a workspace
+it was not written for is the surprise these guard rails exist to prevent —
+read the prompt, then enable it. And be aware of what a copy costs: two copies
+drift the moment one is edited, which is exactly why extensions attach instead.
+If you find yourself maintaining five, say so.
+
 An automation belongs to one workspace, chosen when you create it and
 changeable afterwards from its editor — an automation written for one project
 often turns out to suit another, and workspaces get created after the

@@ -1305,6 +1305,10 @@ export const fr: Record<string, string> = {
 
   /* ── Agents et skills ───────────────────────────────────────────────── */
   'Available in every workspace': 'Disponible dans tous les workspaces',
+  'Duplicate to': 'Dupliquer vers',
+  'Duplicated, and paused — read the prompt before enabling it.':
+    'Dupliquée, et en pause — relisez le prompt avant de l’activer.',
+  'Could not duplicate it.': 'Impossible de la dupliquer.',
   'Moving this automation ends its continuous session — the next firing starts a fresh one in the new workspace.':
     'Déplacer cette automatisation met fin à sa session continue — le prochain déclenchement en ouvrira une nouvelle dans le nouveau workspace.',
   'Everything, wherever it is attached': 'Tout, quel que soit son rattachement',

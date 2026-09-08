@@ -11,6 +11,31 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.81.0] — 2026-09-08
+
+### Added
+
+- **Duplicate an automation into another workspace**, from its own menu. An
+  automation that suits one project often suits the next, and until now the only
+  way to have it in two places was to type it twice from memory.
+
+  It is a copy and not a second attachment, and that is the schema speaking
+  rather than a shortcut taken. A skill attaches to any number of workspaces
+  because what gets mounted is identical everywhere; an automation carries seven
+  fields of *execution* state — its continuous session, its failure count, its
+  next firing, whether it is paused, its history — and every one of them is per
+  workspace. One row reaching two workspaces would have to answer "does failing
+  three times here pause it there too", which is a child table and a different
+  subsystem. Worth doing the day these copies start to hurt; not worth doing
+  before.
+
+  So the copy starts its own life: nothing travels but the definition. It lands
+  **paused**, because an automation fires unattended and one arriving already
+  armed in a workspace it was not written for — with that project's files and
+  permissions — is precisely the surprise this screen's guard rails exist to
+  prevent. The workspace it already lives in is not offered as a target.
+
+
 ## [0.80.1] — 2026-09-08
 
 ### Fixed
