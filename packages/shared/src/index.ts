@@ -1,5 +1,6 @@
 export * from './ids.js';
 export * from './domain.js';
+export * from './knowledge.js';
 export * from './api-contracts.js';
 export * from './protocol.js';
 export * from './constants.js';

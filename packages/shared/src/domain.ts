@@ -910,6 +910,55 @@ export const ATTACHMENT_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ] as const;
 
+/* -------------------------------------------------------------------------- */
+/* The knowledge library's files                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What the knowledge library accepts as a file.
+ *
+ * A closed allowlist, and the same reasoning as the attachments above: a type
+ * listed here is a type an extractor exists for. The difference is what
+ * "supported" means — an attachment only has to reach the agent's tools,
+ * while a document has to become *text* the retrieval index can hold, so
+ * images and archives are absent rather than merely inert.
+ *
+ * `extract/index.ts` holds one extractor per entry and a test walks this list
+ * to prove it: a type accepted at the edge and unroutable underneath would be
+ * a 500 dressed as a feature.
+ */
+export const KNOWLEDGE_MIME_TYPES = [
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'text/html',
+  'application/json',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+] as const;
+
+/**
+ * The upload ceiling, matching the attachments': 20 MB is what a browser can
+ * base64 into a request this API already accepts. What bounds the *document*
+ * is different and stricter — the extracted text still has to fit
+ * `MAX_DOCUMENT_BYTES` — so a 20 MB spreadsheet is refused for its text, not
+ * for its bytes, and the message says which.
+ */
+export const KNOWLEDGE_LIMITS = {
+  maxBytes: 20 * 1024 * 1024,
+} as const;
+
+/**
+ * The unit a paged format counts in; null for text that has no pages.
+ *
+ * Three units rather than one word "page", because a citation is read by a
+ * person: "slide 4" sends them to a slide, "page 4" of a deck sends them
+ * looking for something that does not exist.
+ */
+export type KnowledgePageUnit = 'page' | 'slide' | 'sheet';
+
 /**
  * A type, not a schema, on purpose — same exception as `Brief` and
  * `UpdateCheck`: the server produces attachments from its own ledger and

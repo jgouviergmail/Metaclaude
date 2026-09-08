@@ -34,6 +34,8 @@ import {
   PluginSkill,
   WorkspaceSettings,
 } from './domain.js';
+import type { KnowledgePageUnit } from './domain.js';
+import type { KnowledgeLocation } from './knowledge.js';
 
 
 /**
@@ -715,17 +717,81 @@ export type RunGenesis = {
 /* The knowledge library                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** What may be submitted as a document. The API validates with this at the edge. */
+/**
+ * What may be submitted as a *pasted* document. The API validates with this at
+ * the edge; a dropped file arrives through `UploadKnowledgeRequest` instead.
+ *
+ * `reach` is optional at both ends, and means two different things by design.
+ * On an update, absent means untouched — the skills lesson: a form that saves
+ * a title must not silently narrow a reach it never showed. On a creation,
+ * absent means "derive it from `workspaceId`", which is the contract every
+ * caller written before the reach existed still speaks (the eval corpus, the
+ * benches, `check:e2e`).
+ */
 export const SaveKnowledgeRequest = z
   .object({
     id: z.string().optional(),
+    /** Record of where it was first filed; nothing resolves with it. */
     workspaceId: z.string().nullable().default(null),
     title: z.string().min(1).max(300),
     content: z.string().min(1).max(512 * 1024),
     enabled: z.boolean().optional(),
+    reach: ExtensionReach.optional(),
   })
   .strict();
 export type SaveKnowledgeRequest = z.infer<typeof SaveKnowledgeRequest>;
+
+/**
+ * A file for the library.
+ *
+ * `data` is base64 of the raw bytes, the same channel message attachments
+ * use — one upload path in this product, not two. The route enforces the
+ * decoded size; a schema cannot, and pretending otherwise would put the real
+ * ceiling in two places.
+ *
+ * `mime` defaults to empty rather than being required, because several
+ * browsers hand over an empty type for perfectly ordinary files (a
+ * drag-dropped `.md`, measured). The extension decides underneath, against
+ * the same closed allowlist.
+ */
+export const UploadKnowledgeRequest = z
+  .object({
+    name: z.string().min(1).max(255),
+    mime: z.string().max(255).default(''),
+    data: z.string().min(1),
+    reach: ExtensionReach,
+    /** Defaults to the file's name without its extension. */
+    title: z.string().min(1).max(300).optional(),
+  })
+  .strict();
+export type UploadKnowledgeRequest = z.infer<typeof UploadKnowledgeRequest>;
+
+/**
+ * What may change without touching the text.
+ *
+ * Through `patchSchema`, never `.partial()`: a patch naming `enabled` that
+ * arrived carrying `title` at some default would rename the document the
+ * operator only paused. The text is absent on purpose — a file-backed
+ * document's text is what its extractor produced, and its page and line
+ * locations are true of that text alone.
+ */
+export const PatchKnowledgeRequest = patchSchema(
+  z.object({
+    title: z.string().min(1).max(300),
+    enabled: z.boolean(),
+    reach: ExtensionReach,
+  }),
+).strict();
+export type PatchKnowledgeRequest = z.infer<typeof PatchKnowledgeRequest>;
+
+/** The uploaded file a document was extracted from; null for pasted text. */
+export type KnowledgeSource = {
+  name: string;
+  mime: string;
+  bytes: number;
+  /** What produced the text, e.g. `pdf@poppler-22.12.0` — so a better one can be re-applied. */
+  extractor: string;
+};
 
 /**
  * One document as GET /api/knowledge lists it — metadata only, the content
@@ -734,6 +800,7 @@ export type SaveKnowledgeRequest = z.infer<typeof SaveKnowledgeRequest>;
  */
 export type KnowledgeDocumentMeta = {
   id: string;
+  /** Where it was first filed. Reach is `isGlobal` + `workspaceIds`. */
   workspaceId: string | null;
   title: string;
   contentLength: number;
@@ -741,14 +808,25 @@ export type KnowledgeDocumentMeta = {
   chunkCount: number;
   /** The embedder the chunks were vectorised with; `''` while they wait for one. */
   embeddingModel: string;
+  /** Every workspace, including any created later. */
+  isGlobal: boolean;
+  /** The workspaces it is attached to, when it is not global. May be empty: nowhere. */
+  workspaceIds: string[];
+  source: KnowledgeSource | null;
+  pageUnit: KnowledgePageUnit | null;
+  /** The highest page any passage reaches; null for a document with no pages. */
+  pageCount: number | null;
   createdAt: number;
   updatedAt: number;
 };
 
-export type KnowledgeSearchHit = {
+/** One retrieved passage, with everything needed to cite and to open it. */
+export type KnowledgeSearchHit = KnowledgeLocation & {
   chunkId: string;
   documentId: string;
   documentTitle: string;
+  /** The original file's name, when there was one. */
+  sourceName: string | null;
   workspaceId: string | null;
   heading: string;
   text: string;

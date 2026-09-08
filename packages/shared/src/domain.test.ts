@@ -16,10 +16,12 @@ import {
   LoginRequest,
   PasskeyLoginFinishRequest,
   PasskeyRegisterFinishRequest,
+  PatchKnowledgeRequest,
   PushSubscriptionInput,
   RewindRequest,
   patchSchema,
   SaveKnowledgeRequest,
+  UploadKnowledgeRequest,
 } from './api-contracts.js';
 import {
   Automation,
@@ -358,6 +360,83 @@ describe('SaveKnowledgeRequest — the edge that guards the knowledge library', 
     const parsed = SaveKnowledgeRequest.parse({ ...good, workspaceId: 'ws_1', enabled: false });
     expect(parsed.workspaceId).toBe('ws_1');
     expect(parsed.enabled).toBe(false);
+  });
+
+  it('carries a reach when the form sends one, and leaves it absent otherwise', () => {
+    // Absent means untouched, the skills rule: a form that saves a title must
+    // not silently narrow a reach it never showed.
+    expect(SaveKnowledgeRequest.parse(good).reach).toBeUndefined();
+    const parsed = SaveKnowledgeRequest.parse({
+      ...good,
+      reach: { global: false, workspaceIds: ['ws_1', 'ws_2'] },
+    });
+    expect(parsed.reach).toEqual({ global: false, workspaceIds: ['ws_1', 'ws_2'] });
+  });
+
+  it('refuses a reach missing its global flag — half a reach is not a reach', () => {
+    expect(
+      SaveKnowledgeRequest.safeParse({ ...good, reach: { workspaceIds: [] } }).success,
+    ).toBe(false);
+  });
+});
+
+describe('UploadKnowledgeRequest — the edge a dropped file arrives through', () => {
+  const good = {
+    name: 'bail.docx',
+    mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    data: 'UEsDBBQ=',
+    reach: { global: true, workspaceIds: [] },
+  };
+
+  it('accepts what the browser sends', () => {
+    const parsed = UploadKnowledgeRequest.parse(good);
+    expect(parsed.name).toBe('bail.docx');
+    expect(parsed.title).toBeUndefined();
+  });
+
+  it('defaults the MIME to empty, because some browsers send nothing for a .md', () => {
+    // Measured in the attachments: a drag-dropped .md arrives with an empty
+    // type on several platforms. The extension decides underneath; the
+    // contract must not refuse the upload before it gets there.
+    expect(UploadKnowledgeRequest.parse({ ...good, mime: undefined }).mime).toBe('');
+  });
+
+  it('refuses an empty payload, a nameless file and a missing reach', () => {
+    expect(UploadKnowledgeRequest.safeParse({ ...good, data: '' }).success).toBe(false);
+    expect(UploadKnowledgeRequest.safeParse({ ...good, name: '' }).success).toBe(false);
+    expect(UploadKnowledgeRequest.safeParse({ ...good, reach: undefined }).success).toBe(false);
+  });
+
+  it('is strict, so a client field nobody reads is a loud error rather than a silent drop', () => {
+    expect(UploadKnowledgeRequest.safeParse({ ...good, workspaceId: 'ws_1' }).success).toBe(false);
+  });
+
+  it('takes an optional title, bounded like a document title', () => {
+    expect(UploadKnowledgeRequest.parse({ ...good, title: 'Bail 2026' }).title).toBe('Bail 2026');
+    expect(UploadKnowledgeRequest.safeParse({ ...good, title: 'x'.repeat(301) }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('PatchKnowledgeRequest — one field changed, nothing else touched', () => {
+  it('a patch naming one field carries no other', () => {
+    // The `.partial()` trap: a patch that arrives carrying every other field
+    // at its default resets what the operator never touched.
+    expect(PatchKnowledgeRequest.parse({ enabled: false })).toEqual({ enabled: false });
+    expect(PatchKnowledgeRequest.parse({ title: 'Bail' })).toEqual({ title: 'Bail' });
+    expect(Object.keys(PatchKnowledgeRequest.parse({}))).toEqual([]);
+  });
+
+  it('carries a reach when it is the reach that changed', () => {
+    expect(
+      PatchKnowledgeRequest.parse({ reach: { global: true, workspaceIds: [] } }).reach,
+    ).toEqual({ global: true, workspaceIds: [] });
+  });
+
+  it('still bounds what it accepts', () => {
+    expect(PatchKnowledgeRequest.safeParse({ title: '' }).success).toBe(false);
+    expect(PatchKnowledgeRequest.safeParse({ enabled: 'yes' }).success).toBe(false);
   });
 });
 
