@@ -292,8 +292,12 @@ const TOP_LEVEL: Record<string, Narrator> = {
     const used = utilisation === null ? '' : ` (${Math.round(utilisation * 100)}% used)`;
     return status === 'rejected'
       ? {
+          // Not "runs will fail until it resets" any more: a refusal that
+          // belongs to one model is now answered by switching to another, and
+          // the kernel writes the line that says which. Promising failure here
+          // would contradict the warning that follows it two lines later.
           level: 'error',
-          message: `Your ${window} limit is reached${used}. Runs will fail until it resets.`,
+          message: `Your ${window} limit is reached${used}.`,
           data: { status, window: str(info.rateLimitType), resetsAt: resetsAtMs, utilization: utilisation },
         }
       : {

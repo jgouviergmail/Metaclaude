@@ -580,6 +580,15 @@ export class RunRepo {
       rewindPoint?: string | null;
       /** Same COALESCE rationale: a crash before init must not erase it. */
       servedModel?: string | null;
+      /**
+       * The policy the run *ended* on, when a quota refusal moved it.
+       *
+       * The stored policy names the arm the learner is credited for, and after
+       * a model switch the arm that ran is not the arm that was asked for.
+       * Crediting the refused one would teach the bandit about a model that
+       * never answered. Absent means unchanged.
+       */
+      policy?: RunPolicy;
     },
   ): Run | null {
     this.db
@@ -587,7 +596,8 @@ export class RunRepo {
         `UPDATE runs
             SET status = ?, usage = ?, error = ?, finished_at = ?,
                 rewind_point = COALESCE(?, rewind_point),
-                served_model = COALESCE(?, served_model)
+                served_model = COALESCE(?, served_model),
+                policy = COALESCE(?, policy)
           WHERE id = ?`,
       )
       .run(
@@ -597,6 +607,7 @@ export class RunRepo {
         Date.now(),
         input.rewindPoint ?? null,
         input.servedModel ?? null,
+        input.policy ? JSON.stringify(input.policy) : null,
         id,
       );
     return this.get(id);

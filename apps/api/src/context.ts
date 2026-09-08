@@ -33,6 +33,7 @@ import { BOARD_SERVER_NAME, BOARD_TOOL_CATALOGUE, boardToolNames } from './kerne
 import { SYSTEM_SERVER_NAME, SYSTEM_TOOLS, systemToolNames } from './kernel/system-tools.js';
 import { decideApproval } from './http/approvals.js';
 import { PolicyLearner } from './learning/bandit.js';
+import { ModelAvailability } from './kernel/model-availability.js';
 import { TaskClassifier } from './learning/classifier.js';
 import { createEmbedderSwitch } from './learning/embedder-switch.js';
 import {
@@ -368,6 +369,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   const knowledge = new KnowledgeStore(db, embedder, undefined, { embedLater: () => rebuildVectors() });
   const classifier = new TaskClassifier(db, embedder);
   const policy = new PolicyLearner(db);
+  const availability = new ModelAvailability(db);
 
   // A vector is only comparable to one from the same provider, so a change of
   // embedder silently turns off dense retrieval *and* duplicate detection
@@ -771,6 +773,7 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     knowledge,
     classifier,
     policy,
+    availability,
     reflexion,
     consolidator,
     // The registry resolves per-workspace context; the marketplace sources are

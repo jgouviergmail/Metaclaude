@@ -73,6 +73,8 @@ import {
 import { buildSystemServer, type SystemFacade } from './system-tools.js';
 import type { PermissionBroker } from './permissions.js';
 import { resolvePermissionMode } from './permissions.js';
+import { classifyQuotaRejection, type QuotaBlock } from './quota.js';
+import { readRateLimitWindows } from './rate-limits.js';
 import { narrate } from './sdk-narrator.js';
 
 /* -------------------------------------------------------------------------- */
@@ -155,6 +157,15 @@ export interface RunOutcome {
   claudeSessionId: string | null;
   /** The model that actually served, from the CLI's init message; null if unsaid. */
   servedModel: string | null;
+  /**
+   * Set when the subscription refused this attempt for quota.
+   *
+   * The supervisor classifies but does not act: choosing a replacement needs
+   * the learner's ranking and the session's own history, both of which live in
+   * the kernel. `scope: 'model'` is an invitation to retry on another model;
+   * `scope: 'global'` says no model will serve until the window resets.
+   */
+  quotaBlock: QuotaBlock | null;
   /**
    * The CLI's uuid for the user message that opened this run, or null.
    *
@@ -1514,6 +1525,18 @@ export class AgentSupervisor {
     // The SDK reports API duration; wall-clock is what the operator experiences.
     usage.durationMs = Date.now() - startedAt;
 
+    // Only a failure can be a quota refusal, and only the *asked-for* model can
+    // be the one refused — a run that succeeded after the CLI warned about a
+    // filling window must not be reported as blocked.
+    const quotaBlock =
+      status === 'succeeded'
+        ? null
+        : classifyQuotaRejection({
+            model: String(request.policy.model),
+            rateLimits: state.rateLimits,
+            ...(this.lastKnownWindows ? { windows: this.lastKnownWindows } : {}),
+          });
+
     return {
       status,
       usage,
@@ -1522,6 +1545,7 @@ export class AgentSupervisor {
       claudeSessionId,
       servedModel,
       rewindPoint,
+      quotaBlock,
     };
   }
 
@@ -1838,6 +1862,18 @@ export class AgentSupervisor {
    * tests, rather than in the screen. A CLI without the method is a missing
    * panel (`unavailable: ['usage']`), never a broken screen.
    */
+  /**
+   * The windows from the last successful `usage()` call.
+   *
+   * The second source for classifying a refusal, and the durable one: the
+   * event's own `unifiedWindows` is not declared on `SDKRateLimitInfo`, so a
+   * CLI may stop sending it without anything breaking loudly. Kept in memory
+   * rather than read on demand because `usage()` spawns a subprocess, and a run
+   * that has just been refused is the worst moment to spend five seconds on one.
+   * Stale is fine: a window that was spent a minute ago is spent now.
+   */
+  private lastKnownWindows: ClaudeUsage['windows'] | null = null;
+
   async usage(workspacePath: string): Promise<ClaudeUsage> {
     const unavailable: string[] = [];
     const empty: ClaudeUsage = {
@@ -1875,39 +1911,25 @@ export class AgentSupervisor {
         }
 
         const limits = answer.rate_limits;
-        const windows: ClaudeUsage['windows'] = [];
+        // Read through `readRateLimitWindows`, which knows both shapes the CLI
+        // has spoken. The mapping that used to live here indexed `five_hour`
+        // and friends on an object — and the CLI answers with a `limits` array,
+        // so every lookup was undefined and the quota screen was blank in
+        // production while the weekly window sat at 97%.
+        const windows: ClaudeUsage['windows'] = readRateLimitWindows(limits);
         if (!answer.rate_limits_available || !limits) {
           // API key, Bedrock, Vertex — plans without windows. Named so the
           // screen can say "does not apply" instead of rendering nothing.
           unavailable.push('rate_limits');
-        } else {
-          const named: Array<[key: string, label: string]> = [
-            ['five_hour', 'Session (5 h)'],
-            ['seven_day', 'Week — all models'],
-            ['seven_day_oauth_apps', 'Week — connected apps'],
-            ['seven_day_opus', 'Week — Opus'],
-            ['seven_day_sonnet', 'Week — Sonnet'],
-          ];
-          for (const [key, label] of named) {
-            const window = limits[key as 'five_hour'];
-            // null and absent both mean "no such bucket on this plan" — which
-            // is not a bucket at 0%.
-            if (!window) continue;
-            windows.push({
-              key,
-              label,
-              utilization: window.utilization ?? null,
-              resetsAt: at(window.resets_at),
-            });
-          }
-          for (const bucket of limits.model_scoped ?? []) {
-            windows.push({
-              key: `model:${bucket.display_name}`,
-              label: bucket.display_name,
-              utilization: bucket.utilization ?? null,
-              resetsAt: at(bucket.resets_at),
-            });
-          }
+        } else if (windows.length === 0) {
+          // Available, and yet nothing recognisable came back: a third shape.
+          // Saying so is the difference between a screen that is empty because
+          // there is nothing to show and one that is empty because we could not
+          // read the answer — the distinction the blank screen could not make.
+          unavailable.push('rate_limits');
+          this.deps.log('warn', 'the CLI reported rate limits in an unrecognised shape', {
+            keys: Object.keys((limits ?? {}) as Record<string, unknown>).join(','),
+          });
         }
 
         const behaviorWindow = (
@@ -1922,6 +1944,7 @@ export class AgentSupervisor {
           mcpServers: share(window.mcp_servers),
         });
 
+        this.lastKnownWindows = windows.length > 0 ? windows : this.lastKnownWindows;
         return {
           subscriptionType: answer.subscription_type,
           windows,
@@ -2082,7 +2105,24 @@ export class StreamState {
     });
   }
 
+  /**
+   * Every `rate_limit_info` the CLI sent during this attempt, in arrival order.
+   *
+   * A run refused for quota is refused *before* the CLI reaches the API, so the
+   * only account of which window ran out is here. `classifyQuotaRejection`
+   * reads the last rejection; the warnings before it are kept because the
+   * transcript's own narration walks the same list.
+   */
+  readonly rateLimits: unknown[] = [];
+
   handle(message: SDKMessage): Captured {
+    // Kept whether or not it is narrated: a refusal has to be *classified*
+    // after the run, and the payload carrying the evidence — `unifiedWindows`,
+    // which the SDK does not declare — exists only on these frames.
+    if (message.type === 'rate_limit_event') {
+      this.rateLimits.push((message as { rate_limit_info?: unknown }).rate_limit_info);
+    }
+
     switch (message.type) {
       case 'system':
         return this.handleSystem(message);

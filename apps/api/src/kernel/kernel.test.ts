@@ -20,13 +20,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Memory, Run, Workspace, WorkspaceSettings } from '@metaclaude/shared';
+import type { Memory, Run, TranscriptEvent, Workspace, WorkspaceSettings } from '@metaclaude/shared';
 import { AUTO_MODEL, WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { HashingEmbedder } from '../learning/embeddings.js';
 import { KnowledgeStore } from '../learning/knowledge.js';
 import { EventBus } from './bus.js';
 import { delegationTimeoutFor, deriveTitle, Kernel, languageDirective } from './kernel.js';
+import { ModelAvailability } from './model-availability.js';
 import { AttachmentService } from '../services/attachments.js';
 import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import type { RunOutcome, RunRequest, SupervisorCallbacks } from './supervisor.js';
@@ -60,8 +61,18 @@ function fakeSupervisor() {
     claudeSessionId: 'sdk-session',
     servedModel: 'claude-opus-5',
     rewindPoint: null,
+    quotaBlock: null,
     ...over,
   });
+
+  /**
+   * Outcomes to serve, one per call, in order.
+   *
+   * A quota switch is only observable across *several* attempts, and the plain
+   * fake answered the same success to every call — so a loop that never
+   * switched and one that switched three times looked identical.
+   */
+  const nextOutcomes: Array<Partial<RunOutcome>> = [];
 
   const supervisor = {
     hold: () => {
@@ -69,6 +80,7 @@ function fakeSupervisor() {
     },
     started,
     interrupted,
+    nextOutcomes,
     /** Finish the oldest held run. */
     finish: (over: Partial<RunOutcome> = {}) => {
       const next = pending.shift();
@@ -82,8 +94,12 @@ function fakeSupervisor() {
       started.push(request);
       // The real supervisor reports the CLI session id, and the kernel persists
       // it — a session that never records one cannot be resumed or rewound.
-      callbacks.onClaudeSessionId('sdk-session');
-      if (!hold) return Promise.resolve(outcome());
+      // Read off the object, not the captured const: a test that *assigns*
+      // `supervisor.nextOutcomes = [...]` would otherwise leave the closure
+      // holding the original array and script nothing at all.
+      const scripted = supervisor.nextOutcomes.shift();
+      callbacks.onClaudeSessionId(scripted?.claudeSessionId ?? 'sdk-session');
+      if (!hold) return Promise.resolve(outcome(scripted ?? {}));
       return new Promise<RunOutcome>((resolve) => {
         pending.push({ request, settle: resolve });
       });
@@ -117,9 +133,25 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
   };
   const policy = {
     select: vi.fn().mockReturnValue(null),
+    /**
+     * The learner's ranking, best first — what a quota switch picks from.
+     *
+     * Ordered as the real learner orders it once the prior became cost-aware:
+     * cheapest at the top, so a switch away from an expensive model lands
+     * somewhere sensible from the very first run.
+     */
+    list: vi.fn().mockReturnValue([
+      { model: 'haiku', effort: null },
+      { model: 'sonnet', effort: 'low' },
+      { model: 'opus', effort: 'medium' },
+      { model: 'fable', effort: 'high' },
+    ]),
     update: vi.fn(),
     revise: vi.fn(),
   };
+  // Real, against the same in-memory database: what is worth testing about a
+  // quota hold lives between the kernel and the row, not in a double.
+  const availability = new ModelAvailability(db);
   const reflexion = { reflect: vi.fn().mockResolvedValue(0) };
   const memory = {
     search: vi.fn().mockResolvedValue([]),
@@ -156,6 +188,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     knowledge,
     classifier: classifier as never,
     policy: policy as never,
+    availability,
     reflexion: reflexion as never,
     contextProvider: contextProvider as never,
     supervisor: supervisor as never,
@@ -194,6 +227,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     supervisor,
     classifier,
     policy,
+    availability,
     reflexion,
     memory,
     knowledge,
@@ -1021,6 +1055,151 @@ describe('delegation', () => {
  * already found. So the standing shelf is injected first and left out of the
  * similarity search, or the same rule would arrive twice.
  */
+describe('surviving a quota refusal', () => {
+  /*
+   * Measured against the real CLI on a genuinely exhausted Fable bucket: the
+   * attempt fails with "You've reached your Fable 5 limit", and that was the
+   * whole of it — a hard stop for a condition another model could serve, since
+   * Sonnet answered the same prompt seconds later.
+   */
+  const refusal = (model: string, scope: 'model' | 'global' = 'model') => ({
+    status: 'failed' as const,
+    error: `You've reached your ${model} limit.`,
+    quotaBlock: { model, scope, resetsAt: Date.UTC(2026, 8, 8, 16, 0, 0) },
+  });
+
+  const notes = (fx: Fixture, runId: string): string[] =>
+    fx.transcript
+      .byRun(runId)
+      .filter((event) => event.kind === 'system')
+      .map((event) => (event as Extract<TranscriptEvent, { kind: 'system' }>).message);
+
+  it('switches model, says so, and finishes the run', async () => {
+    const session = fixture.newSession();
+    fixture.supervisor.nextOutcomes = [refusal('fable'), { status: 'succeeded' }];
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: 'fable', effort: 'high' },
+    });
+    await settled(fixture, run.id);
+
+    // The run succeeded rather than dying on a refusal another model could serve.
+    expect(fixture.runs.get(run.id)?.status).toBe('succeeded');
+    // Two attempts, the second on a different model.
+    expect(fixture.supervisor.started).toHaveLength(2);
+    expect(fixture.supervisor.started[1]?.policy.model).not.toBe('fable');
+    // And the operator was told, in words that name both models.
+    const warned = notes(fixture, run.id).find((m) => m.includes('fable'));
+    expect(warned).toBeDefined();
+    expect(warned).toContain('switch 1 of 3');
+  });
+
+  it('resumes the CLI session the refused attempt opened', async () => {
+    // Measured: a refused attempt still yields a resumable session id, and it
+    // carries no user turn — so re-pushing the prompt does not duplicate it.
+    const session = fixture.newSession();
+    fixture.supervisor.nextOutcomes = [
+      { ...refusal('fable'), claudeSessionId: 'cli-session-1' },
+      { status: 'succeeded' },
+    ];
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: 'fable', effort: 'high' },
+    });
+    await settled(fixture, run.id);
+
+    expect(fixture.supervisor.started[1]?.resumeSessionId).toBe('cli-session-1');
+    expect(fixture.supervisor.started[1]?.prompt).toBe('a question');
+  });
+
+  it('does not switch when the window every model draws on is the one that ran out', async () => {
+    // Switching would buy three more refusals and a transcript that claims to
+    // have tried something it could not.
+    const session = fixture.newSession();
+    fixture.supervisor.nextOutcomes = [refusal('fable', 'global')];
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: 'fable', effort: 'high' },
+    });
+    await settled(fixture, run.id);
+
+    expect(fixture.supervisor.started).toHaveLength(1);
+    expect(fixture.runs.get(run.id)?.status).toBe('failed');
+    expect(notes(fixture, run.id).some((m) => m.includes('overall usage limit'))).toBe(true);
+  });
+
+  it('gives up after three switches rather than pretending to keep trying', async () => {
+    const session = fixture.newSession();
+    fixture.supervisor.nextOutcomes = [
+      refusal('fable'),
+      refusal('opus'),
+      refusal('sonnet'),
+      refusal('haiku'),
+    ];
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: 'fable', effort: 'high' },
+    });
+    await settled(fixture, run.id);
+
+    // Four attempts: the original plus three switches, and no more.
+    expect(fixture.supervisor.started).toHaveLength(4);
+    expect(fixture.runs.get(run.id)?.status).toBe('failed');
+    expect(notes(fixture, run.id).some((m) => m.includes('changed model 3 times'))).toBe(true);
+  });
+
+  it('remembers the refusal so the next run does not rediscover it', async () => {
+    const session = fixture.newSession();
+    fixture.supervisor.nextOutcomes = [refusal('fable'), { status: 'succeeded' }];
+    const first = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'one',
+      overrides: { model: 'fable', effort: 'high' },
+    });
+    await settled(fixture, first.id);
+
+    expect(fixture.availability.blocked()).toContain('fable');
+
+    // A second run on Auto must not be handed the model that just refused.
+    fixture.supervisor.started.length = 0;
+    fixture.policy.select.mockReturnValue({ arm: { model: 'fable', effort: 'high' }, confidence: 1 });
+    fixture.supervisor.nextOutcomes = [refusal('fable'), { status: 'succeeded' }];
+    const second = await fixture.kernel.submit({ sessionId: session.id, prompt: 'two' });
+    await settled(fixture, second.id);
+
+    const switched = fixture.supervisor.started.at(-1);
+    expect(switched?.policy.model).not.toBe('fable');
+  });
+
+  it('credits the arm that ran, not the one that was refused', async () => {
+    // A quota refusal says nothing about a model's quality. Crediting the
+    // refused arm would teach the bandit about a model that never answered.
+    const session = fixture.newSession();
+    fixture.supervisor.nextOutcomes = [refusal('fable'), { status: 'succeeded' }];
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: 'fable', effort: 'high' },
+    });
+    await settled(fixture, run.id);
+
+    const stored = fixture.runs.get(run.id);
+    expect(stored?.policy.model).not.toBe('fable');
+    await vi.waitFor(() => expect(fixture.policy.update).toHaveBeenCalled());
+    const credited = fixture.policy.update.mock.calls.at(-1)?.[0] as { arm: { model: string } };
+    expect(credited.arm.model).not.toBe('fable');
+  });
+});
+
 describe('standing conventions', () => {
   it('injects the standing shelf ahead of recall, credits it, and keeps it out of the search', async () => {
     const convention: Memory = {

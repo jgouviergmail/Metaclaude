@@ -961,6 +961,29 @@ restates the code is noise; one that records a decision or a trap is not.
   Related and confirmed twice: with no `model` option the CLI serves
   `claude-opus-5[1m]`.
 
+- **A declared type is not the wire, and `rate_limits` proved it twice.** The
+  SDK declares an object keyed by window name; Claude Code answers with a
+  `limits` array of `{ kind, percent, scope }` rows. Every lookup was
+  `undefined`, so the quota screen was blank in production at 97% weekly usage
+  and nobody saw it. Read both shapes, build the fixture from a *captured*
+  payload — one written from the type agrees with the defect — and when neither
+  shape parses, say so rather than returning an empty list: "nothing to report"
+  and "we could not read the answer" look identical on screen and are not.
+- **Quota refusal is not what the enum says it is.** Two discriminators were
+  written and measured wrong before the third. (1) `rateLimitType ===
+  'seven_day_<model>'` reads well — the enum declares `seven_day_opus` and
+  `seven_day_sonnet` — and would never have fired: a genuinely exhausted Fable
+  bucket reports `seven_day_overage_included`, which names no model. (2) The
+  CLI's own `fallbackModel`, documented for a primary that is "overloaded or
+  unavailable", is measured **not** to cover quota: `fable` with
+  `fallbackModel: 'sonnet'` returned a result byte for byte identical to `fable`
+  alone. What discriminates is the rejected event's view of the *global*
+  windows (`unifiedWindows`, on the wire but **not** declared — so keep a second
+  source). And the retry is safe because it was measured, not assumed: a refused
+  attempt still yields a resumable session id, resuming it on another model
+  works, and it leaves no user turn behind — asked afterwards how many times it
+  had seen the prompt's marker, the model answered "1".
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +

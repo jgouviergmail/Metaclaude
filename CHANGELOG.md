@@ -11,6 +11,47 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.76.0] — 2026-09-08
+
+### Added
+
+- **A run refused for quota now changes model instead of dying.** Measured
+  against the real CLI on a genuinely exhausted Fable bucket: the run stopped
+  with `You've reached your Fable 5 limit` as its error — a hard stop for a
+  condition another model could serve, since Sonnet answered the same prompt
+  seconds later. The refusal is now classified, and when the exhausted window
+  belongs to one model the run resumes the same CLI session on the learner's
+  next-best arm, with a warning naming the spent model, when it resets and what
+  took over. Three switches, so four attempts, then the error stands. A global
+  window is never retried: every model draws on it, so switching would buy
+  three more refusals and a transcript claiming to have tried something it
+  could not. The refused model is remembered until its window resets, so the
+  next run does not pay the same discovery again, and the arm credited to the
+  learner is the one that actually ran — a quota refusal says nothing about a
+  model's quality.
+
+  Two discriminators were written and refuted by measurement before this one,
+  and both looked right. Switching on `rateLimitType === 'seven_day_<model>'`
+  reads well against the SDK's enum and would never have fired: the rejected
+  event carried `seven_day_overage_included`, which names no model. Passing the
+  CLI's own `fallbackModel`, documented for a primary model that is "overloaded
+  or unavailable", produced a result byte for byte identical to no fallback at
+  all — it does not cover quota. What does discriminate is the rejected event's
+  view of the *global* windows: `seven_day` at 0.97 and serving while Fable was
+  refused.
+
+### Fixed
+
+- **The quota screen was blank in production.** The SDK declares `rate_limits`
+  as an object keyed by window name; the CLI answers with a `limits` array of
+  `{ kind, percent, scope }` rows. Every named lookup was therefore `undefined`
+  and the screen rendered nothing on a subscription whose weekly window sat at
+  97% and whose Fable bucket was at 100%. Both shapes are read now, from a
+  captured payload rather than from the declared type — and an unrecognised
+  third shape says so instead of showing an empty list, which is the difference
+  between "nothing to report" and "we could not read the answer".
+
+
 ## [0.75.1] — 2026-09-08
 
 ### Fixed

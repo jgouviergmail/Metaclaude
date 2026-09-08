@@ -22,6 +22,7 @@ import type {
   RewindResult,
   Run,
   RunPolicy,
+  RunUsage,
   Session,
   TranscriptEvent,
   Workspace,
@@ -45,10 +46,12 @@ import type { ReflexionEngine } from '../learning/reflexion.js';
 import type { AttachmentService } from '../services/attachments.js';
 import type { EventBus } from './bus.js';
 import { selectKnowledgeContext, selectMemoryContext, selectStandingContext } from './context.js';
+import { ModelAvailability } from './model-availability.js';
 import { capPermissionMode, PermissionBroker } from './permissions.js';
+import { chooseReplacement } from './quota.js';
 import { planRewind } from './rewind.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
-import { AgentSupervisor, type RunRequest } from './supervisor.js';
+import { AgentSupervisor, type RunOutcome, type RunRequest } from './supervisor.js';
 import { routes } from '@metaclaude/shared';
 
 /**
@@ -128,6 +131,12 @@ export interface KernelDeps {
   knowledge: KnowledgeStore;
   classifier: TaskClassifier;
   policy: PolicyLearner;
+  /**
+   * Which models the subscription has refused, and until when. Injected rather
+   * than built here so a test can drive the clock, and so a run does not
+   * rediscover a spent model that another run already paid to learn about.
+   */
+  availability: ModelAvailability;
   reflexion: ReflexionEngine;
   /**
    * Optional, and that is not laziness: the kernel's own fixture is half real
@@ -571,6 +580,145 @@ export class Kernel {
   }
 
   /**
+   * Keep a run alive when the subscription refuses the model it asked for.
+   *
+   * Measured against the real CLI on an exhausted Fable bucket: the attempt
+   * fails, the operator gets `You've reached your Fable 5 limit` as the run's
+   * error, and that was the end of it — a hard stop for a condition another
+   * model could serve. Sonnet answered the same prompt seconds later.
+   *
+   * Three properties make the retry safe, and all three were measured rather
+   * than assumed:
+   *
+   *  - the refused attempt still yields a resumable CLI session id;
+   *  - resuming it with a different model and re-pushing the same prompt works;
+   *  - the refused attempt leaves **no** user turn behind, so the prompt is not
+   *    duplicated — asked afterwards how many times it had seen the marker, the
+   *    model answered "1".
+   *
+   * A global window is not retried: every model draws on it, so switching would
+   * buy three more refusals and a transcript that lies about having tried.
+   */
+  private async surviveQuota(input: {
+    run: Run;
+    session: Session;
+    workspace: Workspace;
+    category: TaskCategory;
+    request: RunRequest;
+    outcome: RunOutcome;
+    callbacks: Parameters<AgentSupervisor['execute']>[1];
+  }): Promise<RunOutcome> {
+    const { run, session, workspace, category, callbacks } = input;
+    let outcome = input.outcome;
+    let request = input.request;
+
+    // Three switches, so four attempts. A refusal is answered before the CLI
+    // reaches the API — measured at essentially no tokens — so the ceiling is
+    // about not lying to the operator rather than about cost.
+    for (let switches = 0; switches < MAX_QUOTA_SWITCHES; switches += 1) {
+      const block = outcome.quotaBlock;
+      if (!block) return outcome;
+
+      // Remember before deciding, so the *next* run does not rediscover this.
+      this.deps.availability.block(block.model, block.resetsAt);
+
+      if (block.scope === 'global') {
+        this.note(session.id, run.id, 'error', quotaGlobalMessage(block));
+        return outcome;
+      }
+
+      const unavailable = this.deps.availability.blocked();
+      unavailable.add(block.model);
+      const replacement = chooseReplacement({
+        // The learner's own order. `list` rather than `select`: a retry must be
+        // predictable, and since the prior became cost-aware this ordering is
+        // meaningful from the very first run instead of only after eight trials.
+        ranked: this.deps.policy
+          .list(workspace.id, category)
+          .map((arm) => ({ model: String(arm.model), effort: arm.effort })),
+        unavailable,
+      });
+
+      if (!replacement) {
+        this.note(session.id, run.id, 'error', quotaNoReplacementMessage(block));
+        return outcome;
+      }
+
+      this.note(
+        session.id,
+        run.id,
+        'warn',
+        quotaSwitchMessage(block, replacement.model, switches + 1),
+      );
+
+      const policy: RunPolicy = {
+        ...run.policy,
+        model: replacement.model,
+        effort: replacement.effort as EffortLevel | null,
+      };
+      request = {
+        ...request,
+        policy,
+        // The session the refused attempt opened. Measured resumable, and
+        // carrying no user turn from the attempt that failed.
+        resumeSessionId: outcome.claudeSessionId ?? request.resumeSessionId,
+      };
+
+      const next = await this.deps.supervisor.execute(request, callbacks);
+      // The refused attempt spent almost nothing, but "almost" is not "nothing"
+      // and the operator is owed the total.
+      outcome = { ...next, usage: addUsage(outcome.usage, next.usage) };
+      run.policy = policy;
+
+      if (!outcome.quotaBlock) return outcome;
+    }
+
+    // Out of switches. Whatever the last attempt said stands, with a line
+    // saying why we stopped rather than leaving four refusals unexplained.
+    this.note(session.id, run.id, 'error', quotaExhaustedMessage(MAX_QUOTA_SWITCHES));
+    return outcome;
+  }
+
+  /**
+   * Add one system line to this run's transcript, from the kernel's side.
+   *
+   * The supervisor owns `seq` while a run is in flight, and `transcript_events`
+   * has a unique index on `(run_id, seq)` — so a second writer computing its
+   * own sequence would collide. Passing `seq: undefined` lets the repository
+   * assign one, which is the same route the run's own result event takes.
+   */
+  private note(
+    sessionId: string,
+    runId: string,
+    level: 'info' | 'warn' | 'error',
+    message: string,
+  ): void {
+    const event: TranscriptEvent = {
+      kind: 'system',
+      id: newId('event'),
+      runId,
+      seq: Number.MAX_SAFE_INTEGER,
+      at: Date.now(),
+      level,
+      message,
+      data: {},
+    };
+    try {
+      const stored = this.deps.transcript.append(sessionId, { ...event, seq: undefined });
+      this.deps.bus.publish(sessionTopic(sessionId), {
+        type: 'transcript',
+        topic: sessionTopic(sessionId),
+        event: stored,
+      });
+    } catch (error) {
+      // A note about a failure must never become a second failure.
+      this.deps.log('warn', 'could not record a system note', {
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
    * Decide model, effort and permission mode for a run.
    *
    * Precedence: explicit request → learned policy (when enabled and confident)
@@ -902,8 +1050,8 @@ export class Kernel {
       abortSignal: controller.signal,
     };
 
-    const outcome = await this.deps.supervisor.execute(request, {
-      onEvent: (event, isUpdate) => {
+    const callbacks = {
+      onEvent: (event: TranscriptEvent, isUpdate: boolean) => {
         try {
           if (isUpdate) {
             this.deps.transcript.update(event);
@@ -918,7 +1066,7 @@ export class Kernel {
         if (event.kind === 'tool_call' && event.resultIsError) activeRun.toolErrors += 1;
         this.deps.bus.publish(topic, { type: 'transcript', topic, event });
       },
-      onDelta: (eventId, channel, text) => {
+      onDelta: (eventId: string, channel: 'assistant_text' | 'thinking', text: string) => {
         this.deps.bus.publish(topic, {
           type: 'delta',
           topic,
@@ -928,19 +1076,23 @@ export class Kernel {
           text,
         });
       },
-      onClaudeSessionId: (claudeSessionId) => {
+      onClaudeSessionId: (claudeSessionId: string) => {
         if (session.claudeSessionId !== claudeSessionId) {
           this.deps.sessions.setClaudeSessionId(session.id, claudeSessionId);
           session.claudeSessionId = claudeSessionId;
         }
       },
-      onWaitingChange: (waiting) => {
+      onWaitingChange: (waiting: boolean) => {
         const status = waiting ? 'waiting_approval' : 'running';
         this.deps.runs.setStatus(run.id, status);
         this.deps.sessions.setStatus(session.id, status);
         this.publishSession(session.id);
       },
-    });
+    };
+
+    /* -- Execute, switching model if the subscription refuses one --------- */
+    let outcome = await this.deps.supervisor.execute(request, callbacks);
+    outcome = await this.surviveQuota({ run, session, workspace, category, request, outcome, callbacks });
 
     /* -- Record ----------------------------------------------------------- */
     const finished =
@@ -950,6 +1102,9 @@ export class Kernel {
         error: outcome.error,
         rewindPoint: outcome.rewindPoint,
         servedModel: outcome.servedModel,
+        // After a quota switch this is not the policy the run started with, and
+        // the learner is credited from the stored one.
+        policy: run.policy,
       }) ?? run;
 
     // The whole usage, not a hand-picked three of its seven fields: the two
@@ -1351,6 +1506,74 @@ export class Kernel {
  * operator; it is the delegated work, carrying an English prompt from the
  * library, that comes back in the wrong language.
  */
+/**
+ * How many times a run may change model before giving up.
+ *
+ * Three switches, so four attempts. A quota refusal is answered before the CLI
+ * reaches the API — measured at essentially no tokens and under five seconds —
+ * so this ceiling is not about cost. It is about not telling an operator we
+ * kept trying: past a handful of refusals the honest answer is that the
+ * subscription has nothing left to offer for this task.
+ */
+export const MAX_QUOTA_SWITCHES = 3;
+
+/** Human-readable "when it frees up", or nothing if the CLI did not say. */
+function whenItResets(resetsAt: number | null): string {
+  if (resetsAt === null) return '';
+  return ` It resets at ${new Date(resetsAt).toISOString().slice(0, 16).replace('T', ' ')} UTC.`;
+}
+
+export function quotaSwitchMessage(
+  block: { model: string; resetsAt: number | null },
+  replacement: string,
+  attempt: number,
+): string {
+  return (
+    `Your subscription's limit for ${block.model} is reached, so this run switched to ` +
+    `${replacement} and carried on (switch ${attempt} of ${MAX_QUOTA_SWITCHES}).` +
+    whenItResets(block.resetsAt)
+  );
+}
+
+export function quotaGlobalMessage(block: { resetsAt: number | null }): string {
+  // Named as the thing it is, because switching model is the obvious thing to
+  // try and it is precisely what will not work here.
+  return (
+    'Your overall usage limit is reached, not the limit for one model — every model ' +
+    'draws on it, so there is nothing to switch to.' +
+    whenItResets(block.resetsAt)
+  );
+}
+
+export function quotaNoReplacementMessage(block: { model: string; resetsAt: number | null }): string {
+  return (
+    `Your subscription's limit for ${block.model} is reached, and every other model ` +
+    'is either spent too or already refused this run.' + whenItResets(block.resetsAt)
+  );
+}
+
+export function quotaExhaustedMessage(switches: number): string {
+  return (
+    `This run changed model ${switches} times and was refused each time; ` +
+    'the subscription has nothing left to offer it.'
+  );
+}
+
+/** Fold a retried attempt's usage into what the run has already spent. */
+export function addUsage(a: RunUsage, b: RunUsage): RunUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheCreationTokens: a.cacheCreationTokens + b.cacheCreationTokens,
+    costUsd: a.costUsd + b.costUsd,
+    // Wall clock is re-measured by the caller; the attempts ran in sequence, so
+    // summing is right for everything the model was actually billed for.
+    durationMs: a.durationMs + b.durationMs,
+    turns: a.turns + b.turns,
+  };
+}
+
 export function languageDirective(language: 'auto' | 'fr' | 'en'): string {
   if (language === 'auto') return '';
   const name = language === 'fr' ? 'French' : 'English';
