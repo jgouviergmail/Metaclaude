@@ -11,13 +11,19 @@ import {
   ApplyConsolidationRequest,
   ConsolidationProposal,
   CreateMemoryRequest,
+  KNOWLEDGE_LIMITS,
+  PatchKnowledgeRequest,
   SaveKnowledgeRequest,
+  UploadKnowledgeRequest,
   MemoryKind,
   MemoryShelf,
   ReflexionInsightPayload,
 } from '@metaclaude/shared';
-import type { RunGenesis } from '@metaclaude/shared';
+import type { KnowledgeDocumentMeta, RunGenesis } from '@metaclaude/shared';
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
+import { KNOWLEDGE_EXTENSIONS, resolveKnowledgeMime } from '../learning/extract/index.js';
+import { safeFileName } from '../services/attachments.js';
 import type { AppContext } from '../context.js';
 import { HttpError, mustGetWorkspace, requestIp, requireOperator } from '../http/guards.js';
 import { spreadInt } from '../http/query.js';
@@ -653,8 +659,26 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
   // The knowledge library: reference documents, chunked and embedded on write,
   // retrieved into runs. Same authorisation bar as memories — an operator can
   // shape what the agent reads — and the same audit habit.
+
+  /**
+   * One document as the listing serves it.
+   *
+   * Every route that returns a document returns *this* shape, from the same
+   * query, rather than each assembling its own: a screen that reads a reach
+   * badge and a page count off a listing must not lose them the moment the
+   * same document comes back from a save.
+   */
+  const meta = (id: string): KnowledgeDocumentMeta => {
+    const found = context.knowledge.list().find((one) => one.id === id);
+    if (!found) throw new HttpError(404, 'Document not found.');
+    return found;
+  };
+
   app.get('/api/knowledge', async (request, reply) => {
     const query = request.query as { workspaceId?: string; scope?: string };
+    // Three answers, and a missing parameter must not collapse to `null`, or
+    // there would be no way to list the whole library — which is exactly what
+    // a management screen needs, documents attached to nothing included.
     const options =
       query.scope === 'global'
         ? { workspaceId: null }
@@ -685,7 +709,194 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
       ipAddress: requestIp(context, request),
       detail: document.title,
     });
-    return reply.status(parsed.data.id ? 200 : 201).send({ document });
+    return reply.status(parsed.data.id ? 200 : 201).send({ document: meta(document.id) });
+  });
+
+  /**
+   * Drop a file into the library.
+   *
+   * The body is base64 in JSON, the channel message attachments already use —
+   * one upload path in this product rather than two, and one place where the
+   * decoded size is checked.
+   *
+   * The order below is the whole design. Refuse what can be refused cheaply
+   * (size, then type), then look for the hash, then extract, and only write
+   * the file once there is something to attach it to. A file written before a
+   * refusal is an original no row names: invisible, and unbounded.
+   */
+  app.post(
+    '/api/knowledge/upload',
+    // The global bodyLimit (8 MB) fits prompts, not files: 20 MB of payload is
+    // ~27 MB once base64-encoded and JSON-wrapped. The attachments route
+    // raises it for the same reason and by the same amount.
+    { bodyLimit: 32 * 1024 * 1024 },
+    async (request, reply) => {
+      const actor = requireOperator(request);
+      const parsed = UploadKnowledgeRequest.safeParse(request.body);
+      if (!parsed.success) {
+        throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid upload.');
+      }
+
+      const data = Buffer.from(parsed.data.data, 'base64');
+      if (data.length === 0) throw new HttpError(400, 'The file is empty.');
+      if (data.length > KNOWLEDGE_LIMITS.maxBytes) {
+        throw new HttpError(413, `The file exceeds ${KNOWLEDGE_LIMITS.maxBytes / (1024 * 1024)} MB.`);
+      }
+
+      // The uploaded name never reaches the filesystem — the stored file is
+      // named by hash — but it is shown, downloaded under, and used to guess a
+      // type when the browser sent none, so it is cleaned once, here.
+      const name = safeFileName(parsed.data.name);
+      const mime = resolveKnowledgeMime(name, parsed.data.mime);
+      if (!mime) {
+        throw new HttpError(
+          415,
+          `“${parsed.data.mime || name}” is not a type the library reads. ` +
+            `Accepted: ${KNOWLEDGE_EXTENSIONS.map((one) => `.${one}`).join(', ')}.`,
+        );
+      }
+
+      const sha256 = createHash('sha256').update(data).digest('hex');
+      const duplicate = context.knowledge.findBySourceHash(sha256);
+      if (duplicate) {
+        // The document travels with the refusal, so the screen can offer to
+        // open the one that is already there — which is what was wanted.
+        return reply.status(409).send({
+          error: `This file is already in the library as “${duplicate.title}”.`,
+          document: meta(duplicate.id),
+        });
+      }
+
+      const extracted = await context.extractor.extract({ name, mime, data });
+      await context.knowledgeFiles.write(sha256, mime, data);
+
+      let document;
+      try {
+        document = await context.knowledge.upsert({
+          workspaceId: null,
+          title: parsed.data.title ?? name.replace(/\.[^.]+$/, ''),
+          content: extracted.text,
+          reach: parsed.data.reach,
+          pageBreaks: extracted.pageBreaks,
+          pageUnit: extracted.pageUnit,
+          source: { name, mime, bytes: data.length, extractor: extracted.extractor, sha256 },
+        });
+      } catch (error) {
+        // The row is what makes the file findable; without one it is litter.
+        await context.knowledgeFiles.remove(sha256, mime);
+        throw error;
+      }
+
+      context.audit.record({
+        actor: actor.username,
+        action: 'knowledge.upload',
+        target: document.id,
+        ipAddress: requestIp(context, request),
+        detail: `${name} (${data.length} bytes, ${document.chunkCount} passages)`,
+      });
+      return reply.status(201).send({ document: meta(document.id) });
+    },
+  );
+
+  /**
+   * Read the kept file again.
+   *
+   * What makes an improved extractor reach the documents already in the
+   * library. The store's hash short-circuits the whole pipeline when the text
+   * comes out identical, so this is cheap in the common case and still
+   * records which engine read it.
+   */
+  app.post<{ Params: { id: string } }>('/api/knowledge/:id/extract', async (request, reply) => {
+    const actor = requireOperator(request);
+    const existing = context.knowledge.get(request.params.id);
+    if (!existing) throw new HttpError(404, 'Document not found.');
+
+    const source = context.knowledge.sourceOf(existing.id);
+    if (!source) {
+      throw new HttpError(404, 'This document was typed, not uploaded: there is nothing to re-extract.');
+    }
+    if (!context.knowledgeFiles.exists(source.sha256, source.mime)) {
+      throw new HttpError(404, 'The original file is missing from this server; upload it again.');
+    }
+
+    const data = await context.knowledgeFiles.read(source.sha256, source.mime);
+    const extracted = await context.extractor.extract({ name: source.name, mime: source.mime, data });
+    const document = await context.knowledge.upsert({
+      id: existing.id,
+      workspaceId: existing.workspaceId,
+      title: existing.title,
+      content: extracted.text,
+      pageBreaks: extracted.pageBreaks,
+      pageUnit: extracted.pageUnit,
+      source: { ...source, extractor: extracted.extractor },
+    });
+
+    context.audit.record({
+      actor: actor.username,
+      action: 'knowledge.extract',
+      target: document.id,
+      ipAddress: requestIp(context, request),
+      detail: `${source.name} → ${extracted.extractor} (${document.chunkCount} passages)`,
+    });
+    return reply.send({ document: meta(document.id) });
+  });
+
+  /**
+   * The original, for download.
+   *
+   * The attachments rule, for the attachments reason: only a PDF renders
+   * inline, because serving an uploaded .html inline on this origin would run
+   * its scripts with the session cookie — a stored XSS dressed as a feature.
+   */
+  app.get<{ Params: { id: string } }>('/api/knowledge/:id/source', async (request, reply) => {
+    const source = context.knowledge.sourceOf(request.params.id);
+    if (!source) throw new HttpError(404, 'This document has no original file.');
+    if (!context.knowledgeFiles.exists(source.sha256, source.mime)) {
+      throw new HttpError(404, 'The original file is missing from this server.');
+    }
+
+    reply
+      .header('content-type', source.mime)
+      .header('x-content-type-options', 'nosniff')
+      .header(
+        'content-disposition',
+        `${source.mime === 'application/pdf' ? 'inline' : 'attachment'}; ` +
+          `filename="${source.name.replace(/"/g, '')}"`,
+      )
+      // Named by content hash, so the bytes behind an id never change.
+      .header('cache-control', 'private, max-age=31536000, immutable');
+    return reply.send(context.knowledgeFiles.stream(source.sha256, source.mime));
+  });
+
+  /**
+   * Change what can change without the text making a round trip.
+   *
+   * The editor used to read a whole document and save it back to flip one
+   * boolean — which cannot work at all for a file-backed document, whose text
+   * the store refuses on the way in.
+   */
+  app.patch<{ Params: { id: string } }>('/api/knowledge/:id', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = PatchKnowledgeRequest.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+    }
+
+    const { reach, ...fields } = parsed.data;
+    if (!context.knowledge.patch(request.params.id, fields)) {
+      throw new HttpError(404, 'Document not found.');
+    }
+    if (reach) context.knowledge.setReach(request.params.id, reach);
+
+    const changed = [...Object.keys(fields), ...(reach ? ['reach'] : [])];
+    context.audit.record({
+      actor: actor.username,
+      action: 'knowledge.update',
+      target: request.params.id,
+      ipAddress: requestIp(context, request),
+      detail: changed.length > 0 ? changed.join(', ') : 'nothing',
+    });
+    return reply.send({ document: meta(request.params.id) });
   });
 
   /**
@@ -712,14 +923,22 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
 
   app.delete<{ Params: { id: string } }>('/api/knowledge/:id', async (request, reply) => {
     const actor = requireOperator(request);
+    // Read the source *before* the row goes: afterwards there is nothing left
+    // to say which file on disk belonged to it, and the original would sit
+    // there for ever, named by a hash nothing points at.
+    const source = context.knowledge.sourceOf(request.params.id);
     if (!context.knowledge.delete(request.params.id)) {
       throw new HttpError(404, 'Document not found.');
     }
+    // After the row, and tolerant of a file already gone: the document is
+    // deleted either way, and a missing original must not leave it half-gone.
+    if (source) await context.knowledgeFiles.remove(source.sha256, source.mime);
     context.audit.record({
       actor: actor.username,
       action: 'knowledge.delete',
       target: request.params.id,
       ipAddress: requestIp(context, request),
+      detail: source ? source.name : null,
     });
     return reply.send({ ok: true });
   });
