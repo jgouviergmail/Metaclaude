@@ -585,7 +585,14 @@ export class Kernel {
     const settings = workspace.settings;
 
     const base: RunPolicy = {
-      model: session.model || settings.defaultModel,
+      // `||` treats Auto as a choice, because `'default'` is a non-empty
+      // string. So a session left on Auto never reached the workspace default:
+      // the fallback resolved to `'default'`, which reaches the CLI as "pass no
+      // --model" and lands on the CLI's own — measured, `claude-opus-5[1m]`.
+      // That is the cold-start path, taken until a (workspace, category) has
+      // eight trials, so it is the most common one in a young deployment: the
+      // learner's *absence* was routed to the dearest model available.
+      model: isAutoModel(session.model) ? settings.defaultModel : session.model,
       effort: session.effort ?? settings.defaultEffort,
       permissionMode: session.permissionMode || settings.defaultPermissionMode,
       thinking: settings.thinking,

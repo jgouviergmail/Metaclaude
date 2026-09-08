@@ -374,6 +374,30 @@ describe('admission', () => {
     expect(fixture.runs.get(pinned.id)?.policy.source).toBe('explicit');
   });
 
+  it('falls back to the workspace default, not the CLI default, when Auto has no evidence', async () => {
+    // The cold-start path — taken until a (workspace, category) reaches eight
+    // trials, so the common one in a young deployment. `session.model || ...`
+    // treated Auto as a choice, because `'default'` is a non-empty string, so
+    // the fallback resolved to `'default'` — which reaches the CLI as "pass no
+    // --model" and lands on its own default. Measured: `claude-opus-5[1m]`.
+    const fx = setup({ settings: { defaultModel: 'sonnet', defaultEffort: 'medium' } });
+    try {
+      fx.policy.select.mockReturnValue(null);
+      const session = fx.newSession(); // stored model is 'default', i.e. Auto
+      const run = await fx.kernel.submit({
+        sessionId: session.id,
+        prompt: 'a question',
+        overrides: { model: AUTO_MODEL, effort: null },
+      });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+
+      expect(fx.runs.get(run.id)?.policy.model).toBe('sonnet');
+      expect(fx.runs.get(run.id)?.policy.effort).toBe('medium');
+    } finally {
+      fx.db.close();
+    }
+  });
+
   it('does not record Auto as an explicit choice when the learner has nothing to say', async () => {
     // `source` is what the analytics read and what tells an operator whether a
     // run was decided or defaulted. Auto with no evidence falls back to the

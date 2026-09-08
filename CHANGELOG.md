@@ -11,6 +11,21 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.75.1] — 2026-09-08
+
+### Fixed
+
+- **Auto with no evidence still routed to the CLI's own default.** The
+  cold-start fallback read `session.model || settings.defaultModel`, and `||`
+  treats Auto as a choice because `'default'` is a non-empty string — so a
+  session left on Auto never reached the workspace default at all. It resolved
+  to `'default'`, which reaches the CLI as "pass no `--model`" and lands on
+  `claude-opus-5[1m]`, measured. That path is taken until a (workspace,
+  category) pair has eight trials, so it is the ordinary one in a young
+  deployment: the learner's *absence* was being routed to the dearest model
+  available. It now falls back to the workspace's own default.
+
+
 ## [0.75.0] — 2026-09-08
 
 ### Fixed
