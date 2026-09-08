@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.76.2] — 2026-09-08
+
+### Fixed
+
+- **`ModelAvailability.release` read the wall clock while its callers reasoned
+  at a given instant.** It was the one method here that took no `now`, so an
+  entry the wall clock considered expired made it return without writing —
+  leaving the row in the database for a caller that had just been told it was
+  gone. It surfaced as a test green on one machine and red on CI three minutes
+  later, which is exactly why this project drives time with an explicit
+  argument. The write is unconditional now, so expired entries are swept rather
+  than accumulating.
+
+
 ## [0.76.1] — 2026-09-08
 
 ### Fixed

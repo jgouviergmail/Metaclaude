@@ -48,11 +48,23 @@ describe('ModelAvailability', () => {
     expect(new ModelAvailability(db).blocked(now)).toEqual(new Set(['fable']));
   });
 
-  it('releases a model when asked', () => {
+  it('releases a model when asked, at the caller’s clock and not the wall’s', () => {
+    // The bug this pins: `release` read with `Date.now()` while the caller
+    // reasoned at `now`. On a machine whose wall clock had passed the hold, the
+    // entry looked expired, `release` returned without writing, and the row
+    // stayed in the database — green here, red on CI three minutes later.
     availability.block('fable', now + 3_600_000, now);
-    availability.release('fable');
+    availability.release('fable', now);
     expect(availability.blocked(now)).toEqual(new Set());
-    expect(() => availability.release('never-blocked')).not.toThrow();
+    expect(() => availability.release('never-blocked', now)).not.toThrow();
+  });
+
+  it('sweeps entries the clock has passed rather than leaving them in the row', () => {
+    availability.block('fable', now + 60_000, now);
+    availability.block('opus', now + 6 * 3_600_000, now);
+    // Long after fable's hold: releasing something else must not resurrect it.
+    availability.release('opus', now + 3_600_000);
+    expect(availability.blocked(now)).toEqual(new Set());
   });
 
   it('starts empty and never throws on a corrupted entry', () => {

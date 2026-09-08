@@ -49,10 +49,22 @@ export class ModelAvailability {
     return this.read(now)[model] ?? null;
   }
 
-  /** Forget a model's block — the operator pinning it is an override. */
-  release(model: string): void {
-    const blocked = this.read(Date.now());
-    if (!(model in blocked)) return;
+  /**
+   * Forget a model's block — the operator pinning it is an override.
+   *
+   * Takes `now` like every other method here, and that is not decoration. The
+   * first version read with the wall clock while its caller reasoned at a
+   * different instant, so an entry the wall clock considered expired made
+   * `release` return without writing — leaving the row in `kv` for a caller
+   * that had just been told it was gone. It surfaced as a test green on one
+   * machine and red on CI three minutes later, which is the whole reason this
+   * project drives time with an explicit argument.
+   *
+   * The write is unconditional so the pruned map is persisted either way:
+   * expired entries are swept by the next release rather than accumulating.
+   */
+  release(model: string, now = Date.now()): void {
+    const blocked = this.read(now);
     delete blocked[model];
     kvSet(this.db, KEY, blocked);
   }

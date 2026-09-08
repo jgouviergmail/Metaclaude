@@ -984,6 +984,23 @@ restates the code is noise; one that records a decision or a trap is not.
   works, and it leaves no user turn behind — asked afterwards how many times it
   had seen the prompt's marker, the model answered "1".
 
+- **`gh run watch --exit-status` reported success on a CI run that failed.**
+  Measured: run 34212963481 had `Typecheck, tests, build: failure`, `CI:
+  failure`, the tag job skipped — and the watch exited 0, so a deployment was
+  started against a version that had never been tagged. The reliable signals
+  are `gh run view <id> --json jobs` and the tag actually existing on the
+  remote; check those, not the watcher's exit code. The tag is the better of
+  the two because it is what the deployment consumes.
+- **One method that reads the wall clock while its callers reason at a given
+  `now` is a test that passes on one machine and fails on another three minutes
+  later.** `ModelAvailability.release` took no `now` and read `Date.now()`, so
+  an entry the wall clock considered expired made it return without writing —
+  leaving the row in `kv` for a caller that had just been told it was gone.
+  Green locally, red on CI. Every method that reasons about time takes `now`,
+  including the ones where it looks like a formality; and prefer an
+  unconditional write that persists the pruned map over an early return, so
+  expired rows are swept instead of accumulating.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +
