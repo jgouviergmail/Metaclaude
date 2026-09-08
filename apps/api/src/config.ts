@@ -231,6 +231,14 @@ export interface Config {
   databasePath: string;
   artifactsDir: string;
   uploadsDir: string;
+  /**
+   * The knowledge library's original files, named by content hash.
+   *
+   * Under the data directory rather than under a workspace: a document
+   * reaches several workspaces now, so it belongs to none of them — and this
+   * is the volume the nightly backup archives.
+   */
+  knowledgeDir: string;
   /** Where installed Agent Plugins live, one directory per plugin. */
   pluginsDir: string;
   /** GitHub owner/repo the update check asks; null when disabled. */
@@ -331,9 +339,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   const artifactsDir = resolve(dataDir, 'artifacts');
   const uploadsDir = resolve(dataDir, 'uploads');
   const pluginsDir = resolve(dataDir, 'plugins');
+  const knowledgeDir = resolve(dataDir, 'knowledge');
   mkdirSync(artifactsDir, { recursive: true });
   mkdirSync(uploadsDir, { recursive: true });
   mkdirSync(pluginsDir, { recursive: true });
+  mkdirSync(knowledgeDir, { recursive: true });
 
   const oauthToken = env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || null;
   const apiKey = env.ANTHROPIC_API_KEY?.trim() || null;
@@ -398,6 +408,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     databasePath: resolve(dataDir, 'metaclaude.db'),
     artifactsDir,
     uploadsDir,
+    knowledgeDir,
     pluginsDir,
   };
 }

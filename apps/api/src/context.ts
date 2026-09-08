@@ -55,6 +55,8 @@ import { contentLanguageDirective, resolveContentLanguage } from './learning/lan
 import { listInsights, setInsightStatus, withLanguage } from './learning/reflexion.js';
 import { countStale, createRebuildTrigger, reindexStale } from './learning/reindex.js';
 import { KnowledgeStore } from './learning/knowledge.js';
+import { KnowledgeFileStore } from './learning/knowledge-files.js';
+import { WorkerExtractor, type Extractor } from './learning/extract/worker-extractor.js';
 import { ReflexionEngine } from './learning/reflexion.js';
 import { createGateCall, Gatekeeper } from './learning/gatekeeper.js';
 import { AuditLog } from './security/audit.js';
@@ -143,6 +145,17 @@ export interface AppContext {
   retrieval: () => RetrievalStatus;
   memory: MemoryStore;
   knowledge: KnowledgeStore;
+  /** The original files documents were extracted from, on disk. */
+  knowledgeFiles: KnowledgeFileStore;
+  /**
+   * Reads an uploaded file into text.
+   *
+   * Injected rather than constructed where it is used, because the test
+   * harness needs the in-process one: a `Worker` loads a built file, and
+   * under vitest this tree is TypeScript. What runs in every deployment is
+   * the worker, and `check:e2e` drives it through a real request.
+   */
+  extractor: Extractor;
   classifier: TaskClassifier;
   policy: PolicyLearner;
   reflexion: ReflexionEngine;
@@ -233,7 +246,24 @@ function findSourceRoot(): string | null {
   return null;
 }
 
-export async function createAppContext(config: Config, log: Logger): Promise<AppContext> {
+/**
+ * What a caller may substitute for a collaborator this process would
+ * otherwise build itself.
+ *
+ * One entry, and it earns its place: the extractor runs in a worker thread
+ * that loads a *built* file, which does not exist while the suite runs from
+ * TypeScript. The test harness passes the in-process one and says so; every
+ * deployment gets the worker.
+ */
+export interface AppContextOptions {
+  extractor?: Extractor;
+}
+
+export async function createAppContext(
+  config: Config,
+  log: Logger,
+  options: AppContextOptions = {},
+): Promise<AppContext> {
   const db = openDatabase({ path: config.databasePath });
   const applied = migrate(db, (message) => log.info(message));
   if (applied > 0) log.info(`applied ${applied} database migration(s)`);
@@ -367,6 +397,11 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
   // a save never waits on the model. `rebuildVectors` is declared below;
   // it is only ever called from a request, long after this line has run.
   const knowledge = new KnowledgeStore(db, embedder, undefined, { embedLater: () => rebuildVectors() });
+  const knowledgeFiles = new KnowledgeFileStore(config.knowledgeDir);
+  // A thread of its own per upload: extraction is the one place this process
+  // parses bytes a stranger chose, and a zip bomb or a three-thousand-page
+  // PDF must not pause the loop that supervises live runs.
+  const extractor = options.extractor ?? new WorkerExtractor();
   const classifier = new TaskClassifier(db, embedder);
   const policy = new PolicyLearner(db);
   const availability = new ModelAvailability(db);
@@ -1146,6 +1181,8 @@ export async function createAppContext(config: Config, log: Logger): Promise<App
     retrieval,
     memory,
     knowledge,
+    knowledgeFiles,
+    extractor,
     classifier,
     policy,
     reflexion,

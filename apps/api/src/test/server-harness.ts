@@ -21,6 +21,7 @@ import { CSRF_COOKIE, type UserRole } from '@metaclaude/shared';
 import { loadConfig } from '../config.js';
 import type { AppContext } from '../context.js';
 import { createAppContext } from '../context.js';
+import { InProcessExtractor } from '../learning/extract/worker-extractor.js';
 import { buildServer } from '../server.js';
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -64,7 +65,17 @@ export async function bootTestServer(options: {
     METACLAUDE_PORT: '8787',
   } as NodeJS.ProcessEnv);
 
-  const context = await createAppContext(config, pino({ level: 'silent' }));
+  // The in-process extractor, named rather than defaulted.
+  //
+  // What ships is `WorkerExtractor`, which spawns `dist/learning/extract/worker.js`
+  // — a file that does not exist while this suite runs from TypeScript. So a
+  // route test drives the real extraction on this thread, `worker-extractor.test.ts`
+  // drives the real worker against the real build, and `check:e2e` drives both
+  // through a real HTTP request against the built server. Nothing here is a
+  // stand-in for the extraction itself.
+  const context = await createAppContext(config, pino({ level: 'silent' }), {
+    extractor: new InProcessExtractor(),
+  });
   if (!options.reuse) {
     await context.auth.createUser({ username, password: PASSWORD, role: options.role ?? 'owner' });
   }
