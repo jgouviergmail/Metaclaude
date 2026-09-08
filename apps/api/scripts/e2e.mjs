@@ -13,7 +13,7 @@
  */
 
 import WebSocket from 'ws';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AGENT_CHECKS_ENABLED, Client, PASSWORD, Results, startServer, until } from './harness.mjs';
 
@@ -491,6 +491,95 @@ results.section('audit');
   results.check(
     'junk pagination does not 500',
     (await api.call('/api/audit?limit=abc&before=yesterday')).status === 200,
+  );
+}
+
+results.section('the knowledge library reads files');
+{
+  // The one place the *worker* runs against the built server: unit tests
+  // drive the extraction on their own thread, because a worker loads a built
+  // file that does not exist while a suite runs from TypeScript. Here it is
+  // the real one, spawned by the real route, over a real HTTP request.
+  const fixture = (name) =>
+    readFileSync(new URL(`../src/learning/extract/fixtures/${name}`, import.meta.url));
+
+  const upload = (name, extra = {}) =>
+    api.call('/api/knowledge/upload', {
+      method: 'POST',
+      body: {
+        name,
+        mime: '',
+        data: fixture(name).toString('base64'),
+        reach: { global: true, workspaceIds: [] },
+        ...extra,
+      },
+    });
+
+  const docx = await upload('bail.docx');
+  results.check(
+    'a dropped .docx becomes a document, sectioned and located',
+    docx.status === 201 && /^docx@/.test(docx.body.document?.source?.extractor ?? ''),
+    JSON.stringify(docx.body).slice(0, 300),
+  );
+
+  const hits = await api.call(
+    `/api/knowledge/search?q=${encodeURIComponent('préavis résiliation')}`,
+  );
+  const passage = hits.body.results?.[0];
+  results.check(
+    'its passages carry the section and the lines they came from',
+    passage?.heading === 'Résiliation par le locataire' && passage?.lineStart > 0,
+    JSON.stringify(passage).slice(0, 300),
+  );
+
+  const pdf = await upload('twocol.pdf');
+  const engine = pdf.body.document?.source?.extractor ?? '';
+  results.check(
+    'a two-column PDF becomes a paged document',
+    pdf.status === 201 && pdf.body.document?.pageUnit === 'page',
+    JSON.stringify(pdf.body.document?.source ?? pdf.body).slice(0, 300),
+  );
+  // Which engine answered is a property of the host, and the product says so
+  // rather than hiding it. The image installs poppler-utils, so on CI and in
+  // production this is the poppler branch; a developer's machine without it
+  // gets the fallback, *named*, which is the behaviour worth checking there.
+  if (/^pdf@poppler-/.test(engine)) {
+    results.check('and poppler is what read it', true, engine);
+  } else {
+    results.skip(
+      'poppler read it',
+      `this host has no poppler; the API fell back and named it (${engine || 'nothing'})`,
+    );
+  }
+
+  const again = await upload('twocol.pdf');
+  results.check(
+    'the same file a second time is refused, naming the document that holds it',
+    again.status === 409 && again.body.document?.id === pdf.body.document?.id,
+    `status ${again.status}`,
+  );
+
+  const scan = await upload('scan.pdf');
+  results.check(
+    'a scan is refused by saying it is one',
+    scan.status === 422 && /scan|OCR/i.test(scan.body.error ?? ''),
+    `${scan.status}: ${scan.body.error}`,
+  );
+
+  const source = await api.call(`/api/knowledge/${pdf.body.document.id}/source`, { raw: true });
+  results.check(
+    'the original comes back byte for byte',
+    source.status === 200 && Buffer.from(source.bytes).equals(fixture('twocol.pdf')),
+    `status ${source.status}, ${source.bytes?.byteLength ?? 0} bytes`,
+  );
+
+  const extracted = await api.call(`/api/knowledge/${pdf.body.document.id}/extract`, {
+    method: 'POST',
+  });
+  results.check(
+    'and can be read again, which is how an extractor improvement reaches it',
+    extracted.status === 200 && extracted.body.document?.chunkCount > 0,
+    `status ${extracted.status}`,
   );
 }
 

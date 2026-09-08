@@ -9,7 +9,7 @@
  */
 
 import { join } from 'node:path';
-import { mkdirSync, existsSync } from 'node:fs';
+import { mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 import { pathToFileURL } from 'node:url';
 import { PASSWORD, REPO_ROOT, startServer, USERNAME } from './harness.mjs';
@@ -197,6 +197,66 @@ await context.memory.remember({
   content: 'One month inside a zone tendue; three everywhere else.',
   confidence: 0.82,
 });
+
+/*
+ * The knowledge library, with a document of each shape.
+ *
+ * The Memory page is judged on this bench, and until now its lower half was
+ * empty in every capture — so the cards nobody could see were the cards
+ * nobody designed. One pasted document, one read from a real file (with its
+ * format badge, its page count and its extractor), and one reaching two
+ * workspaces, which is the badge the reach picker exists for.
+ */
+{
+  const fixtures = join(REPO_ROOT, 'apps/api/src/learning/extract/fixtures');
+  const { extractInProcess } = await import(
+    pathToFileURL(join(REPO_ROOT, 'apps/api/dist/learning/extract/index.js')).href
+  );
+  const { createHash } = await import('node:crypto');
+
+  await context.knowledge.upsert({
+    workspaceId: null,
+    title: 'Conventions de rédaction',
+    content: [
+      '# Conventions',
+      '',
+      '## Ton',
+      "Une phrase par idée. Pas de tirets cadratins dans les messages d'erreur.",
+      '',
+      '## Nommage',
+      'Les identifiants restent en anglais ; tout le reste est en français.',
+    ].join(String.fromCharCode(10)),
+    reach: { global: true, workspaceIds: [] },
+  });
+
+  for (const [name, title, reach] of [
+    ['bail.docx', 'Bail — 12 rue des Lilas', { global: false, workspaceIds: [sideProject.id] }],
+    ['assurance.pdf', 'Contrat multirisque habitation', { global: false, workspaceIds: [ws.id, sideProject.id] }],
+  ]) {
+    const data = readFileSync(join(fixtures, name));
+    const extracted = await extractInProcess({ name, mime: '', data });
+    const mime =
+      name.endsWith('.pdf')
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    await context.knowledgeFiles.write(createHash('sha256').update(data).digest('hex'), mime, data);
+    await context.knowledge.upsert({
+      workspaceId: null,
+      title,
+      content: extracted.text,
+      reach,
+      pageBreaks: extracted.pageBreaks,
+      pageUnit: extracted.pageUnit,
+      source: {
+        name,
+        mime,
+        bytes: data.length,
+        extractor: extracted.extractor,
+        sha256: createHash('sha256').update(data).digest('hex'),
+      },
+    });
+  }
+}
 
 // One consolidation proposal, so the review queue shows the card it grew for.
 const repeated = [];

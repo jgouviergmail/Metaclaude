@@ -1461,6 +1461,41 @@ else
   bad "the entrypoint treats a logged-out store as a live sign-in"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+section "The image can read the files the library accepts"
+# Two facts about the runtime image that nothing else checks, and both of
+# which degrade quietly rather than failing.
+#
+# poppler is what reads a PDF. Measured against the built-in JavaScript
+# fallback: poppler rejoins a word its typesetter split across two lines,
+# the fallback hands over the two halves, and 165 such words on one real
+# paper are 165 words no query will match. The API detects the absence and
+# says so at boot and in the doctor — but an image built without it is a
+# deployment retrieving less for a reason nobody chose.
+if grep -qE '^\s+poppler-utils' "$REPO_ROOT/docker/Dockerfile"; then
+  ok "the image installs poppler-utils, so PDFs are read by poppler"
+else
+  bad "the image has no poppler-utils — every PDF would be read by the fallback"
+fi
+
+# And the pruning, which is the same reasoning as onnxruntime one stage up:
+# these two packages ship a browser build beside the one Node loads.
+for pruned in pdfjs-dist exceljs; do
+  if grep -q ".pnpm/$pruned@" "$REPO_ROOT/docker/Dockerfile"; then
+    ok "the image prunes what $pruned does not run"
+  else
+    bad "$pruned ships its browser build into the image"
+  fi
+done
+
+# The extraction worker is loaded as a *file* from `dist`, so it has to be
+# there. A missing one is invisible until the first upload, which then
+# reports "extraction failed" about a perfectly good document.
+if grep -q "worker.js" "$REPO_ROOT/apps/api/src/learning/extract/worker-extractor.ts"; then
+  ok "the extractor spawns a built worker file"
+else
+  bad "the extractor no longer names the worker file the image must contain"
+fi
 section "The documentation the product ships agrees with the product"
 # ─────────────────────────────────────────────────────────────────────────────
 

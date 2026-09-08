@@ -132,19 +132,39 @@ it to read* — and the difference is a promise. A memory gains and loses
 confidence, decays, and can be forgotten. A document never fades: the lease
 says tomorrow exactly what it says today.
 
-Add documents at the bottom of the **Memory** page: paste the text, give it a
-title, and choose its shelf — **Global** reaches every workspace, a workspace
-keeps its documents to itself (plus the global shelf). Runs in a sibling
-workspace can never see them. On save the document is split into passages —
-markdown headings become the sections passages are cited under — and each
-passage is indexed twice, by meaning and by exact words, so *« quel est le
-préavis ? »* finds the clause whether or not it uses the word.
+Add documents at the bottom of the **Memory** page. **Drop files onto the
+zone there** — `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.txt`, `.md`, `.csv`,
+`.html`, `.json`, up to 20 MB each — or paste text and give it a title. Either
+way you then choose **which workspaces it reaches**: every one of them, or the
+two or three that need it. A document reaching no workspace at all is a real
+answer too — it stays in the library and no run sees it.
+
+Metaclaude reads the file itself, and reads it for *structure*, not just for
+words: a Word heading becomes the section its passages are cited under, a
+spreadsheet's header row travels with every one of its rows, a slide keeps its
+title and its speaker notes, and a PDF keeps its pages. Then the text is split
+into passages and each one is indexed twice, by meaning and by exact words, so
+*« quel est le préavis ? »* finds the clause whether or not it uses the word.
+
+The original file is **kept**. You can download it from the document's menu,
+and you can ask Metaclaude to **read it again** — which is what lets a
+document already in the library benefit from a better extractor later, without
+finding the file and dropping it a second time.
 
 During a run, the most relevant passages are retrieved automatically and
-handed to the agent as quotations with their source — document title and
-section — which it is told to cite rather than to paraphrase from guesswork.
-The run's genesis strip shows exactly which passages were consulted, under
-**Passages consulted**.
+handed to the agent as quotations with their source — document, section, and
+**the page and lines** where the document has them — which it is told to cite
+rather than to paraphrase from guesswork. The run's genesis strip shows
+exactly which passages were consulted under **Passages consulted**, and each
+one is a link: it opens the document at the line that was quoted, so a claim
+can be checked rather than trusted. A passage whose document has changed since
+is marked *Replaced since* rather than quietly dropped.
+
+Two things the library refuses, and says so rather than storing something
+useless. A **scan** — a PDF that is a photograph of a page, with no text in it
+— cannot be read without OCR, which Metaclaude does not do. And the **same
+file twice** is refused by naming the document that already holds it, so a
+library does not fill up with copies.
 
 Two controls worth knowing. The switch on each document **pauses** it —
 kept and editable, never retrieved — which beats deleting a document you

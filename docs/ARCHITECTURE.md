@@ -449,6 +449,22 @@ labelled corpus, guarded by `retrieval-quality.test.ts` and re-runnable with
 `scripts/eval-retrieval.mjs`. Those measurements are why there is no
 reranking stage — see docs/LEARNING.md.
 
+A document is often a **file** rather than pasted text. `learning/extract/`
+turns one into markdown — one module per format, a closed allow-list checked
+against the shared contract by a test, and poppler's `pdftotext` for PDFs
+because it is the one engine measured to rejoin a word its typesetter split
+across a line. Extraction runs in a **worker thread** with a memory ceiling
+and a deadline: it is the one place this process parses bytes a stranger
+chose, and a zip bomb must not pause the loop supervising live runs. The
+original file is kept under `<dataDir>/knowledge/<sha256>.<ext>`, which is
+what makes a download and a later re-extraction possible.
+
+Each passage records where it sits — 1-based lines, and the page span for a
+paged format — so a quotation can be cited and opened rather than merely
+repeated. `document_workspaces` gives a document the same many-to-many reach
+migration 26 gave skills and MCP servers: `is_global`, or an explicit set that
+may be empty.
+
 ## Keeping memory from repeating itself
 
 `memories.workspace_id` is nullable and the null is a *tier*: retrieval unions

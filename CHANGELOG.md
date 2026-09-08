@@ -11,6 +11,75 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+### Added
+
+- **Drop files into the knowledge library, and let them reach several
+  workspaces.** The library accepted pasted text and one shelf per document.
+  It now takes `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.txt`, `.md`, `.csv`,
+  `.html` and `.json` — dropped on the Memory page, up to 20 MB each — and a
+  document reaches every workspace, or the two or three that need it, or none
+  at all, with the same picker and the same badges the registry screens use.
+
+  Files are read for *structure*, not only for words: a Word heading becomes
+  the section its passages are cited under, a spreadsheet's header row travels
+  with every row of that sheet, a slide keeps its title and its speaker notes,
+  a PDF keeps its pages. The original is kept, downloadable, and re-readable —
+  which is what lets a document already in the library benefit from a better
+  extractor later without being dropped a second time.
+
+- **A retrieved passage says where it came from — document, section, page and
+  lines.** The block injected into a run carries it and the agent is asked to
+  cite it; the genesis strip turns each consulted passage into a link that
+  opens the document at the quoted line, so a claim can be checked rather than
+  trusted; `search_notes` carries it to programs on the MCP gateway. A passage
+  whose document has changed since is marked *Replaced since* rather than
+  quietly dropped — re-extracting a document used to erase the citations of
+  every run that had quoted it.
+
+- **poppler reads PDFs, and the image installs it.** Measured against the
+  built-in JavaScript fallback over two real two-column papers and a LaTeX
+  document, inside the image this product ships: poppler rejoins a word its
+  typesetter split across a line, the fallback leaves 10 to 165 of them
+  broken per document, and one probe phrase was findable with one engine and
+  not the other. The fallback remains for a host without poppler, *named* on
+  every document it reads and reported by the doctor, so a deployment
+  retrieving less always says so.
+
+- **The doctor answers two new questions**: whether every uploaded original is
+  still on disk — a document whose file is gone still answers every search, so
+  nothing else would ever mention it — and which engine reads a PDF.
+
+### Changed
+
+- **The library's filter row gains a search by name**, accent- and
+  case-insensitive, over both the title and the file's name. The workspace
+  filter stays the page's: one question, one control, both halves of the
+  screen.
+- **Pausing a document is a `PATCH`.** It used to read the whole document and
+  save it back to flip one boolean, which cannot work at all for a document
+  whose text the store now refuses on the way in.
+- **The Memory page reads its own URL.** `routes.memory(workspaceId)` has been
+  built by the kernel for every notification since the library existed and
+  nothing read it: the link resolved to the page showing every workspace.
+
+- **No reranker, and now the numbers say why under a real embedder too.** The
+  old argument — that nothing was in the candidate pool to reorder — was true
+  of the hashing embedder and stopped applying when bge-m3 shipped. Re-measured
+  on the same corpus and metrics: `bge-reranker-base` takes rephrased recall@5
+  from 83.3% to 50.0%, `bge-reranker-v2-m3` to 66.7%, both losing the same two
+  French questions the dense arm had at rank 1 — and the second model does not
+  fit beside the embedder inside the container's memory limit.
+  `scripts/eval-retrieval.mjs --rerank <model>` re-opens the question if the
+  host ever changes shape.
+
+### Fixed
+
+- **A quota-refusal test expired at a wall-clock instant.** Its fixture named
+  2026-09-08 16:00 UTC as the moment the block lifted, and `ModelAvailability`
+  drops a hold whose reset has passed — so the suite went red that afternoon
+  on a subsystem nobody had touched, and would have stayed red.
+
+
 ## [0.82.0] — 2026-09-08
 
 ### Added

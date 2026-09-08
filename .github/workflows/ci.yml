@@ -129,6 +129,12 @@ jobs:
         with:
           name: dist
 
+      # poppler reads the PDFs the knowledge library accepts, and the image
+      # installs it — so CI has to as well, or the live check skips the branch
+      # that actually ships and the fallback is the only one ever exercised.
+      - name: Install poppler
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
+
       # The shipped embedding model, once per pinned revision: the live check
       # is the one place the real model loads in CI before the image does.
       - name: Cache the embedding model

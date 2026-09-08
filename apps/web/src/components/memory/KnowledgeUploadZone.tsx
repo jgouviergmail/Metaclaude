@@ -40,6 +40,18 @@ interface Pending {
 
 const ACCEPTED_EXTENSIONS = KNOWLEDGE_ACCEPT.split(',').filter((one) => one.startsWith('.'));
 
+/**
+ * What the hint under the drop zone lists.
+ *
+ * The aliases are dropped — `.markdown` beside `.md`, `.htm` beside `.html` —
+ * because the hint is read, not parsed: eleven extensions wrap to two lines on
+ * a phone and say nothing the nine do not. The picker still accepts all of
+ * them, and so does the server.
+ */
+const HINTED_EXTENSIONS = ACCEPTED_EXTENSIONS.filter(
+  (one) => one !== '.markdown' && one !== '.htm',
+);
+
 export function KnowledgeUploadZone({
   reach,
   onUploaded,
@@ -154,7 +166,7 @@ export function KnowledgeUploadZone({
           </button>
         </p>
         <p className="text-caption text-subtle">
-          {ACCEPTED_EXTENSIONS.join(' · ')} — {formatBytes(KNOWLEDGE_MAX_BYTES)} {t('max')}
+          {HINTED_EXTENSIONS.join(' · ')} — {formatBytes(KNOWLEDGE_MAX_BYTES)} {t('max')}
         </p>
         <input
           ref={input}

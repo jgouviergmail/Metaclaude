@@ -84,6 +84,14 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # only fetches CUDA libraries on request; the CPU binary is in the tarball.
 RUN rm -rf node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v6/darwin \
            node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin/napi-v6/win32
+# The same, one level down, for the two extraction libraries that ship a
+# browser build beside the one Node runs. pdfjs-dist has `build/` (modern) and
+# `legacy/build/` (what this codebase imports, for Node's own reasons), plus
+# source maps nobody reads in production; exceljs has a `dist/` bundle beside
+# the `lib/` it actually loads. About 45 MB between them.
+RUN rm -rf node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/build \
+           node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/legacy/build/*.map \
+           node_modules/.pnpm/exceljs@*/node_modules/exceljs/dist
 
 # ──────────────────────────────────────────────────────────────────────────────
 # The embedding model, fetched at build time and pinned by revision. The
@@ -105,9 +113,19 @@ FROM base AS runtime
 # `git` is required for workspace cloning and the source-control panel.
 # `tini` gives us correct signal handling and reaps the CLI subprocesses the
 # agent spawns — without it, a stopped container leaves zombies behind.
+#
+# `poppler-utils` is what reads an uploaded PDF, and the difference from the
+# built-in JavaScript fallback is measured rather than assumed: poppler
+# rejoins a word its typesetter split across two lines, where the fallback
+# hands over the two halves. 165 such words on one real paper, each findable
+# by neither half. 26 MB, 32 packages. Without it the API falls back, names
+# the fallback on every document it reads, warns at boot and warns in the
+# doctor — so a host that lost this line says so rather than quietly
+# retrieving less.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates git openssh-client tini curl \
+      poppler-utils \
  && rm -rf /var/lib/apt/lists/*
 
 # The Claude CLI. Pinned so an upstream change cannot alter agent behaviour

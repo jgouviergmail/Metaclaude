@@ -678,13 +678,37 @@ while the best-ranked (wrong) chunk sits at 0.098–0.204. The answer is not
 merely ranked low; it is scored like noise. The same measurement on
 in-vocabulary questions returns rank 1.
 
-That bounds **every** reranker rather than one pool size: a reranker reorders
-a prefix of that list, and the right passage is not in any prefix worth
-taking. Reranking is not a marginal improvement here, it is arithmetically
-incapable of being one, so this subsystem has no reranking stage and the
-decision is recorded in `the semantic wall` tests rather than in anyone's
-memory. It also rules out the alternative explanation: the wall is the
-embedder, not the relevance gates — opening them changes nothing.
+Under the hashing embedder, that bounds **every** reranker rather than one
+pool size: a reranker reorders a prefix of that list, and the right passage is
+not in any prefix worth taking. It also rules out the alternative
+explanation — the wall is the embedder, not the relevance gates; opening them
+changes nothing.
+
+**And it was re-measured once bge-m3 shipped, because the argument above stops
+applying the moment the pool contains the right passage.** With a real model
+in front of it, five of six rephrased questions are found at rank 1, so there
+*is* something for a reranker to reorder. Two multilingual cross-encoders were
+run over the same corpus, the same queries and the same metrics, in the image
+this product ships:
+
+| | recall@5, in-vocabulary | recall@5, rephrased | 24 pairs | resident memory |
+| --- | --- | --- | --- | --- |
+| bge-m3 alone | 100% | 83.3% | — | ~600 MB |
+| + `bge-reranker-base` q8 | 100% | **50.0%** | 633 ms | 1.5 GB |
+| + `bge-reranker-v2-m3` q8 | 100% | **66.7%** | 950 ms | 2.0 GB |
+
+Both make it *worse*, and both lose the same two French questions the dense
+arm had at rank 1. The logits offer no absolute gate either: relevant p10 sits
+at −7.1 against irrelevant p90 at −6.6, overlapping. On the two-core host this
+runs on, the second model does not fit beside the first inside the container's
+memory limit at all.
+
+So there is still no reranking stage, for a better reason than before, and
+`scripts/eval-retrieval.mjs --rerank <model>` is how to re-open the question
+if the host ever changes shape. Six rephrased questions is a small sample —
+16.7 points per question — and that is said out loud rather than hidden: what
+makes the conclusion safe is that two models agree on the direction and the
+resource ceiling decides it on its own.
 
 The lever is the embedding provider. The hashing embedder's "similarity" is
 character-n-gram overlap; a sentence-transformer bridges those questions, and

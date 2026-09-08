@@ -162,7 +162,7 @@ export class Client {
     return [...this.#cookies].map(([name, value]) => `${name}=${value}`).join('; ');
   }
 
-  async call(path, { method = 'GET', body, headers = {} } = {}) {
+  async call(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -174,10 +174,18 @@ export class Client {
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
 
-    for (const raw of response.headers.getSetCookie()) {
-      const [name, value] = raw.split(';')[0].split('=');
+    for (const header of response.headers.getSetCookie()) {
+      const [name, value] = header.split(';')[0].split('=');
       this.#cookies.set(name, value);
       if (name === 'mc_csrf') this.csrfToken = decodeURIComponent(value);
+    }
+
+    // `raw` for the routes that answer with a file: reading those as text
+    // would decode them as UTF-8 and make a byte-for-byte comparison a
+    // comparison of two corruptions.
+    if (raw) {
+      const bytes = Buffer.from(await response.arrayBuffer());
+      return { status: response.status, bytes, headers: response.headers, body: null, text: '' };
     }
 
     const text = await response.text();
@@ -187,7 +195,7 @@ export class Client {
     } catch {
       /* not every response is JSON */
     }
-    return { status: response.status, body: json, text };
+    return { status: response.status, body: json, text, headers: response.headers };
   }
 
   login(username = USERNAME, password = PASSWORD) {
