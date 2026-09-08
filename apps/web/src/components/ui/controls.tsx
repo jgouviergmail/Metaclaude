@@ -79,7 +79,11 @@ export interface CheckboxFieldProps {
    */
   label: ReactNode;
   /** One line saying what turning it on actually does. */
-  hint: ReactNode;
+  /**
+   * Optional. A row whose label already says everything — a workspace's name
+   * beside its avatar — reads worse with a sentence under it than without.
+   */
+  hint?: ReactNode;
   disabled?: boolean;
   className?: string;
 }
@@ -112,7 +116,7 @@ export function CheckboxField({
         type="checkbox"
         checked={checked}
         disabled={disabled}
-        aria-describedby={hintId}
+        {...(hint ? { 'aria-describedby': hintId } : {})}
         onChange={(event) => onChange(event.target.checked)}
         className="mt-0.5 size-4 shrink-0 accent-[var(--mc-accent)] disabled:cursor-not-allowed disabled:opacity-50"
       />
@@ -132,9 +136,14 @@ export function CheckboxField({
         >
           {label}
         </label>
-        <span id={hintId} className="block text-caption leading-relaxed text-muted">
-          {hint}
-        </span>
+        {/* Absent rather than empty: a described-by pointing at a blank
+            span makes a reader announce nothing after the name, which is
+            worse than not being described at all. */}
+        {hint ? (
+          <span id={hintId} className="block text-caption leading-relaxed text-muted">
+            {hint}
+          </span>
+        ) : null}
       </div>
     </div>
   );

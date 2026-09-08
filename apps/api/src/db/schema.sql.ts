@@ -1018,4 +1018,81 @@ export const MIGRATIONS: readonly Migration[] = [
          AND EXISTS (SELECT 1 FROM insights WHERE insights.run_id = runs.id);
     `,
   },
+  {
+    version: 26,
+    name: 'extension_workspace_attachments',
+    sql: /* sql */ `
+      -- A skill, a subagent or an MCP server reaches *several* workspaces.
+      --
+      -- Until now the reach was one column: NULL meant every workspace, an id
+      -- meant that one and no other. So an extension useful to three projects
+      -- out of eight had to be either global or written three times, and the
+      -- three copies drifted the moment one was edited.
+      --
+      -- Two states now, and both are explicit. is_global means everywhere,
+      -- including workspaces created tomorrow -- the semantics the NULL had,
+      -- kept because losing it would make every new workspace start bare.
+      -- Otherwise the reach is the set of rows below, which may be empty: an
+      -- extension attached to nothing exists in the library and is mounted
+      -- nowhere, which is a state the old column could not express at all.
+      --
+      -- A real table rather than a JSON list of ids, and that is the one
+      -- decision here worth defending. A token's workspace_ids is such a list;
+      -- it went on naming a workspace that had been deleted, the gateway
+      -- filtered by exactly those ids and answered an empty list, and the
+      -- program holding the token told its operator this Metaclaude had no
+      -- workspaces. The fix was a prune somebody has to remember to call. Two
+      -- foreign keys with ON DELETE CASCADE make the same bug inexpressible:
+      -- delete a workspace, or delete a skill, and the rows that named it are
+      -- gone with it.
+      --
+      -- Three tables rather than one polymorphic one, for that reason exactly:
+      -- a single table keyed by (kind, resource_id) can have a foreign key on
+      -- the workspace and none on the resource, so half the pruning would be
+      -- back to being somebody's job to remember.
+
+      ALTER TABLE skills ADD COLUMN is_global INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE agents ADD COLUMN is_global INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE mcp_servers ADD COLUMN is_global INTEGER NOT NULL DEFAULT 0;
+
+      CREATE TABLE skill_workspaces (
+        skill_id     TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        PRIMARY KEY (skill_id, workspace_id)
+      );
+      CREATE INDEX idx_skill_workspaces_workspace ON skill_workspaces(workspace_id);
+
+      CREATE TABLE agent_workspaces (
+        agent_id     TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        PRIMARY KEY (agent_id, workspace_id)
+      );
+      CREATE INDEX idx_agent_workspaces_workspace ON agent_workspaces(workspace_id);
+
+      CREATE TABLE mcp_server_workspaces (
+        server_id    TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        PRIMARY KEY (server_id, workspace_id)
+      );
+      CREATE INDEX idx_mcp_server_workspaces_workspace ON mcp_server_workspaces(workspace_id);
+
+      -- The backfill, and the property that makes this migration safe: what
+      -- every workspace mounts is identical on both sides of it. A row that
+      -- was global becomes is_global; a row that named one workspace becomes
+      -- one attachment to that workspace. Nothing gains reach and nothing
+      -- loses it. registry-attachments.test.ts asserts exactly that, by
+      -- seeding the old shape and comparing the listings against the old
+      -- predicate computed in the test.
+      UPDATE skills      SET is_global = 1 WHERE workspace_id IS NULL;
+      UPDATE agents      SET is_global = 1 WHERE workspace_id IS NULL;
+      UPDATE mcp_servers SET is_global = 1 WHERE workspace_id IS NULL;
+
+      INSERT INTO skill_workspaces (skill_id, workspace_id)
+        SELECT id, workspace_id FROM skills WHERE workspace_id IS NOT NULL;
+      INSERT INTO agent_workspaces (agent_id, workspace_id)
+        SELECT id, workspace_id FROM agents WHERE workspace_id IS NOT NULL;
+      INSERT INTO mcp_server_workspaces (server_id, workspace_id)
+        SELECT id, workspace_id FROM mcp_servers WHERE workspace_id IS NOT NULL;
+    `,
+  },
 ];

@@ -7,6 +7,7 @@ import {
   AutomationPolicy,
   AutomationTrigger,
   EffortLevel,
+  ExtensionReach,
   LibraryCategory,
   McpTransport,
   ModelSelector,
@@ -93,6 +94,13 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
   });
 
   const SkillInput = z.object({
+    /**
+     * Which workspaces this reaches, when the editor says so.
+     *
+     * Optional, and absent means untouched — the `.partial()` lesson: a form
+     * that saves a name must not silently narrow a reach it never showed.
+     */
+    reach: ExtensionReach.optional(),
     id: z.string().optional(),
     workspaceId: z.string().nullable().default(null),
     name: z.string().min(1).max(64),
@@ -108,6 +116,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
 
     const skill = context.registry.upsertSkill(parsed.data);
+    if (parsed.data.reach) context.registry.setReach('skills', skill.id, parsed.data.reach);
     context.audit.record({
       actor: actor.username,
       action: parsed.data.id ? 'skill.update' : 'skill.create',
@@ -156,6 +165,13 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
   });
 
   const AgentInput = z.object({
+    /**
+     * Which workspaces this reaches, when the editor says so.
+     *
+     * Optional, and absent means untouched — the `.partial()` lesson: a form
+     * that saves a name must not silently narrow a reach it never showed.
+     */
+    reach: ExtensionReach.optional(),
     id: z.string().optional(),
     workspaceId: z.string().nullable().default(null),
     name: z.string().min(1).max(64),
@@ -176,6 +192,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
       ...parsed.data,
       model: parsed.data.model === null ? null : String(parsed.data.model),
     });
+    if (parsed.data.reach) context.registry.setReach('agents', agent.id, parsed.data.reach);
     context.audit.record({
       actor: actor.username,
       action: parsed.data.id ? 'agent.update' : 'agent.create',
@@ -305,6 +322,13 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
   });
 
   const McpInput = z.object({
+    /**
+     * Which workspaces this reaches, when the editor says so.
+     *
+     * Optional, and absent means untouched — the `.partial()` lesson: a form
+     * that saves a name must not silently narrow a reach it never showed.
+     */
+    reach: ExtensionReach.optional(),
     id: z.string().optional(),
     workspaceId: z.string().nullable().default(null),
     name: z.string().min(1).max(64),
@@ -335,6 +359,7 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
 
     const server = context.registry.upsertMcpServer(parsed.data);
+    if (parsed.data.reach) context.registry.setReach('mcp_servers', server.id, parsed.data.reach);
     context.audit.record({
       actor: actor.username,
       action: parsed.data.id ? 'mcp.update' : 'mcp.create',

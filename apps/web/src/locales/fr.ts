@@ -331,6 +331,14 @@ export const fr: Record<string, string> = {
   'Characters of the directory of other workspaces injected into every run that may delegate, so the agent knows who it can consult and what for. Around twenty workspaces all keep their description at this size; past that the names remain and the descriptions go together. 0 switches delegation between workspaces off.':
     'Nombre de caractères de l’annuaire des autres workspaces injectés dans chaque run pouvant déléguer, pour que l’agent sache qui il peut consulter et à quel sujet. À cette taille une vingtaine de workspaces gardent tous leur description ; au-delà les noms restent et les descriptions disparaissent ensemble. 0 désactive la délégation entre workspaces.',
   '{ticked} of {total}': '{ticked} sur {total}',
+  'Available in': 'Disponible dans',
+  'Every workspace': 'Tous les workspaces',
+  'Including any created later. Untick to choose them one by one.':
+    'Y compris ceux créés plus tard. Décochez pour les choisir un à un.',
+  'No workspace — it stays in the library and runs nowhere.':
+    'Aucun workspace — il reste dans la bibliothèque et ne s’exécute nulle part.',
+  '{n} workspace': '{n} workspace',
+  '{n} workspaces': '{n} workspaces',
   Icon: 'Icône',
   'Claude CLI {version}': 'CLI Claude {version}',
   '{version} published': '{version} publiée',

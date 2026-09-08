@@ -21,7 +21,7 @@ import type {
 } from '@metaclaude/shared';
 import { LibraryCategory, newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
-import { parseJson, toBool, toInt } from '../db/index.js';
+import { parseJson, toBool, toInt, tx } from '../db/index.js';
 import type { RuntimeContext } from '../kernel/kernel.js';
 import { isInside, PathEscapeError, resolveInside } from '../security/paths.js';
 import type { Vault } from '../security/vault.js';
@@ -79,6 +79,7 @@ interface SkillRow {
   body: string;
   category: string;
   enabled: number;
+  is_global: number;
   auto_generated: number;
   use_count: number;
   created_at: number;
@@ -95,6 +96,7 @@ interface AgentRow {
   tools: string | null;
   model: string | null;
   enabled: number;
+  is_global: number;
   created_at: number;
   updated_at: number;
 }
@@ -112,6 +114,7 @@ interface McpRow {
   headers: string;
   header_keys: string;
   enabled: number;
+  is_global: number;
   status: string;
   last_error: string | null;
   auth_type: string;
@@ -136,9 +139,11 @@ function checkCategory(category: string | undefined): string | undefined {
   return category;
 }
 
-const toSkill = (row: SkillRow): SkillDefinition => ({
+const toSkill = (row: SkillRow, workspaceIds: string[] = []): SkillDefinition => ({
   id: row.id,
   workspaceId: row.workspace_id,
+  isGlobal: toBool(row.is_global),
+  workspaceIds,
   name: row.name,
   description: row.description,
   body: row.body,
@@ -150,9 +155,11 @@ const toSkill = (row: SkillRow): SkillDefinition => ({
   updatedAt: row.updated_at,
 });
 
-const toAgent = (row: AgentRow): AgentDefinitionRecord => ({
+const toAgent = (row: AgentRow, workspaceIds: string[] = []): AgentDefinitionRecord => ({
   id: row.id,
   workspaceId: row.workspace_id,
+  isGlobal: toBool(row.is_global),
+  workspaceIds,
   name: row.name,
   description: row.description,
   prompt: row.prompt,
@@ -172,10 +179,12 @@ const toAgent = (row: AgentRow): AgentDefinitionRecord => ({
  * states the card has to tell apart — "configured for OAuth" and "authorised"
  * — visibly separate rather than one inferred from the other.
  */
-const toMcp = (row: McpRow, authorised: boolean): McpServerRecord => ({
+const toMcp = (row: McpRow, authorised: boolean, workspaceIds: string[] = []): McpServerRecord => ({
   oauthAuthorised: authorised,
   id: row.id,
   workspaceId: row.workspace_id,
+  isGlobal: toBool(row.is_global),
+  workspaceIds,
   name: row.name,
   transport: row.transport as McpTransport,
   command: row.command,
@@ -282,6 +291,91 @@ function mergeSecrets(
   return { keys, submitted: submitted.filter(([key]) => !removed.has(key)), removed: [...removed] };
 }
 
+/**
+ * What a workspace reaches, for each kind of extension.
+ *
+ * Two ways in, and they are the whole model: `is_global` means everywhere —
+ * including workspaces created tomorrow — and the join table is the explicit
+ * set. A row that is neither is in the library and mounted nowhere, which the
+ * single `workspace_id` column this replaces could not express.
+ *
+ * Spelled once per kind rather than built from a table name at the call site:
+ * three literals a reader can check beat one template nobody can grep for,
+ * and the column names genuinely differ (`skill_id`, `agent_id`, `server_id`).
+ */
+const REACH_SQL = {
+  skills:
+    'SELECT * FROM skills WHERE is_global = 1 OR id IN' +
+    ' (SELECT skill_id FROM skill_workspaces WHERE workspace_id = ?) ORDER BY name',
+  agents:
+    'SELECT * FROM agents WHERE is_global = 1 OR id IN' +
+    ' (SELECT agent_id FROM agent_workspaces WHERE workspace_id = ?) ORDER BY name',
+  mcp_servers:
+    'SELECT * FROM mcp_servers WHERE is_global = 1 OR id IN' +
+    ' (SELECT server_id FROM mcp_server_workspaces WHERE workspace_id = ?) ORDER BY name',
+} as const;
+
+/** The scope half of a bulk statement, by kind. Mirrors REACH_SQL exactly. */
+const REACH_CLAUSE = {
+  skills: ' AND (is_global = 1 OR id IN (SELECT skill_id FROM skill_workspaces WHERE workspace_id = ?))',
+  agents: ' AND (is_global = 1 OR id IN (SELECT agent_id FROM agent_workspaces WHERE workspace_id = ?))',
+} as const;
+
+/**
+ * The reach a row is created with, written in the new shape.
+ *
+ * The callers still speak the old contract — `workspaceId: null` means every
+ * workspace, an id means that one — because every one of them is a form or a
+ * proposal that has exactly one scope to give. What changed underneath is that
+ * the reach now lives in `is_global` and a join table, so an editor can widen
+ * it later without the row having to be rewritten.
+ */
+function attachOnCreate(
+  db: Db,
+  kind: 'skills' | 'agents' | 'mcp_servers',
+  id: string,
+  workspaceId: string | null,
+): void {
+  if (workspaceId === null) {
+    db.prepare(`UPDATE ${kind} SET is_global = 1 WHERE id = ?`).run(id);
+    return;
+  }
+  const link = {
+    skills: 'INSERT OR IGNORE INTO skill_workspaces (skill_id, workspace_id) VALUES (?, ?)',
+    agents: 'INSERT OR IGNORE INTO agent_workspaces (agent_id, workspace_id) VALUES (?, ?)',
+    mcp_servers:
+      'INSERT OR IGNORE INTO mcp_server_workspaces (server_id, workspace_id) VALUES (?, ?)',
+  }[kind];
+  db.prepare(link).run(id, workspaceId);
+}
+
+/** Which workspaces each of these ids is attached to, in one query. */
+function reachOf(
+  db: Db,
+  kind: 'skills' | 'agents' | 'mcp_servers',
+  ids: readonly string[],
+): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  if (ids.length === 0) return found;
+  const sql = {
+    skills: 'SELECT skill_id AS owner, workspace_id FROM skill_workspaces WHERE skill_id IN',
+    agents: 'SELECT agent_id AS owner, workspace_id FROM agent_workspaces WHERE agent_id IN',
+    mcp_servers:
+      'SELECT server_id AS owner, workspace_id FROM mcp_server_workspaces WHERE server_id IN',
+  }[kind];
+  const rows = db
+    .prepare<string[], { owner: string; workspace_id: string }>(
+      `${sql} (${ids.map(() => '?').join(',')})`,
+    )
+    .all(...ids);
+  for (const row of rows) {
+    const list = found.get(row.owner) ?? [];
+    list.push(row.workspace_id);
+    found.set(row.owner, list);
+  }
+  return found;
+}
+
 export class Registry {
   constructor(
     private readonly db: Db,
@@ -344,15 +438,16 @@ export class Registry {
         ? this.db.prepare<[], SkillRow>('SELECT * FROM skills ORDER BY name').all()
         : this.db
             .prepare<[string | null], SkillRow>(
-              'SELECT * FROM skills WHERE workspace_id IS ? OR workspace_id IS NULL ORDER BY name',
+              REACH_SQL.skills,
             )
             .all(workspaceId);
-    return rows.map(toSkill);
+    const reach = reachOf(this.db, 'skills', rows.map((row) => row.id));
+    return rows.map((row) => toSkill(row, reach.get(row.id) ?? []));
   }
 
   getSkill(id: string): SkillDefinition | null {
     const row = this.db.prepare<[string], SkillRow>('SELECT * FROM skills WHERE id = ?').get(id);
-    return row ? toSkill(row) : null;
+    return row ? toSkill(row, reachOf(this.db, 'skills', [row.id]).get(row.id) ?? []) : null;
   }
 
   upsertSkill(input: {
@@ -410,6 +505,7 @@ export class Registry {
           now,
         ),
     );
+    attachOnCreate(this.db, 'skills', id, input.workspaceId);
     return this.getSkill(id) as SkillDefinition;
   }
 
@@ -497,15 +593,16 @@ export class Registry {
         ? this.db.prepare<[], AgentRow>('SELECT * FROM agents ORDER BY name').all()
         : this.db
             .prepare<[string | null], AgentRow>(
-              'SELECT * FROM agents WHERE workspace_id IS ? OR workspace_id IS NULL ORDER BY name',
+              REACH_SQL.agents,
             )
             .all(workspaceId);
-    return rows.map(toAgent);
+    const reach = reachOf(this.db, 'agents', rows.map((row) => row.id));
+    return rows.map((row) => toAgent(row, reach.get(row.id) ?? []));
   }
 
   getAgent(id: string): AgentDefinitionRecord | null {
     const row = this.db.prepare<[string], AgentRow>('SELECT * FROM agents WHERE id = ?').get(id);
-    return row ? toAgent(row) : null;
+    return row ? toAgent(row, reachOf(this.db, 'agents', [row.id]).get(row.id) ?? []) : null;
   }
 
   upsertAgent(input: {
@@ -572,11 +669,58 @@ export class Registry {
           now,
         ),
     );
+    attachOnCreate(this.db, 'agents', id, input.workspaceId);
     return this.getAgent(id) as AgentDefinitionRecord;
   }
 
   deleteAgent(id: string): boolean {
     return this.db.prepare('DELETE FROM agents WHERE id = ?').run(id).changes > 0;
+  }
+
+  /**
+   * Say which workspaces an extension reaches, replacing whatever it reached.
+   *
+   * Replacing, never adding, and that is the property worth naming: an
+   * add-only verb would leave an operator believing they had narrowed a reach
+   * they had in fact widened, which is the worst way to be wrong about who can
+   * see a tool. The whole set arrives and the whole set is stored.
+   *
+   * `global` wins and clears the attachments with it: keeping rows that decide
+   * nothing would be a second source of truth for a question already answered,
+   * and the next reader would have to guess which one the resolver consults.
+   *
+   * An id naming no workspace is dropped rather than refused. The ids come
+   * from a form an operator had open while somebody else deleted a workspace;
+   * losing their whole edit over a row that is already gone is a worse answer
+   * than quietly reaching one workspace fewer — and the foreign key would
+   * refuse the insert anyway, taking the rest of the transaction with it.
+   */
+  setReach(
+    kind: 'skills' | 'agents' | 'mcp_servers',
+    id: string,
+    reach: { global: boolean; workspaceIds: readonly string[] },
+  ): void {
+    const link = {
+      skills: { table: 'skill_workspaces', column: 'skill_id' },
+      agents: { table: 'agent_workspaces', column: 'agent_id' },
+      mcp_servers: { table: 'mcp_server_workspaces', column: 'server_id' },
+    }[kind];
+
+    tx(this.db, () => {
+      this.db.prepare(`UPDATE ${kind} SET is_global = ?, updated_at = ? WHERE id = ?`).run(
+        reach.global ? 1 : 0,
+        Date.now(),
+        id,
+      );
+      this.db.prepare(`DELETE FROM ${link.table} WHERE ${link.column} = ?`).run(id);
+      if (reach.global) return;
+
+      const insert = this.db.prepare(
+        `INSERT OR IGNORE INTO ${link.table} (${link.column}, workspace_id)
+         SELECT ?, id FROM workspaces WHERE id = ?`,
+      );
+      for (const workspaceId of new Set(reach.workspaceIds)) insert.run(id, workspaceId);
+    });
   }
 
   /* -------------------------- Acting on many --------------------------- */
@@ -594,13 +738,13 @@ export class Registry {
    * convention as `listSkills`, and the reason a missing query parameter must
    * not collapse to `null` anywhere above this.
    */
-  private scopeClause(workspaceId: string | null | undefined): {
-    sql: string;
-    params: string[];
-  } {
+  private scopeClause(
+    table: 'skills' | 'agents',
+    workspaceId: string | null | undefined,
+  ): { sql: string; params: string[] } {
     if (workspaceId === undefined) return { sql: '', params: [] };
-    if (workspaceId === null) return { sql: ' AND workspace_id IS NULL', params: [] };
-    return { sql: ' AND (workspace_id IS ? OR workspace_id IS NULL)', params: [workspaceId] };
+    if (workspaceId === null) return { sql: ' AND is_global = 1', params: [] };
+    return { sql: REACH_CLAUSE[table], params: [workspaceId] };
   }
 
   /**
@@ -621,7 +765,7 @@ export class Registry {
   ): number {
     if (ids.length === 0) return 0;
 
-    const scope = this.scopeClause(workspaceId);
+    const scope = this.scopeClause(table, workspaceId);
     const holes = ids.map(() => '?').join(',');
 
     if (action === 'delete') {
@@ -661,15 +805,18 @@ export class Registry {
         ? this.db.prepare<[], McpRow>('SELECT * FROM mcp_servers ORDER BY name').all()
         : this.db
             .prepare<[string | null], McpRow>(
-              'SELECT * FROM mcp_servers WHERE workspace_id IS ? OR workspace_id IS NULL ORDER BY name',
+              REACH_SQL.mcp_servers,
             )
             .all(workspaceId);
-    return rows.map((row) => toMcp(row, this.hasOAuthToken(row.id)));
+    const reach = reachOf(this.db, 'mcp_servers', rows.map((row) => row.id));
+    return rows.map((row) => toMcp(row, this.hasOAuthToken(row.id), reach.get(row.id) ?? []));
   }
 
   getMcpServer(id: string): McpServerRecord | null {
     const row = this.db.prepare<[string], McpRow>('SELECT * FROM mcp_servers WHERE id = ?').get(id);
-    return row ? toMcp(row, this.hasOAuthToken(row.id)) : null;
+    return row
+      ? toMcp(row, this.hasOAuthToken(row.id), reachOf(this.db, 'mcp_servers', [row.id]).get(row.id) ?? [])
+      : null;
   }
 
   /**
@@ -788,6 +935,9 @@ export class Registry {
             now,
           ),
       );
+      // Only on creation: an update must not reset a reach the operator has
+      // since widened, which is the `.partial()` trap in another costume.
+      attachOnCreate(this.db, 'mcp_servers', id, input.workspaceId ?? null);
     }
 
     for (const key of env.removed) this.vault.delete(`mcp:${id}`, key);

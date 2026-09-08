@@ -57,6 +57,8 @@ import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { PageBody, Section } from '@/components/ui/layout';
 import { TabPanel, Tabs, TabStrip, TabTrigger } from '@/components/ui/tabs';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
+import { ReachPicker } from '@/components/registry/ReachPicker';
+import type { ExtensionReach } from '@metaclaude/shared';
 import {
   Badge,
   Button,
@@ -220,11 +222,19 @@ export function AgentsPage() {
 
           <PageBody width="standard" gap="none">
             <TabPanel value="skills">
-              <SkillsTab workspaceId={workspaceId} onChanged={() => invalidate('skills')} />
+              <SkillsTab
+                workspaceId={workspaceId}
+                workspaces={workspacesQuery.data?.workspaces ?? []}
+                onChanged={() => invalidate('skills')}
+              />
             </TabPanel>
 
             <TabPanel value="agents">
-              <AgentsTab workspaceId={workspaceId} onChanged={() => invalidate('agents')} />
+              <AgentsTab
+                workspaceId={workspaceId}
+                workspaces={workspacesQuery.data?.workspaces ?? []}
+                onChanged={() => invalidate('agents')}
+              />
             </TabPanel>
 
             <TabPanel value="mcp">
@@ -261,13 +271,21 @@ interface SkillDraft {
   body: string;
   category: LibraryCategory;
   enabled: boolean;
+  /**
+   * Which workspaces it reaches. Absent on a draft opened from a screen that
+   * has not read it yet — the editor then leaves it untouched, which is what
+   * the route does with a save that does not mention it.
+   */
+  reach?: ExtensionReach;
 }
 
 function SkillsTab({
   workspaceId,
+  workspaces,
   onChanged,
 }: {
   workspaceId: string | undefined;
+  workspaces: readonly { id: string; name: string; color: string; icon?: string }[];
   onChanged: () => void;
 }) {
   const t = useT();
@@ -290,6 +308,8 @@ function SkillsTab({
         body: draft.body,
         category: draft.category,
         enabled: draft.enabled,
+        // Absent means untouched, exactly as the route reads it.
+        ...(draft.reach ? { reach: draft.reach } : {}),
       }),
     onSuccess: (result) => {
       onChanged();
@@ -336,7 +356,19 @@ function SkillsTab({
             variant="primary"
             size="sm"
             onClick={() =>
-              setEditing({ name: '', description: '', body: SKILL_TEMPLATE, category: 'general', enabled: true })
+              setEditing({
+                name: '',
+                description: '',
+                body: SKILL_TEMPLATE,
+                category: 'general',
+                enabled: true,
+                // What the scope menu says, so the button keeps meaning what it
+                // meant: global while browsing globals, this workspace while
+                // browsing one.
+                reach: workspaceId
+                  ? { global: false, workspaceIds: [workspaceId] }
+                  : { global: true, workspaceIds: [] },
+              })
             }
           >
             <Plus className="size-4" />
@@ -435,6 +467,9 @@ function SkillsTab({
                         body: skill.body,
                         category: skill.category,
                         enabled: skill.enabled,
+                        // Read off the record rather than defaulted: an editor
+                        // that opened on a guess would save the guess.
+                        reach: { global: skill.isGlobal, workspaceIds: skill.workspaceIds },
                       })
                     }
                   >
@@ -458,6 +493,7 @@ function SkillsTab({
       <SkillEditor
         draft={editing}
         busy={save.isPending}
+        workspaces={workspaces}
         onClose={() => setEditing(null)}
         onSubmit={(draft) => save.mutate(draft)}
       />
@@ -495,11 +531,13 @@ Describe the situation that should trigger this skill.
 function SkillEditor({
   draft,
   busy,
+  workspaces,
   onClose,
   onSubmit,
 }: {
   draft: SkillDraft | null;
   busy: boolean;
+  workspaces: readonly { id: string; name: string; color: string; icon?: string }[];
   onClose: () => void;
   onSubmit: (draft: SkillDraft) => void;
 }) {
@@ -604,6 +642,19 @@ function SkillEditor({
           </Select>
         </Label>
 
+        {/* Where a skill *belongs*, beside what it is called and what it is
+            for. It was a menu at the top of the screen that also decided the
+            filter, so a skill useful to three projects out of eight had to be
+            global or written three times. */}
+        {value.reach ? (
+          <ReachPicker
+            value={value.reach}
+            workspaces={workspaces}
+            onChange={(reach) => setValue({ ...value, reach })}
+            disabled={busy}
+          />
+        ) : null}
+
         <Label htmlFor="skill-body" hint={t('Markdown. Written verbatim to SKILL.md.')}>
           {t('Body')}
           <Textarea
@@ -642,15 +693,19 @@ interface AgentDraft {
   model: string;
   category: LibraryCategory;
   enabled: boolean;
+  /** Which workspaces it reaches. Absent means untouched, as the route reads it. */
+  reach?: ExtensionReach;
 }
 
 const AGENT_MODELS = ['default', 'opus', 'sonnet', 'haiku'] as const;
 
 function AgentsTab({
   workspaceId,
+  workspaces,
   onChanged,
 }: {
   workspaceId: string | undefined;
+  workspaces: readonly { id: string; name: string; color: string; icon?: string }[];
   onChanged: () => void;
 }) {
   const t = useT();
@@ -677,6 +732,8 @@ function AgentsTab({
         model: draft.model.trim() === '' ? null : draft.model.trim(),
         category: draft.category,
         enabled: draft.enabled,
+        // Absent means untouched, exactly as the route reads it.
+        ...(draft.reach ? { reach: draft.reach } : {}),
       }),
     onSuccess: (result) => {
       onChanged();
@@ -733,6 +790,10 @@ function AgentsTab({
                 model: '',
                 category: 'general',
                 enabled: true,
+                // What the scope menu says, so the button keeps its meaning.
+                reach: workspaceId
+                  ? { global: false, workspaceIds: [workspaceId] }
+                  : { global: true, workspaceIds: [] },
               })
             }
           >
@@ -831,6 +892,7 @@ function AgentsTab({
                         model: agent.model === null ? '' : String(agent.model),
                         category: agent.category,
                         enabled: agent.enabled,
+                        reach: { global: agent.isGlobal, workspaceIds: agent.workspaceIds },
                       })
                     }
                   >
@@ -854,6 +916,7 @@ function AgentsTab({
       <AgentEditor
         draft={editing}
         busy={save.isPending}
+        workspaces={workspaces}
         onClose={() => setEditing(null)}
         onSubmit={(draft) => save.mutate(draft)}
       />
@@ -882,11 +945,13 @@ function AgentsTab({
 function AgentEditor({
   draft,
   busy,
+  workspaces,
   onClose,
   onSubmit,
 }: {
   draft: AgentDraft | null;
   busy: boolean;
+  workspaces: readonly { id: string; name: string; color: string; icon?: string }[];
   onClose: () => void;
   onSubmit: (draft: AgentDraft) => void;
 }) {
@@ -1012,6 +1077,19 @@ function AgentEditor({
             ))}
           </Select>
         </Label>
+
+        {/* Where a subagent belongs, beside what it is called and what it
+            does. Same control as skills and MCP servers: three editors
+            asking one question is how one of them ends up unable to say
+            "nowhere". */}
+        {value.reach ? (
+          <ReachPicker
+            value={value.reach}
+            workspaces={workspaces}
+            onChange={(reach) => setValue({ ...value, reach })}
+            disabled={busy}
+          />
+        ) : null}
 
         <Label htmlFor="agent-model" hint={t(
           'Leave blank to inherit whatever the parent run is using.',
@@ -1230,6 +1308,8 @@ interface McpDraft {
   env: Pair[];
   headers: Pair[];
   enabled: boolean;
+  /** Which workspaces it reaches. Absent means untouched, as the route reads it. */
+  reach?: ExtensionReach;
 }
 
 interface Pair {
@@ -1701,6 +1781,8 @@ function McpTab({
         headers: pairsToRecord(draft.headers),
         removeHeaderKeys: dropped(original?.headerKeys ?? [], draft.headers),
         enabled: draft.enabled,
+        // Absent means untouched, exactly as the route reads it.
+        ...(draft.reach ? { reach: draft.reach } : {}),
       });
     },
     onSuccess: (result) => {
@@ -1778,6 +1860,10 @@ function McpTab({
                   env: [],
                   headers: [],
                   enabled: true,
+                  // What the scope menu says, so the button keeps its meaning.
+                  reach: workspaceId
+                    ? { global: false, workspaceIds: [workspaceId] }
+                    : { global: true, workspaceIds: [] },
                 })
               }
             >
@@ -1977,6 +2063,7 @@ function McpTab({
 
       <McpEditor
         draft={editing}
+        workspaces={workspaces}
         busy={save.isPending}
         onClose={() => setEditing(null)}
         onSubmit={(draft) => save.mutate(draft)}
@@ -2057,6 +2144,9 @@ function draftFromServer(server: McpServerRecord): McpDraft {
     env: server.envKeys.map((key) => ({ key, value: '' })),
     headers: server.headerKeys.map((key) => ({ key, value: '' })),
     enabled: server.enabled,
+    // Read off the record, never defaulted: an editor that opened on a guess
+    // would save the guess, and this one decides what runs mount.
+    reach: { global: server.isGlobal, workspaceIds: server.workspaceIds },
   };
 }
 
@@ -2270,11 +2360,13 @@ function ConnectorCard({
 function McpEditor({
   draft,
   busy,
+  workspaces,
   onClose,
   onSubmit,
 }: {
   draft: McpDraft | null;
   busy: boolean;
+  workspaces: readonly { id: string; name: string; color: string; icon?: string }[];
   onClose: () => void;
   onSubmit: (draft: McpDraft) => void;
 }) {
@@ -2466,6 +2558,18 @@ function McpEditor({
           label={t('Enabled')}
           hint={t('Disabled servers are skipped when a run starts.')}
         />
+
+        {/* Where a server belongs. Same control as skills and subagents:
+            one question, one component, or one of the three ends up unable
+            to say "nowhere". */}
+        {value.reach ? (
+          <ReachPicker
+            value={value.reach}
+            workspaces={workspaces}
+            onChange={(reach) => setValue({ ...value, reach })}
+            disabled={busy}
+          />
+        ) : null}
       </div>
     </Modal>
   );

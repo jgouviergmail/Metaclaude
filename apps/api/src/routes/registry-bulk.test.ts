@@ -330,3 +330,81 @@ describe('POST /api/automations/bulk', () => {
     expect((await automationsIn(otherId)).find((one) => one.id === theirs)!.enabled).toBe(true);
   });
 });
+
+/**
+ * The reach, set through the edge rather than under it.
+ *
+ * `registry-attachments.test.ts` proves `setReach` replaces rather than adds.
+ * What lives only here is that the route *accepts* it, and — the half a schema
+ * change silently breaks — that a save which does **not** mention the reach
+ * leaves it alone. A form that saves a name must not narrow a reach it never
+ * showed the operator, which is the `.partial()` trap in another costume.
+ */
+describe('POST /api/skills — the reach', () => {
+  const makeIn = async (name: string, reach?: unknown): Promise<{ id: string }> => {
+    const response = await post('/api/skills', {
+      workspaceId: null,
+      name,
+      description: 'for the reach tests',
+      body: '# nothing',
+      ...(reach ? { reach } : {}),
+    });
+    expect(response.status).toBe(201);
+    return ((await response.json()) as { skill: { id: string } }).skill;
+  };
+
+  const read = async (id: string) => {
+    // `scope=all`: with no parameter the route answers globals only, and
+    // these are attached rather than global.
+    const response = await fetch(`${baseUrl}/api/skills?scope=all`, {
+      headers: { cookie: cookies },
+    });
+    const body = (await response.json()) as {
+      skills: Array<{ id: string; isGlobal: boolean; workspaceIds: string[] }>;
+    };
+    return body.skills.find((one) => one.id === id)!;
+  };
+
+  it('stores the workspaces an editor names', async () => {
+    const skill = await makeIn('reach-one', { global: false, workspaceIds: [workspaceId] });
+
+    const stored = await read(skill.id);
+    expect(stored.isGlobal).toBe(false);
+    expect(stored.workspaceIds).toEqual([workspaceId]);
+  });
+
+  it('accepts the empty set, which means nowhere', async () => {
+    const skill = await makeIn('reach-none', { global: false, workspaceIds: [] });
+
+    const stored = await read(skill.id);
+    expect(stored.workspaceIds).toEqual([]);
+    expect(stored.isGlobal).toBe(false);
+  });
+
+  it('leaves the reach alone when a save does not mention it', async () => {
+    const skill = await makeIn('reach-kept', { global: false, workspaceIds: [workspaceId] });
+
+    const again = await post('/api/skills', {
+      id: skill.id,
+      workspaceId: null,
+      name: 'reach-kept',
+      description: 'edited, and saying nothing about reach',
+      body: '# still nothing',
+    });
+    expect(again.status).toBe(200);
+
+    expect((await read(skill.id)).workspaceIds).toEqual([workspaceId]);
+  });
+
+  it('refuses a reach that is not one', async () => {
+    const response = await post('/api/skills', {
+      workspaceId: null,
+      name: 'reach-bad',
+      description: 'x',
+      body: '',
+      reach: { global: 'yes', workspaceIds: 'everywhere' },
+    });
+
+    expect(response.status).toBe(400);
+  });
+});

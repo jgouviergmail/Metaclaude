@@ -11,6 +11,47 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.74.0] — 2026-09-07
+
+### Added
+
+- **A skill, a subagent or an MCP server can now be attached to any number of
+  workspaces.** The reach used to be a single nullable column: one workspace,
+  or all of them. So an extension useful to three projects out of eight had to
+  be made global — visible to five workspaces with no business seeing it — or
+  written out three times, after which the three copies drifted. Each editor
+  now carries the same control: *every workspace, including any created
+  later*, or a list ticked one by one. The three questions are one component,
+  because three copies of a reach picker is how one of them ends up unable to
+  express the third answer.
+- **Attached to nothing is now a state it can hold.** An extension reaching no
+  workspace stays in the library and is mounted nowhere — the old column could
+  not say it, since every row reached at least one. It is also a state an
+  operator can arrive at by accident, so the control says so in words rather
+  than showing an empty tick list and leaving them to work it out.
+
+### Changed
+
+- **The reach lives in a table with two foreign keys, not in a list of ids.**
+  A token's `workspace_ids` is such a list; it went on naming a workspace that
+  had been deleted, and the gateway filtering by exactly those ids told its
+  operator this Metaclaude had no workspaces at all. The fix then was a prune
+  somebody has to remember to call. `ON DELETE CASCADE` on both sides makes
+  the same bug inexpressible: delete a workspace, or delete the extension, and
+  the rows that named it go with it.
+- **A save that does not mention the reach leaves it alone.** The field is
+  optional at the edge and absent means untouched — the `.partial()` lesson in
+  another costume, where a form saving a name silently resets everything it
+  never showed.
+
+### Fixed
+
+- **`CheckboxField` no longer describes itself with an empty hint.** A row
+  whose label already says everything — a workspace's name beside its avatar —
+  passed `aria-describedby` at a blank span, which makes a screen reader
+  announce nothing after the name. The hint is optional now, and absent rather
+  than empty.
+
 ## [0.73.0] — 2026-09-07
 
 ### Added
