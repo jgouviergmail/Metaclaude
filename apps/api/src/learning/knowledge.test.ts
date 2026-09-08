@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
+import { searchHit } from '../test/knowledge.js';
 import { HashingEmbedder } from './embeddings.js';
 import { capPerDocument, KnowledgeStore, KnowledgeStoreError, MAX_DOCUMENT_BYTES } from './knowledge.js';
 
@@ -193,7 +194,7 @@ describe('searching', () => {
     // that only fires in narrow ranking regimes still has to be provably
     // present.
     const entry = (documentId: string, chunkId: string, score: number) =>
-      ({ chunkId, documentId, documentTitle: documentId, workspaceId: null, heading: '', text: 'x', score }) as const;
+      searchHit({ chunkId, documentId, documentTitle: documentId, text: 'x', score });
     const capped = capPerDocument([
       entry('doc_a', 'c1', 0.9),
       entry('doc_a', 'c2', 0.8),

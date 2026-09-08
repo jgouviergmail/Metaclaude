@@ -1,6 +1,7 @@
 import type { Memory, MemoryKind, MemorySearchResult, Workspace } from '@metaclaude/shared';
 import { WorkspaceSettings } from '@metaclaude/shared';
 import type { KnowledgeSearchResult } from '../learning/knowledge.js';
+import { searchHit } from '../test/knowledge.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate, openDatabase } from '../db/index.js';
 import { WorkspaceRepo } from './repositories.js';
@@ -184,15 +185,15 @@ describe('buildMemoryContext', () => {
 });
 
 describe('selectKnowledgeContext', () => {
-  const passage = (n: number, size = 400): KnowledgeSearchResult => ({
-    chunkId: `chk_${n}`,
-    documentId: `doc_${n}`,
-    documentTitle: `Document ${n}`,
-    workspaceId: null,
-    heading: `Section ${n}`,
-    text: 'contenu '.repeat(Math.ceil(size / 8)).slice(0, size),
-    score: 1 - n / 100,
-  });
+  const passage = (n: number, size = 400): KnowledgeSearchResult =>
+    searchHit({
+      chunkId: `chk_${n}`,
+      documentId: `doc_${n}`,
+      documentTitle: `Document ${n}`,
+      heading: `Section ${n}`,
+      text: 'contenu '.repeat(Math.ceil(size / 8)).slice(0, size),
+      score: 1 - n / 100,
+    });
 
   it('renders passages with their source, so the model can cite them', () => {
     const { text } = selectKnowledgeContext([passage(1, 60)]);

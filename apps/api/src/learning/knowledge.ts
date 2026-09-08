@@ -27,7 +27,12 @@
 import { createHash } from 'node:crypto';
 
 import { newId } from '@metaclaude/shared';
-import type { KnowledgeLocation, KnowledgePageUnit } from '@metaclaude/shared';
+import type {
+  ExtensionReach,
+  KnowledgeLocation,
+  KnowledgePageUnit,
+  KnowledgeSource,
+} from '@metaclaude/shared';
 
 import type { Db } from '../db/index.js';
 import { packEmbedding, toBool, tx, unpackEmbedding } from '../db/index.js';
@@ -44,9 +49,13 @@ import {
   DENSE_SOLO_FLOOR,
 } from './retrieval.js';
 
-/** One document, as stored. `content` is the operator's text, verbatim. */
+/**
+ * One document, as stored. `content` is the text as it will be retrieved —
+ * the operator's, verbatim, or an extractor's output for an uploaded file.
+ */
 export interface KnowledgeDocument {
   id: string;
+  /** Where it was first filed. The reach is `isGlobal` + `workspaceIds`. */
   workspaceId: string | null;
   title: string;
   content: string;
@@ -54,8 +63,20 @@ export interface KnowledgeDocument {
   chunkCount: number;
   /** The embedder these chunks were vectorised with; `''` while they wait for one. */
   embeddingModel: string;
+  /** Every workspace, including any created later. */
+  isGlobal: boolean;
+  /** The workspaces it is attached to when it is not global; may be empty. */
+  workspaceIds: string[];
+  /** The uploaded file its text came from; null for pasted text. */
+  source: KnowledgeSource | null;
+  pageUnit: KnowledgePageUnit | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/** A source with the hash that names its file on disk. */
+export interface StoredSource extends KnowledgeSource {
+  sha256: string;
 }
 
 /** The listing shape: everything but the content, plus its size in bytes —
@@ -70,15 +91,23 @@ export interface KnowledgeDocumentMeta {
   chunkCount: number;
   /** The embedder these chunks were vectorised with; `''` while they wait for one. */
   embeddingModel: string;
+  isGlobal: boolean;
+  workspaceIds: string[];
+  source: KnowledgeSource | null;
+  pageUnit: KnowledgePageUnit | null;
+  /** The highest page any of its passages reaches; null when it has no pages. */
+  pageCount: number | null;
   createdAt: number;
   updatedAt: number;
 }
 
-/** One retrieved passage, with enough context to be read on its own. */
-export interface KnowledgeSearchResult {
+/** One retrieved passage, with enough context to be read *and cited* on its own. */
+export interface KnowledgeSearchResult extends KnowledgeLocation {
   chunkId: string;
   documentId: string;
   documentTitle: string;
+  /** The original file's name, when the document came from one. */
+  sourceName: string | null;
   workspaceId: string | null;
   heading: string;
   text: string;
@@ -173,6 +202,13 @@ interface DocumentRow {
   enabled: number;
   chunk_count: number;
   embedding_model: string;
+  is_global: number;
+  source_name: string | null;
+  source_mime: string | null;
+  source_bytes: number | null;
+  source_sha256: string | null;
+  extractor: string | null;
+  page_unit: KnowledgePageUnit | null;
   created_at: number;
   updated_at: number;
 }
@@ -183,23 +219,81 @@ interface ChunkRow {
   heading: string;
   text: string;
   embedding: Buffer | null;
+  page_start: number | null;
+  page_end: number | null;
+  line_start: number | null;
+  line_end: number | null;
 }
 
-function toDocument(row: DocumentRow): KnowledgeDocument {
+/** The four source columns as one value, or null when the text was pasted. */
+function sourceOfRow(row: DocumentRow): KnowledgeSource | null {
+  if (row.source_sha256 === null) return null;
   return {
-    id: row.id,
-    workspaceId: row.workspace_id,
-    title: row.title,
-    content: row.content,
-    enabled: toBool(row.enabled),
-    chunkCount: row.chunk_count,
-    embeddingModel: row.embedding_model,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    name: row.source_name ?? '',
+    mime: row.source_mime ?? '',
+    bytes: row.source_bytes ?? 0,
+    extractor: row.extractor ?? '',
   };
 }
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
+
+/**
+ * What a workspace reaches, spelled once.
+ *
+ * The listing and retrieval must agree exactly, or a document is visible in a
+ * list and invisible to the runs of the same workspace — or the reverse,
+ * which is worse. Both build their WHERE from these two constants, with
+ * `documents` aliased `d`.
+ */
+const REACH_OF_WORKSPACE =
+  '(d.is_global = 1 OR d.id IN (SELECT document_id FROM document_workspaces WHERE workspace_id = ?))';
+const GLOBAL_ONLY = 'd.is_global = 1';
+
+/**
+ * The scope half of a query: `undefined` is every document — the whole
+ * library, including any attached to nothing, which is what a management view
+ * needs — `null` is the global shelf alone, an id is that workspace plus the
+ * global shelf. The same three-way convention the registry uses.
+ */
+function reachClause(workspaceId: string | null | undefined): { sql: string; params: string[] } {
+  if (workspaceId === undefined) return { sql: '', params: [] };
+  if (workspaceId === null) return { sql: GLOBAL_ONLY, params: [] };
+  return { sql: REACH_OF_WORKSPACE, params: [workspaceId] };
+}
+
+/**
+ * The 1-based line of an offset.
+ *
+ * A closure over a moving cursor rather than a `slice().split()` per chunk:
+ * offsets arrive in increasing order, so one walk over the newlines answers
+ * every chunk of a document, where the obvious version is quadratic in a
+ * corpus whose documents run to half a megabyte.
+ */
+function lineCounter(content: string): (offset: number) => number {
+  let line = 1;
+  let cursor = 0;
+  return (offset) => {
+    const bounded = Math.max(0, Math.min(offset, content.length));
+    while (cursor < bounded) {
+      if (content.charCodeAt(cursor) === 10) line += 1;
+      cursor += 1;
+    }
+    return line;
+  };
+}
+
+/** The 1-based page of an offset: page `i + 2` starts at `breaks[i]`. */
+function pageCounter(breaks: readonly number[]): (offset: number) => number {
+  return (offset) => {
+    let page = 1;
+    for (const at of breaks) {
+      if (offset < at) break;
+      page += 1;
+    }
+    return page;
+  };
+}
 
 /**
  * Up to this many chunks a document is embedded inside the request that
@@ -234,6 +328,14 @@ export class KnowledgeStore {
    * Identical content under the same embedder skips the whole pipeline — the
    * hash decides, so re-saving a document to fix its title costs a metadata
    * write, not an embedding pass.
+   *
+   * `pageBreaks` and `pageUnit` come from an extractor and describe *this*
+   * exact text; `source` names the file it was extracted from. `reach` is
+   * optional and means two different things on purpose: absent on an update
+   * leaves the reach alone (a form saving a title must not narrow a reach it
+   * never showed), absent on a creation derives it from `workspaceId`, which
+   * is the contract every caller written before the reach existed still
+   * speaks.
    */
   async upsert(input: {
     id?: string;
@@ -241,6 +343,12 @@ export class KnowledgeStore {
     title: string;
     content: string;
     enabled?: boolean;
+    reach?: ExtensionReach;
+    /** Offsets into `content` where each page after the first begins. */
+    pageBreaks?: readonly number[];
+    pageUnit?: KnowledgePageUnit | null;
+    /** The file this text was extracted from, hash included. */
+    source?: StoredSource | null;
   }): Promise<KnowledgeDocument> {
     const title = input.title.trim();
     const content = input.content.replace(/\r\n?/g, '\n').trim();
@@ -253,6 +361,24 @@ export class KnowledgeStore {
       );
     }
 
+    // A page map describes the text an extractor produced, character for
+    // character. Normalising underneath it would shift every offset by the
+    // length of whatever was trimmed, and a quietly wrong line number is
+    // worse than a refusal — so the caller hands over normal form or nothing.
+    if (input.pageBreaks) {
+      if (content !== input.content) {
+        throw new KnowledgeStoreError(
+          'A page map needs content already in normal form; the offsets would not survive normalising it.',
+          500,
+        );
+      }
+      for (const at of input.pageBreaks) {
+        if (!Number.isInteger(at) || at < 0 || at > content.length) {
+          throw new KnowledgeStoreError(`A page break at ${at} falls outside the content.`, 500);
+        }
+      }
+    }
+
     const existing = input.id ? this.rowById(input.id) : null;
     if (input.id && !existing) throw new KnowledgeStoreError('Document not found.', 404);
 
@@ -261,18 +387,61 @@ export class KnowledgeStore {
     const id = existing?.id ?? newId('document');
     const enabled = input.enabled ?? (existing ? toBool(existing.enabled) : true);
 
+    // A file's text is what its extractor produced, and the page and line
+    // locations are true of that text alone. Refused on a *different* value,
+    // never on the field being present: a form that round-trips the whole
+    // document must still be able to change its title.
+    if (existing?.source_sha256 && !input.source && existing.content_hash !== hash) {
+      throw new KnowledgeStoreError(
+        'This document comes from a file. Re-extract it rather than editing its text.',
+        409,
+      );
+    }
+
+    // One document per file, enforced here so the message can name the one
+    // that already holds those bytes — the unique index alone would say
+    // "constraint failed".
+    if (input.source && !existing) {
+      const duplicate = this.findBySourceHash(input.source.sha256);
+      if (duplicate) {
+        throw new KnowledgeStoreError(
+          `This file is already in the library as “${duplicate.title}”.`,
+          409,
+        );
+      }
+    }
+
+    // Null on a creation only when the caller gave neither: `attachOnCreate`,
+    // the registry's rule, so nothing written before the reach existed breaks.
+    const reach: ExtensionReach | null =
+      input.reach ??
+      (existing
+        ? null
+        : input.workspaceId === null
+          ? { global: true, workspaceIds: [] }
+          : { global: false, workspaceIds: [input.workspaceId] });
+
+    const source = input.source ?? null;
+
     const unchanged =
       existing !== null &&
       existing.content_hash === hash &&
       existing.embedding_model === this.embedder.id;
 
     if (unchanged) {
-      this.db
-        .prepare(
-          `UPDATE documents SET title = ?, workspace_id = ?, enabled = ?, updated_at = ? WHERE id = ?`,
-        )
-        .run(title, input.workspaceId, enabled ? 1 : 0, at, id);
-      return toDocument(this.rowById(id)!);
+      tx(this.db, () => {
+        this.db
+          .prepare(
+            `UPDATE documents SET title = ?, workspace_id = ?, enabled = ?, updated_at = ?,
+               extractor = COALESCE(?, extractor)
+             WHERE id = ?`,
+          )
+          // Only the extractor may move on an unchanged save: a re-extraction
+          // that produced byte-identical text still says which engine read it.
+          .run(title, input.workspaceId, enabled ? 1 : 0, at, source?.extractor ?? null, id);
+        if (reach) this.writeReach(id, reach);
+      });
+      return this.toDocument(this.rowById(id)!);
     }
 
     // Chunk and embed *outside* the transaction: embedding is async and slow,
@@ -291,6 +460,25 @@ export class KnowledgeStore {
       : null;
     const model = vectors ? this.embedder.id : PENDING_EMBEDDING_MODEL;
 
+    // Locations: one walk over the newlines for the whole document, and a
+    // page lookup that is a no-op without a map. Computed here, beside the
+    // chunks they describe, rather than in the transaction below.
+    const lineAt = lineCounter(content);
+    const pageAt = input.pageBreaks ? pageCounter(input.pageBreaks) : null;
+    const located = chunks.map((chunk) => {
+      // `end` is exclusive; the last *character* is what decides the closing
+      // line and page, or a chunk ending exactly on a newline would claim the
+      // line after it.
+      const last = Math.max(chunk.start, chunk.end - 1);
+      return {
+        chunk,
+        lineStart: lineAt(chunk.start),
+        lineEnd: lineAt(last),
+        pageStart: pageAt ? pageAt(chunk.start) : null,
+        pageEnd: pageAt ? pageAt(last) : null,
+      };
+    });
+
     tx(this.db, () => {
       if (existing) {
         // Chunks are replaced wholesale: diffing chunk boundaries against an
@@ -300,7 +488,13 @@ export class KnowledgeStore {
         this.db
           .prepare(
             `UPDATE documents SET workspace_id = ?, title = ?, content = ?, content_hash = ?,
-               enabled = ?, chunk_count = ?, embedding_model = ?, updated_at = ?
+               enabled = ?, chunk_count = ?, embedding_model = ?, updated_at = ?,
+               page_unit = ?,
+               -- COALESCE, so an ordinary edit keeps the file it came from and
+               -- only a re-extraction (which carries a source) replaces it.
+               source_name = COALESCE(?, source_name), source_mime = COALESCE(?, source_mime),
+               source_bytes = COALESCE(?, source_bytes), source_sha256 = COALESCE(?, source_sha256),
+               extractor = COALESCE(?, extractor)
              WHERE id = ?`,
           )
           .run(
@@ -312,6 +506,12 @@ export class KnowledgeStore {
             chunks.length,
             model,
             at,
+            input.pageUnit ?? null,
+            source?.name ?? null,
+            source?.mime ?? null,
+            source?.bytes ?? null,
+            source?.sha256 ?? null,
+            source?.extractor ?? null,
             id,
           );
       } else {
@@ -319,8 +519,9 @@ export class KnowledgeStore {
           .prepare(
             `INSERT INTO documents
                (id, workspace_id, title, content, content_hash, enabled, chunk_count,
-                embedding_model, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                embedding_model, created_at, updated_at, page_unit,
+                source_name, source_mime, source_bytes, source_sha256, extractor)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             id,
@@ -333,68 +534,153 @@ export class KnowledgeStore {
             model,
             at,
             at,
+            input.pageUnit ?? null,
+            source?.name ?? null,
+            source?.mime ?? null,
+            source?.bytes ?? null,
+            source?.sha256 ?? null,
+            source?.extractor ?? null,
           );
       }
 
+      if (reach) this.writeReach(id, reach);
+
       const insert = this.db.prepare(
-        `INSERT INTO document_chunks (id, document_id, seq, heading, text, embedding)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO document_chunks
+           (id, document_id, seq, heading, text, embedding, page_start, page_end, line_start, line_end)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
-      chunks.forEach((chunk, index) => {
+      located.forEach((entry, index) => {
         insert.run(
           newId('chunk'),
           id,
-          chunk.seq,
-          chunk.heading,
-          chunk.text,
+          entry.chunk.seq,
+          entry.chunk.heading,
+          entry.chunk.text,
           vectors ? packEmbedding(vectors[index]!) : null,
+          entry.pageStart,
+          entry.pageEnd,
+          entry.lineStart,
+          entry.lineEnd,
         );
       });
     });
     // Written, findable, and waiting: hand the vectors to the rebuild.
     if (!vectors) this.options.embedLater?.(id);
 
-    return toDocument(this.rowById(id)!);
+    return this.toDocument(this.rowById(id)!);
   }
 
   get(id: string): KnowledgeDocument | null {
     const row = this.rowById(id);
-    return row ? toDocument(row) : null;
+    return row ? this.toDocument(row) : null;
+  }
+
+  /** The document holding these exact bytes, if one already does. */
+  findBySourceHash(sha256Hex: string): KnowledgeDocument | null {
+    const row = this.db
+      .prepare<[string], DocumentRow>('SELECT * FROM documents WHERE source_sha256 = ?')
+      .get(sha256Hex);
+    return row ? this.toDocument(row) : null;
+  }
+
+  /** The file a document was extracted from, hash included; null for pasted text. */
+  sourceOf(id: string): StoredSource | null {
+    const row = this.rowById(id);
+    const source = row ? sourceOfRow(row) : null;
+    return source && row?.source_sha256 ? { ...source, sha256: row.source_sha256 } : null;
+  }
+
+  /**
+   * Change what may change without touching the text.
+   *
+   * The alternative was the editor's read-then-save, which re-sent the whole
+   * document to flip one boolean — and cannot work at all for a file-backed
+   * document, whose text is refused on the way back in.
+   */
+  patch(id: string, fields: { title?: string; enabled?: boolean }): boolean {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+
+    if (fields.title !== undefined) {
+      const title = fields.title.trim();
+      if (!title) throw new KnowledgeStoreError('A document needs a title.');
+      if (title.length > MAX_TITLE_LENGTH) throw new KnowledgeStoreError('That title is an essay.');
+      sets.push('title = ?');
+      params.push(title);
+    }
+    if (fields.enabled !== undefined) {
+      sets.push('enabled = ?');
+      params.push(fields.enabled ? 1 : 0);
+    }
+    // A patch naming nothing still answers the caller's real question: does
+    // this document exist? A route needs that to choose between 200 and 404.
+    if (sets.length === 0) return this.rowById(id) !== null;
+
+    sets.push('updated_at = ?');
+    params.push(this.now(), id);
+    return (
+      this.db.prepare(`UPDATE documents SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+        .changes > 0
+    );
+  }
+
+  /**
+   * Say which workspaces a document reaches, replacing whatever it reached.
+   *
+   * Replacing, never adding — the registry's rule, for the registry's reason:
+   * an add-only verb leaves an operator believing they narrowed a reach they
+   * in fact widened. `global` wins and clears the attachments with it, so
+   * there is never a second source of truth for a question already answered.
+   * An id naming no workspace is dropped rather than refused: the form was
+   * open while somebody else deleted it, and losing the whole edit over a row
+   * that is already gone is the worse answer.
+   */
+  setReach(id: string, reach: ExtensionReach): boolean {
+    return tx(this.db, () => {
+      if (this.rowById(id) === null) return false;
+      this.writeReach(id, reach);
+      this.db.prepare('UPDATE documents SET updated_at = ? WHERE id = ?').run(this.now(), id);
+      return true;
+    });
   }
 
   /**
    * List documents. `workspaceId: null` lists the global shelf; a concrete id
    * lists that workspace's shelf plus the global one — what a run would see.
-   * Omit to list everything.
+   * Omit to list everything, documents attached to nothing included.
    */
   list(options: { workspaceId?: string | null } = {}): KnowledgeDocumentMeta[] {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (options.workspaceId === null) {
-      clauses.push('workspace_id IS NULL');
-    } else if (options.workspaceId !== undefined) {
-      clauses.push('(workspace_id = ? OR workspace_id IS NULL)');
-      params.push(options.workspaceId);
-    }
-    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-    return this.db
-      .prepare<unknown[], DocumentRow & { content_length: number }>(
-        `SELECT id, workspace_id, title, length(CAST(content AS BLOB)) AS content_length, content_hash,
-                enabled, chunk_count, embedding_model, created_at, updated_at, '' AS content
-         FROM documents ${where} ORDER BY updated_at DESC`,
+    const scope = reachClause(options.workspaceId);
+    const where = scope.sql ? `WHERE ${scope.sql}` : '';
+    const rows = this.db
+      .prepare<unknown[], DocumentRow & { content_length: number; page_count: number | null }>(
+        `SELECT d.id, d.workspace_id, d.title, length(CAST(d.content AS BLOB)) AS content_length,
+                d.content_hash, d.enabled, d.chunk_count, d.embedding_model, d.is_global,
+                d.source_name, d.source_mime, d.source_bytes, d.source_sha256, d.extractor,
+                d.page_unit, d.created_at, d.updated_at, '' AS content,
+                (SELECT MAX(c.page_end) FROM document_chunks c WHERE c.document_id = d.id) AS page_count
+         FROM documents d ${where} ORDER BY d.updated_at DESC, d.id`,
       )
-      .all(...params)
-      .map((row) => ({
-        id: row.id,
-        workspaceId: row.workspace_id,
-        title: row.title,
-        contentLength: row.content_length,
-        enabled: toBool(row.enabled),
-        chunkCount: row.chunk_count,
-        embeddingModel: row.embedding_model,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      }));
+      .all(...scope.params);
+
+    const reach = this.reachOf(rows.map((row) => row.id));
+    return rows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspace_id,
+      title: row.title,
+      contentLength: row.content_length,
+      enabled: toBool(row.enabled),
+      chunkCount: row.chunk_count,
+      embeddingModel: row.embedding_model,
+      isGlobal: toBool(row.is_global),
+      workspaceIds: reach.get(row.id) ?? [],
+      source: sourceOfRow(row),
+      pageUnit: row.page_unit,
+      pageCount: row.page_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   delete(id: string): boolean {
@@ -470,10 +756,18 @@ export class KnowledgeStore {
         chunkId: row.id,
         documentId: row.document_id,
         documentTitle: doc?.title ?? '',
+        sourceName: doc?.sourceName ?? null,
         workspaceId: doc?.workspaceId ?? null,
         heading: row.heading,
         text: row.text,
         score,
+        // Null on a passage indexed before the library recorded offsets; the
+        // locator degrades to a shorter sentence rather than a wrong one.
+        pageUnit: doc?.pageUnit ?? null,
+        pageStart: row.page_start,
+        pageEnd: row.page_end,
+        lineStart: row.line_start,
+        lineEnd: row.line_end,
       });
     }
 
@@ -628,22 +922,70 @@ export class KnowledgeStore {
     );
   }
 
-  private candidateChunks(options: KnowledgeRetrievalOptions): ChunkRow[] {
-    const clauses = ['d.enabled = 1'];
-    const params: unknown[] = [];
-    if (options.workspaceId === null) {
-      clauses.push('d.workspace_id IS NULL');
-    } else if (options.workspaceId !== undefined) {
-      clauses.push('(d.workspace_id = ? OR d.workspace_id IS NULL)');
-      params.push(options.workspaceId);
+  /** A row plus its reach — one extra query, so a caller never sees a half-answer. */
+  private toDocument(row: DocumentRow): KnowledgeDocument {
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      title: row.title,
+      content: row.content,
+      enabled: toBool(row.enabled),
+      chunkCount: row.chunk_count,
+      embeddingModel: row.embedding_model,
+      isGlobal: toBool(row.is_global),
+      workspaceIds: this.reachOf([row.id]).get(row.id) ?? [],
+      source: sourceOfRow(row),
+      pageUnit: row.page_unit,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  /** Which workspaces each of these documents is attached to, in one query. */
+  private reachOf(ids: readonly string[]): Map<string, string[]> {
+    const found = new Map<string, string[]>();
+    if (ids.length === 0) return found;
+    const rows = this.db
+      .prepare<string[], { document_id: string; workspace_id: string }>(
+        `SELECT document_id, workspace_id FROM document_workspaces
+         WHERE document_id IN (${ids.map(() => '?').join(',')})
+         -- Ordered, so two reads of one document never disagree about the
+         -- order of its badges.
+         ORDER BY workspace_id`,
+      )
+      .all(...ids);
+    for (const row of rows) {
+      found.set(row.document_id, [...(found.get(row.document_id) ?? []), row.workspace_id]);
     }
+    return found;
+  }
+
+  /** The write half of `setReach`, without a transaction of its own. */
+  private writeReach(id: string, reach: ExtensionReach): void {
+    this.db.prepare('UPDATE documents SET is_global = ? WHERE id = ?').run(reach.global ? 1 : 0, id);
+    this.db.prepare('DELETE FROM document_workspaces WHERE document_id = ?').run(id);
+    if (reach.global) return;
+    // `SELECT … FROM workspaces WHERE id = ?` rather than a bare VALUES: an id
+    // naming nothing inserts no row instead of failing the foreign key, which
+    // would take the whole transaction — and the operator's edit — with it.
+    const insert = this.db.prepare(
+      `INSERT OR IGNORE INTO document_workspaces (document_id, workspace_id)
+       SELECT ?, id FROM workspaces WHERE id = ?`,
+    );
+    for (const workspaceId of new Set(reach.workspaceIds)) insert.run(id, workspaceId);
+  }
+
+  private candidateChunks(options: KnowledgeRetrievalOptions): ChunkRow[] {
+    const scope = reachClause(options.workspaceId);
+    const clauses = ['d.enabled = 1', ...(scope.sql ? [scope.sql] : [])];
     return this.db
       .prepare<unknown[], ChunkRow>(
-        `SELECT c.id, c.document_id, c.heading, c.text, c.embedding
+        `SELECT c.id, c.document_id, c.heading, c.text, c.embedding,
+                c.page_start, c.page_end, c.line_start, c.line_end
          FROM document_chunks c JOIN documents d ON d.id = c.document_id
          WHERE ${clauses.join(' AND ')}`,
       )
-      .all(...params);
+      .all(...scope.params);
   }
 
   private lexicalSearch(
@@ -654,14 +996,13 @@ export class KnowledgeStore {
     const match = toFtsQuery(queryText);
     if (!match) return [];
 
-    const clauses: string[] = ['document_chunks_fts MATCH ?', 'd.enabled = 1'];
-    const params: unknown[] = [match];
-    if (options.workspaceId === null) {
-      clauses.push('d.workspace_id IS NULL');
-    } else if (options.workspaceId !== undefined) {
-      clauses.push('(d.workspace_id = ? OR d.workspace_id IS NULL)');
-      params.push(options.workspaceId);
-    }
+    const scope = reachClause(options.workspaceId);
+    const clauses: string[] = [
+      'document_chunks_fts MATCH ?',
+      'd.enabled = 1',
+      ...(scope.sql ? [scope.sql] : []),
+    ];
+    const params: unknown[] = [match, ...scope.params];
 
     try {
       return this.db
@@ -683,13 +1024,34 @@ export class KnowledgeStore {
     }
   }
 
-  private documentTitles(): Map<string, { title: string; workspaceId: string | null }> {
+  /** What a hit needs about its document: its name, its shelf, its file, its unit. */
+  private documentTitles(): Map<
+    string,
+    { title: string; workspaceId: string | null; sourceName: string | null; pageUnit: KnowledgePageUnit | null }
+  > {
     const rows = this.db
-      .prepare<[], { id: string; title: string; workspace_id: string | null }>(
-        'SELECT id, title, workspace_id FROM documents',
-      )
+      .prepare<
+        [],
+        {
+          id: string;
+          title: string;
+          workspace_id: string | null;
+          source_name: string | null;
+          page_unit: KnowledgePageUnit | null;
+        }
+      >('SELECT id, title, workspace_id, source_name, page_unit FROM documents')
       .all();
-    return new Map(rows.map((row) => [row.id, { title: row.title, workspaceId: row.workspace_id }]));
+    return new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          title: row.title,
+          workspaceId: row.workspace_id,
+          sourceName: row.source_name,
+          pageUnit: row.page_unit,
+        },
+      ]),
+    );
   }
 
   private documentModels(): Map<string, string> {

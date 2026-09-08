@@ -14,9 +14,12 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { ExtensionReach } from '@metaclaude/shared';
 
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { MIGRATIONS } from '../db/schema.sql.js';
+import { ConceptEmbedder } from '../test/embedders.js';
+import { KnowledgeStore } from './knowledge.js';
 
 const FILES = MIGRATIONS.find((migration) => migration.name === 'knowledge_files');
 const BEFORE = MIGRATIONS.filter((migration) => migration !== FILES);
@@ -197,5 +200,137 @@ describe('the knowledge_files migration', () => {
     db.prepare('DELETE FROM documents WHERE id = ?').run('shared');
 
     expect(db.prepare('SELECT COUNT(*) AS n FROM document_workspaces').get()).toEqual({ n: 0 });
+  });
+});
+
+describe('reach in the store', () => {
+  let store: KnowledgeStore;
+
+  beforeEach(() => {
+    migrate(db);
+    workspace('alpha');
+    workspace('beta');
+    workspace('gamma');
+    store = new KnowledgeStore(db, new ConceptEmbedder());
+  });
+
+  const save = (title: string, reach: ExtensionReach) =>
+    store.upsert({
+      workspaceId: null,
+      title,
+      content: `# ${title}\n\nCe document parle de ${title} et du préavis de résiliation.`,
+      reach,
+    });
+
+  const GLOBAL: ExtensionReach = { global: true, workspaceIds: [] };
+
+  it('lets one document reach two workspaces and not a third, beside the global shelf', async () => {
+    await save('Everywhere', GLOBAL);
+    await save('Shared', { global: false, workspaceIds: ['alpha', 'beta'] });
+    await save('Nowhere', { global: false, workspaceIds: [] });
+
+    const titles = (options: Parameters<KnowledgeStore['list']>[0]) =>
+      store.list(options).map((document) => document.title).sort();
+
+    expect(titles({ workspaceId: 'alpha' })).toEqual(['Everywhere', 'Shared']);
+    expect(titles({ workspaceId: 'beta' })).toEqual(['Everywhere', 'Shared']);
+    expect(titles({ workspaceId: 'gamma' })).toEqual(['Everywhere']);
+    // `null` is the global shelf alone; no option at all is the whole library,
+    // documents attached to nothing included — a management view needs it.
+    expect(titles({ workspaceId: null })).toEqual(['Everywhere']);
+    expect(titles({})).toEqual(['Everywhere', 'Nowhere', 'Shared']);
+  });
+
+  it('makes retrieval obey the same predicate as the listing', async () => {
+    // Two spellings of one rule is how a document becomes visible in a list
+    // and invisible to the runs of the same workspace, or the reverse.
+    //
+    // The two documents deliberately say *different* things, and each query
+    // names one of them: a pair of near-identical documents would make this a
+    // test of the relevance gate's ranking, which is not what is under test —
+    // and which genuinely drops the runner-up.
+    await store.upsert({
+      workspaceId: null,
+      title: 'Shared',
+      content: '# Chaudière\n\nLe remplacement de la chaudière incombe au bailleur.',
+      reach: { global: false, workspaceIds: ['alpha'] },
+    });
+    await store.upsert({
+      workspaceId: null,
+      title: 'Everywhere',
+      content: '# Sauvegarde\n\nLa sauvegarde quotidienne part vers le volume externe.',
+      reach: GLOBAL,
+    });
+
+    const found = async (query: string, workspaceId: string) =>
+      (await store.search(query, { workspaceId, limit: 10 })).map((hit) => hit.documentTitle);
+
+    // The attached workspace reaches it; a sibling does not, for the very
+    // query that finds it next door.
+    expect(await found('chaudière bailleur', 'alpha')).toContain('Shared');
+    expect(await found('chaudière bailleur', 'gamma')).toEqual([]);
+    // And the global shelf reaches both.
+    expect(await found('sauvegarde volume', 'gamma')).toContain('Everywhere');
+    expect(await found('sauvegarde volume', 'alpha')).toContain('Everywhere');
+  });
+
+  it('reports the reach it stored, on the document and in the listing', async () => {
+    const document = await save('Shared', { global: false, workspaceIds: ['beta', 'alpha'] });
+    expect(document.isGlobal).toBe(false);
+    // Sorted, so a listing does not reorder between two reads.
+    expect(document.workspaceIds).toEqual(['alpha', 'beta']);
+    expect(store.list({}).find((one) => one.id === document.id)).toMatchObject({
+      isGlobal: false,
+      workspaceIds: ['alpha', 'beta'],
+    });
+  });
+
+  it('replaces the reach rather than adding to it, and global clears the links', async () => {
+    const document = await save('Shared', { global: false, workspaceIds: ['alpha', 'beta'] });
+
+    // An id naming no workspace is dropped, not refused: the form was open
+    // while somebody else deleted that workspace.
+    expect(store.setReach(document.id, { global: false, workspaceIds: ['gamma', 'ghost'] })).toBe(
+      true,
+    );
+    expect(store.get(document.id)!.workspaceIds).toEqual(['gamma']);
+
+    store.setReach(document.id, { global: true, workspaceIds: ['alpha'] });
+    expect(store.get(document.id)).toMatchObject({ isGlobal: true, workspaceIds: [] });
+  });
+
+  it('answers false for a reach set on a document that does not exist', () => {
+    expect(store.setReach('doc_missing', GLOBAL)).toBe(false);
+  });
+
+  it('leaves the reach untouched on an update that does not name one', async () => {
+    const document = await save('Shared', { global: false, workspaceIds: ['alpha'] });
+    await store.upsert({
+      id: document.id,
+      workspaceId: null,
+      title: 'Renamed',
+      content: 'Un contenu entièrement différent, sans rapport.',
+    });
+    expect(store.get(document.id)).toMatchObject({
+      title: 'Renamed',
+      workspaceIds: ['alpha'],
+      isGlobal: false,
+    });
+  });
+
+  it('derives the reach from workspaceId when a caller gives none', async () => {
+    // The contract every caller written before the reach existed still speaks
+    // — the eval corpus, the benches, check:e2e — and the registry's own
+    // `attachOnCreate` rule: null is everywhere, an id is that one.
+    const global = await store.upsert({ workspaceId: null, title: 'G', content: 'Texte global.' });
+    const scoped = await store.upsert({ workspaceId: 'alpha', title: 'S', content: 'Texte alpha.' });
+    expect(global).toMatchObject({ isGlobal: true, workspaceIds: [] });
+    expect(scoped).toMatchObject({ isGlobal: false, workspaceIds: ['alpha'] });
+  });
+
+  it('forgets a deleted workspace by itself', async () => {
+    const document = await save('Shared', { global: false, workspaceIds: ['alpha', 'beta'] });
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run('beta');
+    expect(store.get(document.id)!.workspaceIds).toEqual(['alpha']);
   });
 });
