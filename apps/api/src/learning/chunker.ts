@@ -29,6 +29,31 @@ export interface Chunk {
   /** The nearest markdown heading above this chunk; '' when there is none. */
   heading: string;
   text: string;
+  /**
+   * Where this chunk's *own* text begins and ends in the normalised content —
+   * what makes a retrieved passage citable as "lines 40–52" and openable at
+   * the right place.
+   *
+   * Own text, so the `… ` seam prefix is excluded: it is a copy of the
+   * previous chunk's tail and belongs to it, and counting it would make every
+   * citation after the first one start too early.
+   *
+   * `content.slice(start, end)` is the chunk's body verbatim in the ordinary
+   * case. It is a *span* rather than a string match for the one case where it
+   * cannot be both: the pieces of a paragraph longer than `CHUNK_MAX` are
+   * re-joined with single spaces, so a paragraph that wrapped across lines
+   * has a body no substring of the content equals. The span still bounds it,
+   * which is what a line number needs.
+   */
+  start: number;
+  end: number;
+}
+
+/** One unit of text — a sentence, a word run, a raw slice — and where it sits. */
+interface Piece {
+  text: string;
+  start: number;
+  end: number;
 }
 
 export const CHUNK_TARGET = 1100;
@@ -45,22 +70,50 @@ function tailOf(text: string): string {
   return firstSpace === -1 ? slice : slice.slice(firstSpace + 1);
 }
 
-/** Split one oversized paragraph at sentence, then word, then raw boundaries. */
-function splitLong(paragraph: string): string[] {
-  if (paragraph.length <= CHUNK_MAX) return [paragraph];
+/**
+ * Locate each unit of `units` inside `source`, in order, from a moving cursor.
+ *
+ * The units come from splitting `source` itself, so each one *is* there; the
+ * cursor is what keeps a repeated sentence from matching its first occurrence
+ * every time. A unit that somehow does not match leaves the cursor where it
+ * was rather than throwing: a wrong-by-a-few-characters line number is a far
+ * better outcome than refusing to index the document.
+ */
+function locate(source: string, units: readonly string[], from = 0): Piece[] {
+  let cursor = from;
+  return units.map((unit) => {
+    const at = source.indexOf(unit, cursor);
+    const start = at === -1 ? cursor : at;
+    cursor = start + unit.length;
+    return { text: unit, start, end: cursor };
+  });
+}
+
+/**
+ * Split one oversized paragraph at sentence, then word, then raw boundaries.
+ *
+ * Offsets are relative to the paragraph; `pack` adds the paragraph's own
+ * position in the document.
+ */
+function splitLong(paragraph: string): Piece[] {
+  if (paragraph.length <= CHUNK_MAX) {
+    return [{ text: paragraph, start: 0, end: paragraph.length }];
+  }
 
   // Sentence boundaries, unicode-aware: the punctuation plus following space.
   // French quotation and ellipsis included — this corpus is written in both
   // languages.
-  const sentences = paragraph.split(/(?<=[.!?…»])\s+/u);
-  const pieces: string[] = [];
-  let current = '';
+  const sentences = locate(paragraph, paragraph.split(/(?<=[.!?…»])\s+/u));
+  const pieces: Piece[] = [];
+  let current: Piece | null = null;
   for (const sentence of sentences) {
-    if (current && current.length + sentence.length + 1 > CHUNK_MAX) {
+    if (current && current.text.length + sentence.text.length + 1 > CHUNK_MAX) {
       pieces.push(current);
-      current = sentence;
+      current = { ...sentence };
     } else {
-      current = current ? `${current} ${sentence}` : sentence;
+      current = current
+        ? { text: `${current.text} ${sentence.text}`, start: current.start, end: sentence.end }
+        : { ...sentence };
     }
   }
   if (current) pieces.push(current);
@@ -68,22 +121,24 @@ function splitLong(paragraph: string): string[] {
   // A "sentence" longer than the ceiling is a wall of text with no
   // punctuation; cut it at word boundaries, and only then by force.
   return pieces.flatMap((piece) => {
-    if (piece.length <= CHUNK_MAX) return [piece];
-    const words = piece.split(/\s+/u);
-    const out: string[] = [];
-    let run = '';
+    if (piece.text.length <= CHUNK_MAX) return [piece];
+    const words = locate(paragraph, piece.text.split(/\s+/u), piece.start);
+    const out: Piece[] = [];
+    let run: Piece | null = null;
     for (const word of words) {
-      if (run && run.length + word.length + 1 > CHUNK_MAX) {
+      if (run && run.text.length + word.text.length + 1 > CHUNK_MAX) {
         out.push(run);
-        run = word;
+        run = { ...word };
       } else {
-        run = run ? `${run} ${word}` : word;
+        run = run
+          ? { text: `${run.text} ${word.text}`, start: run.start, end: word.end }
+          : { ...word };
       }
       // A single "word" beyond the ceiling (a base64 blob, a minified line)
       // is sliced raw: indexing it in pieces beats refusing the document.
-      while (run.length > CHUNK_MAX) {
-        out.push(run.slice(0, CHUNK_MAX));
-        run = run.slice(CHUNK_MAX);
+      while (run.text.length > CHUNK_MAX) {
+        out.push({ text: run.text.slice(0, CHUNK_MAX), start: run.start, end: run.start + CHUNK_MAX });
+        run = { text: run.text.slice(CHUNK_MAX), start: run.start + CHUNK_MAX, end: run.end };
       }
     }
     if (run) out.push(run);
@@ -91,54 +146,82 @@ function splitLong(paragraph: string): string[] {
   });
 }
 
-export function chunkDocument(content: string): Chunk[] {
+export function chunkDocument(rawContent: string): Chunk[] {
+  // Normalised once, and every offset below indexes *this* string — which is
+  // also what the store writes, so a line number means the same thing on both
+  // sides. Offsets into the CRLF original would be wrong by one per line.
+  const content = rawContent.replace(/\r\n?/g, '\n');
+
   const chunks: Chunk[] = [];
   let heading = '';
   let headingOfChunk = '';
   let parts: string[] = [];
   let length = 0;
   let overlap = '';
+  let chunkStart = 0;
+  let chunkEnd = 0;
 
   const flush = (): void => {
     const text = parts.join('\n\n').trim();
     if (text.length > 0) {
-      chunks.push({ seq: chunks.length, heading: headingOfChunk, text });
+      chunks.push({
+        seq: chunks.length,
+        heading: headingOfChunk,
+        text,
+        start: chunkStart,
+        end: chunkEnd,
+      });
       overlap = tailOf(text);
     }
     parts = [];
     length = 0;
   };
 
-  // Paragraphs: blank-line separated blocks, whatever the line endings.
-  for (const raw of content.replace(/\r\n?/g, '\n').split(/\n{2,}/)) {
+  // Paragraphs: blank-line separated blocks, each remembering where it starts.
+  // `exec` in a loop rather than `split`, because a split discards the
+  // positions this whole pass exists to keep.
+  const separator = /\n{2,}/g;
+  let cursor = 0;
+  for (;;) {
+    const match = separator.exec(content);
+    const raw = content.slice(cursor, match ? match.index : content.length);
     const paragraph = raw.trim();
-    if (paragraph.length === 0) continue;
+    const paragraphStart = cursor + (raw.length - raw.trimStart().length);
 
-    // A heading flushes the chunk in progress: a chunk should not straddle
-    // two sections, or its heading label lies about half of it.
-    const lines = paragraph.split('\n');
-    const headingMatch = lines[0] ? HEADING.exec(lines[0]) : null;
-    if (headingMatch) {
-      flush();
-      heading = headingMatch[2]!.trim();
-      overlap = '';
-      const rest = lines.slice(1).join('\n').trim();
-      if (rest.length === 0) continue;
-      for (const piece of splitLong(rest)) {
-        pack(piece);
+    if (paragraph.length > 0) {
+      // A heading flushes the chunk in progress: a chunk should not straddle
+      // two sections, or its heading label lies about half of it.
+      const lines = paragraph.split('\n');
+      const headingMatch = lines[0] ? HEADING.exec(lines[0]) : null;
+      if (headingMatch) {
+        flush();
+        heading = headingMatch[2]!.trim();
+        overlap = '';
+        const after = paragraph.slice(lines[0]!.length);
+        const rest = after.trim();
+        if (rest.length > 0) {
+          const restStart =
+            paragraphStart + lines[0]!.length + (after.length - after.trimStart().length);
+          for (const piece of splitLong(rest)) pack(piece, restStart);
+        }
+      } else {
+        for (const piece of splitLong(paragraph)) pack(piece, paragraphStart);
       }
-      continue;
     }
 
-    for (const piece of splitLong(paragraph)) pack(piece);
+    if (!match) break;
+    cursor = match.index + match[0].length;
   }
   flush();
   return chunks;
 
-  function pack(piece: string): void {
-    if (length > 0 && length + piece.length + 2 > CHUNK_TARGET) flush();
+  function pack(piece: Piece, base: number): void {
+    if (length > 0 && length + piece.text.length + 2 > CHUNK_TARGET) flush();
     if (parts.length === 0) {
       headingOfChunk = heading;
+      // The chunk begins at its own first piece, never at the seam below:
+      // the overlap is a copy of the previous chunk's tail and is cited there.
+      chunkStart = base + piece.start;
       // The seam: carry the previous chunk's tail so a thought cut at the
       // boundary is findable from either side. Never across a heading —
       // `overlap` is cleared there.
@@ -147,8 +230,9 @@ export function chunkDocument(content: string): Chunk[] {
         length += overlap.length + 4;
       }
     }
-    parts.push(piece);
-    length += piece.length + 2;
+    parts.push(piece.text);
+    length += piece.text.length + 2;
+    chunkEnd = base + piece.end;
   }
 }
 
@@ -158,7 +242,12 @@ export function chunkDocument(content: string): Chunk[] {
  * "the notice period is 45 days" match a query about *terminating the lease*
  * — the chunk alone never says what it is about.
  */
-export function chunkEmbeddingText(docTitle: string, chunk: Chunk): string {
+export function chunkEmbeddingText(
+  docTitle: string,
+  // What it actually reads, so a caller with a heading and a text — a test, a
+  // re-index reading rows back — need not invent offsets to call it.
+  chunk: Pick<Chunk, 'heading' | 'text'>,
+): string {
   const context = [docTitle.trim(), chunk.heading.trim()].filter(Boolean).join(' — ');
   return context ? `${context}\n${chunk.text}` : chunk.text;
 }

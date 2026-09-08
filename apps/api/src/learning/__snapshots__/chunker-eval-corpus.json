@@ -1,0 +1,233 @@
+[
+  [
+    {
+      "seq": 0,
+      "heading": "Loyer et charges",
+      "text": "Le loyer mensuel s'élève à 950 euros hors charges, auxquels s'ajoute une\nprovision de 110 euros pour les charges récupérables. Le règlement intervient\nle 5 de chaque mois par virement."
+    },
+    {
+      "seq": 1,
+      "heading": "Résiliation par le locataire",
+      "text": "Le locataire peut donner congé à tout moment. Le délai de préavis est de trois\nmois, ramené à un mois lorsque le logement se situe en zone tendue. Le congé\nest notifié par lettre recommandée avec accusé de réception."
+    },
+    {
+      "seq": 2,
+      "heading": "Dépôt de garantie",
+      "text": "Le dépôt de garantie correspond à un mois de loyer hors charges. Il est\nrestitué dans un délai de deux mois après la remise des clés, déduction faite\ndes sommes justifiées restant dues."
+    },
+    {
+      "seq": 3,
+      "heading": "Travaux et entretien",
+      "text": "Les réparations locatives incombent au locataire. Les travaux de mise aux\nnormes et le remplacement des équipements vétustes restent à la charge du\nbailleur."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Objet",
+      "text": "Le présent avenant ajoute la location d'un emplacement de stationnement\ncouvert, portant le numéro 14, au contrat principal."
+    },
+    {
+      "seq": 1,
+      "heading": "Loyer complémentaire",
+      "text": "L'emplacement est loué 65 euros par mois, sans provision de charges."
+    },
+    {
+      "seq": 2,
+      "heading": "Résiliation de l'emplacement",
+      "text": "La location de l'emplacement peut être résiliée indépendamment du logement,\navec un préavis d'un mois, sans que cela n'affecte le bail d'habitation."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Déclaration d'un sinistre",
+      "text": "Tout sinistre doit être déclaré à l'assureur dans les cinq jours ouvrés\nsuivant sa constatation. Ce délai est ramené à deux jours ouvrés en cas de\nvol ou de tentative d'effraction."
+    },
+    {
+      "seq": 1,
+      "heading": "Franchise",
+      "text": "Une franchise de 150 euros s'applique à chaque dégât des eaux. Les dommages\nélectriques relèvent d'une franchise distincte de 300 euros."
+    },
+    {
+      "seq": 2,
+      "heading": "Exclusions",
+      "text": "Les dommages résultant d'un défaut d'entretien manifeste ne sont pas\ncouverts, non plus que les objets de valeur non déclarés au contrat."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Health gating",
+      "text": "The deploy script waits for the container health check before switching\ntraffic. A container that never reports healthy is rolled back automatically\nafter ninety seconds."
+    },
+    {
+      "seq": 1,
+      "heading": "Database migrations",
+      "text": "Migrations run on boot, inside the same transaction that records them, so a\ncrash mid-migration leaves no partial state. They are append-only: never edit\na shipped statement."
+    },
+    {
+      "seq": 2,
+      "heading": "Ports and addresses",
+      "text": "The API listens on METACLAUDE_PORT_8787 inside the network namespace. The\nproxy is the only service bound to a public interface."
+    },
+    {
+      "seq": 3,
+      "heading": "Rolling back",
+      "text": "A failed deploy restores the previous image tag and re-runs the health gate.\nVolumes are never touched by a rollback."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Imports",
+      "text": "Relative imports in the API and shared packages must end in .js, even when\nthe source file is TypeScript. The web app uses the bundler resolver instead."
+    },
+    {
+      "seq": 1,
+      "heading": "Contracts",
+      "text": "Every entity is declared once as a Zod schema and its TypeScript type is\ninferred from it. Add a field to the shared package first, or the two sides\ndrift apart."
+    },
+    {
+      "seq": 2,
+      "heading": "Comments",
+      "text": "Comments explain why, not what. A comment that restates the code is noise; one\nthat records a decision or a trap is not."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Remboursement des consultations",
+      "text": "La consultation d'un médecin traitant est remboursée à hauteur de 101 % du\ntarif de convention. Le délai de traitement d'une demande est de dix jours\nouvrés à compter de la réception des justificatifs."
+    },
+    {
+      "seq": 1,
+      "heading": "Optique et dentaire",
+      "text": "Un forfait de 201 euros par période de deux ans couvre la monture et les\nverres. Les prothèses dentaires font l'objet d'un plafond annuel distinct."
+    },
+    {
+      "seq": 2,
+      "heading": "Résiliation du contrat",
+      "text": "Le contrat se reconduit tacitement chaque année. La résiliation intervient\npar lettre adressée deux mois avant l'échéance annuelle."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Puissance souscrite",
+      "text": "La puissance souscrite est de 10 kVA. Une modification prend effet le premier\njour du mois suivant la demande, sans frais."
+    },
+    {
+      "seq": 1,
+      "heading": "Facturation",
+      "text": "Les factures sont émises tous les deux mois sur la base d'un index relevé ou\nestimé. Le montant de la régularisation apparaît sur la facture annuelle."
+    },
+    {
+      "seq": 2,
+      "heading": "Interruption de fourniture",
+      "text": "Une coupure pour impayé ne peut intervenir qu'après une mise en demeure\nrestée sans effet pendant quinze jours."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Période d'essai",
+      "text": "La période d'essai est fixée à quatre mois, renouvelable une fois par accord\nécrit des deux parties."
+    },
+    {
+      "seq": 1,
+      "heading": "Rémunération",
+      "text": "La rémunération annuelle brute s'établit à 55 1 euros, versée sur douze\nmensualités, à laquelle s'ajoute une part variable."
+    },
+    {
+      "seq": 2,
+      "heading": "Congés",
+      "text": "Le salarié bénéficie de vingt-cinq jours ouvrés de congés payés, auxquels\ns'ajoutent les jours de réduction du temps de travail."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Compte utilisateur",
+      "text": "La création d'un compte suppose l'acceptation des présentes conditions. Les\nidentifiants sont personnels et ne peuvent être cédés."
+    },
+    {
+      "seq": 1,
+      "heading": "Données personnelles",
+      "text": "Les données sont conservées pendant trois ans à compter du dernier contact.\nUne demande de suppression est traitée sous trente jours."
+    },
+    {
+      "seq": 2,
+      "heading": "Modification des conditions",
+      "text": "Toute modification est notifiée un mois avant son entrée en vigueur."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Parties communes",
+      "text": "L'entretien des parties communes relève du syndic. Les charges sont réparties\nselon les tantièmes attachés à chaque lot."
+    },
+    {
+      "seq": 1,
+      "heading": "Assemblée générale",
+      "text": "La convocation est adressée vingt et un jours au moins avant la réunion.\nLes décisions se prennent aux majorités prévues par la loi."
+    },
+    {
+      "seq": 2,
+      "heading": "Nuisances",
+      "text": "Les travaux bruyants sont interdits avant huit heures et après vingt heures,\nainsi que les dimanches et jours fériés."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Nightly archive",
+      "text": "A host timer stops the application for a few seconds, archives every volume,\nand writes a marker file the doctor reads. A missing marker becomes a visible\nwarning rather than a silent gap."
+    },
+    {
+      "seq": 1,
+      "heading": "Restoring",
+      "text": "Restore replays the archive into fresh volumes and refuses to run against a\ndirectory that already holds data. The operator confirms twice."
+    },
+    {
+      "seq": 2,
+      "heading": "Retention",
+      "text": "Seven daily archives and four weekly ones are kept. Pruning happens after a\nsuccessful archive, never before."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Tokens",
+      "text": "Only semantic tokens are used for colour: surface, ink, muted, line, accent.\nRaw palette classes break the light theme and a ratchet refuses them."
+    },
+    {
+      "seq": 1,
+      "heading": "Spacing",
+      "text": "Spacing follows a four-pixel scale. Components own their internal spacing;\nlayout owns the space between them."
+    },
+    {
+      "seq": 2,
+      "heading": "Motion",
+      "text": "Motion is informative rather than decorative, and everything holds still\nunder a reduced-motion preference."
+    }
+  ],
+  [
+    {
+      "seq": 0,
+      "heading": "Paging",
+      "text": "A page fires when the error rate crosses the threshold for five consecutive\nminutes. Flapping alerts are suppressed for an hour after resolution."
+    },
+    {
+      "seq": 1,
+      "heading": "Escalation",
+      "text": "An unacknowledged page escalates after ten minutes to the secondary, then to\nthe engineering lead."
+    },
+    {
+      "seq": 2,
+      "heading": "Postmortems",
+      "text": "Every page that reached a human gets a written postmortem within five working\ndays, blameless and focused on the failed control."
+    }
+  ]
+]

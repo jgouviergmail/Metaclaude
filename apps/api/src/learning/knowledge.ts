@@ -586,7 +586,7 @@ export class KnowledgeStore {
 
       const vectors = await this.embedder.embedBatch(
         pending.map((row) =>
-          chunkEmbeddingText(row.title, { seq: 0, heading: row.heading, text: row.text }),
+          chunkEmbeddingText(row.title, { heading: row.heading, text: row.text }),
         ),
       );
       // Skipping a chunk here is not an option the way it is in memory, which

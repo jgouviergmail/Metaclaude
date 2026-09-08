@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHUNK_MAX, CHUNK_OVERLAP, CHUNK_TARGET, chunkDocument, chunkEmbeddingText } from './chunker.js';
+import { evalCorpus } from './eval-corpus.js';
 
 const paragraph = (n: number, size = 400): string =>
   `Paragraphe ${n} — ${'contenu utile '.repeat(Math.ceil(size / 14))}`.slice(0, size);
@@ -136,7 +137,6 @@ describe('the text a chunk is embedded with', () => {
     // "the notice period is 45 days" cannot match a query about terminating a
     // lease unless the context travels with it.
     const rendered = chunkEmbeddingText('Bail — 12 rue X', {
-      seq: 3,
       heading: 'Préavis',
       text: 'Le préavis est de 45 jours.',
     });
@@ -144,8 +144,15 @@ describe('the text a chunk is embedded with', () => {
   });
 
   it('degrades cleanly when there is no heading or no title', () => {
-    expect(chunkEmbeddingText('', { seq: 0, heading: '', text: 'Texte.' })).toBe('Texte.');
-    expect(chunkEmbeddingText('Doc', { seq: 0, heading: '', text: 'Texte.' })).toBe('Doc\nTexte.');
+    expect(chunkEmbeddingText('', { heading: '', text: 'Texte.' })).toBe('Texte.');
+    expect(chunkEmbeddingText('Doc', { heading: '', text: 'Texte.' })).toBe('Doc\nTexte.');
+  });
+
+  it('takes a whole chunk too — the caller that has one need not destructure it', () => {
+    const [chunk] = chunkDocument('## Préavis\n\nLe préavis est de 45 jours.');
+    expect(chunkEmbeddingText('Bail', chunk!)).toBe(
+      'Bail — Préavis\nLe préavis est de 45 jours.',
+    );
   });
 });
 
@@ -153,5 +160,124 @@ describe('the size constants agree with each other', () => {
   it('keeps target under max and overlap well under target', () => {
     expect(CHUNK_TARGET).toBeLessThan(CHUNK_MAX);
     expect(CHUNK_OVERLAP).toBeLessThan(CHUNK_TARGET / 4);
+  });
+});
+
+/**
+ * The boundaries are the contract, and they must not move.
+ *
+ * Every stored vector was made from a chunk's text; change where a chunk
+ * starts or ends and the whole library silently needs re-embedding, with no
+ * error and no way to notice from the outside. So the passages of the
+ * evaluation corpus are pinned to a file: this snapshot is what the chunker
+ * produced *before* it learned to report offsets, and any diff here means a
+ * change that costs a re-index — deliberate or not.
+ */
+describe('the chunk boundaries are stable', () => {
+  it('produces exactly the passages it produced before locations were added', async () => {
+    const seen = evalCorpus(1).map((document) =>
+      chunkDocument(document.content).map(({ seq, heading, text }) => ({ seq, heading, text })),
+    );
+    await expect(JSON.stringify(seen, null, 2)).toMatchFileSnapshot(
+      './__snapshots__/chunker-eval-corpus.json',
+    );
+  });
+});
+
+/**
+ * Where each chunk sits in the document it came from.
+ *
+ * This is what lets a retrieved passage be cited as "lines 40–52" and opened
+ * at the right place. The offsets describe the chunk's *own* text: the `… `
+ * overlap prefix is a copy of the previous chunk's tail and belongs to it, so
+ * including it would make every citation after the first one start too early.
+ */
+describe('where each chunk sits', () => {
+  /** The chunk's own text, with the seam prefix removed. */
+  const own = (text: string): string =>
+    text.startsWith('… ') ? text.slice(text.indexOf('\n\n') + 2) : text;
+
+  it('reports verbatim offsets for an ordinary document, overlap excluded', () => {
+    const content = `# Titre\n\nPremier paragraphe.\n\n${paragraph(2, 900)}\n\n${paragraph(3, 900)}\n\nDernier paragraphe.`;
+    const chunks = chunkDocument(content);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(content.slice(chunk.start, chunk.end)).toBe(own(chunk.text));
+    }
+  });
+
+  it('starts mid-paragraph where a long paragraph was split, not at the paragraph', () => {
+    // The case that separates `base + piece.start` from a plain `base`: a
+    // paragraph over the ceiling produces several chunks, and only the first
+    // of them begins where the paragraph does.
+    const sentence = 'Une phrase complète et distincte se termine ici. ';
+    const long = sentence.repeat(Math.ceil((CHUNK_TARGET * 3) / sentence.length)).trim();
+    const content = `Avant.\n\n${long}`;
+    const chunks = chunkDocument(content);
+
+    const inside = chunks.filter((chunk) => chunk.start > content.indexOf(long));
+    expect(inside.length).toBeGreaterThan(0);
+    for (const chunk of inside) {
+      // Each later chunk opens exactly where its own first sentence does.
+      expect(content.slice(chunk.start, chunk.start + 20)).toBe(own(chunk.text).slice(0, 20));
+    }
+  });
+
+  it('starts a chunk on its first own word, not on the heading above it', () => {
+    const [chunk] = chunkDocument('## Section\n\nCorps du texte.');
+    expect(chunk!.start).toBe('## Section\n\n'.length);
+    expect(chunk!.end).toBe('## Section\n\nCorps du texte.'.length);
+  });
+
+  it('locates the pieces of a paragraph longer than the ceiling inside that paragraph', () => {
+    // Sentences re-joined with single spaces are not a verbatim substring of a
+    // paragraph that wrapped across lines, so the offsets must bound the span
+    // rather than match the string.
+    const sentence = 'Une phrase qui se termine ici. ';
+    const paragraphText = sentence.repeat(Math.ceil((CHUNK_MAX * 2) / sentence.length)).trim();
+    const content = `Avant.\n\n${paragraphText}\n\nAprès.`;
+    const chunks = chunkDocument(content);
+
+    expect(chunks.length).toBeGreaterThan(2);
+    for (const chunk of chunks) {
+      expect(chunk.start).toBeLessThan(chunk.end);
+      const span = content.slice(chunk.start, chunk.end).replace(/\s+/gu, ' ');
+      const body = own(chunk.text).replace(/\s+/gu, ' ');
+      expect(span, `chunk ${chunk.seq}`).toContain(body.slice(0, 40));
+    }
+    expect(chunks.at(-1)!.end).toBe(content.length);
+  });
+
+  it('never goes backwards, and never runs past the content', () => {
+    const content = evalCorpus(1).map((document) => document.content).join('\n\n');
+    const chunks = chunkDocument(content);
+    let previous = -1;
+    for (const chunk of chunks) {
+      expect(chunk.start).toBeGreaterThanOrEqual(0);
+      expect(chunk.start).toBeGreaterThan(previous);
+      expect(chunk.end).toBeGreaterThan(chunk.start);
+      expect(chunk.end).toBeLessThanOrEqual(content.length);
+      previous = chunk.start;
+    }
+  });
+
+  it('reports offsets into the normalised text, not into the CRLF original', () => {
+    // The store writes the normalised content; offsets into anything else
+    // would point at the wrong line for every Windows-authored document.
+    const chunks = chunkDocument('Un.\r\n\r\nDeux.\r\n\r\nTrois.');
+    const normalised = 'Un.\n\nDeux.\n\nTrois.';
+    for (const chunk of chunks) {
+      expect(normalised.slice(chunk.start, chunk.end)).toBe(own(chunk.text));
+    }
+  });
+
+  it('survives an unbreakable token: each slice knows its own span', () => {
+    const blob = 'A'.repeat(CHUNK_MAX * 2 + 100);
+    const chunks = chunkDocument(blob);
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+    for (const chunk of chunks) {
+      expect(blob.slice(chunk.start, chunk.end)).toBe(own(chunk.text));
+    }
   });
 });
