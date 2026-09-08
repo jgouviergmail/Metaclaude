@@ -11,6 +11,34 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.78.0] — 2026-09-08
+
+### Changed
+
+- **Auto now opens on the cheapest arm the learner ranks, instead of the CLI's
+  own default.** `select` refuses to act below eight trials — rightly, since one
+  data point is worse than none — but the fallback behind that refusal was the
+  most expensive model available. Measured in production: a research run whose
+  session, workspace default *and* automation all said Auto, on a category with
+  a single trial, was served `claude-opus-5[1m]` and cost $1.33 for 610,618
+  tokens, while the learner's own ranking for that very workspace put haiku
+  first and fable last. It knew, and had no way to say so.
+
+  The floor uses `list` — the posterior mean, an opening rather than a decision
+  — which the cost-aware prior makes meaningful from the first run. It applies
+  only when nobody chose: a workspace naming a real model still wins outright.
+
+  Escalation is not left to hope, and the numbers are worth stating. Against an
+  ordinary success at 0.810, a thumbs-down scores **0.234** and a failure
+  **0.270** — either one drops haiku below every sonnet arm and opus/medium in a
+  single run, so the next run starts higher. Hitting a turn ceiling (0.630) and
+  failed tool calls (0.666) push more gently; latency barely moves it. What
+  nothing detects is a run that succeeds and answers *badly* — that scores 0.8
+  like any success — so on a young workspace the operator's rating is the only
+  signal that says "this model was too weak for this". Five or six ratings place
+  a category; after that the loop carries itself.
+
+
 ## [0.77.2] — 2026-09-08
 
 ### Fixed

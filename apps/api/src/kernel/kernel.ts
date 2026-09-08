@@ -766,6 +766,39 @@ export class Kernel {
         base.model = learned.arm.model;
         base.effort = learned.arm.effort;
         base.source = 'learned';
+      } else if (isAutoModel(base.model)) {
+        /*
+         * The cold-start floor: start low, and let the failures push you up.
+         *
+         * `select` refuses below eight trials for a good reason — acting on one
+         * data point is worse than not learning — but the fallback it leaves
+         * behind was the CLI's own default, which is the *dearest* model
+         * available. Measured in production: a research run on a workspace whose
+         * default was itself Auto, with one trial on the category, was served
+         * `claude-opus-5[1m]` and cost $1.33 for 610,618 tokens, while the
+         * learner's own ranking for that very workspace put haiku first and
+         * fable last. It knew, and was not allowed to say so.
+         *
+         * `list` is the posterior *mean*, so it is an opening rather than a
+         * decision, and since the prior became cost-aware it is meaningful from
+         * the first run. `select` has already run, which is what seeded the arms
+         * — calling `list` before it would find an empty table.
+         *
+         * Escalation is not left to chance: one thumbs-down scores 0.234 against
+         * an ordinary success's 0.810, which drops haiku below every sonnet arm
+         * and opus/medium in a single run. A failure does nearly as much (0.270).
+         * What nothing detects is a run that succeeds and answers badly — that
+         * scores 0.8 like any success — so on a young workspace the operator's
+         * rating is the only signal that says "this model was too weak".
+         */
+        const best = this.deps.policy.list(workspace.id, category)[0];
+        if (best) {
+          base.model = best.model;
+          base.effort = best.effort;
+          // The learner chose it, from its own ranking — `trials` is where an
+          // operator reads how much evidence stands behind that choice.
+          base.source = 'learned';
+        }
       }
     }
 

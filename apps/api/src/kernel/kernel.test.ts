@@ -408,6 +408,56 @@ describe('admission', () => {
     expect(fixture.runs.get(pinned.id)?.policy.source).toBe('explicit');
   });
 
+  it('opens on the learner’s cheapest arm when everything resolves to Auto', async () => {
+    /*
+     * The cold-start floor. Measured in production before it existed: a research
+     * run whose session, workspace default and automation all said Auto, on a
+     * category with one trial, was served `claude-opus-5[1m]` for $1.33 — while
+     * the learner's own ranking for that workspace put haiku first and fable
+     * last. It knew and could not say so, because `select` refuses below eight
+     * trials and the fallback behind it was the CLI's dearest model.
+     */
+    const fx = setup({ settings: { defaultModel: AUTO_MODEL, defaultEffort: null } });
+    try {
+      fx.policy.select.mockReturnValue(null); // not enough evidence to act
+      const session = fx.newSession();
+      const run = await fx.kernel.submit({
+        sessionId: session.id,
+        prompt: 'a question',
+        overrides: { model: AUTO_MODEL, effort: null },
+      });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+
+      // The head of the ranking, which the cost-aware prior puts at the cheapest.
+      expect(fx.policy.list).toHaveBeenCalledWith(fx.workspace.id, 'code');
+      expect(fx.runs.get(run.id)?.policy.model).toBe('haiku');
+      expect(fx.runs.get(run.id)?.policy.source).toBe('learned');
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('does not overrule a workspace that names a real model', async () => {
+    // The floor is for the case where nobody chose. A workspace default is a
+    // choice, and the learner may not quietly replace it.
+    const fx = setup({ settings: { defaultModel: 'opus', defaultEffort: 'high' } });
+    try {
+      fx.policy.select.mockReturnValue(null);
+      const session = fx.newSession();
+      const run = await fx.kernel.submit({
+        sessionId: session.id,
+        prompt: 'a question',
+        overrides: { model: AUTO_MODEL, effort: null },
+      });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+
+      expect(fx.runs.get(run.id)?.policy.model).toBe('opus');
+      expect(fx.runs.get(run.id)?.policy.source).toBe('workspace');
+    } finally {
+      fx.db.close();
+    }
+  });
+
   it('falls back to the workspace default, not the CLI default, when Auto has no evidence', async () => {
     // The cold-start path — taken until a (workspace, category) reaches eight
     // trials, so the common one in a young deployment. `session.model || ...`
@@ -434,9 +484,10 @@ describe('admission', () => {
 
   it('does not record Auto as an explicit choice when the learner has nothing to say', async () => {
     // `source` is what the analytics read and what tells an operator whether a
-    // run was decided or defaulted. Auto with no evidence falls back to the
-    // workspace default, and that is `workspace` — not `explicit`, which is a
-    // claim that somebody chose this.
+    // run was decided or defaulted. `explicit` is a claim that somebody chose
+    // this, and nobody did. With the workspace default also on Auto the
+    // cold-start floor answers from the learner's ranking, so the honest stamp
+    // is `learned` — with `trials` saying how much evidence stands behind it.
     const session = fixture.newSession();
     fixture.policy.select.mockReturnValue(null);
 
@@ -448,7 +499,8 @@ describe('admission', () => {
     await settled(fixture, run.id);
 
     expect(fixture.policy.select).toHaveBeenCalled();
-    expect(fixture.runs.get(run.id)?.policy.source).toBe('workspace');
+    expect(fixture.runs.get(run.id)?.policy.source).not.toBe('explicit');
+    expect(fixture.runs.get(run.id)?.policy.source).toBe('learned');
   });
 
   it('names the session from its first prompt', async () => {
