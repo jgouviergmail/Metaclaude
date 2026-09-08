@@ -57,8 +57,17 @@ describe('extractCsv', () => {
     expect(out.extractor).toMatch(/^csv@/);
   });
 
-  it('answers the header alone for a file that has only one', () => {
-    expect(read('x.csv', Buffer.from('a,b')).text).toBe('## x — a | b');
+  it('refuses a file that is a header row and nothing else', () => {
+    // It used to answer the heading alone, and that reads fine from here: a
+    // heading is text, the extraction succeeded, the case had a green test.
+    // The next layer disagreed — the chunker emits nothing for a document
+    // that is only a heading, so the store refused it with "A document needs
+    // content", about an export whose header is right there on screen. The
+    // refusal belongs where the reason is known.
+    expect(() => read('x.csv', Buffer.from('a,b'))).toThrowError(
+      expect.objectContaining({ code: 'no-text' }),
+    );
+    expect(() => read('x.csv', Buffer.from('a,b'))).toThrowError(/no rows|no data/i);
   });
 
   it('survives ragged rows: a short row is not padded, a long one is not cut', () => {

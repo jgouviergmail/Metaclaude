@@ -89,7 +89,16 @@ export function htmlToMarkdown(html: string): string {
       /<(script|style|noscript|svg|head|nav|footer|template|iframe|object)\b[\s\S]*?<\/\1>/gi,
       '',
     )
-    .replace(/<(script|style)\b[^>]*\/>/gi, '');
+    .replace(/<(script|style)\b[^>]*\/>/gi, '')
+    // The same two, never closed — a truncated save, or a page cut short by
+    // whatever fetched it. They are HTML's raw-text elements: their content
+    // runs to the closing tag, so with none the rest of the input *is* the
+    // script, which is why stripping to the end is what a parser does rather
+    // than a guess. Without this the JavaScript was indexed as prose and could
+    // be quoted back as a passage. Only these two: an ordinary unclosed block
+    // auto-closes in a real parser, and eating the page would be worse than
+    // the stray `Accueil` it leaves behind.
+    .replace(/<(?:script|style)\b[\s\S]*$/i, '');
 
   // Tables before anything else: a cell may hold paragraphs, lists, emphasis,
   // and flattening it here is what keeps a row on one line.

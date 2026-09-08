@@ -11,6 +11,59 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.83.1] — 2026-09-08
+
+### Fixed
+
+- **The loser of an upload race deleted the winner's file.** Two uploads of one
+  document both pass the duplicate check — it is a read, not a lock — and the
+  unique index refuses the second row, correctly, with the 409 it already had.
+  Its cleanup then removed the file *by hash*: the original the surviving
+  document had just been given. Measured end to end, the survivor's download
+  answered 404. Two tabs, or one impatient double click.
+
+- **Writing the same original twice at once failed with ENOENT.** Both writes
+  shared one `.part` name, so the first rename moved it out from under the
+  others — two failures in six concurrent writes, measured. Each write gets a
+  name of its own, and a file already at its content-addressed name is left
+  alone rather than rewritten.
+
+- **A second file dropped while one was uploading started its own queue.** The
+  drop zone sequenced the files of a single drop and nothing else, so a second
+  drop opened a loop beside the first and whichever finished declared the queue
+  idle — putting *Clear the list* under a row still in flight, where clearing it
+  dropped a request nobody had cancelled.
+
+- **A spreadsheet with a blank tab renumbered every sheet after it.** An empty
+  sheet was skipped rather than counted, so the third sheet was cited as sheet 2
+  and whoever opened sheet 2 to check found a blank page.
+
+- **"A document needs content" was the answer to a file whose text is on
+  screen.** A document that is only headings — a stub note, an outline, an
+  export whose header row has nothing under it — makes no passage, and got the
+  same sentence as a genuinely empty file. It now says which emptiness it means,
+  and a header-only CSV is refused where the reason is known.
+
+- **An unclosed `<script>` or `<style>` was indexed as prose.** Its body reached
+  the retrieval corpus and could be quoted back as a passage. Those two are
+  HTML's raw-text elements: with no closing tag the rest of the file *is* the
+  script, which is what a browser makes of it.
+
+- **A slide was named twice, in two languages, inside one prompt.** The citation
+  read `slide 3` and the heading directly beneath it read `Diapositive 3`, with
+  nothing to say they were the same slide.
+
+### Changed
+
+- **A long document opens without laying out the part nobody is looking at.**
+  Measured in Chromium on 8 500 lines — a 512 KiB document, the largest the
+  store accepts — layout falls from 86 ms to 16 ms, and the jump to the cited
+  line still lands it exactly centred.
+
+- **The cited line is marked, not merely tinted.** It carried a background
+  colour and nothing else, in the one screen whose whole job is to point at a
+  line.
+
 ## [0.83.0] — 2026-09-08
 
 ### Added

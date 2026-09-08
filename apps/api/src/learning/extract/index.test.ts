@@ -12,7 +12,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { KNOWLEDGE_MIME_TYPES } from '@metaclaude/shared';
 
-import { MAX_DOCUMENT_BYTES } from '../knowledge.js';
+import { migrate, openDatabase } from '../../db/index.js';
+import { chunkDocument } from '../chunker.js';
+import { HashingEmbedder } from '../embeddings.js';
+import { KnowledgeStore, MAX_DOCUMENT_BYTES } from '../knowledge.js';
 import { extractInProcess, KNOWLEDGE_EXTENSIONS, resolveKnowledgeMime } from './index.js';
 
 const fixture = (name: string): Buffer => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -83,6 +86,43 @@ describe('extractInProcess', () => {
       expect(out.text.length, name).toBeGreaterThan(20);
       expect(out.extractor, name).toMatch(extractor);
     }
+  });
+
+  it('gives every ordinary fixture a text the chunker can make passages out of', async () => {
+    // `text.length > 20` above is not the same promise: a heading is text and
+    // makes no passage, so a document can extract to something and still be
+    // unstorable. This is the half of the contract the fixtures can hold.
+    for (const name of ['bail.docx', 'loyers.xlsx', 'deploiement.pptx', 'sample.csv', 'sample.html', 'sample.md']) {
+      const out = await extractInProcess({ name, mime: '', data: fixture(name) });
+      expect(chunkDocument(out.text).length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it('answers a file that is all headings with a sentence naming that', async () => {
+    // The other half, and it is only meaningful end to end: extraction and
+    // the store each refuse things, and the operator sees whichever spoke
+    // first. Every one of these came back as "A document needs content" —
+    // about a file whose text is visible on screen, which reads as the upload
+    // having silently lost it. Driven through the real store rather than the
+    // chunker, because what is under test is the sentence a person gets.
+    const db = openDatabase({ path: ':memory:' });
+    migrate(db);
+    const store = new KnowledgeStore(db, new HashingEmbedder());
+    const cases: Array<[string, string, RegExp]> = [
+      ['export.csv', 'mois;montant;statut', /header row/i],
+      ['plan.md', '# Titre\n\n## Sous-titre', /headings/i],
+      ['page.html', '<h1>Titre</h1>', /headings/i],
+    ];
+    for (const [name, body, expected] of cases) {
+      const outcome = await extractInProcess({ name, mime: '', data: Buffer.from(body) })
+        .then(
+          (out) => store.upsert({ workspaceId: null, title: 'T', content: out.text }).then(() => 'stored'),
+          (error: Error) => error.message,
+        )
+        .catch((error: Error) => error.message);
+      expect(outcome, name).toMatch(expected);
+    }
+    db.close();
   });
 
   it('reads an .html into markdown rather than into tag soup', async () => {

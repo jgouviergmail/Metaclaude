@@ -16,6 +16,7 @@
 
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, rename, unlink, writeFile, readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import type { ReadStream } from 'node:fs';
 
@@ -65,9 +66,32 @@ export class KnowledgeFileStore {
   async write(sha256: string, mime: string, data: Buffer): Promise<string> {
     const target = this.pathFor(sha256, mime);
     await mkdir(dirname(target), { recursive: true });
-    const partial = `${target}.part`;
-    await writeFile(partial, data);
-    await rename(partial, target);
+    // Already here means already right: the name *is* the hash of the bytes,
+    // and a file only ever appears under it by the rename below, so nothing
+    // half-written can be sitting there. Re-writing it could only turn a good
+    // file into a truncated one if this process died mid-write.
+    if (existsSync(target)) return target;
+    // A name of its own per write. One shared `.part` was a race between two
+    // uploads of the same document — the first rename moved it out from under
+    // the others, which then failed with ENOENT on a file they had just
+    // written correctly. Measured at two failures in six concurrent writes.
+    const partial = `${target}.${randomUUID()}.part`;
+    try {
+      await writeFile(partial, data);
+      await rename(partial, target);
+    } catch (error) {
+      // Leaving a stray `.part` behind would be a leak no one ever collects,
+      // now that the name is not reused.
+      await unlink(partial).catch(() => undefined);
+      // The file being there is the whole promise, and who put it there does
+      // not matter: the name is the hash, so a target that exists holds these
+      // exact bytes. Which platform even reaches this decides nothing —
+      // Windows refuses a rename onto a file another writer still holds
+      // (EPERM) where Linux replaces it without a word, and production is
+      // Linux, so without this the behaviour would differ between the machine
+      // it is written on and the one it runs on.
+      if (!existsSync(target)) throw error;
+    }
     return target;
   }
 

@@ -103,6 +103,14 @@ export function extractCsv(input: ExtractInput): ExtractedText {
 
   const name = input.name.replace(/\.[^.]+$/, '');
   const [header, ...body] = rows;
+  // A header and nothing under it. Answering the heading alone reads fine
+  // from here — it is text, and the extraction did succeed — but the chunker
+  // makes no passage out of a lone heading, so the store refused the document
+  // for having no content, about an export whose header row is on screen. The
+  // sentence belongs where the reason is known.
+  if (body.length === 0) {
+    throw new ExtractError('no-text', 'This file has a header row and no data under it.');
+  }
   const heading = `## ${[name, header!.map((cell) => cell.trim()).join(' | ')]
     .filter(Boolean)
     .join(' — ')}`;

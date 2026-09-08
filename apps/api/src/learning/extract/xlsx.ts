@@ -76,7 +76,15 @@ export async function extractXlsx(input: ExtractInput): Promise<ExtractedText> {
     });
 
     const filled = rows.filter((cells) => cells.some((cell) => cell.trim() !== ''));
-    if (filled.length === 0) return;
+    if (filled.length === 0) {
+      // Counted, not skipped. A workbook with an empty tab in the middle is
+      // ordinary, and dropping it renumbered every sheet after: the third was
+      // cited as sheet 2, and whoever opened sheet 2 found a blank page.
+      // `joinPages` is written for this — an empty page takes no width and
+      // still takes its number — but only if it is given one.
+      sections.push('');
+      return;
+    }
 
     const [header, ...body] = filled;
     const heading = `## ${[sheet.name.trim(), header!.map((cell) => cell.trim()).join(' | ')]
@@ -85,7 +93,10 @@ export async function extractXlsx(input: ExtractInput): Promise<ExtractedText> {
     sections.push([heading, rowsToParagraphs(body)].filter(Boolean).join('\n\n'));
   });
 
-  if (sections.length === 0) {
+  // Every sheet blank, which is not the same as no sheets: the empties above
+  // are placeholders holding their own numbers, so the question is whether
+  // any of them carried a row.
+  if (!sections.some((section) => section !== '')) {
     throw new ExtractError('no-text', 'This spreadsheet has no rows in it.');
   }
 

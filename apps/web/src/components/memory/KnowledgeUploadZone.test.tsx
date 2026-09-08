@@ -134,6 +134,33 @@ describe('the drop zone', () => {
     await waitFor(() => expect(apiMock.knowledge.upload).toHaveBeenCalledTimes(2));
   });
 
+  it('holds a second drop behind the upload already running', async () => {
+    // The case above sequences the files of one drop and says nothing about
+    // this one: a twenty-megabyte PDF takes long enough that dropping the
+    // next file before it lands is ordinary, and each drop started a loop of
+    // its own. Two uploads then ran at once — against a promise made at the
+    // top of the file — and whichever finished first declared the queue idle,
+    // which is what puts "Clear the list" under a row still in flight.
+    let resolveFirst: (value: unknown) => void = () => undefined;
+    apiMock.knowledge.upload
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValue({ document: document_() });
+
+    renderWithProviders(<KnowledgeUploadZone reach={GLOBAL} onUploaded={vi.fn()} />);
+    drop([file('a.md')]);
+    await waitFor(() => expect(apiMock.knowledge.upload).toHaveBeenCalledTimes(1));
+
+    drop([file('b.md')]);
+    // Waited on the row appearing, a thing that happens, rather than on the
+    // second call *not* happening — an expectation any first poll satisfies.
+    await screen.findByText('b.md');
+    expect(apiMock.knowledge.upload).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/clear the list/i)).toBeNull();
+
+    resolveFirst({ document: document_() });
+    await waitFor(() => expect(apiMock.knowledge.upload).toHaveBeenCalledTimes(2));
+  });
+
   it('refuses a file larger than the cap without sending it', async () => {
     renderWithProviders(<KnowledgeUploadZone reach={GLOBAL} onUploaded={vi.fn()} />);
 

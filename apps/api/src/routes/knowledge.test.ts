@@ -109,6 +109,41 @@ describe('uploading a file', () => {
     expect((await listAll()).filter((one) => one.source?.name === 'loyers.xlsx')).toHaveLength(1);
   });
 
+  it('keeps the original when the same file arrives twice at once', async () => {
+    // The duplicate check is a read, not a lock: two requests hash the same
+    // bytes, both ask whether that hash is known, both are told no, and both
+    // carry on. The unique index refuses the second row — correctly — and its
+    // cleanup then deletes the file *by hash*, which is the file the first
+    // document had just been given. What is left is a document whose original
+    // is gone: no download, no re-extraction, and nothing on screen to say
+    // why. Two tabs, or one impatient double click.
+    // Bytes of its own, because the suite shares one server: a fixture an
+    // earlier case has already uploaded is caught by the *pre*-check, and
+    // both requests would then take the path this one exists to avoid.
+    const data = Buffer.from('# Course\n\nDeux requêtes pour un seul fichier.').toString('base64');
+    const race = () =>
+      server.send('POST', '/api/knowledge/upload', {
+        name: 'course.md',
+        mime: '',
+        data,
+        reach: GLOBAL,
+      });
+    const [a, b] = await Promise.all([race(), race()]);
+    const created = [a, b].filter((response) => response.status === 201);
+    expect(created).toHaveLength(1);
+
+    const { document } = (await created[0]!.json()) as { document: KnowledgeDocumentMeta };
+    const original = await server.send('GET', `/api/knowledge/${document.id}/source`);
+    expect(original.status).toBe(200);
+    // Drained on purpose: the original is served as a stream, and a body left
+    // unread keeps the connection busy and the file handle open, so the
+    // server's own close waits on it for its full timeout.
+    expect((await original.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    // And the one that lost the race is told what happened, not handed a 500.
+    const loser = [a, b].find((response) => response.status !== 201)!;
+    expect(loser.status).toBe(409);
+  });
+
   it('refuses a type it cannot read with 415, naming what it accepts', async () => {
     const response = await server.send('POST', '/api/knowledge/upload', {
       name: 'archive.zip',
@@ -192,12 +227,19 @@ describe('uploading a file', () => {
     const pdf = documents.find((one) => one.source?.mime === 'application/pdf')!;
     const other = documents.find((one) => one.source?.mime === 'text/markdown')!;
 
-    expect(
-      (await server.send('GET', `/api/knowledge/${pdf.id}/source`)).headers.get('content-disposition'),
-    ).toContain('inline');
-    expect(
-      (await server.send('GET', `/api/knowledge/${other.id}/source`)).headers.get('content-disposition'),
-    ).toContain('attachment');
+    // Each body is drained rather than dropped: the original is served as a
+    // stream, and an unread one keeps the connection busy and the file handle
+    // open — so whichever test happens to run last leaves `server.close()`
+    // waiting for its whole timeout, which reads as a hung suite.
+    const disposition = async (id: string): Promise<string> => {
+      const response = await server.send('GET', `/api/knowledge/${id}/source`);
+      const header = response.headers.get('content-disposition') ?? '';
+      await response.arrayBuffer();
+      return header;
+    };
+
+    expect(await disposition(pdf.id)).toContain('inline');
+    expect(await disposition(other.id)).toContain('attachment');
   });
 
   it('404s the original of a document that never had one', async () => {

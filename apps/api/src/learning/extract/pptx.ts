@@ -150,10 +150,18 @@ export function extractPptx(input: ExtractInput): ExtractedText {
         .map((match) => match[0])
         .filter((shape) => /<p:ph\b[^>]*type="body"/.test(shape))
         .flatMap(paragraphsOf);
-      if (notes.length > 0) body.push(`Notes : ${notes.join(' ')}`);
+      if (notes.length > 0) body.push(`Notes: ${notes.join(' ')}`);
     }
 
-    const heading = `## Diapositive ${index + 1}${title ? ` — ${title}` : ''}`;
+    // `Slide`, in English, and it is the only word this file invents: every
+    // other extractor names a section after something the document already
+    // carries — a sheet's name, a file's name, a heading — and a deck's
+    // slides have no names of their own. The word has to match the one the
+    // citation uses, because both land in the same prompt: `describeLocation`
+    // writes `(slide 3, lines 4–9)` directly above this heading, and a model
+    // shown `Diapositive 3` under `slide 3` has no way to tell they are one
+    // slide. See the case in pptx.test.ts, which derives it from the locator.
+    const heading = `## Slide ${index + 1}${title ? ` — ${title}` : ''}`;
     return [heading, ...body].join('\n\n');
   });
 

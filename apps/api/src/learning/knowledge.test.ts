@@ -86,6 +86,25 @@ describe('storing a document', () => {
     ).rejects.toThrow(/capped/i);
   });
 
+  it('says which emptiness it means when a document is only headings', async () => {
+    // Two refusals shared one sentence. A file with no text at all gets "a
+    // document needs content", which is true; a file that is *all* headings —
+    // a stub note, an outline, an export whose header row has nothing under
+    // it — used to get the same words, about text the operator can see on
+    // screen. It reads as the upload having lost the file. The chunker makes
+    // no passage out of a heading, so there is genuinely nothing to index,
+    // and that is what the sentence has to say.
+    const refusal = await store
+      .upsert({ workspaceId: null, title: 'Plan', content: '# Titre\n\n## Sous-titre' })
+      .then(
+        () => null,
+        (error: Error) => error.message,
+      );
+    expect(refusal).toBeTruthy();
+    expect(refusal).toMatch(/heading/i);
+    expect(refusal).not.toBe('A document needs content.');
+  });
+
   it('re-saving identical content skips the re-embed entirely', async () => {
     const doc = await store.upsert({ workspaceId: null, title: 'Bail', content: LEASE });
     const before = db

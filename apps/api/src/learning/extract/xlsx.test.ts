@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import ExcelJS from 'exceljs';
 
 import { extractXlsx } from './xlsx.js';
 
@@ -18,6 +19,26 @@ describe('extractXlsx', () => {
     const { text } = await read();
     expect(text).toContain('## Loyers 2026 — Mois | Échéance | Loyer | Charges | Total');
     expect(text).toContain('## Contacts — Rôle | Nom | Téléphone');
+  });
+
+  it('counts a blank sheet, so the sheet a passage is cited under is the one you open', async () => {
+    // A workbook with an empty tab in the middle — a "Notes" nobody filled in
+    // — is ordinary, and skipping it renumbered everything after: the third
+    // sheet was cited as sheet 2, and the operator opening sheet 2 found a
+    // blank page. `joinPages` is written for exactly this ("page 7 of a PDF is
+    // page 7 whether or not page 6 was blank"); the skip happened before it
+    // could do its job. Built here rather than committed as a fixture: what
+    // makes the case is one empty sheet, and a binary hides that.
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet('Un').addRows([['Colonne'], ['premier']]);
+    workbook.addWorksheet('Vide');
+    workbook.addWorksheet('Trois').addRows([['Colonne'], ['troisieme']]);
+    const data = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    const out = await extractXlsx({ name: 'trous.xlsx', mime: '', data });
+    // Two breaks for three sheets, and the second one opens the third sheet.
+    expect(out.pageBreaks).toHaveLength(2);
+    expect(out.text.slice(out.pageBreaks[1]!)).toMatch(/^## Trois/);
   });
 
   it('writes one row per paragraph, so a row is never cut in half', async () => {

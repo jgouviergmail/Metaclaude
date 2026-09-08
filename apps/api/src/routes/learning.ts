@@ -783,7 +783,16 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
         });
       } catch (error) {
         // The row is what makes the file findable; without one it is litter.
-        await context.knowledgeFiles.remove(sha256, mime);
+        // Unless the file is somebody else's now: the check above is a read
+        // and not a lock, so two uploads of one file both pass it and both
+        // write the same bytes under the same content-addressed name. The
+        // store turns the unique index into the same 409 the pre-check gives
+        // — that part was already right — but removing the file by hash here
+        // took it from the document that had just been given it, leaving an
+        // original that 404s with nothing on screen to explain it.
+        if (!context.knowledge.findBySourceHash(sha256)) {
+          await context.knowledgeFiles.remove(sha256, mime);
+        }
         throw error;
       }
 

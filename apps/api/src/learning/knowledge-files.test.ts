@@ -46,6 +46,21 @@ describe('KnowledgeFileStore', () => {
     expect(readFileSync(join(dir, `${HASH}.pdf`)).toString()).toBe('x');
   });
 
+  it('survives the same file being written several times at once', async () => {
+    // Two tabs, or a retry, dropping one document twice. The route hashes,
+    // asks whether that hash is known, and writes — so two uploads in flight
+    // together both find nothing and both write. They shared one `.part`
+    // name: the first rename moved it away and the others failed with ENOENT,
+    // a 500 on what should have been a no-op. Measured before the fix: two of
+    // six. Six here rather than two because one pair raced only sometimes.
+    const data = Buffer.alloc(512 * 1024, 7);
+    const writes = await Promise.allSettled(
+      Array.from({ length: 6 }, () => store.write(HASH, 'application/pdf', data)),
+    );
+    expect(writes.filter((w) => w.status === 'rejected')).toEqual([]);
+    expect(await store.read(HASH, 'application/pdf')).toEqual(data);
+  });
+
   it('says a file is absent before it is written, and after it is removed', async () => {
     expect(store.exists(HASH, 'application/pdf')).toBe(false);
     await store.write(HASH, 'application/pdf', Buffer.from('x'));

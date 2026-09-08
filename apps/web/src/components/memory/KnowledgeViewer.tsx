@@ -125,8 +125,22 @@ export function KnowledgeViewer({
                   <li
                     key={number}
                     data-line={number}
+                    // The tint alone says "this is the line" to whoever can
+                    // see it and to nobody else, in the one modal whose whole
+                    // job is to point at a line.
+                    aria-current={cited ? 'true' : undefined}
+                    // `content-visibility` is what makes a long document
+                    // cheap: the browser lays out and paints only the rows on
+                    // screen. Measured in Chromium on 8 500 lines — a 512 KiB
+                    // document, the largest the store accepts — layout falls
+                    // from 86 ms to 16 ms, and `scrollIntoView` still centres
+                    // the cited line exactly, which is the part that could
+                    // have broken since a skipped row is sized from an
+                    // estimate. `auto` in the intrinsic size means the browser
+                    // keeps each row's real height once it has seen it, so a
+                    // row that wraps stops being an estimate after one pass.
                     className={cn(
-                      'flex gap-3 px-3',
+                      'flex gap-3 px-3 [contain-intrinsic-size:auto_1.2rem] [content-visibility:auto]',
                       cited ? 'bg-accent-soft/60' : undefined,
                     )}
                   >

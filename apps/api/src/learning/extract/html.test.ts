@@ -43,6 +43,19 @@ describe('htmlToMarkdown', () => {
     expect(markdown).not.toContain('© 2026');
   });
 
+  it('drops a script or style that is never closed, body and all', () => {
+    // A truncated save, or a page cut short by whatever fetched it. These two
+    // are HTML's raw-text elements: their content runs to the closing tag, so
+    // with none the rest of the file *is* the script. A browser loses it and
+    // so must this — the paired rule above needs a `</script>`, and without
+    // one the source was landing in the retrieval index as prose.
+    expect(htmlToMarkdown('<p>avant</p><script>alert(1); var secret = 42;')).toBe('avant');
+    expect(htmlToMarkdown('<p>avant</p><style>body{color:red}')).toBe('avant');
+    // The bound on that: only those two. An ordinary block auto-closes in a
+    // real parser, so stripping an unclosed one to the end would eat the page.
+    expect(htmlToMarkdown('<nav>Accueil<p>Le corps du texte.')).toContain('Le corps du texte.');
+  });
+
   it('decodes the entities a real page uses, numeric and named', () => {
     const markdown = htmlToMarkdown(wild);
     expect(markdown).toContain('été'); // &#233;t&#xE9;

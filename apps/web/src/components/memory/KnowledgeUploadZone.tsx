@@ -67,11 +67,25 @@ export function KnowledgeUploadZone({
   const [pending, setPending] = useState<Pending[]>([]);
   const [busy, setBusy] = useState(false);
   const counter = useRef(0);
+  const queue = useRef<{ row: Pending; file: File }[]>([]);
+  const draining = useRef(false);
 
   const update = (key: string, patch: Partial<Pending>): void =>
     setPending((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
 
-  async function send(files: File[]): Promise<void> {
+  /**
+   * Add to the queue, and start the drain if nothing is draining it.
+   *
+   * A queue and a flag rather than a loop per drop: sequencing the files of
+   * one drop is not the same promise as sequencing the drops, and dropping a
+   * second file while a twenty-megabyte PDF is still going is ordinary. Two
+   * loops then ran together, and the first to finish declared the queue idle
+   * — which is what put "Clear the list" under a row still in flight, where
+   * clearing it dropped the row and lost the result of a request nobody had
+   * cancelled. Both refs, never state: this is read and written inside one
+   * synchronous event handler, where a re-render would be too late to help.
+   */
+  function enqueue(files: File[]): void {
     if (files.length === 0) return;
     const queued: Pending[] = files.map((file) => ({
       key: `f${(counter.current += 1)}`,
@@ -81,11 +95,17 @@ export function KnowledgeUploadZone({
       detail: '',
     }));
     setPending((rows) => [...rows, ...queued]);
+    queue.current.push(...files.map((file, index) => ({ row: queued[index]!, file })));
+    if (!draining.current) void drain();
+  }
+
+  async function drain(): Promise<void> {
+    draining.current = true;
     setBusy(true);
 
     // One at a time, and on purpose: see the header.
-    for (const [index, file] of files.entries()) {
-      const row = queued[index]!;
+    while (queue.current.length > 0) {
+      const { row, file } = queue.current.shift()!;
 
       if (file.size > KNOWLEDGE_MAX_BYTES) {
         update(row.key, {
@@ -127,18 +147,22 @@ export function KnowledgeUploadZone({
       }
     }
 
+    draining.current = false;
     setBusy(false);
   }
 
   const pick = (list: FileList | null): void => {
-    if (list) void send([...list]);
+    if (list) enqueue([...list]);
   };
 
   return (
     <div className="space-y-2">
       <div
-        // A label rather than a button wrapping an input: the whole area is
-        // the control, and a label is what a screen reader announces as one.
+        // A plain region, with the control named inside it. Wrapping the area
+        // in a `<label>` would make all of it clickable, and it would also put
+        // a button inside a label, where a click is claimed by both — so the
+        // named control is the button, and the hidden input carries its own
+        // label for anyone who reaches it directly.
         className={cn(
           'flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition-colors',
           dragging ? 'border-accent bg-accent-soft/40' : 'border-line bg-sunken/30',

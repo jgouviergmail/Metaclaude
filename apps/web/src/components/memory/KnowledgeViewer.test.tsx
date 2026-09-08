@@ -75,6 +75,21 @@ describe('the viewer', () => {
     expect(screen.getByText('4')).toBeDefined();
   });
 
+  it('lets the browser skip the lines nobody is looking at', async () => {
+    // A document is capped at 512 KiB, which is about 8 500 lines, and every
+    // one of them is a row of two spans. Measured in Chromium on that many,
+    // one line in twenty long enough to wrap: laying them out costs 86 ms
+    // without this and 16 ms with it, and `scrollIntoView` still lands the
+    // cited line exactly centred either way — which was the thing worth
+    // checking, since skipped rows are measured from an estimate. happy-dom
+    // has no layout, so what a test can hold is the class that asks for it.
+    renderWithProviders(
+      <KnowledgeViewer documentId="doc_1" onOpenChange={vi.fn()} onChanged={vi.fn()} />,
+    );
+    const row = (await screen.findByText('Article 1 — Objet.')).closest('li')!;
+    expect(row.className).toContain('[content-visibility:auto]');
+  });
+
   it('brings the cited line into view', async () => {
     renderWithProviders(
       <KnowledgeViewer documentId="doc_1" line={3} onOpenChange={vi.fn()} onChanged={vi.fn()} />,
@@ -82,6 +97,18 @@ describe('the viewer', () => {
     await screen.findByText('Article 2 — Durée.');
 
     await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+  });
+
+  it('marks the cited line as more than a colour', async () => {
+    // The highlight is a background tint, which is nothing at all to a screen
+    // reader and nothing to anyone who cannot separate those two colours —
+    // and the whole reason this modal exists is to show *that* line.
+    renderWithProviders(
+      <KnowledgeViewer documentId="doc_1" line={3} onOpenChange={vi.fn()} onChanged={vi.fn()} />,
+    );
+    const row = (await screen.findByText('Article 2 — Durée.')).closest('li')!;
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(row.textContent).toContain('3');
   });
 
   it('fetches nothing while it is closed', () => {

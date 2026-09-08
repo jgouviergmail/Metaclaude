@@ -467,7 +467,18 @@ export class KnowledgeStore {
     // and better-sqlite3 transactions are synchronous — holding one across an
     // await is not even expressible. The transaction below is the whole write.
     const chunks = chunkDocument(content);
-    if (chunks.length === 0) throw new KnowledgeStoreError('A document needs content.');
+    // Not the same emptiness as the one refused above, and it used to say so
+    // in the same words. There *is* text here — the chunker simply makes no
+    // passage out of it, which happens for exactly one shape: a document that
+    // is only headings. A stub note, an outline, a spreadsheet export whose
+    // header row has nothing under it. Told "a document needs content" about
+    // a file whose text is on screen, an operator reads it as the upload
+    // having lost their document.
+    if (chunks.length === 0) {
+      throw new KnowledgeStoreError(
+        'This document is only headings, with no text under them to index.',
+      );
+    }
     // Text now, vectors when the model is ready: the fts index makes the
     // document findable at once, the document is marked pending and
     // `reindex` embeds its chunks later. `unchanged` above compares the
