@@ -188,20 +188,50 @@ describe('the result footer’s token tooltip', () => {
   it('names what was read from the cache and what was written to it', async () => {
     renderWithProviders(<ResultFooter event={result()} run={null} {...noop} />);
 
+    // The headline is everything the turn was billed for — 12 + 704 + 71,630 +
+    // 36,430 — not the two smallest of the four. It read `716 tokens` for a
+    // turn that moved a hundred and nine thousand, which is the same lie the
+    // session counters told: measured over 54 production runs, input and
+    // output together were 6% of the tokens.
     // Radix renders a tooltip's content only once it opens, and it opens on
-    // focus as well as on hover — the keyboard path, and the one jsdom can
+    // focus as well as on hover — the keyboard path, and the one happy-dom can
     // drive without a timer.
-    fireEvent.focus(screen.getByText('716 tokens'));
+    fireEvent.focus(screen.getByText('109k tokens'));
 
     expect(await screen.findByText('12 in · 704 out · 72k cached · 36k written')).toBeTruthy();
   });
 
-  it('says nothing about tokens when there are none', () => {
+  it('says nothing about tokens when there are none at all', () => {
+    // All four at zero. Zeroing only input and output describes a turn that
+    // read seventy thousand tokens from cache, and calling that "none" is
+    // exactly the accounting this footer stopped doing.
     renderWithProviders(
-      <ResultFooter event={result({ inputTokens: 0, outputTokens: 0 })} run={null} {...noop} />,
+      <ResultFooter
+        event={result({
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        })}
+        run={null}
+        {...noop}
+      />,
     );
 
     expect(screen.queryByText(/tokens/)).toBeNull();
+  });
+
+  it('still reports a turn that spent nothing but cache', () => {
+    // The case the previous version called "no tokens".
+    renderWithProviders(
+      <ResultFooter
+        event={result({ inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0 })}
+        run={null}
+        {...noop}
+      />,
+    );
+
+    expect(screen.getByText('72k tokens')).toBeTruthy();
   });
 });
 

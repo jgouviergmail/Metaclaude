@@ -445,7 +445,11 @@ export const ResultFooter = memo(function ResultFooter({
           </span>
         ) : null}
 
-        {event.usage.inputTokens + event.usage.outputTokens > 0 ? (
+        {event.usage.inputTokens +
+          event.usage.outputTokens +
+          event.usage.cacheReadTokens +
+          event.usage.cacheCreationTokens >
+        0 ? (
           <Tooltip
             content={
               <span className="tabular-nums">
@@ -465,7 +469,19 @@ export const ResultFooter = memo(function ResultFooter({
             }
           >
             <span className="cursor-help tabular-nums underline decoration-dotted underline-offset-2">
-              {formatTokens(event.usage.inputTokens + event.usage.outputTokens)} {t('tokens')}
+              {/* Every token the turn was billed for, not the two smallest of
+                  the four. Measured over 54 production runs: 650k input and
+                  172k output against 12.04M read from cache and 1.41M written
+                  to it, so the old headline showed about 6% of the truth and
+                  a run that had moved half a million tokens read as ten
+                  thousand. The breakdown stays one hover away. */}
+              {formatTokens(
+                event.usage.inputTokens +
+                  event.usage.outputTokens +
+                  event.usage.cacheReadTokens +
+                  event.usage.cacheCreationTokens,
+              )}{' '}
+              {t('tokens')}
             </span>
           </Tooltip>
         ) : null}

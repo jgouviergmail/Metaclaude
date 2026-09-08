@@ -914,6 +914,53 @@ restates the code is noise; one that records a decision or a trap is not.
   hides. Any probe — in a test or in Playwright — compares against
   `document.documentElement.clientWidth`, never `innerWidth`.
 
+- **A guard on truthiness cannot tell a sentinel from a choice.** The composer
+  sends its model picker on every message and spells "Auto" as the string
+  `default`, so `overrides.model` was *defined* for every message a person ever
+  typed. `choosePolicy` gated the bandit on `!overrides.model` — false for
+  `'default'` — so the learner was never consulted from the composer at all,
+  the run was stamped `explicit` as though somebody had chosen it, and
+  `default` reaches the CLI as "pass no `--model`", which lands on the CLI's own
+  default. Measured in production over 54 runs: 46 `explicit` against 7
+  `learned`, and all 42 runs submitted as Auto served by `claude-opus-5` (three
+  by the 1M variant, ~3x the price). Selecting Auto did the opposite of what it
+  said. Ask `isAutoModel`/`isAutoEffort`, never truthiness — same family as the
+  workspace-settings guard that refused the form which round-tripped it.
+- **The system prompt is the cached prefix, so anything per-message in it
+  rewrites everything.** Retrieval is keyed on *this* prompt, and the block was
+  appended to `systemPrompt`. Measured against the real CLI, three runs in one
+  resumed session: the append **is** re-applied on `resume`, and it *replaces*
+  rather than accumulates. The run whose append had changed wrote 11,498 tokens
+  to cache; the next, identical, wrote 163 — a factor of seventy from nothing
+  but the append moving. In production the prefix is ~34k with the MCP
+  catalogues and every run paid it. Session-stable context (language directive,
+  workspace conventions, the standing shelf) goes in `systemPromptAppend`;
+  anything that varies with the message goes in `contextPreamble`, which rides
+  the user message. `excludeDynamicSections: true` does the same for the git
+  status, which an editing agent changes between its own runs.
+- **A uniform prior is a claim about cost that nobody believes.** Beta(1,1) on
+  every bandit arm says a $2.10 arm is as plausible as a $0.07 one, and four of
+  the frontier's arms are opus or fable — so a near-uniform Thompson draw put
+  most early decisions on the dear end. Don't fix it by deleting arms: omission
+  is not evidence, and a frontier missing the newest model makes it structurally
+  unreachable. Fix where each arm *opens*: `armPrior` asks `computeReward`
+  itself what an ordinary success on that arm would score, so the prior follows
+  the reward instead of contradicting it. Keep it weak (four pseudo-trials) —
+  a prior that survives a dozen trials is a policy. And the model's *speed* is a
+  property of the model, not of the effort: `null` effort on Haiku means "this
+  model has no such knob", on Sonnet it means "the CLI will choose, and it
+  chooses high". Reading both as `high` ranked `sonnet low` above `haiku`.
+- **`effort` is not on the SDK's init frame.** The field is declared on the type
+  and documented as "present on Remote Control bridge init frames"; measured
+  through `query()` against Claude Code, the key is not in the object at all —
+  for an explicit `effort: 'high'` and for the Auto path alike. There is also no
+  `getSettings()` on `Query`, so `applied.effort` is unreachable too. A
+  `served_effort` column would therefore have been null forever, which is the
+  `rewindPoint` trap exactly. The same probe is worth reusing: dump
+  `Object.keys(init)` before wiring anything to a field the SDK merely declares.
+  Related and confirmed twice: with no `model` option the CLI serves
+  `claude-opus-5[1m]`.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +

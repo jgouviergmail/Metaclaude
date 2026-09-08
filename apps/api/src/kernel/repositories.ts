@@ -10,6 +10,7 @@ import type {
   Run,
   RunPolicy,
   RunStatus,
+  RunUsage,
   Session,
   SessionStatus,
   TranscriptEvent,
@@ -53,6 +54,8 @@ interface SessionRow {
   total_cost_usd: number;
   total_input_tokens: number;
   total_output_tokens: number;
+  total_cache_read_tokens: number;
+  total_cache_creation_tokens: number;
   run_count: number;
   created_at: number;
   updated_at: number;
@@ -262,6 +265,8 @@ function toSession(row: SessionRow): Session {
     totalCostUsd: row.total_cost_usd,
     totalInputTokens: row.total_input_tokens,
     totalOutputTokens: row.total_output_tokens,
+    totalCacheReadTokens: row.total_cache_read_tokens,
+    totalCacheCreationTokens: row.total_cache_creation_tokens,
     runCount: row.run_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -442,20 +447,38 @@ export class SessionRepo {
     return this.get(id);
   }
 
-  /** Fold a finished run's usage into the session's running totals. */
-  addUsage(id: string, usage: { costUsd: number; inputTokens: number; outputTokens: number }): void {
+  /**
+   * Fold a finished run's usage into the session's running totals.
+   *
+   * All four token counters, not two. The cache halves used to be dropped here
+   * and nowhere else, which is why a session that had carried 4.53M tokens
+   * displayed 45.7k — the screen was not wrong about its own number, it was
+   * being handed a hundredth of the truth.
+   */
+  addUsage(id: string, usage: RunUsage): void {
     this.db
       .prepare(
         `UPDATE sessions SET
-           total_cost_usd      = total_cost_usd + ?,
-           total_input_tokens  = total_input_tokens + ?,
-           total_output_tokens = total_output_tokens + ?,
-           run_count           = run_count + 1,
-           updated_at          = ?,
-           last_activity_at    = ?
+           total_cost_usd              = total_cost_usd + ?,
+           total_input_tokens          = total_input_tokens + ?,
+           total_output_tokens         = total_output_tokens + ?,
+           total_cache_read_tokens     = total_cache_read_tokens + ?,
+           total_cache_creation_tokens = total_cache_creation_tokens + ?,
+           run_count                   = run_count + 1,
+           updated_at                  = ?,
+           last_activity_at            = ?
          WHERE id = ?`,
       )
-      .run(usage.costUsd, usage.inputTokens, usage.outputTokens, Date.now(), Date.now(), id);
+      .run(
+        usage.costUsd,
+        usage.inputTokens,
+        usage.outputTokens,
+        usage.cacheReadTokens,
+        usage.cacheCreationTokens,
+        Date.now(),
+        Date.now(),
+        id,
+      );
   }
 
   delete(id: string): boolean {

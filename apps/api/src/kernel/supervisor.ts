@@ -109,8 +109,30 @@ export interface RunRequest {
   policy: RunPolicy;
   /** Claude CLI session id to resume, when this is not the first run. */
   resumeSessionId: string | null;
-  /** Extra system-prompt text: retrieved memory, workspace conventions. */
+  /**
+   * Extra system-prompt text that is *stable* for the session: the language
+   * directive, the workspace's own conventions, the standing shelf. Anything
+   * here rides inside the cached prefix, so it must not change between runs.
+   */
   systemPromptAppend: string;
+  /**
+   * Per-message context — retrieved memory and knowledge — carried in the user
+   * message rather than in the system prompt.
+   *
+   * Measured against the real CLI, three runs in one resumed session: the
+   * append IS re-applied on `resume` (run B saw the value only the second
+   * append carried) and it *replaces* rather than accumulates (run C could no
+   * longer see the first). Changing it therefore rewrites the whole cached
+   * prefix — B, whose append had changed, wrote 11,498 tokens to cache; C,
+   * whose append was identical, wrote 163. A factor of seventy, from nothing
+   * but the append moving.
+   *
+   * Retrieval is by similarity to *this* prompt, so it changes on almost every
+   * run. Left in the system prompt it made every production run pay for the
+   * whole prefix again — ~34k tokens at the 1.25x write rate. Here it costs a
+   * re-read of a couple of thousand tokens at the 0.1x read rate instead.
+   */
+  contextPreamble: string;
   /** MCP servers already resolved with their secrets. */
   mcpServers: Record<string, unknown>;
   /** Custom agents available to this run. */
@@ -355,6 +377,35 @@ function inlineImageType(mime: string): 'image/png' | 'image/jpeg' | 'image/webp
  * listed as missing rather than failing the run: the message is the user's,
  * and it must go out.
  */
+/**
+ * The per-message context block that rides in the user message.
+ *
+ * Everything here varies with the individual message — what similarity
+ * retrieval found for *this* prompt, what the Tools picker asked for on *this*
+ * send — which is precisely why none of it may sit in the system prompt.
+ * Measured against the real CLI: an append that changed between two runs of one
+ * resumed session wrote 11,498 tokens to cache; an identical one wrote 163.
+ *
+ * It is a function rather than two lines inside `buildOptions` because the
+ * options and the user message are built in different methods, and a preamble
+ * computed twice is a preamble that will eventually disagree with itself.
+ */
+export function buildContextPreamble(request: RunRequest): string {
+  const controls = request.policy.toolControls;
+  const parts = [request.contextPreamble];
+  if (controls && controls.requiredSkills.length > 0) {
+    parts.push(
+      `For this message the operator requires the skill(s): ${controls.requiredSkills.join(', ')}. Use them.`,
+    );
+  }
+  if (controls && controls.preferredMcpServers.length > 0) {
+    parts.push(
+      `For this message the operator prefers tools from the MCP server(s): ${controls.preferredMcpServers.join(', ')}. Reach for them first where relevant.`,
+    );
+  }
+  return parts.filter(Boolean).join('\n\n');
+}
+
 export async function buildUserContent(
   prompt: string,
   attachments: RunAttachment[],
@@ -794,25 +845,25 @@ export class AgentSupervisor {
     const directory = this.delegationDirectory(request, resolved);
     if (directory.text) steering.push(directory.text);
 
-    if (controls && controls.requiredSkills.length > 0) {
-      steering.push(
-        `For this message the operator requires the skill(s): ${controls.requiredSkills.join(', ')}. Use them.`,
-      );
-    }
-    if (controls && controls.preferredMcpServers.length > 0) {
-      steering.push(
-        `For this message the operator prefers tools from the MCP server(s): ${controls.preferredMcpServers.join(', ')}. Reach for them first where relevant.`,
-      );
-    }
     const promptAppend = [request.systemPromptAppend, ...steering].filter(Boolean).join('\n\n');
 
     const options: Options = {
       cwd: workspace.path,
       // Preset + append keeps every Claude Code behaviour the operator relies on
       // (CLAUDE.md discovery, skills, tool descriptions) and layers ours on top.
-      systemPrompt: promptAppend
-        ? { type: 'preset', preset: 'claude_code', append: promptAppend }
-        : { type: 'preset', preset: 'claude_code' },
+      systemPrompt: {
+        type: 'preset',
+        preset: 'claude_code',
+        ...(promptAppend ? { append: promptAppend } : {}),
+        // Keeps the working directory, the auto-memory path and — the one that
+        // matters here — the *git status* out of the cached prefix, re-injected
+        // as the first user message instead. An agent that edits files changes
+        // its own git status between runs, so leaving it in the system prompt
+        // invalidates the prefix on every run of exactly the workload
+        // Metaclaude exists for. The trade is that this context steers
+        // marginally less firmly, being a user message rather than a system one.
+        excludeDynamicSections: true,
+      },
       permissionMode,
       includePartialMessages: true,
       // Surface subagent output so the transcript shows delegated work instead
@@ -1340,7 +1391,13 @@ export class AgentSupervisor {
     // blocks beside the text; see buildUserContent for the rules.
     // The run's anchor: the uuid this message is filed under. Assigned before
     // the CLI is even started, so nothing the CLI omits can take it away.
-    const promptUuid = stream.push(await buildUserContent(request.prompt, request.attachments));
+    const preamble = buildContextPreamble(request);
+    const promptUuid = stream.push(
+      await buildUserContent(
+        preamble ? `${preamble}\n\n---\n\n${request.prompt}` : request.prompt,
+        request.attachments,
+      ),
+    );
 
     /*
      * The anchor exists only where a rewind could actually work.

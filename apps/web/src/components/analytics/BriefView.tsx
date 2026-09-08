@@ -105,7 +105,13 @@ export function BriefView({ brief }: { brief: Brief }) {
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted">
         <span>
-          {formatTokens(brief.activity.totalInputTokens + brief.activity.totalOutputTokens)} {t('tokens')}
+          {formatTokens(
+            brief.activity.totalInputTokens +
+              brief.activity.totalOutputTokens +
+              brief.activity.totalCacheReadTokens +
+              brief.activity.totalCacheCreationTokens,
+          )}{' '}
+          {t('tokens')}
         </span>
         {brief.newInsights > 0 ? (
           <span className="inline-flex items-center gap-1">

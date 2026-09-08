@@ -12,7 +12,7 @@
  * answer when the CLI could not be reached at all.
  */
 
-import type { ClaudeCatalogue, EffortLevel } from '@metaclaude/shared';
+import { AUTO_MODEL, type ClaudeCatalogue, type EffortLevel } from '@metaclaude/shared';
 
 export interface PickerOption {
   value: string;
@@ -26,9 +26,14 @@ export interface PickerOption {
  * `default` is not a model: it means the bandit picks one at submit time from
  * what it has learned about this kind of task. It stays first and is never
  * replaced by a CLI-reported model of the same name.
+ *
+ * The value comes from `AUTO_MODEL` rather than a literal because the API side
+ * has to recognise the very same string to know the learner was asked for. The
+ * two were written separately, and the day they disagreed the learner was
+ * switched off for every message typed into this composer.
  */
 const AUTO: PickerOption = {
-  value: 'default',
+  value: AUTO_MODEL,
   label: 'Auto',
   hint: 'Let Metaclaude choose from what it has learned',
 };

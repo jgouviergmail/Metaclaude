@@ -60,7 +60,15 @@ const activityLands = (session: Session): void => {
         WHERE id = ?`,
     )
     .run(session.id);
-  server.context.sessionRepo.addUsage(session.id, { costUsd: 0.01, inputTokens: 10, outputTokens: 5 });
+  server.context.sessionRepo.addUsage(session.id, {
+    inputTokens: 10,
+    outputTokens: 5,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    costUsd: 0.01,
+    durationMs: 0,
+    turns: 0,
+  });
 };
 
 describe('the session read marker over HTTP', () => {

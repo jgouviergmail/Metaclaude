@@ -1095,4 +1095,36 @@ export const MIGRATIONS: readonly Migration[] = [
         SELECT id, workspace_id FROM mcp_servers WHERE workspace_id IS NOT NULL;
     `,
   },
+  {
+    version: 27,
+    name: 'session_cache_token_totals',
+    sql: /* sql */ `
+      -- A session's token counters left out 94 percent of what it consumed.
+      --
+      -- The two existing columns sum inputTokens and outputTokens only, and in
+      -- an agentic loop those are the small halves: measured over 54 runs of
+      -- this deployment, 650k input and 172k output against 12.04M read from
+      -- cache and 1.41M written to it. The session an operator opened most
+      -- showed 45.7k tokens and had actually carried 4.53M, for 7.88 USD.
+      --
+      -- That is not a rounding error in a display, it is the difference
+      -- between a number you can budget with and one that quietly says the
+      -- opposite of the truth. Cost is where the two halves rejoin, and cost
+      -- was already stored — but nothing let anyone see *why* one session cost
+      -- five times another, because the reason is entirely in these two.
+      ALTER TABLE sessions ADD COLUMN total_cache_read_tokens INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN total_cache_creation_tokens INTEGER NOT NULL DEFAULT 0;
+
+      -- Backfill from the runs, which have carried the full usage all along.
+      UPDATE sessions SET
+        total_cache_read_tokens = COALESCE((
+          SELECT SUM(CAST(json_extract(r.usage, '$.cacheReadTokens') AS INTEGER))
+          FROM runs r WHERE r.session_id = sessions.id
+        ), 0),
+        total_cache_creation_tokens = COALESCE((
+          SELECT SUM(CAST(json_extract(r.usage, '$.cacheCreationTokens') AS INTEGER))
+          FROM runs r WHERE r.session_id = sessions.id
+        ), 0);
+    `,
+  },
 ];

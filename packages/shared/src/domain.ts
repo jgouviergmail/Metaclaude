@@ -34,6 +34,42 @@ export type ModelSelector = z.infer<typeof ModelSelector>;
 export const EffortLevel = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export type EffortLevel = z.infer<typeof EffortLevel>;
 
+/**
+ * Metaclaude's own sentinel for "let the learner choose", spelled as the CLI's
+ * `default` alias because that is also what we pass when nothing is pinned.
+ *
+ * It is not a model, and the distinction is load-bearing in two places that
+ * used to disagree. The composer offers it as "Auto" and sends it like any
+ * other choice, so `overrides.model` was *defined* on every message a person
+ * ever typed; `choosePolicy` gated the bandit on `!overrides.model`, which is
+ * false for the string `'default'`, and the learner was therefore never
+ * consulted from the composer at all. Measured in production over 54 runs: 46
+ * carried `source: 'explicit'` against 7 `learned`, and every one of the 42
+ * runs submitted as "Auto" was served by `claude-opus-5` — the CLI's own
+ * default, which is the most expensive tier. Choosing Auto did the opposite of
+ * what it said: it switched the learner off *and* pinned the flagship.
+ *
+ * Anything deciding "did the operator pin a model?" must ask `isAutoModel`,
+ * never truthiness.
+ */
+export const AUTO_MODEL = 'default';
+
+/** Did the operator leave the model to the learner rather than pin one? */
+export function isAutoModel(model: ModelSelector | null | undefined): boolean {
+  return model === undefined || model === null || model === AUTO_MODEL;
+}
+
+/**
+ * Did the operator leave the effort to the model rather than pin one?
+ *
+ * `null` is the composer's "Auto" for effort — a deferral, not a value. It
+ * reads as absence everywhere else, which is why the model half of this pair
+ * is the one that broke.
+ */
+export function isAutoEffort(effort: EffortLevel | null | undefined): boolean {
+  return effort === undefined || effort === null;
+}
+
 export const ThinkingMode = z.enum(['adaptive', 'enabled', 'disabled']);
 export type ThinkingMode = z.infer<typeof ThinkingMode>;
 
@@ -265,6 +301,17 @@ export const Session = z.object({
   totalCostUsd: z.number().nonnegative(),
   totalInputTokens: z.number().int().nonnegative(),
   totalOutputTokens: z.number().int().nonnegative(),
+  /**
+   * What the session read back from, and wrote into, the prompt cache.
+   *
+   * These are not a footnote to the two above — they are the bulk of it. In an
+   * agentic loop every turn resends the whole conversation, so a session's real
+   * consumption lives here: measured over 54 runs, 12.04M read and 1.41M
+   * written against 650k of genuine input. Defaulted so a row written before
+   * the columns existed still parses.
+   */
+  totalCacheReadTokens: z.number().int().nonnegative().default(0),
+  totalCacheCreationTokens: z.number().int().nonnegative().default(0),
   runCount: z.number().int().nonnegative(),
   createdAt: Millis,
   updatedAt: Millis,

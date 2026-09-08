@@ -11,6 +11,64 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.75.0] — 2026-09-08
+
+### Fixed
+
+- **Choosing "Auto" for the model switched the learner off and pinned the most
+  expensive model.** The composer offers Auto as the value `default` and sends
+  its pickers on every message, so `overrides.model` was defined for every
+  message a person ever typed; the kernel gated the bandit on
+  `!overrides.model`, which is false for the string `default`. So the learner
+  was never consulted from the composer, the run was stamped `explicit` as
+  though somebody had chosen it, and `default` reaches the CLI as "pass no
+  `--model`" — which lands on the CLI's own default. Measured in production
+  over 54 runs: 46 stamped `explicit` against 7 `learned`, and all 42 runs
+  submitted as Auto were served by `claude-opus-5`, three of them by the 1M
+  variant at roughly three times the price. Auto did the exact opposite of what
+  it said. The guard now asks "did the operator pin one?" rather than "is the
+  field present?" — the same shape as the workspace-settings guard that used to
+  refuse the form that round-tripped it.
+- **A run's token count showed about 6% of what it used.** The footer added
+  input and output, which in an agentic loop are the two small halves: 650k and
+  172k against 12.04M read from cache and 1.41M written to it, over the same 54
+  runs. A turn that had moved 109,000 tokens read `716 tokens`. Session totals
+  had the same hole and stored only the two — a session that carried 4.53M
+  tokens for $7.88 displayed 45.7k. Both now count all four, with the breakdown
+  still one hover away, and the two new session columns are backfilled from the
+  runs, which had carried the full usage all along.
+
+### Changed
+
+- **Per-message context left the cached system prompt.** Retrieved memory and
+  knowledge are selected by similarity to *this* prompt, so the block differed
+  on nearly every run — and it was appended to the system prompt, which is the
+  cached prefix. Measured against the real CLI, three runs in one resumed
+  session: the append is re-applied on resume and replaces what was there, so a
+  changed one rewrote the whole prefix. The run whose append had changed wrote
+  11,498 tokens to cache; the next, whose append was identical, wrote 163. A
+  factor of seventy, from nothing but the append moving. In production the
+  prefix is ~34k tokens with the MCP catalogues, and every run paid it. Recall,
+  knowledge and the per-message tool steering now travel in the user message;
+  what is stable for the session — the language directive, the workspace's
+  conventions, the standing shelf — stays in the prefix. The git status leaves
+  it too, via the SDK's `excludeDynamicSections`: an agent that edits files
+  changes its own git status between runs, which invalidated the prefix on
+  exactly the workload Metaclaude exists for.
+- **The bandit starts low instead of in the middle of an expensive range.**
+  Every arm was seeded Beta(1,1) — the uniform prior, which says a $2.10 arm is
+  as plausible as a $0.07 one — and four of the frontier's arms are opus or
+  fable, so a near-uniform Thompson draw put most early decisions on the dear
+  end. The frontier stays complete, because omission is not evidence; what
+  changed is where each arm opens. `armPrior` asks the reward function itself
+  what an ordinary success on that arm would score, given what it costs and how
+  long it takes — the only two things that can honestly separate arms nobody
+  has run, since every success scores alike on quality. It is worth four
+  pseudo-trials, so two or three real runs overturn it. `sonnet medium` was
+  added: the gap between low and high was where the operator's own workspace
+  default sat with no arm beside it.
+
+
 ## [0.74.0] — 2026-09-07
 
 ### Added

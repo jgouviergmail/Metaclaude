@@ -2,7 +2,14 @@ import type { RunUsage } from '@metaclaude/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
-import { type Arm, DEFAULT_ARMS, PolicyLearner, computeReward, sampleBeta } from './bandit.js';
+import {
+  type Arm,
+  DEFAULT_ARMS,
+  PolicyLearner,
+  armPrior,
+  computeReward,
+  sampleBeta,
+} from './bandit.js';
 
 /** Deterministic PRNG so every statistical assertion below is reproducible. */
 function mulberry32(seed: number): () => number {
@@ -276,14 +283,78 @@ describe('PolicyLearner', () => {
 
   it('declines to act before it has enough evidence', () => {
     expect(learner.select(null, CATEGORY)).toBeNull();
-    // Even so, it has seeded the default arms with a uniform prior.
+    // Even so, it has seeded the default arms — each at its own prior, not at
+    // the uniform one, and none of them yet carrying a trial.
     const arms = learner.list(null, CATEGORY);
     expect(arms).toHaveLength(DEFAULT_ARMS.length);
     for (const arm of arms) {
-      expect(arm.alpha).toBe(1);
-      expect(arm.beta).toBe(1);
       expect(arm.trials).toBe(0);
+      const prior = armPrior({ model: arm.model, effort: arm.effort });
+      expect(arm.alpha).toBeCloseTo(prior.alpha, 10);
+      expect(arm.beta).toBeCloseTo(prior.beta, 10);
     }
+  });
+
+  it('opens cheap arms above expensive ones, and starts at the bottom', () => {
+    // The defect this replaces: Beta(1,1) on every arm made a $2.10 opus-high
+    // draw as likely as a $0.07 sonnet one, and four of the eight arms are
+    // opus or fable — so most early decisions landed on the dear end. A prior
+    // is the only thing that can rank arms nobody has run yet, and cost is the
+    // only honest thing to rank them by, since `computeReward` scores every
+    // success alike.
+    const mean = (arm: Arm): number => {
+      const { alpha, beta } = armPrior(arm);
+      return alpha / (alpha + beta);
+    };
+
+    const cheapest: Arm = { model: 'haiku', effort: null };
+    const dearest: Arm = { model: 'fable', effort: 'xhigh' };
+
+    // Strictly ordered down the price ladder, not merely "not worse".
+    expect(mean(cheapest)).toBeGreaterThan(mean({ model: 'sonnet', effort: 'medium' }));
+    expect(mean({ model: 'sonnet', effort: 'medium' })).toBeGreaterThan(
+      mean({ model: 'opus', effort: 'medium' }),
+    );
+    expect(mean({ model: 'opus', effort: 'medium' })).toBeGreaterThan(
+      mean({ model: 'opus', effort: 'high' }),
+    );
+    expect(mean({ model: 'opus', effort: 'high' })).toBeGreaterThan(mean(dearest));
+
+    // And effort is priced within one model, or "start low" means nothing.
+    expect(mean({ model: 'sonnet', effort: 'low' })).toBeGreaterThan(
+      mean({ model: 'sonnet', effort: 'high' }),
+    );
+
+    // The cheapest arm opens the highest of the whole frontier.
+    const best = DEFAULT_ARMS.reduce((a, b) => (mean(a) >= mean(b) ? a : b));
+    expect({ model: best.model, effort: best.effort }).toEqual({ model: 'haiku', effort: null });
+  });
+
+  it('leaves the prior weak enough for measurement to overturn it', () => {
+    // A prior that survived a dozen trials would be a policy, not a prior.
+    // Three bad runs on the arm that opens highest must put it below an arm
+    // that has never run — otherwise the bandit cannot be taught.
+    const haiku: Arm = { model: 'haiku', effort: null };
+    // Seed the frontier first: `update()` creates only the arm it is given.
+    learner.select(null, CATEGORY);
+    for (let i = 0; i < 3; i += 1) {
+      learner.update({
+        workspaceId: null,
+        category: CATEGORY,
+        arm: haiku,
+        reward: 0,
+        usage: usage(),
+      });
+    }
+    const arms = learner.list(null, CATEGORY);
+    const shamed = arms.find((a) => a.model === 'haiku');
+    const untried = arms.find((a) => a.model === 'opus' && a.effort === 'high');
+    expect(shamed).toBeDefined();
+    expect(untried).toBeDefined();
+    const posterior = (a: { alpha: number; beta: number }): number => a.alpha / (a.alpha + a.beta);
+    expect(posterior(shamed as { alpha: number; beta: number })).toBeLessThan(
+      posterior(untried as { alpha: number; beta: number }),
+    );
   });
 
   it('respects a custom minTrialsToAct threshold', () => {
@@ -314,8 +385,11 @@ describe('PolicyLearner', () => {
     expect(arms).toHaveLength(1);
     const best = arms.find((a) => a.model === 'opus' && a.effort === 'high')!;
     expect(best.trials).toBe(10);
-    expect(best.alpha).toBeCloseTo(1 + 10 * 0.5, 6);
-    expect(best.beta).toBeCloseTo(1 + 10 * 0.5, 6);
+    // Relative to the arm's own prior: the conjugate update adds the reward to
+    // alpha and its complement to beta, whatever the opening belief was.
+    const prior = armPrior(BEST);
+    expect(best.alpha).toBeCloseTo(prior.alpha + 10 * 0.5, 6);
+    expect(best.beta).toBeCloseTo(prior.beta + 10 * 0.5, 6);
     expect(best.totalReward).toBeCloseTo(5, 6);
 
     // Seeding the remaining default arms must not disturb the exercised one,
@@ -333,8 +407,9 @@ describe('PolicyLearner', () => {
     learner.update({ workspaceId: null, category: CATEGORY, arm: BEST, reward: 5, usage: usage() });
     learner.update({ workspaceId: null, category: CATEGORY, arm: BEST, reward: -3, usage: usage() });
     const best = learner.list(null, CATEGORY).find((a) => a.effort === 'high' && a.model === 'opus')!;
-    expect(best.alpha).toBeCloseTo(2, 6); // 1 + 1 + 0
-    expect(best.beta).toBeCloseTo(2, 6); // 1 + 0 + 1
+    const prior = armPrior(BEST);
+    expect(best.alpha).toBeCloseTo(prior.alpha + 1 + 0, 6);
+    expect(best.beta).toBeCloseTo(prior.beta + 0 + 1, 6);
   });
 
   it('tracks running means of cost and duration', () => {
@@ -395,6 +470,7 @@ describe('PolicyLearner', () => {
     const scores = new Map<string, number>([
       ['haiku|null', 0.1],
       ['sonnet|low', 0.3],
+      ['sonnet|medium', 0.4],
       ['sonnet|high', 0.5],
       ['opus|medium', 0.7],
       ['fable|xhigh', 0.8],
@@ -420,6 +496,7 @@ describe('PolicyLearner', () => {
       'fable|xhigh',
       'opus|medium',
       'sonnet|high',
+      'sonnet|medium',
       'sonnet|low',
       'haiku|null',
     ]);

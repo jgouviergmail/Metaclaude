@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Memory, Run, Workspace, WorkspaceSettings } from '@metaclaude/shared';
-import { WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
+import { AUTO_MODEL, WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { HashingEmbedder } from '../learning/embeddings.js';
 import { KnowledgeStore } from '../learning/knowledge.js';
@@ -330,6 +330,67 @@ describe('admission', () => {
     const plain = await fixture.kernel.submit({ sessionId: session.id, prompt: 'and now without' });
     await settled(fixture, plain.id);
     expect(fixture.supervisor.started[1]?.policy.toolControls).toBeUndefined();
+  });
+
+  it('asks the learner when the composer sends Auto, and not when a model is pinned', async () => {
+    // The composer sends its pickers on *every* message, so `overrides.model`
+    // is always defined; `default` is Metaclaude's Auto, the request for the
+    // learner rather than a choice against it. `choosePolicy` gated the bandit
+    // on `!overrides.model`, which is false for the string `'default'`, so the
+    // learner was never consulted from the composer at all. Measured in
+    // production: 46 runs stamped `explicit` against 7 `learned`, and all 42
+    // submitted as Auto were served by the CLI's own default — the dearest
+    // tier. Selecting Auto switched learning off and pinned the flagship.
+    const session = fixture.newSession();
+    fixture.policy.select.mockReturnValue({
+      arm: { model: 'haiku', effort: null },
+      confidence: 0.8,
+    });
+
+    const auto = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: AUTO_MODEL, effort: null },
+    });
+    await settled(fixture, auto.id);
+
+    expect(fixture.policy.select).toHaveBeenCalled();
+    expect(fixture.runs.get(auto.id)?.policy.model).toBe('haiku');
+    expect(fixture.runs.get(auto.id)?.policy.source).toBe('learned');
+
+    // And a real pin still wins outright — the operator's choice is the one
+    // thing the learner may never overrule.
+    fixture.policy.select.mockClear();
+    const pinned = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'another question',
+      overrides: { model: 'opus', effort: 'high' },
+    });
+    await settled(fixture, pinned.id);
+
+    expect(fixture.policy.select).not.toHaveBeenCalled();
+    expect(fixture.runs.get(pinned.id)?.policy.model).toBe('opus');
+    expect(fixture.runs.get(pinned.id)?.policy.effort).toBe('high');
+    expect(fixture.runs.get(pinned.id)?.policy.source).toBe('explicit');
+  });
+
+  it('does not record Auto as an explicit choice when the learner has nothing to say', async () => {
+    // `source` is what the analytics read and what tells an operator whether a
+    // run was decided or defaulted. Auto with no evidence falls back to the
+    // workspace default, and that is `workspace` — not `explicit`, which is a
+    // claim that somebody chose this.
+    const session = fixture.newSession();
+    fixture.policy.select.mockReturnValue(null);
+
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: AUTO_MODEL, effort: null },
+    });
+    await settled(fixture, run.id);
+
+    expect(fixture.policy.select).toHaveBeenCalled();
+    expect(fixture.runs.get(run.id)?.policy.source).toBe('workspace');
   });
 
   it('names the session from its first prompt', async () => {
@@ -951,8 +1012,12 @@ describe('standing conventions', () => {
     await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
 
     const request = fixture.supervisor.started[0]!;
+    // The standing shelf is the counter-example to the preamble rule: it is
+    // injected whole regardless of the request, so it is stable across the
+    // session and belongs in the cached prefix. Recall is not, and does not.
     expect(request.systemPromptAppend).toContain('## Standing conventions');
     expect(request.systemPromptAppend).toContain('Offer a default rather than ask three questions.');
+    expect(request.contextPreamble).not.toContain('## Standing conventions');
     expect(fixture.memory.recordUsage).toHaveBeenCalledWith(run.id, [{ memory: convention, score: 1 }]);
     expect(fixture.memory.search).toHaveBeenCalledWith(
       'Deploy the latest tag to production.',
@@ -962,7 +1027,7 @@ describe('standing conventions', () => {
 });
 
 describe('knowledge injection', () => {
-  it('injects retrieved passages into the system prompt and credits exactly them', async () => {
+  it('injects retrieved passages into the per-message preamble and credits exactly them', async () => {
     await fixture.knowledge.upsert({
       workspaceId: fixture.workspace.id,
       title: 'Bail — 12 rue des Lilas',
@@ -982,9 +1047,12 @@ describe('knowledge injection', () => {
     await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
 
     const request = fixture.supervisor.started[0]!;
-    // The passage travelled, with its source named so the model can cite it.
-    expect(request.systemPromptAppend).toContain('45 jours');
-    expect(request.systemPromptAppend).toContain('Bail — 12 rue des Lilas');
+    // The passage travelled, with its source named so the model can cite it —
+    // in the preamble, because retrieval is keyed on this prompt and so differs
+    // run to run, and a system prompt that differs rewrites the cached prefix.
+    expect(request.contextPreamble).toContain('45 jours');
+    expect(request.contextPreamble).toContain('Bail — 12 rue des Lilas');
+    expect(request.systemPromptAppend).not.toContain('45 jours');
     // And the genesis can say so: usage was credited for this run.
     const consulted = fixture.knowledge.consultedFor(run.id);
     expect(consulted.length).toBeGreaterThan(0);
@@ -1007,6 +1075,7 @@ describe('knowledge injection', () => {
       });
       await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
 
+      expect(fx.supervisor.started[0]!.contextPreamble ?? '').not.toContain('45 jours');
       expect(fx.supervisor.started[0]!.systemPromptAppend ?? '').not.toContain('45 jours');
       expect(fx.knowledge.consultedFor(run.id)).toEqual([]);
     } finally {

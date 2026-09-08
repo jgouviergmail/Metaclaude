@@ -18,6 +18,7 @@ import { boardToolNames } from './board-tools.js';
 import { advisorToolNames } from './advisor-tools.js';
 import {
   AgentSupervisor,
+  buildContextPreamble,
   buildUserContent,
   type RunAttachment,
   type RunRequest,
@@ -71,6 +72,7 @@ function makeRequest(overrides: Partial<RunRequest> = {}): RunRequest {
     },
     resumeSessionId: null,
     systemPromptAppend: '',
+    contextPreamble: '',
     mcpServers: {},
     agents: {},
     marketplaces: {},
@@ -1715,6 +1717,84 @@ describe('a run the operator stopped is never recorded as a success', () => {
  * `maxBudgetUsd` were executed and never checked, and the `additionalDirectories`
  * branch was not even entered.
  */
+describe('the cached prefix', () => {
+  /*
+   * The invariant, stated rather than the mechanism that provides it: two runs
+   * that differ only in what retrieval found must produce the *same* system
+   * prompt. The prompt cache is a prefix match, so a system prompt that moves
+   * invalidates everything after it.
+   *
+   * Measured against the real CLI (Claude Code, three runs in one resumed
+   * session): the append is re-applied on resume and replaces what was there,
+   * so a changed one rewrote the whole prefix — 11,498 cache-write tokens
+   * against 163 for an identical one, same session, seconds apart. In
+   * production the prefix is ~34k tokens with the MCP catalogues, and memory
+   * retrieval is keyed on the prompt, so essentially every run paid it.
+   */
+  it('does not move when only the per-message context differs', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+
+    const first = supervisor.buildOptions(
+      makeRequest({ prompt: 'deploy', contextPreamble: '## Recalled context\n\n- Alpha' }),
+    );
+    const second = supervisor.buildOptions(
+      makeRequest({ prompt: 'roll back', contextPreamble: '## Recalled context\n\n- Omega' }),
+    );
+
+    expect(second.systemPrompt).toEqual(first.systemPrompt);
+    expect(JSON.stringify(first.systemPrompt)).not.toContain('Alpha');
+    expect(JSON.stringify(second.systemPrompt)).not.toContain('Omega');
+  });
+
+  it('still moves when the session-stable context differs, which is the point of the split', () => {
+    // Sabotage-proofing: a preamble that changed nothing anywhere would pass
+    // the test above trivially. The stable half must still reach the prompt.
+    const supervisor = makeSupervisor(fakeQuery().query);
+
+    const bare = supervisor.buildOptions(makeRequest({ systemPromptAppend: '' }));
+    const withConventions = supervisor.buildOptions(
+      makeRequest({ systemPromptAppend: '## Standing conventions\n\n- Answer in French.' }),
+    );
+
+    expect(withConventions.systemPrompt).not.toEqual(bare.systemPrompt);
+    expect(JSON.stringify(withConventions.systemPrompt)).toContain('Answer in French.');
+  });
+
+  it('keeps the git status out of the prompt, since an editing agent changes it', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest())).toMatchObject({
+      systemPrompt: { excludeDynamicSections: true },
+    });
+  });
+
+  it('carries the per-message context to the model in the user message', async () => {
+    // It must not merely be absent from the system prompt — it has to arrive.
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const run = supervisor.execute(
+      makeRequest({ prompt: 'what is the notice period?', contextPreamble: '## Recalled context\n\n- 45 days' }),
+      makeCallbacks(),
+    );
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+    await run;
+
+    const sent = control.received[0] as { message: { content: string } };
+    expect(sent.message.content).toContain('45 days');
+    expect(sent.message.content).toContain('what is the notice period?');
+    // The ask comes last, so nothing buries it.
+    expect(sent.message.content.indexOf('45 days')).toBeLessThan(
+      sent.message.content.indexOf('what is the notice period?'),
+    );
+  });
+
+  it('sends the prompt alone when nothing was retrieved', () => {
+    // No stray separator on the common path.
+    expect(buildContextPreamble(makeRequest())).toBe('');
+  });
+});
+
 describe('buildOptions', () => {
   it('pins the three managed-settings locks a cloned repository could otherwise defeat', () => {
     // Loading `settingSources: ['project']` means a cloned repo's
@@ -2308,16 +2388,23 @@ describe('buildOptions — tool controls', () => {
     return request;
   };
 
-  it('narrows the loaded skills to exactly the required ones, and says so in the prompt', () => {
+  it('narrows the loaded skills to exactly the required ones, and says so per message', () => {
     const supervisor = makeSupervisor(fakeQuery().query);
-    const options = supervisor.buildOptions(
-      withControls({ requiredSkills: ['deploy', 'review'], excludedMcpServers: [], preferredMcpServers: [] }),
-    );
+    const request = withControls({
+      requiredSkills: ['deploy', 'review'],
+      excludedMcpServers: [],
+      preferredMcpServers: [],
+    });
+    const options = supervisor.buildOptions(request);
 
     expect(options.skills).toEqual(['deploy', 'review']);
-    const prompt = options.systemPrompt as { append?: string };
-    expect(prompt.append).toContain('deploy');
-    expect(prompt.append).toContain('review');
+    // The words travel with the message, not in the cached prefix: the Tools
+    // picker is a per-message decision, so two consecutive sends with
+    // different pickers would otherwise rewrite the whole system prompt.
+    const preamble = buildContextPreamble(request);
+    expect(preamble).toContain('deploy');
+    expect(preamble).toContain('review');
+    expect(JSON.stringify(options.systemPrompt)).not.toContain('deploy');
   });
 
   it('loads every skill when nothing is required', () => {
@@ -2357,23 +2444,24 @@ describe('buildOptions — tool controls', () => {
     expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude');
   });
 
-  it('keeps a preferred server mounted and writes the preference into the prompt', () => {
+  it('keeps a preferred server mounted and asks for it in the message', () => {
     // Availability can force absence; only words can ask for use.
     const supervisor = makeSupervisor(fakeQuery().query);
-    const options = supervisor.buildOptions(
-      withControls(
-        { requiredSkills: [], excludedMcpServers: [], preferredMcpServers: ['github'] },
-        {
-          mcpServers: { github: { type: 'http', url: 'https://y' } },
-          systemPromptAppend: 'existing context',
-        },
-      ),
+    const request = withControls(
+      { requiredSkills: [], excludedMcpServers: [], preferredMcpServers: ['github'] },
+      {
+        mcpServers: { github: { type: 'http', url: 'https://y' } },
+        systemPromptAppend: 'existing context',
+      },
     );
+    const options = supervisor.buildOptions(request);
 
     expect(Object.keys(options.mcpServers ?? {})).toContain('github');
+    // The session-stable half still rides the prefix; the per-message ask does not.
     const prompt = options.systemPrompt as { append?: string };
     expect(prompt.append).toContain('existing context');
-    expect(prompt.append).toContain('github');
+    expect(prompt.append).not.toContain('github');
+    expect(buildContextPreamble(request)).toContain('github');
   });
 });
 

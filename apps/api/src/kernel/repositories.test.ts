@@ -1,4 +1,4 @@
-import type { Run, RunPolicy, Session, TranscriptEvent, Workspace } from '@metaclaude/shared';
+import type { Run, RunPolicy, RunUsage, Session, TranscriptEvent, Workspace } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../db/index.js';
@@ -88,6 +88,24 @@ beforeEach(() => {
 
 afterEach(() => {
   db.close();
+});
+
+/**
+ * A run's usage, built from the contract rather than by hand.
+ *
+ * The hand-written version named three of the seven fields, which is exactly
+ * how the two cache counters came to be dropped on the way into a session's
+ * totals: a fixture that omits a field cannot notice that the code omits it too.
+ */
+const runUsage = (over: Partial<RunUsage> = {}): RunUsage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+  costUsd: 0,
+  durationMs: 0,
+  turns: 0,
+  ...over,
 });
 
 describe('WorkspaceRepo', () => {
@@ -258,8 +276,8 @@ describe('SessionRepo', () => {
     db.prepare('UPDATE sessions SET last_read_at = last_read_at - 1000, last_activity_at = last_activity_at - 1000').run();
 
     // A run settles on two of them.
-    sessions.addUsage(ignored.id, { costUsd: 0.1, inputTokens: 10, outputTokens: 5 });
-    sessions.addUsage(elsewhere.id, { costUsd: 0.1, inputTokens: 10, outputTokens: 5 });
+    sessions.addUsage(ignored.id, runUsage({ costUsd: 0.1, inputTokens: 10, outputTokens: 5 }));
+    sessions.addUsage(elsewhere.id, runUsage({ costUsd: 0.1, inputTokens: 10, outputTokens: 5 }));
     expect(sessions.unreadCounts()).toEqual({ [workspace.id]: 1, [other.id]: 1 });
 
     // Opening it clears it, and leaves both the ordering columns alone: the
@@ -376,15 +394,27 @@ describe('SessionRepo', () => {
     expect(sessions.update('ses_nope', { model: 'opus' })).toBeNull();
   });
 
-  it('accumulates usage across runs', () => {
+  it('accumulates usage across runs, cache included', () => {
+    // The cache halves are not a detail of this sum, they are most of it:
+    // measured over 54 production runs, 12.04M read and 1.41M written against
+    // 650k of genuine input. Dropping them made a 4.53M-token session read as
+    // 45.7k, which is a number nobody can budget with.
     const session = makeSession(workspace.id);
-    sessions.addUsage(session.id, { costUsd: 0.25, inputTokens: 100, outputTokens: 40 });
-    sessions.addUsage(session.id, { costUsd: 0.5, inputTokens: 20, outputTokens: 10 });
+    sessions.addUsage(
+      session.id,
+      runUsage({ costUsd: 0.25, inputTokens: 100, outputTokens: 40, cacheReadTokens: 9_000, cacheCreationTokens: 700 }),
+    );
+    sessions.addUsage(
+      session.id,
+      runUsage({ costUsd: 0.5, inputTokens: 20, outputTokens: 10, cacheReadTokens: 3_000, cacheCreationTokens: 300 }),
+    );
 
     const after = sessions.get(session.id)!;
     expect(after.totalCostUsd).toBeCloseTo(0.75, 10);
     expect(after.totalInputTokens).toBe(120);
     expect(after.totalOutputTokens).toBe(50);
+    expect(after.totalCacheReadTokens).toBe(12_000);
+    expect(after.totalCacheCreationTokens).toBe(1_000);
     expect(after.runCount).toBe(2);
     expect(after.lastActivityAt).toBeGreaterThanOrEqual(session.lastActivityAt);
   });

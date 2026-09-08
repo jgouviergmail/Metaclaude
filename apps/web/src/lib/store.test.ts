@@ -31,6 +31,8 @@ function session(id = SESSION_ID): Session {
     pinned: false,
     archived: false,
     totalCostUsd: 0,
+    totalCacheReadTokens: 0,
+    totalCacheCreationTokens: 0,
     totalInputTokens: 0,
     totalOutputTokens: 0,
     runCount: 0,

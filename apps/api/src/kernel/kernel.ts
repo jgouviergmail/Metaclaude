@@ -16,7 +16,9 @@
 import type {
   ApiTokenCeiling,
   ApprovalRequest,
+  EffortLevel,
   MarketplaceSource,
+  ModelSelector,
   RewindResult,
   Run,
   RunPolicy,
@@ -24,7 +26,14 @@ import type {
   TranscriptEvent,
   Workspace,
 } from '@metaclaude/shared';
-import { newId, sessionTopic, SYSTEM_TOPIC, workspaceTopic } from '@metaclaude/shared';
+import {
+  isAutoEffort,
+  isAutoModel,
+  newId,
+  sessionTopic,
+  SYSTEM_TOPIC,
+  workspaceTopic,
+} from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import type { PolicyLearner } from '../learning/bandit.js';
 import { computeReward } from '../learning/bandit.js';
@@ -586,7 +595,17 @@ export class Kernel {
       source: 'workspace',
     };
 
-    if (settings.autoPolicyEnabled && !overrides?.model && !overrides?.effort) {
+    // "Did the operator pin one?", not "is the field present?". The composer
+    // sends its pickers on every message, so `overrides.model` is always
+    // defined — and `'default'` is Auto, the request *for* the learner rather
+    // than a choice against it. Gating on truthiness meant `!'default'` was
+    // false and the bandit was skipped for every message a person ever typed.
+    // Same family as the workspace-settings guard: refuse on a different
+    // value, never on presence.
+    const pinnedModel = !isAutoModel(overrides?.model);
+    const pinnedEffort = !isAutoEffort(overrides?.effort);
+
+    if (settings.autoPolicyEnabled && !pinnedModel && !pinnedEffort) {
       const learned = this.deps.policy.select(workspace.id, category);
       if (learned) {
         base.model = learned.arm.model;
@@ -595,12 +614,15 @@ export class Kernel {
       }
     }
 
-    if (overrides?.model !== undefined) {
-      base.model = overrides.model;
+    // Only a pin overrides. Auto is not a choice to record as one: stamping it
+    // `explicit` is what made every production run look deliberate, and it is
+    // the field the analytics and the arm credit are read from.
+    if (pinnedModel) {
+      base.model = overrides?.model as ModelSelector;
       base.source = 'explicit';
     }
-    if (overrides?.effort !== undefined) {
-      base.effort = overrides.effort;
+    if (pinnedEffort) {
+      base.effort = overrides?.effort as EffortLevel;
       base.source = 'explicit';
     }
     if (overrides?.permissionMode !== undefined) base.permissionMode = overrides.permissionMode;
@@ -768,6 +790,19 @@ export class Kernel {
     let systemPromptAppend = [languageDirective(workspace.settings.language), workspace.settings.systemPromptAppend]
       .filter(Boolean)
       .join('\n\n');
+
+    /*
+     * Two buckets, and which one a piece of context lands in is a cost
+     * decision as much as a semantic one.
+     *
+     * `systemPromptAppend` is stable for the session — the language directive,
+     * the workspace's conventions, the standing shelf — and rides inside the
+     * cached prefix. `contextPreamble` is whatever this particular prompt
+     * retrieved, and travels in the user message: measured against the real
+     * CLI, a changed append rewrites the whole prefix (11,498 cache-write
+     * tokens against 163 for an identical one, same session, seconds apart).
+     */
+    let contextPreamble = '';
     if (workspace.settings.memoryEnabled) {
       try {
         // The standing shelf first, whole and regardless of the request: a
@@ -795,7 +830,11 @@ export class Kernel {
           // is what would make it unreapable. See selectMemoryContext.
           const { text, injected } = selectMemoryContext(retrieved);
           if (injected.length > 0) this.deps.memory.recordUsage(run.id, injected);
-          systemPromptAppend = [systemPromptAppend, text].filter(Boolean).join('\n\n');
+          // The preamble, not the append. Retrieval is by similarity to *this*
+          // prompt, so this block differs on nearly every run — and a changed
+          // system prompt rewrites the entire cached prefix, measured at ~70x
+          // the cache writes of an unchanged one. See RunRequest.contextPreamble.
+          contextPreamble = [contextPreamble, text].filter(Boolean).join('\n\n');
         }
       } catch (error) {
         // Retrieval is an enhancement. If it fails, run without it.
@@ -816,7 +855,8 @@ export class Kernel {
           // actually saw.
           const { text, injected } = selectKnowledgeContext(passages);
           if (injected.length > 0) this.deps.knowledge.recordUsage(run.id, injected);
-          systemPromptAppend = [systemPromptAppend, text].filter(Boolean).join('\n\n');
+          // Prompt-dependent like memory, so likewise per-message.
+          contextPreamble = [contextPreamble, text].filter(Boolean).join('\n\n');
         }
       } catch (error) {
         // Like memory: retrieval is an enhancement, never a reason to fail.
@@ -839,6 +879,7 @@ export class Kernel {
       policy: run.policy,
       resumeSessionId: session.claudeSessionId,
       systemPromptAppend,
+      contextPreamble,
       mcpServers: runtime.mcpServers,
       agents: runtime.agents,
       marketplaces: runtime.marketplaces ?? {},
@@ -904,11 +945,9 @@ export class Kernel {
         servedModel: outcome.servedModel,
       }) ?? run;
 
-    this.deps.sessions.addUsage(session.id, {
-      costUsd: outcome.usage.costUsd,
-      inputTokens: outcome.usage.inputTokens,
-      outputTokens: outcome.usage.outputTokens,
-    });
+    // The whole usage, not a hand-picked three of its seven fields: the two
+    // cache counters are where an agentic run's tokens actually are.
+    this.deps.sessions.addUsage(session.id, outcome.usage);
     this.deps.sessions.setStatus(session.id, outcome.status === 'failed' ? 'error' : 'idle');
 
     const resultEvent: TranscriptEvent = {
