@@ -11,6 +11,35 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.77.1] — 2026-09-08
+
+### Corrected
+
+- **0.77.0 claimed the SDK upgrade made `rate_limits` carry `model_scoped`. It
+  does not.** The key appeared in one measurement — taken on Windows — and in
+  neither of the two taken on Linux, before or after the bump. It is not
+  attributable to the version, and what it does depend on is unknown. The
+  upgrade's honest result is therefore *one* change, not two:
+  `messaging_socket_path` joins the init frame, and Metaclaude reads none of it.
+
+  This is the third time today a single observation was read as a version or a
+  code fact without controlling for the environment it was taken in, so the
+  lesson is now in `CLAUDE.md` rather than in a commit message: **one
+  observation identifies a difference, never its cause.** The probe already
+  records `process.platform` and warns on a mismatch — that warning fired, and
+  the claim was made anyway.
+
+### Fixed
+
+- **The upgrade's phase 4 ran, and reports clean.** Re-measured against
+  production on the platform that serves it, the SDK 0.3.247 → 0.3.263 diff is a
+  single new init-frame key. `unifiedWindows` still arrives on every rejection,
+  the CLI's own `fallbackModel` still does not cover quota, a changed
+  system-prompt append still rewrites the cached prefix, and the init frame
+  still carries no `effort`. Four shipped features rest on those four facts and
+  all four hold.
+
+
 ## [0.77.0] — 2026-09-08
 
 ### Changed

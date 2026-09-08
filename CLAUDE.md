@@ -1014,6 +1014,19 @@ restates the code is noise; one that records a decision or a trap is not.
   unconditional write that persists the pruned map over an early return, so
   expired rows are swept instead of accumulating.
 
+- **One observation identifies a difference, never its cause.** Three times in
+  one session a single measurement was read as a fact about the thing under
+  test, when the environment was the variable that moved. The quota screen was
+  called blank from a payload dump truncated at 2000 characters. An SDK upgrade
+  was credited with adding `model_scoped` to `rate_limits`, from one run on
+  Windows — it is absent from both Linux runs, before *and* after the bump.
+  `powershell_path` was reported as a version change for the same reason. The
+  discipline that catches it costs almost nothing: before attributing a
+  difference, ask what else differed between the two observations, and re-run
+  with that held fixed. `scripts/sdk-probe.mjs` records `process.platform` and
+  warns on a mismatch — the warning fired for two of these and the claim was
+  made anyway, so the instrument was not the missing piece.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +
