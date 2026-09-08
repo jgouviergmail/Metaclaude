@@ -84,6 +84,17 @@ const write = (name, data) => {
   write('bail.docx', await Packer.toBuffer(document));
 }
 
+/* -- empty.docx and empty.xlsx: valid files with nothing to read ----------- */
+{
+  write(
+    'empty.docx',
+    await Packer.toBuffer(new Document({ sections: [{ children: [new Paragraph('')] }] })),
+  );
+  const blank = new ExcelJS.Workbook();
+  blank.addWorksheet('Vide');
+  write('empty.xlsx', Buffer.from(await blank.xlsx.writeBuffer()));
+}
+
 /* -- loyers.xlsx: two sheets, dates, formulas, a gap ----------------------- */
 {
   const workbook = new ExcelJS.Workbook();
@@ -120,8 +131,18 @@ const write = (name, data) => {
 /* -- deploiement.pptx: titles, a table, speaker notes ---------------------- */
 {
   const deck = new pptxgen();
-  const first = deck.addSlide();
-  first.addText('Plan de déploiement', { x: 0.5, y: 0.5, w: 9, h: 1, fontSize: 32 });
+  // Slide 1 carries a real title *placeholder*, the way PowerPoint writes a
+  // deck; slides 2 and 3 use plain text boxes, which is how a deck built by
+  // dragging boxes around comes out. The extractor has to read both, so the
+  // fixture contains both.
+  deck.defineSlideMaster({
+    title: 'TITRE',
+    objects: [
+      { placeholder: { options: { name: 'titre', type: 'title', x: 0.5, y: 0.4, w: 9, h: 1 }, text: '' } },
+    ],
+  });
+  const first = deck.addSlide({ masterName: 'TITRE' });
+  first.addText('Plan de déploiement', { placeholder: 'titre' });
   first.addText(
     [
       { text: 'Objectif : migrer la prod avant le 30 septembre', options: { bullet: true } },

@@ -55,26 +55,38 @@ dessinées ligne à ligne), deux articles réels à deux colonnes (arXiv
 1512.03385, ACL 2020.acl-main.1) et un document LaTeX `twocolumn` français
 composé pour la fixture :
 
-| Moteur | Synthétique | Articles réels | LaTeX deux colonnes |
-| --- | --- | --- | --- |
-| pdfjs, lignes groupées par ordonnée | colonnes **entremêlées** ligne à ligne | entremêlées | entremêlées |
-| XY-cut maison sur les items pdfjs | ordre correct, titre collé | **échec** (aucune coupe de colonne : un pied de page centré chevauche la gouttière) | — |
-| xpdf 4.00 (binaire de ce poste, absent de Debian) | correct | correct | — |
-| **poppler `pdftotext` (défaut)** | entremêlées | **colonnes entières**, ordre des blocs parfois approximatif, césures recollées | **correct**, articles 1 à 6 dans l'ordre |
-| PyMuPDF `sort=True` | entremêlées | — | — |
+**Correction d'une conclusion trop rapide.** Une première mesure, faite avec
+un regroupement des items pdfjs *par ordonnée*, concluait que pdfjs entremêle
+les colonnes. L'implémentation retenue lit dans l'ordre du flux de contenu et
+**n'entremêle pas** : sur les trois documents, les deux moteurs rendent les
+colonnes dans le bon ordre. La conclusion venait de la sonde, pas du code qui
+allait être écrit. Le vrai discriminant, mesuré dans l'image de production :
 
-Un passage produit par pdfjs mélange deux colonnes phrase par phrase : rien
-de retrouvable. Poppler garde chaque paragraphe entier ; c'est ce qui compte
-pour la recherche et pour la citation. Il n'existe pas de bibliothèque
-JavaScript pure qui fasse cette analyse de mise en page (pdf2md le dit
-lui-même), et l'écrire est un projet à part. Poppler est donc le moteur, en
-sous-processus (isolation gratuite, délai et `maxBuffer` de `execFile`) ;
-pdfjs reste le **repli nommé** quand le binaire manque (poste de
-développement sans poppler) : `extractor` vaut `pdf@poppler-22.12` ou
-`pdf@pdfjs`, le doctor avertit quand poppler manque, et la ré-extraction
-permet de reprendre un document extrait sous le repli. Les ligatures
-(`ﬁ`) sont décodées par les deux moteurs sur une police portant sa table
-Unicode ; le repli applique `NFKC` pour les polices qui ne l'ont pas.
+| Mesure (par document) | poppler 22.12 | pdfjs 6.3 brut | pdfjs + recollage |
+| --- | --- | --- | --- |
+| mots brisés par une césure de fin de ligne | 0 | 10 à 165 | 0 à 4 |
+| phrases-sondes retrouvées | 12/12 | 11/12 | 12/12 |
+| durée (1 à 300 pages) | 5 à 42 ms | 10 à 457 ms | idem |
+
+**La césure est ce qui compte.** Poppler recolle un mot que le typographe a
+coupé en fin de ligne ; pdfjs rend `learn-\ning`, qu'aucune requête sur
+« learning residual functions » ne trouvera et que l'embarqueur voit comme
+deux non-mots. 165 sur un seul article, et une phrase-sonde sur quatre
+devenue introuvable. Poppler est donc le moteur, en sous-processus (isolation
+gratuite, délai et sortie plafonnés) ; pdfjs reste le **repli nommé** quand le
+binaire manque : `extractor` vaut `pdf@poppler-22.12.0` ou `pdf@pdfjs`, le
+doctor avertit, et la ré-extraction permet de reprendre un document lu sous
+le repli. Le repli applique `NFKC` pour les ligatures et `rejoinHyphens`, qui
+ramène les 165 mots brisés à 4 — au prix, énoncé, d'un mot réellement
+composé coupé à son trait d'union et recollé en un seul.
+
+**Et le binaire `pdftotext` n'est pas forcément poppler.** xpdf en livre un
+homonyme, avec la même forme de bannière et une ligne de commande différente
+(pas d'entrée standard) — c'est le cas de ce poste de développement, où Git et
+MiKTeX en installent chacun un. Une détection sur le numéro de version est
+impossible (xpdf est en 4.x, poppler en 22.x, sans promesse) : le discriminant
+est la ligne de copyright « The Poppler Developers », que xpdf n'imprime pas.
+Sans cela, un hôte avec xpdf lit **tous** ses PDF en erreur, silencieusement.
 | html | convertisseur maison (regex sur blocs) | — | page « sauvage » avec script, nav, entités | < 1 ms | scripts/styles/nav/footer retirés ; entités numériques et nommées courantes décodées |
 
 Chaque bibliothèque refuse proprement une entrée corrompue (exception nommée,
