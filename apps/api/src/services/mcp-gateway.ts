@@ -33,6 +33,7 @@ import type {
   TranscriptEvent,
   Workspace,
 } from '@metaclaude/shared';
+import { describeLocation } from '@metaclaude/shared';
 import type { KnowledgeSearchResult } from '../learning/knowledge.js';
 
 /**
@@ -279,7 +280,15 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
       workspace: string;
       query: string;
       limit?: number;
-    }): Promise<Array<{ title: string; heading: string; text: string }>> => {
+    }): Promise<
+      Array<{
+        title: string;
+        heading: string;
+        location?: string;
+        source?: string;
+        text: string;
+      }>
+    > => {
       requires('read', 'read this workspace');
       const workspace = within(input.workspace);
 
@@ -287,11 +296,20 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
         workspaceId: workspace.id,
         limit: Math.min(input.limit ?? 6, 20),
       });
-      return found.map((hit) => ({
-        title: hit.documentTitle,
-        heading: hit.heading,
-        text: hit.text,
-      }));
+      // Where each passage came from travels with it: a program on the other
+      // end of this gateway quotes what it is given, and a passage it cannot
+      // attribute is a claim it cannot check. Both fields are omitted rather
+      // than sent empty, so a caller can tell "no page" from "page nothing".
+      return found.map((hit) => {
+        const location = describeLocation(hit);
+        return {
+          title: hit.documentTitle,
+          heading: hit.heading,
+          ...(location ? { location } : {}),
+          ...(hit.sourceName ? { source: hit.sourceName } : {}),
+          text: hit.text,
+        };
+      });
     },
 
     listTasks: async (input: { workspace: string }) => {
@@ -383,7 +401,10 @@ export function buildGatewayServer(
         'search_notes',
         "Search a workspace's knowledge base, plus anything filed globally — the " +
           'same shelf a run there would read. Cheap, and nothing executes: prefer ' +
-          'it over a run when the answer is something already written down.',
+          'it over a run when the answer is something already written down. Each ' +
+          'result carries where it came from — the document, its section, and the ' +
+          'page and lines when the document has them — so a quotation can be ' +
+          'attributed rather than merely repeated.',
         {
           workspace: WORKSPACE,
           query: z.string().min(1).max(500),

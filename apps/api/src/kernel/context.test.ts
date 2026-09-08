@@ -201,6 +201,56 @@ describe('selectKnowledgeContext', () => {
     expect(text).toContain('**Document 1 › Section 1**');
   });
 
+  it('gives a located passage its page and lines, and asks for them in the citation', () => {
+    // The whole point of the locations: a quotation from a forty-page PDF
+    // that cannot say where it came from is a quotation nobody can check.
+    const { text } = selectKnowledgeContext([
+      searchHit({
+        documentTitle: 'Bail',
+        heading: 'Résiliation',
+        text: 'Trois mois.',
+        pageUnit: 'page',
+        pageStart: 2,
+        pageEnd: 2,
+        lineStart: 40,
+        lineEnd: 52,
+      }),
+    ]);
+    expect(text).toContain('**Bail › Résiliation** (page 2, lines 40–52)');
+    expect(text).toContain('page and lines');
+  });
+
+  it('says nothing about a location a passage does not have', () => {
+    // Passages indexed before the library recorded offsets carry none, and a
+    // pasted document has no pages. The sentence gets shorter, never wrong.
+    const { text } = selectKnowledgeContext([
+      searchHit({ documentTitle: 'Note', heading: '', text: 'Du texte.' }),
+    ]);
+    // On the rendered line, not on the whole block: the header names the
+    // locator in its instruction, parentheses and all.
+    const line = text.split('\n').find((one) => one.startsWith('- '))!;
+    expect(line).toBe('- **Note**');
+  });
+
+  it('counts the locator against the budget, because it is part of the block', () => {
+    const located = Array.from({ length: 40 }, (_, i) =>
+      searchHit({
+        chunkId: `chk_${i}`,
+        documentId: `doc_${i}`,
+        documentTitle: `Document ${i}`,
+        heading: `Section ${i}`,
+        text: 'contenu '.repeat(100),
+        pageUnit: 'page',
+        pageStart: i + 1,
+        pageEnd: i + 1,
+        lineStart: i * 10,
+        lineEnd: i * 10 + 9,
+      }),
+    );
+    const { text } = selectKnowledgeContext(located);
+    expect(text.length).toBeLessThanOrEqual(KNOWLEDGE_CONTEXT_BUDGET);
+  });
+
   it('reports exactly what fit the budget, nothing more', () => {
     // The genesis reads the credited set: crediting a passage the budget
     // dropped would claim an influence that never happened — the same rule

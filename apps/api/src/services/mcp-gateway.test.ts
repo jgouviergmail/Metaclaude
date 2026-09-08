@@ -17,6 +17,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiTokenRecord } from '@metaclaude/shared';
+import { searchHit } from '../test/knowledge.js';
 import { buildGatewayServer, createGatewayHandlers, type GatewayDeps } from './mcp-gateway.js';
 
 const TOKEN: ApiTokenRecord = {
@@ -395,5 +396,54 @@ describe('search_notes', () => {
       'deployment',
       expect.objectContaining({ workspaceId: 'ws_mine' }),
     );
+  });
+
+  it('hands back where each passage came from, so the caller can cite it', async () => {
+    // A program on the other end of this gateway quotes what it is given. A
+    // passage with no location is a claim it cannot attribute, which is the
+    // same failure the in-process block was fixed for.
+    const wired = deps({
+      knowledge: {
+        search: vi.fn(async () => [
+          searchHit({
+            documentTitle: 'Bail',
+            heading: 'Résiliation',
+            text: 'Le préavis est de trois mois.',
+            sourceName: 'bail.pdf',
+            pageUnit: 'page',
+            pageStart: 2,
+            pageEnd: 2,
+            lineStart: 40,
+            lineEnd: 52,
+          }),
+        ]),
+      },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    expect(await handlers.searchNotes({ workspace: 'ws_mine', query: 'préavis' })).toEqual([
+      {
+        title: 'Bail',
+        heading: 'Résiliation',
+        location: 'page 2, lines 40–52',
+        source: 'bail.pdf',
+        text: 'Le préavis est de trois mois.',
+      },
+    ]);
+  });
+
+  it('omits a location and a file the passage does not have', async () => {
+    const wired = deps({
+      knowledge: {
+        search: vi.fn(async () => [
+          searchHit({ documentTitle: 'Note', heading: '', text: 'Du texte.' }),
+        ]),
+      },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    expect(await handlers.searchNotes({ workspace: 'ws_mine', query: 'x' })).toEqual([
+      { title: 'Note', heading: '', text: 'Du texte.' },
+    ]);
   });
 });
