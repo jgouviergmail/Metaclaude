@@ -10,6 +10,7 @@
  */
 
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { toast } from 'sonner';
@@ -346,6 +347,43 @@ describe('what the URL asks for', () => {
     );
     await waitFor(() =>
       expect(apiMock.knowledge.list).toHaveBeenCalledWith({ workspaceId: 'ws_a' }),
+    );
+  });
+
+  it('follows the link when the page is already open on another workspace', async () => {
+    // React Router does not remount a page for a change of query string, so a
+    // scope read once at mount is a scope that ignores every later link — the
+    // same "this link is lying to me" failure the parameter was added to fix,
+    // one level down. Reachable from the dashboard and from a notification
+    // opened while the app is already showing this screen.
+    //
+    // Navigated the way a link navigates, not with `history.pushState`: the
+    // router here keeps its own history and would never see that.
+    const GoToBeta = () => {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate('/memory?workspace=ws_b')}>
+          go-to-beta
+        </button>
+      );
+    };
+
+    renderWithProviders(
+      <>
+        <GoToBeta />
+        <MemoryPage />
+      </>,
+      { route: '/memory?workspace=ws_a' },
+    );
+    await waitFor(() =>
+      expect(apiMock.knowledge.list).toHaveBeenCalledWith({ workspaceId: 'ws_a' }),
+    );
+
+    apiMock.knowledge.list.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'go-to-beta' }));
+
+    await waitFor(() =>
+      expect(apiMock.knowledge.list).toHaveBeenCalledWith({ workspaceId: 'ws_b' }),
     );
   });
 

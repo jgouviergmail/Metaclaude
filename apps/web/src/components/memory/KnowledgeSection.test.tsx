@@ -7,6 +7,7 @@
  * that cannot change it.
  */
 
+import { QueryClient } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KnowledgeDocumentMeta, Workspace } from '@metaclaude/shared';
@@ -266,6 +267,45 @@ describe('a document that came from a file', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /read the file again/i }));
 
     await waitFor(() => expect(apiMock.knowledge.extract).toHaveBeenCalledWith('doc_2'));
+  });
+
+  it('does not serve the old text after the file has been read again', async () => {
+    // The whole point of the viewer is checking a citation, so showing the
+    // text from before a re-extraction — with its old line numbers — is the
+    // exact failure the provenance work exists to prevent. React Query holds
+    // a query fresh for fifteen seconds, which is long enough to re-extract
+    // and reopen inside it.
+    apiMock.knowledge.get.mockResolvedValue({
+      document: { ...LEASE, content: 'Avant.' },
+    });
+    apiMock.knowledge.extract.mockResolvedValue({ document: LEASE });
+    // Production's cache, not the test one: `createTestQueryClient` keeps
+    // nothing fresh, so with it this test could not fail whatever the code did.
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />, {
+      queryClient: new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, refetchOnWindowFocus: false, staleTime: 15_000 },
+          mutations: { retry: false },
+        },
+      }),
+    });
+    await screen.findByText('Bail — Résiliation');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bail — Résiliation' }));
+    expect(await screen.findByText('Avant.')).toBeDefined();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('Avant.')).toBeNull());
+
+    apiMock.knowledge.get.mockResolvedValue({
+      document: { ...LEASE, content: 'Après une nouvelle lecture.' },
+    });
+    await openMenu('More actions for “Bail — Résiliation”');
+    fireEvent.click(screen.getByRole('menuitem', { name: /read the file again/i }));
+    await waitFor(() => expect(apiMock.knowledge.extract).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bail — Résiliation' }));
+
+    expect(await screen.findByText('Après une nouvelle lecture.')).toBeDefined();
   });
 
   it('opens the viewer rather than an editor that could not change it', async () => {

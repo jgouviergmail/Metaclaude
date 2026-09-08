@@ -669,7 +669,7 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
    * same document comes back from a save.
    */
   const meta = (id: string): KnowledgeDocumentMeta => {
-    const found = context.knowledge.list().find((one) => one.id === id);
+    const found = context.knowledge.meta(id);
     if (!found) throw new HttpError(404, 'Document not found.');
     return found;
   };

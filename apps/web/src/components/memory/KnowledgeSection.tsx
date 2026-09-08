@@ -135,17 +135,27 @@ export function KnowledgeSection({
         : undefined;
 
   const query = useQuery({
-    queryKey: ['knowledge', scope],
+    queryKey: ['knowledge', 'list', scope],
     queryFn: () => api.knowledge.list(listOptions),
   });
 
   const preview = useQuery({
-    queryKey: ['knowledge-preview', probeQuery, scope],
+    queryKey: ['knowledge', 'preview', probeQuery, scope],
     queryFn: () =>
       api.knowledge.search(probeQuery, scope === 'all' || scope === 'global' ? undefined : scope),
     enabled: probeQuery.trim().length > 0,
   });
 
+  /**
+   * Everything the library caches, under one prefix.
+   *
+   * The viewer's document was keyed `['knowledge-document', id]`, which
+   * `['knowledge']` does *not* match — React Query compares element by
+   * element. So a re-extraction refreshed the list and left the viewer holding
+   * the old text for the fifteen seconds a query stays fresh, with the old
+   * line numbers on it: exactly what the provenance work exists to prevent,
+   * on the one screen built to check a citation.
+   */
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['knowledge'] });
 
   const save = useMutation({

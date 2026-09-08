@@ -47,22 +47,33 @@ const DEFAULT_HEAP_MB = 512;
 /**
  * What a thread that died is trying to say.
  *
- * Its own function so the branch is provable: actually exhausting a worker's
- * heap inside a test takes the *test runner's* pool down with it, so what can
- * be asserted is the translation, and it is the translation that matters. An
- * operator sent looking for a corrupt file, about a 3 000-page PDF that is
- * perfectly valid, would look in the wrong place all day.
+ * Its own function so the branches are provable: actually exhausting a
+ * worker's heap inside a test takes the *test runner's* pool down with it, so
+ * what can be asserted is the translation — and it is the translation that
+ * matters. An operator sent looking for a corrupt file, about a 3 000-page PDF
+ * that is perfectly valid, would look in the wrong place all day.
+ *
+ * Three outcomes, and the third is the one worth naming. A worker that could
+ * not be *loaded* — `dist/learning/extract/worker.js` missing from a
+ * hand-built image, a partial deploy — is a broken **server**, and answering
+ * "your file is corrupt" with a 400 would blame the operator for it, on every
+ * upload, until somebody thought to doubt the message. That case leaves as a
+ * plain `Error`, which `sendError` turns into a 500 and the request logger
+ * writes down with its cause.
  *
  * Measured: a worker over its cap arrives on the `error` event with
  * "Worker terminated due to reaching memory limit: JS heap out of memory",
  * and exits afterwards.
  */
-export function classifyWorkerError(error: Error, heapMb: number): ExtractError {
+export function classifyWorkerError(error: Error, heapMb: number): Error {
   if (/memory limit/i.test(error.message)) {
     return new ExtractError(
       'too-large',
       `This file needs more than ${heapMb} MB to read. Split it, or keep the part the agent needs.`,
     );
+  }
+  if (/cannot find module|err_module_not_found|err_worker_path/i.test(error.message)) {
+    return new Error(`The extraction worker could not be started: ${error.message}`);
   }
   return new ExtractError('corrupt', `Extraction failed: ${error.message}`);
 }

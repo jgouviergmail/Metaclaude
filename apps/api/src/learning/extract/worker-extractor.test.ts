@@ -16,6 +16,7 @@ import { existsSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { ExtractError } from './errors.js';
 import { extractInProcess } from './index.js';
 import { classifyWorkerError, InProcessExtractor, WorkerExtractor } from './worker-extractor.js';
 
@@ -94,14 +95,31 @@ describe('classifyWorkerError', () => {
       new Error('Worker terminated due to reaching memory limit: JS heap out of memory'),
       512,
     );
-    expect(error.code).toBe('too-large');
+    expect(error).toBeInstanceOf(ExtractError);
+    expect((error as ExtractError).code).toBe('too-large');
     expect(error.message).toContain('512 MB');
   });
 
-  it('calls anything else a broken file, and keeps what happened in the message', () => {
-    const error = classifyWorkerError(new Error('Cannot find module'), 512);
-    expect(error.code).toBe('corrupt');
-    expect(error.message).toContain('Cannot find module');
+  it('refuses to blame the file when it is the worker that could not start', () => {
+    // An image built without `dist/learning/extract/worker.js`, or a partial
+    // deploy: the server is broken, and telling an operator their perfectly
+    // good document is corrupt sends them to look in the wrong place — with a
+    // 400, which says the request was at fault. This is the one case that is
+    // *not* an ExtractError, so it surfaces as a 500 and reaches the log.
+    const error = classifyWorkerError(
+      new Error("Cannot find module 'D:/opt/app/dist/learning/extract/worker.js'"),
+      512,
+    );
+    expect(error).not.toBeInstanceOf(ExtractError);
+    expect(error.message).toMatch(/worker/i);
+    expect((error as { statusCode?: number }).statusCode).toBeUndefined();
+  });
+
+  it('calls a genuine reading failure a broken file, and keeps what happened', () => {
+    const error = classifyWorkerError(new Error('Unexpected end of archive'), 512);
+    expect(error).toBeInstanceOf(ExtractError);
+    expect((error as ExtractError).code).toBe('corrupt');
+    expect(error.message).toContain('Unexpected end of archive');
   });
 });
 

@@ -41,7 +41,9 @@ export function KnowledgeViewer({
   const body = useRef<HTMLDivElement>(null);
 
   const query = useQuery({
-    queryKey: ['knowledge-document', documentId],
+    // Under the section's prefix, so one `invalidateQueries(['knowledge'])`
+    // reaches the list, the rehearsal and this.
+    queryKey: ['knowledge', 'document', documentId],
     queryFn: () => api.knowledge.get(documentId!),
     enabled: documentId !== null,
   });

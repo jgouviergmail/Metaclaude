@@ -301,8 +301,28 @@ export function MemoryPage() {
    */
   const [params, setParams] = useSearchParams();
 
-  /** `all` = every memory, `global` = unscoped only, anything else = a workspace id. */
-  const [scope, setScope] = useState<string>(params.get('workspace') ?? 'all');
+  /**
+   * The scope lives in the URL, not in state.
+   *
+   * Read once at mount it would answer the *first* link and ignore every one
+   * after it: React Router does not remount a page for a change of query
+   * string, so arriving here from a notification while already on this screen
+   * would leave the filter where it was — the same "this link is lying to me"
+   * failure the parameter exists to fix, one level down. Derived, there is
+   * nothing to keep in step, and the scope becomes shareable into the bargain.
+   *
+   * `all` = every memory, `global` = unscoped only, anything else = a
+   * workspace id.
+   */
+  const scope = params.get('workspace') ?? 'all';
+  const setScope = (next: string): void => {
+    const updated = new URLSearchParams(params);
+    if (next === 'all') updated.delete('workspace');
+    else updated.set('workspace', next);
+    // `replace`, so choosing a filter three times does not put three entries
+    // between the operator and the back button.
+    setParams(updated, { replace: true });
+  };
 
   const documentParam = params.get('document');
   const lineParam = Number(params.get('line'));

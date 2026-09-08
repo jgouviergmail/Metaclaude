@@ -284,6 +284,72 @@ describe('a document that came from a file', () => {
     ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining(first.title) });
   });
 
+  it('keeps the record of where it was first filed, whatever a later save says', async () => {
+    // `workspace_id` is documented as exactly that record — nothing resolves
+    // with it any more. A save that carries the form's default therefore must
+    // not rewrite it, or the column stops meaning what its comment says.
+    const document = await store.upsert({
+      workspaceId: null,
+      title: 'Note',
+      content: 'Un contenu de départ.',
+      reach: { global: true, workspaceIds: [] },
+    });
+    const filedIn = (id: string): string | null =>
+      (db.prepare('SELECT workspace_id FROM documents WHERE id = ?').get(id) as {
+        workspace_id: string | null;
+      }).workspace_id;
+
+    db.prepare(
+      `INSERT INTO workspaces (id, name, slug, path, settings, created_at, updated_at)
+       VALUES ('ws_first', 'First', 'first', '/tmp/first', '{}', 0, 0)`,
+    ).run();
+    const scoped = await store.upsert({
+      workspaceId: 'ws_first',
+      title: 'Scopé',
+      content: 'Un autre contenu de départ.',
+      reach: { global: true, workspaceIds: [] },
+    });
+    expect(filedIn(scoped.id)).toBe('ws_first');
+
+    // A rename, with the form's default workspaceId.
+    await store.upsert({ id: scoped.id, workspaceId: null, title: 'Renommé', content: 'Un autre contenu de départ.' });
+    expect(filedIn(scoped.id)).toBe('ws_first');
+
+    // And a content edit, which takes the other branch entirely.
+    await store.upsert({ id: scoped.id, workspaceId: null, title: 'Renommé', content: 'Un contenu réécrit.' });
+    expect(filedIn(scoped.id)).toBe('ws_first');
+    expect(filedIn(document.id)).toBeNull();
+  });
+
+  it('records a source on a save whose text did not change', async () => {
+    // The two branches of `upsert` must answer the same question the same
+    // way: a caller that hands over a source is telling the store this
+    // document came from a file, and the short path used to keep only the
+    // engine's name and drop the file itself.
+    const pasted = await store.upsert({
+      workspaceId: null,
+      title: 'Collé',
+      content: 'Un texte identique des deux côtés.',
+      reach: { global: true, workspaceIds: [] },
+    });
+
+    await store.upsert({
+      id: pasted.id,
+      workspaceId: null,
+      title: 'Collé',
+      content: 'Un texte identique des deux côtés.',
+      source: { name: 'note.txt', mime: 'text/plain', bytes: 34, extractor: 'text@1', sha256: 'zzz999' },
+    });
+
+    expect(store.get(pasted.id)!.source).toEqual({
+      name: 'note.txt',
+      mime: 'text/plain',
+      bytes: 34,
+      extractor: 'text@1',
+    });
+    expect(store.sourceOf(pasted.id)?.sha256).toBe('zzz999');
+  });
+
   it('keeps its text read-only: an edit of the content is refused', async () => {
     // The text is what the extractor produced, and the page and line locations
     // are true of that text alone. Re-extract, do not retype.
@@ -426,6 +492,18 @@ describe('a document that came from a file', () => {
       pageUnit: 'page',
       source: { name: 'bail.pdf', bytes: 1234 },
     });
+  });
+
+  it('answers one document in exactly the shape the listing gives it', async () => {
+    // Every route answers with this, so a screen that reads a badge off the
+    // list must not lose it when the same document comes back from a save.
+    // One query behind both, and this is what holds them together.
+    const document = await upload('Bail');
+
+    expect(store.meta(document.id)).toEqual(
+      store.list({}).find((one) => one.id === document.id),
+    );
+    expect(store.meta('doc_missing')).toBeNull();
   });
 
   it('has no page count when it has no pages', async () => {

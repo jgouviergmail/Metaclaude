@@ -404,7 +404,7 @@ export class KnowledgeStore {
     //
     // The check is not the guarantee: two uploads of one file racing through
     // this line both pass it, and the index is what actually stops the second.
-    // `duplicateName` below turns that constraint back into this same answer,
+    // `duplicateOf` below turns that constraint back into this same answer,
     // so the loser of the race is told the same thing as somebody who simply
     // tried twice.
     if (input.source && !existing) {
@@ -433,13 +433,31 @@ export class KnowledgeStore {
       tx(this.db, () => {
         this.db
           .prepare(
-            `UPDATE documents SET title = ?, workspace_id = ?, enabled = ?, updated_at = ?,
+            // `workspace_id` is absent on purpose: it records where a document
+            // was *first filed* and nothing resolves with it, so a save
+            // carrying the form's default must not rewrite it.
+            //
+            // The source columns are here because both branches have to answer
+            // the same question the same way: a caller handing over a source
+            // is saying this document came from a file, and the short path
+            // used to keep the engine's name and drop the file itself.
+            `UPDATE documents SET title = ?, enabled = ?, updated_at = ?,
+               source_name = COALESCE(?, source_name), source_mime = COALESCE(?, source_mime),
+               source_bytes = COALESCE(?, source_bytes), source_sha256 = COALESCE(?, source_sha256),
                extractor = COALESCE(?, extractor)
              WHERE id = ?`,
           )
-          // Only the extractor may move on an unchanged save: a re-extraction
-          // that produced byte-identical text still says which engine read it.
-          .run(title, input.workspaceId, enabled ? 1 : 0, at, source?.extractor ?? null, id);
+          .run(
+            title,
+            enabled ? 1 : 0,
+            at,
+            source?.name ?? null,
+            source?.mime ?? null,
+            source?.bytes ?? null,
+            source?.sha256 ?? null,
+            source?.extractor ?? null,
+            id,
+          );
         if (reach) this.writeReach(id, reach);
       });
       return this.toDocument(this.rowById(id)!);
@@ -540,7 +558,9 @@ export class KnowledgeStore {
         this.db.prepare('DELETE FROM document_chunks WHERE document_id = ?').run(id);
         this.db
           .prepare(
-            `UPDATE documents SET workspace_id = ?, title = ?, content = ?, content_hash = ?,
+            // No `workspace_id`: see the unchanged branch above — it is the
+            // record of where this document was first filed, not a reach.
+            `UPDATE documents SET title = ?, content = ?, content_hash = ?,
                enabled = ?, chunk_count = ?, embedding_model = ?, updated_at = ?,
                page_unit = ?,
                -- COALESCE, so an ordinary edit keeps the file it came from and
@@ -551,7 +571,6 @@ export class KnowledgeStore {
              WHERE id = ?`,
           )
           .run(
-            input.workspaceId,
             title,
             content,
             hash,
@@ -701,7 +720,26 @@ export class KnowledgeStore {
    */
   list(options: { workspaceId?: string | null } = {}): KnowledgeDocumentMeta[] {
     const scope = reachClause(options.workspaceId);
-    const where = scope.sql ? `WHERE ${scope.sql}` : '';
+    return this.listing(scope.sql, scope.params);
+  }
+
+  /**
+   * One document in the listing's shape.
+   *
+   * Every route that answers with a document answers with *this*, so a screen
+   * reading a reach badge and a page count off the list does not lose them the
+   * moment the same document comes back from a save. Filtered in SQL rather
+   * than by scanning `list()`: that read is a length() and a correlated
+   * subquery per row, and paying for the whole library on every write is a
+   * cost that only shows up once a library is large enough to matter.
+   */
+  meta(id: string): KnowledgeDocumentMeta | null {
+    return this.listing('d.id = ?', [id])[0] ?? null;
+  }
+
+  /** The listing query, shared by both. */
+  private listing(clause: string, params: readonly string[]): KnowledgeDocumentMeta[] {
+    const where = clause ? `WHERE ${clause}` : '';
     const rows = this.db
       .prepare<unknown[], DocumentRow & { content_length: number; page_count: number | null }>(
         `SELECT d.id, d.workspace_id, d.title, length(CAST(d.content AS BLOB)) AS content_length,
@@ -711,7 +749,7 @@ export class KnowledgeStore {
                 (SELECT MAX(c.page_end) FROM document_chunks c WHERE c.document_id = d.id) AS page_count
          FROM documents d ${where} ORDER BY d.updated_at DESC, d.id`,
       )
-      .all(...scope.params);
+      .all(...params);
 
     const reach = this.reachOf(rows.map((row) => row.id));
     return rows.map((row) => ({
