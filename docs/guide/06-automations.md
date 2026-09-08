@@ -57,9 +57,22 @@ So the copy starts its own life. Nothing travels but the definition: no
 history, no schedule, no failure counter. It lands **paused**, because an
 automation fires unattended and one that arrives already armed in a workspace
 it was not written for is the surprise these guard rails exist to prevent —
-read the prompt, then enable it. And be aware of what a copy costs: two copies
-drift the moment one is edited, which is exactly why extensions attach instead.
-If you find yourself maintaining five, say so.
+read the prompt, then enable it.
+
+**Keeping the copies together.** The two rows stay linked, and the next time you
+edit one and save, Metaclaude asks whether to carry the change to the others,
+listing them by workspace with each one tickable. That is the cost of a copy
+made into a decision: it asks rather than syncing, because a copy whose prompt
+deliberately names its own project has to be able to refuse. What travels is
+what you just changed — prompt, name, description, trigger, model and
+permissions, continuous mode, failure ceiling. What never travels is what
+belongs to one copy's life in one workspace: its schedule, its history, its
+failure counter, and **whether it is paused** — otherwise saving the original
+would wake a copy you had deliberately stopped.
+
+The question only appears when there is something to ask: other copies exist,
+and something shared actually changed. If one copy has gone its own way for
+good, **Detach from its copies** in its menu stops it being asked about.
 
 An automation belongs to one workspace, chosen when you create it and
 changeable afterwards from its editor — an automation written for one project

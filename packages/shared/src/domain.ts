@@ -833,6 +833,20 @@ export const Automation = z.object({
    */
   continuous: z.boolean().default(false),
   sessionId: z.string().nullable(),
+  /**
+   * Which copies of this automation are the same automation.
+   *
+   * An automation reaches one workspace by schema, so serving two projects
+   * means two rows — and two rows drift the moment one is edited. The family is
+   * what makes that drift a decision rather than an accident: it is set when
+   * one is duplicated from another, shared by every copy including the
+   * original, and it answers the only question the editor needs — who else
+   * should hear about this change?
+   *
+   * Nothing propagates on its own. Null for an automation that was never
+   * duplicated, which is a different state from being alone in a family.
+   */
+  familyId: z.string().nullable().default(null),
   /** Stop the loop after this many consecutive failures. 0 disables the guard. */
   maxConsecutiveFailures: z.number().int().min(0).max(100).default(3),
   consecutiveFailures: z.number().int().nonnegative().default(0),

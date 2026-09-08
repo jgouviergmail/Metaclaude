@@ -22,6 +22,8 @@ export const ID_PREFIXES = {
   agent: 'agt',
   mcpServer: 'mcp',
   automation: 'aut',
+  /** Groups the copies of one automation — see `Automation.familyId`. */
+  automationFamily: 'autf',
   approval: 'apr',
   task: 'tsk',
   taskComment: 'tsc',

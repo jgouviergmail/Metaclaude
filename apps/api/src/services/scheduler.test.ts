@@ -270,6 +270,87 @@ describe('update / delete / list', () => {
     expect(updated.updatedAt).toBe(at(2024, 0, 15, 10, 0));
   });
 
+  const otherWorkspace = (name = 'Beta') =>
+    workspaces.create({
+      name,
+      slug: name.toLowerCase(),
+      description: '',
+      path: `/tmp/${name.toLowerCase()}`,
+      color: '#f59e0b',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+
+  it('duplicates into another workspace, paused, with no history and a shared family', () => {
+    const other = otherWorkspace();
+    const source = make({ continuous: true });
+
+    const copy = scheduler.duplicate(source.id, other.id);
+
+    expect(copy.workspaceId).toBe(other.id);
+    expect(copy.prompt).toBe(source.prompt);
+    expect(copy.continuous).toBe(true);
+    // Paused: an automation fires unattended, and one arriving already armed in
+    // a workspace it was not written for is the surprise to avoid.
+    expect(copy.enabled).toBe(false);
+    // None of the original's life travels.
+    expect(copy.sessionId).toBeNull();
+    expect(copy.runCount).toBe(0);
+    expect(copy.consecutiveFailures).toBe(0);
+    // Both ends carry the family, including the source that had none.
+    expect(copy.familyId).not.toBeNull();
+    expect(scheduler.get(source.id)!.familyId).toBe(copy.familyId);
+  });
+
+  it('reuses the family when a second copy is made', () => {
+    const b = otherWorkspace('Beta');
+    const c = otherWorkspace('Gamma');
+    const source = make();
+
+    const first = scheduler.duplicate(source.id, b.id);
+    const second = scheduler.duplicate(source.id, c.id);
+
+    expect(second.familyId).toBe(first.familyId);
+    // Each sees the other two, itself excluded.
+    expect(scheduler.family(source.id).map((a) => a.id).sort()).toEqual(
+      [first.id, second.id].sort(),
+    );
+    expect(scheduler.family(first.id)).toHaveLength(2);
+  });
+
+  it('refuses to duplicate into the workspace it already lives in', () => {
+    const source = make();
+    expect(() => scheduler.duplicate(source.id, workspace.id)).toThrow(SchedulerError);
+  });
+
+  it('refuses to duplicate into a workspace that does not exist', () => {
+    const source = make();
+    expect(() => scheduler.duplicate(source.id, 'ws_nope')).toThrow(SchedulerError);
+    // And leaves no family behind on the source: the whole thing or nothing.
+    expect(scheduler.get(source.id)!.familyId).toBeNull();
+  });
+
+  it('answers with nothing for an automation that was never duplicated', () => {
+    // Null family and "alone in a family" are different states, and only one of
+    // them should make the editor ask anything.
+    expect(scheduler.family(make().id)).toEqual([]);
+  });
+
+  it('detaches one copy, and leaves the others linked', () => {
+    const b = otherWorkspace('Beta');
+    const c = otherWorkspace('Gamma');
+    const source = make();
+    const first = scheduler.duplicate(source.id, b.id);
+    const second = scheduler.duplicate(source.id, c.id);
+
+    scheduler.detach(first.id);
+
+    expect(scheduler.get(first.id)!.familyId).toBeNull();
+    expect(scheduler.family(first.id)).toEqual([]);
+    // The remaining two still see each other and not the detached one.
+    expect(scheduler.family(source.id).map((a) => a.id)).toEqual([second.id]);
+  });
+
   it('moves an automation to another workspace', () => {
     // An automation written for one project turns out to suit another, or a
     // workspace is created after it. Refused outright until now, and the

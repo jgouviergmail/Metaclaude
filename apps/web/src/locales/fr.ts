@@ -1306,6 +1306,22 @@ export const fr: Record<string, string> = {
   /* ── Agents et skills ───────────────────────────────────────────────── */
   'Available in every workspace': 'Disponible dans tous les workspaces',
   'Duplicate to': 'Dupliquer vers',
+  'Detach from its copies': 'Détacher de ses copies',
+  'Detached — it no longer follows its copies.':
+    'Détachée — elle ne suit plus ses copies.',
+  'Could not detach it.': 'Impossible de la détacher.',
+  'Carry this change to the other copies?': 'Reporter ce changement vers les autres copies ?',
+  'You changed {fields}. These copies are the same automation in other workspaces — each keeps its own schedule, history and paused state whatever you choose here.':
+    'Vous avez modifié {fields}. Ces copies sont la même automatisation dans d’autres workspaces — chacune garde son propre planning, son historique et sa mise en pause quel que soit votre choix ici.',
+  'Only this one': 'Celle-ci seulement',
+  'Carry it over': 'Reporter',
+  'the prompt': 'le prompt',
+  'the name': 'le nom',
+  'the description': 'la description',
+  'the trigger': 'le déclencheur',
+  'the model and permissions': 'le modèle et les permissions',
+  'continuous mode': 'le mode continu',
+  'the failure ceiling': 'le plafond d’échecs',
   'Duplicated, and paused — read the prompt before enabling it.':
     'Dupliquée, et en pause — relisez le prompt avant de l’activer.',
   'Could not duplicate it.': 'Impossible de la dupliquer.',

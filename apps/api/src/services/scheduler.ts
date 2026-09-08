@@ -47,6 +47,7 @@ interface AutomationRow {
   policy: string;
   continuous: number;
   session_id: string | null;
+  family_id: string | null;
   max_consecutive_failures: number;
   consecutive_failures: number;
   enabled: number;
@@ -95,6 +96,7 @@ function toAutomation(row: AutomationRow): Automation {
     policy: readPolicy(row.policy),
     continuous: toBool(row.continuous),
     sessionId: row.session_id,
+    familyId: row.family_id,
     maxConsecutiveFailures: row.max_consecutive_failures,
     consecutiveFailures: row.consecutive_failures,
     enabled: toBool(row.enabled),
@@ -321,6 +323,84 @@ export class Scheduler {
     const updated = this.get(id) as Automation;
     this.publish(updated);
     return updated;
+  }
+
+  /**
+   * Copy an automation into another workspace, and remember that they are the
+   * same automation.
+   *
+   * Server-side rather than a client composing a `create`, for one reason: the
+   * family has to land on *both* rows or on neither. A source that was never
+   * duplicated has no family yet, so one is minted and written back to it —
+   * which is a write to a row the operator did not edit, and exactly why this
+   * is one transaction rather than two requests.
+   *
+   * Nothing but the definition travels. The session, the history, the failure
+   * counter and the schedule belong to the original's life in its own
+   * workspace, and the copy starts its own. It lands paused because an
+   * automation fires unattended, and one arriving already armed in a workspace
+   * it was not written for is the surprise the guard rails exist to prevent.
+   */
+  duplicate(id: string, workspaceId: string): Automation {
+    const source = this.get(id);
+    if (!source) throw new SchedulerError('Automation not found.', 404);
+    if (!this.deps.workspaces.get(workspaceId)) {
+      throw new SchedulerError('Unknown workspace.', 404);
+    }
+    if (source.workspaceId === workspaceId) {
+      throw new SchedulerError('That automation already lives in this workspace.', 409);
+    }
+
+    return tx(this.deps.db, () => {
+      const familyId = source.familyId ?? newId('automationFamily');
+      if (!source.familyId) {
+        this.deps.db.prepare('UPDATE automations SET family_id = ? WHERE id = ?').run(familyId, id);
+      }
+      const copy = this.create({
+        workspaceId,
+        name: source.name,
+        description: source.description,
+        prompt: source.prompt,
+        trigger: source.trigger,
+        policy: source.policy,
+        continuous: source.continuous,
+        maxConsecutiveFailures: source.maxConsecutiveFailures,
+        enabled: false,
+      });
+      this.deps.db.prepare('UPDATE automations SET family_id = ? WHERE id = ?').run(familyId, copy.id);
+      const stored = this.get(copy.id) as Automation;
+      this.publish(stored);
+      return stored;
+    });
+  }
+
+  /** The other copies of this automation — itself excluded, empty when it has no family. */
+  family(id: string): Automation[] {
+    const automation = this.get(id);
+    if (!automation?.familyId) return [];
+    return this.deps.db
+      .prepare<[string, string], AutomationRow>(
+        'SELECT * FROM automations WHERE family_id = ? AND id != ? ORDER BY name',
+      )
+      .all(automation.familyId, id)
+      .map(toAutomation);
+  }
+
+  /**
+   * Take one copy out of its family.
+   *
+   * Needed, and not a nicety: a copy whose prompt deliberately names its own
+   * project would otherwise be asked to accept every edit made to its siblings,
+   * for ever. Refusing once per save is a chore; saying so once is an answer.
+   *
+   * The last remaining member keeps its family id, harmlessly — `family()`
+   * returns nothing for a group of one, and a later duplication reuses it.
+   */
+  detach(id: string): boolean {
+    return (
+      this.deps.db.prepare('UPDATE automations SET family_id = NULL WHERE id = ?').run(id).changes >
+      0
+    );
   }
 
   delete(id: string): boolean {

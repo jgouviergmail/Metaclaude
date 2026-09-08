@@ -28,6 +28,7 @@ import { BulkActions } from '@/components/registry/BulkActions';
 import { FILTER_ROW } from '@/components/ui/layout';
 import { ReachBadge } from '@/components/registry/ReachBadge';
 import { WorkspaceScopeFilter } from '@/components/registry/WorkspaceScopeFilter';
+import { PropagateDialog, propagatableFields } from '@/components/automations/PropagateDialog';
 import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -166,23 +167,31 @@ export function AutomationsPage() {
    */
   const duplicate = useMutation({
     mutationFn: ({ automation, workspaceId }: { automation: Automation; workspaceId: string }) =>
-      api.createAutomation({
-        workspaceId,
-        name: automation.name,
-        description: automation.description,
-        prompt: automation.prompt,
-        trigger: automation.trigger,
-        continuous: automation.continuous,
-        maxConsecutiveFailures: automation.maxConsecutiveFailures,
-        policy: automation.policy,
-        enabled: false,
-      }),
+      api.duplicateAutomation(automation.id, workspaceId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['automations'] });
       toast.success(t('Duplicated, and paused — read the prompt before enabling it.'));
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('Could not duplicate it.')),
+  });
+
+  /**
+   * Take one copy out of its family.
+   *
+   * A copy that has deliberately diverged would otherwise be offered every edit
+   * its siblings receive, for ever. Refusing once per save is a chore; saying so
+   * once is an answer.
+   */
+  const detach = useMutation({
+    mutationFn: (id: string) => api.detachAutomation(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['automations'] });
+      void queryClient.invalidateQueries({ queryKey: ['automation-family'] });
+      toast.success(t('Detached — it no longer follows its copies.'));
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : t('Could not detach it.')),
   });
 
   const remove = useMutation({
@@ -538,6 +547,11 @@ export function AutomationsPage() {
                           ))}
                         </>
                       ) : null}
+                      {automation.familyId ? (
+                        <MenuItem onSelect={() => detach.mutate(automation.id)}>
+                          {t('Detach from its copies')}
+                        </MenuItem>
+                      ) : null}
                       <MenuSeparator />
                       <MenuItem
                         icon={<Trash2 />}
@@ -769,13 +783,35 @@ function AutomationEditor({
     return patch;
   };
 
+  /*
+   * The copies this automation is linked to, and the question they raise.
+   *
+   * Only fetched while editing an existing one — a new automation has no family
+   * yet — and the dialog only appears when there is something to ask: other
+   * members *and* a changed field that means the same thing elsewhere. Every
+   * other save goes through untouched, which is most of them.
+   */
+  const familyQuery = useQuery({
+    queryKey: ['automation-family', automation?.id ?? null],
+    queryFn: () => api.automationFamily(automation!.id),
+    enabled: Boolean(automation),
+    staleTime: 30_000,
+  });
+  const siblings = familyQuery.data?.automations ?? [];
+  const [asking, setAsking] = useState<{ patch: Record<string, unknown>; fields: string[] } | null>(
+    null,
+  );
+
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: (propagateTo?: string[]) => {
       if (automation) {
         const patch = changed();
         // Nothing to say is not an error, and not a write either.
         if (Object.keys(patch).length === 0) return Promise.resolve({ automation });
-        return api.updateAutomation(automation.id, patch);
+        return api.updateAutomation(automation.id, {
+          ...patch,
+          ...(propagateTo && propagateTo.length > 0 ? { propagateTo } : {}),
+        });
       }
       return api.createAutomation({
         name: name.trim(),
@@ -818,7 +854,22 @@ function AutomationEditor({
             size="sm"
             loading={save.isPending}
             disabled={!valid}
-            onClick={() => save.mutate()}
+            onClick={() => {
+              /*
+               * Ask before saving, not after: the dialog decides who the write
+               * reaches, so it has to come first. Only when there is something
+               * to ask — a family with other members and a changed field that
+               * means the same thing elsewhere — so the common save is
+               * unchanged and nobody learns to dismiss a box.
+               */
+              const patch = automation ? changed() : {};
+              const fields = propagatableFields(patch);
+              if (siblings.length > 0 && fields.length > 0) {
+                setAsking({ patch, fields });
+                return;
+              }
+              save.mutate(undefined);
+            }}
           >
             {automation ? t('Save') : t('Create')}
           </Button>
@@ -1199,6 +1250,19 @@ function AutomationEditor({
           </p>
         ) : null}
       </div>
+
+      {asking ? (
+        <PropagateDialog
+          fields={asking.fields}
+          siblings={siblings}
+          workspaces={workspaces}
+          busy={save.isPending}
+          onDecide={(ids) => {
+            setAsking(null);
+            save.mutate(ids);
+          }}
+        />
+      ) : null}
     </Modal>
   );
 }

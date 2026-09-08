@@ -910,6 +910,26 @@ export const api = {
   automations: (workspaceId?: string) =>
     request<{ automations: Automation[] }>(`/api/automations${qs({ workspaceId })}`),
 
+  /**
+   * Copy an automation into another workspace, keeping the two linked.
+   *
+   * A route rather than a composed `createAutomation`: the family has to land
+   * on both rows or on neither, and a source that was never duplicated has to
+   * be written to as well.
+   */
+  duplicateAutomation: (id: string, workspaceId: string) =>
+    request<{ automation: Automation }>(`/api/automations/${id}/duplicate`, {
+      method: 'POST',
+      body: { workspaceId },
+    }),
+
+  /** The other copies of one automation. Empty when it has never been copied. */
+  automationFamily: (id: string) =>
+    request<{ automations: Automation[] }>(`/api/automations/${id}/family`),
+
+  detachAutomation: (id: string) =>
+    request<{ automation: Automation }>(`/api/automations/${id}/detach`, { method: 'POST' }),
+
   createAutomation: (body: {
     workspaceId: string;
     name: string;

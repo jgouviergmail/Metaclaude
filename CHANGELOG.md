@@ -11,6 +11,34 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.82.0] — 2026-09-08
+
+### Added
+
+- **Copies of an automation stay linked, and an edit asks whether to travel.**
+  Duplicating gave two independent rows that drifted the moment one was edited —
+  the cost named in the previous release, now made into a decision instead of an
+  accident. The two rows share a *family*, and saving an edit to one asks whether
+  to carry it to the others, listing them by workspace with each one tickable.
+
+  It asks rather than syncing, and that is the design: a copy whose prompt
+  deliberately names its own project has to be able to refuse, once, per save,
+  per sibling. Ticked by default, because opening the dialog is already the
+  answer. **Detach from its copies** says so permanently, which a copy that has
+  gone its own way needs — being asked for ever is a chore, saying so once is an
+  answer.
+
+  What travels is the definition you just changed. What never travels is what
+  belongs to one copy's life in one workspace: its schedule, its history, its
+  failure counter, and **whether it is paused** — carrying `enabled` would let
+  saving the original wake a copy somebody had deliberately stopped. The dialog
+  appears only when there is something to ask, so the ordinary save is unchanged
+  and nobody learns to dismiss a box.
+
+  The propagation ids are checked against the family server-side: a form may not
+  become a way to patch an automation the operator was never shown.
+
+
 ## [0.81.0] — 2026-09-08
 
 ### Added

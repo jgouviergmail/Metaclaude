@@ -652,6 +652,19 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     return reply.send({ changed });
   });
 
+  /**
+   * The half of a patch that means the same thing in another workspace.
+   *
+   * A sibling keeps its own workspace, and it keeps its own *pause*: carrying
+   * `enabled` would let saving the original wake a copy somebody had
+   * deliberately stopped — the one field an operator sets per copy on purpose.
+   * Everything else is the definition, which is what a family shares.
+   */
+  const sharedFields = (patch: Record<string, unknown>): Record<string, unknown> => {
+    const { workspaceId: _workspace, enabled: _enabled, ...rest } = patch;
+    return rest;
+  };
+
   app.patch<{ Params: { id: string } }>('/api/automations/:id', async (request, reply) => {
     const actor = requireOperator(request);
     /*
@@ -663,7 +676,20 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
      * when the workspace changes. What stays refused is a move to a workspace
      * that does not exist, which the scheduler answers with a 404.
      */
-    const parsed = patchSchema(AutomationInput).safeParse(request.body);
+    const parsed = patchSchema(AutomationInput)
+      .extend({
+        /**
+         * Copies to carry this same edit to, ticked by the operator.
+         *
+         * Named ids rather than "all of them": the form shows which copies
+         * exist and lets each be unticked, because a copy whose prompt
+         * deliberately names its own project has to be able to refuse. Every id
+         * is checked against the family below — this may not become a way to
+         * patch an automation the operator was never shown.
+         */
+        propagateTo: z.array(z.string().min(1).max(64)).max(50).optional(),
+      })
+      .safeParse(request.body);
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
 
     assertPermissionModeAllowed(context, parsed.data.policy?.permissionMode);
@@ -671,20 +697,101 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
     // Read before the write: a move is a change of reach, and an audit line
     // saying only "updated" cannot answer "who moved this, and from where".
     const before = context.scheduler.get(request.params.id);
-    const automation = context.scheduler.update(request.params.id, parsed.data);
+    const { propagateTo, ...patch } = parsed.data;
+    const automation = context.scheduler.update(request.params.id, patch);
     if (!automation) throw new HttpError(404, 'Automation not found.');
 
+    /*
+     * Carry the same edit to the copies the operator ticked.
+     *
+     * Only within the family, checked here rather than trusted: the ids come
+     * from a form, and "propagate" must never become a way to patch an
+     * automation the operator was not shown. And only the fields that are not
+     * about *this* copy's life — a sibling keeps its own workspace, its own
+     * pause, its own schedule state.
+     */
+    const propagated: string[] = [];
+    if (propagateTo && propagateTo.length > 0) {
+      const family = new Set(context.scheduler.family(automation.id).map((sibling) => sibling.id));
+      const shared = sharedFields(patch);
+      if (Object.keys(shared).length > 0) {
+        for (const id of propagateTo) {
+          if (!family.has(id)) throw new HttpError(400, 'That is not a copy of this automation.');
+          if (context.scheduler.update(id, shared)) propagated.push(id);
+        }
+      }
+    }
+
     const moved = before && before.workspaceId !== automation.workspaceId;
+    const detail = moved
+      ? `${automation.name}: moved from ${before.workspaceId} to ${automation.workspaceId}`
+      : propagated.length > 0
+        ? `${automation.name}: carried to ${propagated.length} cop${propagated.length === 1 ? 'y' : 'ies'}`
+        : null;
     context.audit.record({
       actor: actor.username,
       action: 'automation.update',
       target: automation.id,
       ipAddress: requestIp(context, request),
-      ...(moved
-        ? { detail: `${automation.name}: moved from ${before.workspaceId} to ${automation.workspaceId}` }
-        : {}),
+      ...(detail ? { detail } : {}),
     });
     return reply.send({ automation });
+  });
+
+  /**
+   * Copy an automation into another workspace, keeping the two linked.
+   *
+   * Server-side because the family has to land on both rows or on neither: a
+   * source that was never duplicated has none yet, so one is minted and written
+   * back to it — a write to a row the operator did not edit, which is precisely
+   * why this is not two client requests.
+   */
+  app.post<{ Params: { id: string } }>('/api/automations/:id/duplicate', async (request, reply) => {
+    const actor = requireOperator(request);
+    const parsed = z.object({ workspaceId: z.string().min(1) }).safeParse(request.body);
+    if (!parsed.success) throw new HttpError(400, 'Name the workspace to duplicate into.');
+
+    const copy = context.scheduler.duplicate(request.params.id, parsed.data.workspaceId);
+    context.audit.record({
+      actor: actor.username,
+      action: 'automation.create',
+      target: copy.id,
+      detail: `${copy.name}: duplicated from ${request.params.id}, paused`,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.status(201).send({ automation: copy });
+  });
+
+  /** The other copies of one automation, so the editor can offer them. */
+  app.get<{ Params: { id: string } }>('/api/automations/:id/family', async (request, reply) => {
+    requireOperator(request);
+    if (!context.scheduler.get(request.params.id)) {
+      throw new HttpError(404, 'Automation not found.');
+    }
+    return reply.send({ automations: context.scheduler.family(request.params.id) });
+  });
+
+  /**
+   * Take one copy out of its family.
+   *
+   * A copy that has deliberately diverged would otherwise be offered every edit
+   * its siblings receive, for ever. Refusing once per save is a chore; saying so
+   * once is an answer.
+   */
+  app.post<{ Params: { id: string } }>('/api/automations/:id/detach', async (request, reply) => {
+    const actor = requireOperator(request);
+    const automation = context.scheduler.get(request.params.id);
+    if (!automation) throw new HttpError(404, 'Automation not found.');
+
+    context.scheduler.detach(request.params.id);
+    context.audit.record({
+      actor: actor.username,
+      action: 'automation.update',
+      target: request.params.id,
+      detail: `${automation.name}: detached from its copies`,
+      ipAddress: requestIp(context, request),
+    });
+    return reply.send({ automation: context.scheduler.get(request.params.id) });
   });
 
   app.delete<{ Params: { id: string } }>('/api/automations/:id', async (request, reply) => {

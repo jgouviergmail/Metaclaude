@@ -1127,4 +1127,31 @@ export const MIGRATIONS: readonly Migration[] = [
         ), 0);
     `,
   },
+  {
+    version: 28,
+    name: 'automation_family',
+    sql: /* sql */ `
+      -- Which automations are copies of one another.
+      --
+      -- An automation reaches exactly one workspace, and that is the schema
+      -- being honest rather than mean: it carries seven fields of execution
+      -- state -- its continuous session, its failure count, its next firing,
+      -- whether it is paused -- and every one is per workspace. So serving two
+      -- projects means two rows, and two rows drift the moment one is edited.
+      --
+      -- The family is what makes that drift a choice instead of an accident. It
+      -- is set when one automation is duplicated from another, shared by every
+      -- copy including the original, and it answers the only question the
+      -- editor needs: who else should hear about this change? Nothing is
+      -- propagated automatically -- the operator is asked, per save, per copy,
+      -- because a copy whose prompt deliberately names its own project must be
+      -- able to say no.
+      --
+      -- Nullable, and most rows will keep the null: an automation that was
+      -- never duplicated has no family, which is different from being alone in
+      -- one.
+      ALTER TABLE automations ADD COLUMN family_id TEXT;
+      CREATE INDEX idx_automations_family ON automations(family_id) WHERE family_id IS NOT NULL;
+    `,
+  },
 ];

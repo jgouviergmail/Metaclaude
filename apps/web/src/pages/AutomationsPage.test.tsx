@@ -23,6 +23,9 @@ const { apiMock } = vi.hoisted(() => ({
     fireAutomation: vi.fn(),
     deleteAutomation: vi.fn(),
     createAutomation: vi.fn(),
+    duplicateAutomation: vi.fn(),
+    automationFamily: vi.fn(),
+    detachAutomation: vi.fn(),
     bulkAutomations: vi.fn(),
     system: vi.fn(),
     claudeCatalogue: vi.fn(),
@@ -62,6 +65,9 @@ beforeEach(() => {
   apiMock.deleteAutomation.mockResolvedValue({ ok: true });
   apiMock.system.mockResolvedValue({ timezone: 'Europe/Paris' });
   apiMock.createAutomation.mockResolvedValue({});
+  apiMock.duplicateAutomation.mockResolvedValue({ automation: automation({ id: 'aut_2' }) });
+  apiMock.automationFamily.mockResolvedValue({ automations: [] });
+  apiMock.detachAutomation.mockResolvedValue({ automation: automation() });
   // The picker offers what the workspace can reach, so the test has to say
   // what that is — an empty catalogue would offer nothing to choose.
   apiMock.claudeCatalogue.mockResolvedValue({
@@ -398,15 +404,91 @@ describe('editing an automation', () => {
     fireEvent.click(menu);
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Beta' }));
 
-    await waitFor(() => expect(apiMock.createAutomation).toHaveBeenCalled());
-    const [body] = apiMock.createAutomation.mock.calls[0] as [Record<string, unknown>];
-    expect(body.workspaceId).toBe('ws_b');
-    expect(body.prompt).toBe('Résume les tickets ouverts');
-    expect(body.enabled).toBe(false);
-    // None of the execution state travels: it belongs to the original's life.
-    expect(body).not.toHaveProperty('sessionId');
-    expect(body).not.toHaveProperty('runCount');
-    expect(body).not.toHaveProperty('consecutiveFailures');
+    // The route, not a composed create: the family has to land on both rows or
+    // on neither, and the source may need writing to as well. What the copy
+    // carries — paused, no history — is the scheduler's promise and is asserted
+    // where it is kept, in `scheduler.test.ts`.
+    await waitFor(() =>
+      expect(apiMock.duplicateAutomation).toHaveBeenCalledWith('aut_1', 'ws_b'),
+    );
+  });
+
+  const openEditor = async (): Promise<void> => {
+    const menu = screen.getByRole('button', { name: 'More actions for Revue du matin' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByRole('dialog');
+  };
+
+  it('asks whether to carry a changed prompt to the other copies', async () => {
+    /*
+     * The cost of a copy is drift; this is what turns the drift into a
+     * decision. It asks rather than syncing, because a copy whose prompt
+     * deliberately names its own project has to be able to refuse.
+     */
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [
+        { id: 'ws_a', name: 'Alpha', slug: 'alpha', color: '#6366f1' },
+        { id: 'ws_b', name: 'Beta', slug: 'beta', color: '#f59e0b' },
+      ],
+    });
+    apiMock.automationFamily.mockResolvedValue({
+      automations: [automation({ id: 'aut_2', workspaceId: 'ws_b' })],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+    await openEditor();
+
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Autre chose.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The dialog names what changed, and the copy by its workspace.
+    expect(await screen.findByText(/Carry this change/)).toBeTruthy();
+    expect(screen.getByText('Beta')).toBeTruthy();
+    // Nothing is written until it is answered: the dialog decides who the
+    // write reaches, so it comes before the save and not after.
+    expect(apiMock.updateAutomation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Carry it over' }));
+
+    await waitFor(() => expect(apiMock.updateAutomation).toHaveBeenCalled());
+    const [, body] = apiMock.updateAutomation.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.prompt).toBe('Autre chose.');
+    expect(body.propagateTo).toEqual(['aut_2']);
+  });
+
+  it('saves only this one when the operator says so', async () => {
+    apiMock.automationFamily.mockResolvedValue({
+      automations: [automation({ id: 'aut_2', workspaceId: 'ws_b' })],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+    await openEditor();
+
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Autre chose.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Only this one' }));
+
+    await waitFor(() => expect(apiMock.updateAutomation).toHaveBeenCalled());
+    const [, body] = apiMock.updateAutomation.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.prompt).toBe('Autre chose.');
+    // A real answer, not a cancel: the edit is saved, nobody else hears it.
+    expect(body).not.toHaveProperty('propagateTo');
+  });
+
+  it('does not ask when the automation has no copies', async () => {
+    // Most saves. Nobody should learn to dismiss a box.
+    apiMock.automationFamily.mockResolvedValue({ automations: [] });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Revue du matin');
+    await openEditor();
+
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Autre chose.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(apiMock.updateAutomation).toHaveBeenCalled());
+    expect(screen.queryByText(/Carry this change/)).toBeNull();
   });
 
   it('does not offer to duplicate into the workspace it already lives in', async () => {
