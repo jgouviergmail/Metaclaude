@@ -1114,10 +1114,21 @@ describe('surviving a quota refusal', () => {
    * whole of it — a hard stop for a condition another model could serve, since
    * Sonnet answered the same prompt seconds later.
    */
+  /**
+   * A reset time *relative to now*, and that is the whole point.
+   *
+   * `ModelAvailability` is the one collaborator here the kernel drives with
+   * the wall clock: `block()` and `blocked()` both default their `now` to
+   * `Date.now()`, and a hold whose reset has passed is dropped on read. So an
+   * absolute date in this fixture is a test that passes until that instant
+   * and fails for ever after — this one was `Date.UTC(2026, 8, 8, 16, 0, 0)`
+   * and went red on 2026-09-08 at 16:00 UTC, on a subsystem nobody had
+   * touched. An hour ahead of whenever the suite runs cannot expire.
+   */
   const refusal = (model: string, scope: 'model' | 'global' = 'model') => ({
     status: 'failed' as const,
     error: `You've reached your ${model} limit.`,
-    quotaBlock: { model, scope, resetsAt: Date.UTC(2026, 8, 8, 16, 0, 0) },
+    quotaBlock: { model, scope, resetsAt: Date.now() + 60 * 60 * 1000 },
   });
 
   const notes = (fx: Fixture, runId: string): string[] =>
