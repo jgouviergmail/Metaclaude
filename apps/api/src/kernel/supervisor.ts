@@ -1912,10 +1912,12 @@ export class AgentSupervisor {
 
         const limits = answer.rate_limits;
         // Read through `readRateLimitWindows`, which knows both shapes the CLI
-        // has spoken. The mapping that used to live here indexed `five_hour`
-        // and friends on an object — and the CLI answers with a `limits` array,
-        // so every lookup was undefined and the quota screen was blank in
-        // production while the weekly window sat at 97%.
+        // has spoken — it sends the declared object keys *and* a `limits` array.
+        // The mapping that used to live here read only the object keys, so the
+        // two global windows displayed correctly and every **model-scoped**
+        // bucket was invisible: `model_scoped` is undefined on this payload and
+        // the model rows live only in `limits[]`. On a subscription whose Fable
+        // bucket sat at 100%, the screen said nothing about Fable.
         const windows: ClaudeUsage['windows'] = readRateLimitWindows(limits);
         if (!answer.rate_limits_available || !limits) {
           // API key, Bedrock, Vertex — plans without windows. Named so the

@@ -1,20 +1,27 @@
 /**
- * Reading the CLI's rate-limit windows — in both shapes it has spoken.
+ * Reading the CLI's rate-limit windows - in both shapes it speaks at once.
  *
  * The SDK declares `rate_limits` as an object keyed by window name
- * (`five_hour`, `seven_day`, `seven_day_opus`, …). Measured against Claude Code
- * in production, the CLI answers with something else entirely: a `limits` array
- * of `{ kind, group, percent, scope, resets_at }` rows, plus a `spend` block.
- * Nothing in Metaclaude read that shape, so `limits['five_hour']` was
- * `undefined` for every named key, `model_scoped` was `undefined` too, and the
- * quota screen rendered an empty list on a subscription whose weekly window was
- * at 97% and whose Fable bucket was at 100%.
+ * (`five_hour`, `seven_day`, `seven_day_opus`, ...). Measured against Claude
+ * Code in production, the CLI sends *both*: those keys, and a `limits` array of
+ * `{ kind, group, percent, scope, resets_at }` rows.
  *
- * It is the edge-schema trap from the other side: the declared type was
- * believed and the wire was never looked at. Both shapes are read here because
- * a CLI may send either, and neither is guessed at — the array shape is
- * transcribed from a captured production payload, which is also the fixture the
- * test uses.
+ * The mapping this replaces read only the object keys, which is why the two
+ * global windows were displayed correctly and every **model-scoped** bucket was
+ * invisible: `model_scoped` is `undefined` on this payload, and the per-model
+ * rows exist only inside `limits[]`. So on a subscription whose Fable bucket sat
+ * at 100%, the screen showed the session and weekly windows and said nothing at
+ * all about Fable - which is the one thing an operator needed to see.
+ *
+ * Worth recording as method rather than as trivia: the first inspection printed
+ * the payload through a 2000-character truncation, saw `limits` and concluded
+ * the object keys were absent. They were not, and a changelog went out saying
+ * the screen had been blank. Print the whole thing before concluding anything
+ * about what is *not* in it.
+ *
+ * Both shapes are read here because a CLI may send either or both, and neither
+ * is guessed at - the array shape is transcribed from a captured production
+ * payload, which is also the fixture the test uses.
  */
 
 import type { ClaudeUsageWindow } from '@metaclaude/shared';

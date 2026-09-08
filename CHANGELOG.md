@@ -11,6 +11,52 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.76.3] — 2026-09-08
+
+### Fixed
+
+- **The quota model switch would never have fired.** `classifyQuotaRejection`
+  inferred a utilisation scale from the value — `u > 1 ? u / 100 : u` — which is
+  unambiguous for 97 and catastrophic for 1. Measured on this deployment,
+  `rate_limits.five_hour` reports `{ utilization: 1 }` meaning **one percent**;
+  the rule read it as a spent global window, and a spent global window is
+  precisely the case where no switch is attempted. Every model-scoped refusal
+  would have been classified global and 0.76.0's whole feature would have shipped
+  dead. The scale now comes from the source — the event speaks a fraction, the
+  usage payload a percentage — because the value cannot say which it is on.
+  Found by the SDK baseline probe below, not by a test: no test can see what the
+  CLI actually sends.
+
+### Added
+
+- **A methodology for moving the Claude Agent SDK, and the probe it needs.**
+  `docs/SDK-UPGRADE.md` and `apps/api/scripts/sdk-probe.mjs`. The static guards
+  are good — the narrator test reads the message union out of the installed
+  `.d.ts` and names what is new, and typecheck catches every field that moved —
+  but four shipped features rest on behaviours the types omit or contradict, and
+  nothing could see those. The probe measures them against a live CLI, saves a
+  baseline before the bump, and diffs after; it reports an explicit *skip* for
+  the two that need a genuinely exhausted model, because "unknown" and
+  "unchanged" must not look alike. The rule the document opens with: an SDK bump
+  ships alone, or a regression three days later cannot be attributed.
+
+  `deploy/sdk-baseline.json` is the frozen reference for 0.3.247, captured
+  against production with **all seven probes measured** — the two opportunistic
+  ones included, because a model happened to be genuinely spent that hour. The
+  next bump has a complete answer to compare against rather than a partial one.
+
+### Corrected
+
+- **0.76.1 claimed the quota screen had been blank in production. It had not.**
+  The first inspection read the payload through a 2000-character truncation, saw
+  only the `limits` array, and concluded the declared object keys were absent.
+  They are there: `five_hour` and `seven_day` were read and displayed correctly
+  all along. What was genuinely missing is the **per-model** buckets — the Fable
+  one at 100% — because `model_scoped` is `undefined` on this payload and the
+  model rows live only in `limits[]`. The fix in 0.76.1 is right and still
+  needed; the reason given for it was wrong.
+
+
 ## [0.76.2] — 2026-09-08
 
 ### Fixed

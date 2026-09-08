@@ -99,16 +99,32 @@ describe('classifyQuotaRejection', () => {
     ).toBe('global');
   });
 
-  it('reads both utilisation scales, because the two sources disagree', () => {
-    // The event speaks 0–1, the usage payload 0–100. Reading 97 as "9700%
-    // spent" would call every refusal global and switch would never happen.
-    expect(
+  it('takes each source scale from the source, never from the magnitude', () => {
+    // The event speaks a fraction, the usage payload a percentage, and the
+    // value cannot say which it is on. Sniffing with `u > 1 ? u / 100 : u` is
+    // unambiguous for 97 and catastrophic for 1: measured on this deployment,
+    // `rate_limits.five_hour` reported `utilization: 1` meaning **one percent**,
+    // which the sniffing rule read as a spent window - classifying every
+    // model-scoped refusal as global, so the switch would never have fired.
+    const fromWindow = (utilization: number) =>
       classifyQuotaRejection({
         model: 'fable',
         rateLimits: [{ status: 'rejected' }],
-        windows: [{ key: 'seven_day', label: '', utilization: 97, resetsAt: null }],
-      })?.scope,
-    ).toBe('model');
+        windows: [{ key: 'five_hour', label: '', utilization, resetsAt: null }],
+      })?.scope;
+
+    expect(fromWindow(1)).toBe('model'); // one percent - room to spare
+    expect(fromWindow(97)).toBe('model'); // ninety-seven percent - still serving
+    expect(fromWindow(100)).toBe('global'); // spent
+
+    // And the event's own fraction keeps its meaning.
+    const fromEvent = (utilization: number) =>
+      classifyQuotaRejection({
+        model: 'fable',
+        rateLimits: [{ status: 'rejected', unifiedWindows: { five_hour: { utilization } } }],
+      })?.scope;
+    expect(fromEvent(0.01)).toBe('model');
+    expect(fromEvent(1)).toBe('global');
   });
 
   it('guesses model-scoped when it cannot tell, because that is the cheap mistake', () => {

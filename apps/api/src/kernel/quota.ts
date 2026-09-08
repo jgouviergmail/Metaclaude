@@ -57,10 +57,23 @@ const GLOBAL_KEYS = new Set(['five_hour', 'seven_day']);
  */
 const SPENT = 0.995;
 
-/** Both scales are in play: the event uses 0–1, the usage payload 0–100. */
-function normalise(utilisation: number): number {
-  return utilisation > 1 ? utilisation / 100 : utilisation;
-}
+/*
+ * Two sources, two scales, and the scale is a property of the *source* - never
+ * inferred from the magnitude.
+ *
+ * The inferring version read `u > 1 ? u / 100 : u`, which is unambiguous for 97
+ * and catastrophic for 1. Measured on this deployment, `rate_limits.five_hour`
+ * reported `{ utilization: 1 }` meaning **one percent**, and the sniffing rule
+ * read it as a spent window - so every model-scoped refusal would have been
+ * classified global, and the model switch, which is the whole feature, would
+ * never have fired. The value cannot say which scale it is on. The source can.
+ */
+
+/** `unifiedWindows` on a rate-limit event: a fraction. */
+const fromEventScale = (utilisation: number): number => utilisation;
+
+/** `ClaudeUsageWindow.utilization`, and the CLI payload behind it: a percentage. */
+const fromWindowScale = (utilisation: number): number => utilisation / 100;
 
 function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -89,7 +102,7 @@ function globalFromEvent(info: Record<string, unknown>): boolean | null {
     const utilisation = num(record(unified[key])?.utilization);
     if (utilisation === null) continue;
     sawOne = true;
-    if (normalise(utilisation) >= SPENT) return true;
+    if (fromEventScale(utilisation) >= SPENT) return true;
   }
   return sawOne ? false : null;
 }
@@ -100,7 +113,7 @@ function globalFromWindows(windows: readonly ClaudeUsageWindow[]): boolean | nul
   for (const window of windows) {
     if (!GLOBAL_KEYS.has(window.key) || window.utilization === null) continue;
     sawOne = true;
-    if (normalise(window.utilization) >= SPENT) return true;
+    if (fromWindowScale(window.utilization) >= SPENT) return true;
   }
   return sawOne ? false : null;
 }

@@ -1,0 +1,106 @@
+{
+  "at": "2026-09-08T10:36:24.909Z",
+  "sdkVersion": "0.3.247",
+  "findings": {
+    "initFrame": {
+      "status": "measured",
+      "cliVersion": "2.1.247",
+      "keys": [
+        "agents",
+        "analytics_disabled",
+        "apiKeySource",
+        "capabilities",
+        "claude_code_version",
+        "cwd",
+        "fast_mode_disabled_reason",
+        "fast_mode_state",
+        "mcp_servers",
+        "memory_paths",
+        "model",
+        "output_style",
+        "permissionMode",
+        "plugins",
+        "product_feedback_disabled",
+        "session_id",
+        "skills",
+        "slash_commands",
+        "subtype",
+        "terminal_slash_commands",
+        "tools",
+        "type",
+        "uuid"
+      ],
+      "carriesEffort": false
+    },
+    "defaultModel": {
+      "status": "measured",
+      "served": "claude-opus-5[1m]"
+    },
+    "rateLimitsShape": {
+      "status": "measured",
+      "available": true,
+      "shape": "array",
+      "keys": [
+        "amber_ladder",
+        "cinder_cove",
+        "copper_kite",
+        "extra_usage",
+        "five_hour",
+        "iguana_necktie",
+        "juniper_tide",
+        "limits",
+        "member_dashboard_available",
+        "nimbus_quill",
+        "omelette_promotional",
+        "seven_day",
+        "seven_day_cowork",
+        "seven_day_oauth_apps",
+        "seven_day_omelette",
+        "seven_day_opus",
+        "seven_day_sonnet",
+        "spend",
+        "tangelo"
+      ],
+      "rowKeys": [
+        "group",
+        "is_active",
+        "kind",
+        "percent",
+        "resets_at",
+        "scope",
+        "severity"
+      ],
+      "behaviourWindows": [
+        "day",
+        "week"
+      ]
+    },
+    "resumeAppend": {
+      "status": "measured",
+      "reappliedOnResume": true,
+      "accumulates": false
+    },
+    "appendCacheCost": {
+      "status": "measured",
+      "changedWrite": 11455,
+      "unchangedWrite": 173,
+      "ratio": 66
+    },
+    "quotaRefusal": {
+      "status": "measured",
+      "model": "fable",
+      "assistantError": "rate_limit",
+      "rateLimitType": "seven_day_overage_included",
+      "carriesUnifiedWindows": true,
+      "globalWindows": {
+        "five_hour": 0.01,
+        "seven_day": 0.98,
+        "seven_day_overage_included": 1
+      }
+    },
+    "quotaFallback": {
+      "status": "measured",
+      "coversQuota": false
+    }
+  }
+}

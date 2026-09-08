@@ -961,14 +961,27 @@ restates the code is noise; one that records a decision or a trap is not.
   Related and confirmed twice: with no `model` option the CLI serves
   `claude-opus-5[1m]`.
 
-- **A declared type is not the wire, and `rate_limits` proved it twice.** The
-  SDK declares an object keyed by window name; Claude Code answers with a
-  `limits` array of `{ kind, percent, scope }` rows. Every lookup was
-  `undefined`, so the quota screen was blank in production at 97% weekly usage
-  and nobody saw it. Read both shapes, build the fixture from a *captured*
-  payload — one written from the type agrees with the defect — and when neither
-  shape parses, say so rather than returning an empty list: "nothing to report"
-  and "we could not read the answer" look identical on screen and are not.
+- **A declared type is not the wire — and a payload read through a 2000-character
+  `slice` is not the payload.** The SDK declares `rate_limits` as an object keyed
+  by window name. Claude Code sends *both*: the declared keys **and** a `limits`
+  array of `{ kind, percent, scope }` rows. The first look truncated the dump,
+  saw only `limits`, and concluded the object keys were absent — so the fix
+  shipped with a changelog claiming the quota screen had been blank. It had not:
+  `five_hour` and `seven_day` were being read and displayed correctly all along.
+  What was genuinely missing is the **per-model** buckets, because `model_scoped`
+  is `undefined` on this payload and the model rows live only in `limits[]`. Read
+  both shapes, build the fixture from a *captured* payload, print the whole thing
+  before concluding anything about what is not in it — and when neither shape
+  parses, say so rather than returning an empty list.
+- **A scale is a property of its source, never of its magnitude.** Two sources
+  report window utilisation: the rate-limit event's `unifiedWindows` as a
+  fraction, the usage payload as a percentage. Inferring with
+  `u > 1 ? u / 100 : u` is unambiguous for 97 and catastrophic for 1 — and
+  `rate_limits.five_hour` reported `{ utilization: 1 }` meaning *one percent*.
+  The sniffing rule read it as a spent window, which would have classified every
+  model-scoped quota refusal as global and stopped the model switch from ever
+  firing: the feature would have shipped dead. Caught by the baseline probe, not
+  by any test, because no test can see what the CLI actually sends.
 - **Quota refusal is not what the enum says it is.** Two discriminators were
   written and measured wrong before the third. (1) `rateLimitType ===
   'seven_day_<model>'` reads well — the enum declares `seven_day_opus` and

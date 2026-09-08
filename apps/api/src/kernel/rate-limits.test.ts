@@ -54,9 +54,9 @@ describe('readRateLimitWindows', () => {
   it('reads the shape the CLI actually sends', () => {
     const windows = readRateLimitWindows(WIRE_SHAPE);
 
-    // The defect this replaces: every named key was looked up on an object that
-    // was an array, so the screen showed nothing at all while the weekly window
-    // sat at 97% and Fable at 100%.
+    // The CLI sends the declared object keys *and* this array. The mapping this
+    // replaces read only the former, so the two global windows were fine and
+    // every model-scoped bucket was invisible - Fable at 100% among them.
     expect(windows.map((w) => w.key)).toEqual(['five_hour', 'seven_day', modelWindowKey('Fable')]);
     expect(windows.map((w) => w.utilization)).toEqual([4, 97, 100]);
     expect(windows[0]?.resetsAt).toBe(Date.parse('2026-09-08T10:00:00.312940+00:00'));
