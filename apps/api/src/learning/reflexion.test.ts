@@ -390,6 +390,114 @@ describe('isWorthReflecting', () => {
   });
 });
 
+describe('a kept note whose memory is gone', () => {
+  /*
+   * The symptom, reported from the screen: pressing "Forget" on a note in
+   * "Insights awaiting review" changed nothing, while "Keep" worked. The memory
+   * really was deleted every time — what could not change was the row, because
+   * the note went on recording `kept` and the id of a memory that no longer
+   * existed. A JSON id is a foreign key nothing enforces, and a memory leaves
+   * by two doors: the operator's button, and decay.
+   */
+  const withKeptNote = (memoryId: string): string =>
+    JSON.stringify({
+      kind: 'reflexion',
+      decisions: [
+        {
+          title: 'Build shared first',
+          content: 'The api package needs @metaclaude/shared built before its tests run.',
+          kind: 'procedural',
+          tags: [],
+          level: 'lesson',
+          outcome: 'kept',
+          reason: 'worth keeping',
+          memoryId,
+          shelf: 'durable',
+        },
+      ],
+    });
+
+  it('reports the note as forgotten once its memory is deleted', async () => {
+    const kept = (await memory.remember({
+      workspaceId: null,
+      kind: 'procedural',
+      title: 'Build shared first',
+      content: 'The api package needs @metaclaude/shared built before its tests run.',
+      tags: [],
+    })).memory;
+    engine.recordInsight({
+      workspaceId: null,
+      runId: null,
+      kind: 'lesson',
+      title: 'From a run',
+      body: '',
+      confidence: 0.7,
+      payload: withKeptNote(kept.id),
+    });
+
+    // While the memory stands, nothing moves.
+    expect(JSON.parse(listInsights(db)[0]!.payload as string).decisions[0].outcome).toBe('kept');
+
+    memory.delete(kept.id);
+
+    const decision = JSON.parse(listInsights(db)[0]!.payload as string).decisions[0];
+    expect(decision.outcome).toBe('forgotten');
+    expect(decision.memoryId).toBeNull();
+    expect(decision.shelf).toBeNull();
+  });
+
+  it('writes the correction back, so the cost is paid once', async () => {
+    const kept = (await memory.remember({
+      workspaceId: null,
+      kind: 'procedural',
+      title: 'Build shared first',
+      content: 'Something worth keeping in the corpus for a moment.',
+      tags: [],
+    })).memory;
+    engine.recordInsight({
+      workspaceId: null, runId: null, kind: 'lesson', title: 'From a run',
+      body: '', confidence: 0.7, payload: withKeptNote(kept.id),
+    });
+    memory.delete(kept.id);
+    listInsights(db);
+
+    // Read straight from the row, bypassing the repair: it converged.
+    const row = db
+      .prepare('SELECT payload FROM insights LIMIT 1')
+      .get() as { payload: string };
+    expect(JSON.parse(row.payload).decisions[0].outcome).toBe('forgotten');
+  });
+
+  it('repairs the single read too, or acting on it disagrees with the screen', async () => {
+    const kept = (await memory.remember({
+      workspaceId: null, kind: 'procedural', title: 'Build shared first',
+      content: 'Something worth keeping in the corpus for a moment.', tags: [],
+    })).memory;
+    engine.recordInsight({
+      workspaceId: null, runId: null, kind: 'lesson', title: 'From a run',
+      body: '', confidence: 0.7, payload: withKeptNote(kept.id),
+    });
+    const id = listInsights(db)[0]!.id;
+    memory.delete(kept.id);
+
+    const one = getInsight(db, id);
+    expect(JSON.parse(one!.payload as string).decisions[0].memoryId).toBeNull();
+  });
+
+  it('leaves a note alone while its memory stands, and never throws on another payload', () => {
+    engine.recordInsight({
+      workspaceId: null, runId: null, kind: 'lesson', title: 'Not a reflexion payload',
+      body: '', confidence: 0.7, payload: JSON.stringify({ kind: 'skill', name: 'x' }),
+    });
+    engine.recordInsight({
+      workspaceId: null, runId: null, kind: 'lesson', title: 'Not json at all',
+      body: '', confidence: 0.7, payload: '{ broken',
+    });
+    expect(() => listInsights(db)).not.toThrow();
+    expect(listInsights(db)).toHaveLength(2);
+  });
+});
+
 describe('insights', () => {
   it('records an insight and reads it back', () => {
     engine.recordInsight({

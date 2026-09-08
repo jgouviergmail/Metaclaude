@@ -2010,6 +2010,7 @@ export const fr: Record<string, string> = {
   superseded: 'remplace',
   skipped: 'écartée',
   'over-budget': 'hors budget',
+  forgotten: 'oubliée',
   unjudged: 'non jugée',
   preference: 'préférence',
   lesson: 'leçon',

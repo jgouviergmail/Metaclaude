@@ -11,6 +11,35 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.80.1] — 2026-09-08
+
+### Fixed
+
+- **"Forget" on a note in *Insights awaiting review* changed nothing on screen.**
+  Reported: `Keep` worked, `Forget` looked inert. It was not — the memory was
+  deleted every single time — but the note went on recording `kept` and the id
+  of a memory that no longer existed, so the row kept offering `Forget` and the
+  screen could not say what had happened. Two layers, and fixing either alone
+  would have left the other:
+
+  The note's `memoryId` is a foreign key nothing enforces — the same shape as a
+  gateway token's `workspace_ids`, and the same lesson. A memory leaves by two
+  doors and neither knew about this one: the operator's own button, and decay
+  reaping it. So the repair is on *read*, not at each deletion site: it covers
+  every door at once, including the one nobody presses, and it writes the
+  correction back so a damaged row costs one repair and never again.
+
+  `GateOutcome` gains `forgotten`, and it is not cosmetic. Reusing `skipped`
+  would have been a row claiming the gate skipped a note the operator deleted —
+  and the exhaustive `Record` that maps outcomes to tones refused to compile
+  until the new state was named, which is exactly why that table is a record and
+  not a ternary chain.
+
+  The client half: `deleteMemory` did not invalidate the insights query while
+  `keepNote` did. That asymmetry is what made the button look broken rather than
+  merely stale.
+
+
 ## [0.80.0] — 2026-09-08
 
 ### Added

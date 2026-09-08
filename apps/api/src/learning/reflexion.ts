@@ -18,7 +18,8 @@
 
 import { withLanguage, type ContentLanguage } from './language.js';
 import { extractJson, structuredCall } from './structured-call.js';
-import type { Insight, ReflexionInsightPayload, Run, TranscriptEvent } from '@metaclaude/shared';
+import type { Insight, Run, TranscriptEvent } from '@metaclaude/shared';
+import { ReflexionInsightPayload } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import type { GateCandidate, GateDecision, Gatekeeper } from './gatekeeper.js';
@@ -588,7 +589,7 @@ export function listInsights(
   }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
 
-  return db
+  const rows = db
     .prepare<unknown[], InsightRow>(
       // `rowid` breaks the tie: one run records its reflexion insight and
       // its skill proposal in the same millisecond, and `created_at` alone
@@ -598,6 +599,8 @@ export function listInsights(
     )
     .all(...params, Math.min(options.limit ?? 50, 500))
     .map(toInsight);
+
+  return forgetDeletedMemories(db, rows);
 }
 
 /**
@@ -607,7 +610,9 @@ export function listInsights(
  */
 export function getInsight(db: Db, id: string): Insight | null {
   const row = db.prepare<[string], InsightRow>('SELECT * FROM insights WHERE id = ?').get(id);
-  return row ? toInsight(row) : null;
+  // The same repair as the listing: acting on an insight has to see the same
+  // state the screen showed, or "Keep" answers 409 on a memory that is gone.
+  return row ? (forgetDeletedMemories(db, [toInsight(row)])[0] ?? null) : null;
 }
 
 function toInsight(row: InsightRow): Insight {
@@ -630,6 +635,77 @@ export function setInsightStatus(db: Db, id: string, status: Insight['status']):
 }
 
 /** Rewrite an insight's payload — how a refused note records that the operator kept it after all. */
+/**
+ * Forget the memories that no longer exist, wherever an insight still names one.
+ *
+ * A kept note records the id of the memory it produced, and that id is a
+ * foreign key nothing enforces — the same shape as a gateway token's
+ * `workspace_ids`. A memory can leave by two doors and neither knew about this
+ * one: the operator deletes it from the row's own "Forget" button, or decay
+ * reaps it. The note then went on saying `kept` and pointing at nothing, so the
+ * row kept offering "Forget" and pressing it changed nothing on screen — the
+ * memory really was deleted, every time, and the screen could not say so.
+ *
+ * Repaired on read rather than at each deletion site, deliberately: there are
+ * two such sites today and a third is one refactor away, while a read-time
+ * repair covers every door at once and converges — it writes the correction
+ * back, so the cost is paid once per damaged row and never again.
+ */
+export function forgetDeletedMemories(db: Db, insights: Insight[]): Insight[] {
+  const named = new Map<string, string[]>();
+  for (const insight of insights) {
+    const parsed = insight.payload ? safePayload(insight.payload) : null;
+    if (!parsed) continue;
+    const ids = parsed.decisions
+      .map((decision) => decision.memoryId)
+      .filter((id): id is string => typeof id === 'string');
+    if (ids.length > 0) named.set(insight.id, ids);
+  }
+  if (named.size === 0) return insights;
+
+  const all = [...new Set([...named.values()].flat())];
+  const placeholders = all.map(() => '?').join(', ');
+  const alive = new Set(
+    db
+      .prepare<string[], { id: string }>(`SELECT id FROM memories WHERE id IN (${placeholders})`)
+      .all(...all)
+      .map((row) => row.id),
+  );
+  if (alive.size === all.length) return insights;
+
+  return insights.map((insight) => {
+    if (!named.has(insight.id)) return insight;
+    const parsed = safePayload(insight.payload as string);
+    if (!parsed) return insight;
+
+    let changed = false;
+    for (const decision of parsed.decisions) {
+      if (decision.memoryId === null || alive.has(decision.memoryId)) continue;
+      decision.memoryId = null;
+      // Not `skipped`: the gate did not skip it, the operator or decay took it
+      // away. A row that lies about who decided is a row nobody can act on.
+      decision.outcome = 'forgotten';
+      decision.shelf = null;
+      changed = true;
+    }
+    if (!changed) return insight;
+
+    const payload = JSON.stringify(parsed);
+    setInsightPayload(db, insight.id, payload);
+    return { ...insight, payload };
+  });
+}
+
+/** Parse a payload that may not be a reflexion one, without throwing. */
+function safePayload(payload: string): ReflexionInsightPayload | null {
+  try {
+    const parsed = ReflexionInsightPayload.safeParse(JSON.parse(payload));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
 export function setInsightPayload(db: Db, id: string, payload: string): boolean {
   return db.prepare('UPDATE insights SET payload = ? WHERE id = ?').run(payload, id).changes > 0;
 }

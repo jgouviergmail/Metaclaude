@@ -118,9 +118,23 @@ const OUTCOME_TONE: Record<GateOutcome, 'success' | 'info' | 'neutral' | 'warnin
   skipped: 'neutral',
   'over-budget': 'warning',
   unjudged: 'warning',
+  forgotten: 'neutral',
 };
-/** A refused note is one the operator may still keep. */
-const REFUSED: ReadonlySet<GateOutcome> = new Set(['skipped', 'over-budget', 'unjudged']);
+/**
+ * A note the operator may still keep — because it is not in the corpus.
+ *
+ * `forgotten` belongs here and is the reason the set exists in both
+ * directions: a kept note whose memory was deleted or reaped is no longer a
+ * memory, so the row has to offer `Keep` again. Without it the row showed
+ * `Forget` on a memory that was already gone, and pressing it did nothing an
+ * operator could see.
+ */
+const REFUSED: ReadonlySet<GateOutcome> = new Set([
+  'skipped',
+  'over-budget',
+  'unjudged',
+  'forgotten',
+]);
 
 /** The gate's decisions carried by a reflexion insight, or null when the payload is not that. */
 export function readDecisions(payload: string | null): ReflexionInsightPayload | null {
@@ -439,6 +453,10 @@ export function MemoryPage() {
     mutationFn: (id: string) => api.deleteMemory(id),
     onSuccess: () => {
       refreshMemory();
+      // Insights too: a deleted memory changes the row that created it, from
+      // `Forget` back to `Keep`. `keepNote` invalidated both and this one did
+      // not, so the screen went on showing the memory as kept.
+      void queryClient.invalidateQueries({ queryKey: ['insights'] });
       toast.success(t('Memory deleted'));
     },
     onError: (error) => toast.error(messageFor(error, t('Could not delete that memory.'))),

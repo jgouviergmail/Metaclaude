@@ -1027,6 +1027,20 @@ restates the code is noise; one that records a decision or a trap is not.
   warns on a mismatch — the warning fired for two of these and the claim was
   made anyway, so the instrument was not the missing piece.
 
+- **A button that works but cannot show it reads as a broken button.** `Forget`
+  on a gate decision deleted the memory every time and the row never changed,
+  because the note kept recording `kept` and the id of a memory that no longer
+  existed. Two independent halves: the client invalidated `insights` after
+  *keep* and not after *delete*, and nothing anywhere pruned the id. The prune
+  belongs on the **read**, not at each deletion site — a memory leaves by the
+  operator's button *and* by decay, and a read-time repair covers a door nobody
+  thought of, converging because it writes the correction back. Related and
+  worth stating on its own: when a record's state becomes untrue, give the
+  untruth a name (`GateOutcome.forgotten`) rather than reusing a neighbouring
+  value — `skipped` would have had the row claim the gate did what the operator
+  did, and the exhaustive `Record` of tones is what forced the choice into the
+  open.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +

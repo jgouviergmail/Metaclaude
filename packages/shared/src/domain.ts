@@ -667,7 +667,24 @@ export type MemoryShelf = z.infer<typeof MemoryShelf>;
  */
 export const GateLevel = z.enum(['preference', 'lesson', 'fact', 'state', 'redundant', 'episodic', 'unjudged']);
 export type GateLevel = z.infer<typeof GateLevel>;
-export const GateOutcome = z.enum(['kept', 'superseded', 'skipped', 'over-budget', 'unjudged']);
+/**
+ * What became of one note the gate judged.
+ *
+ * `forgotten` is not a verdict the gate can reach: it is what a *kept* note
+ * becomes when the memory it created stops existing — the operator deleted it,
+ * or decay reaped it. Without it, such a note kept claiming to be `kept` while
+ * pointing at a memory that was gone, so the row offered "Forget" forever and
+ * pressing it did nothing visible. Naming the state is what lets the decision
+ * be reversible in both directions, which is the whole point of that row.
+ */
+export const GateOutcome = z.enum([
+  'kept',
+  'superseded',
+  'skipped',
+  'over-budget',
+  'unjudged',
+  'forgotten',
+]);
 export type GateOutcome = z.infer<typeof GateOutcome>;
 
 export const ReflexionInsightPayload = z.object({
