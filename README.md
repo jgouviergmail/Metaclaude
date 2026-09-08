@@ -42,11 +42,14 @@ What that gives you, in one list:
   to remember is judged before it is written, two notes per run at most, with
   every refusal one press from being overturned.
 - **A knowledge library the agent quotes.** Drop reference documents — a
-  contract, a spec, a runbook — globally or per workspace; runs retrieve the
-  relevant passages (hybrid semantic + exact-word search) and cite them by
-  document and section, with the transcript showing exactly what was
-  consulted. Retrieval quality is *measured*, not asserted: a labelled corpus
-  and a recall/MRR/nDCG harness ship with it.
+  contract, a spec, a runbook, as `.pdf`, `.docx`, `.xlsx`, `.pptx` or plain
+  text — and give each one the workspaces it reaches, all of them or a chosen
+  few. Runs retrieve the relevant passages (hybrid semantic + exact-word
+  search) and cite them by document, section, **page and line**, and the
+  transcript links each quotation back to that line in the document. The
+  original file is kept, so a better extractor can be applied to it later.
+  Retrieval quality is *measured*, not asserted: a labelled corpus and a
+  recall/MRR/nDCG harness ship with it.
 - **A policy that learns.** Which model and effort level actually works for which
   kind of task, measured rather than guessed.
 - **Loops.** Automations that run on a schedule, including continuous ones that

@@ -1041,6 +1041,36 @@ restates the code is noise; one that records a decision or a trap is not.
   did, and the exhaustive `Record` of tones is what forced the choice into the
   open.
 
+- **Content-addressed storage makes a cleanup everybody's business.** An upload
+  writes `<dataDir>/knowledge/<sha256>.<ext>` and, if the row then fails,
+  removes it — correct, until two uploads of one file race. The duplicate check
+  is a read and not a lock, so both pass it, both write the same bytes to the
+  same name, and the unique index refuses the loser; its cleanup then deleted
+  the file *by hash*, which is the original the winner had just been given.
+  Measured end to end: the survivor's download answered 404. Under the same
+  race, one shared `.part` name is its own bug — the first rename moves it out
+  from under the others, two failures in six concurrent writes — and Windows
+  refuses a rename onto a file another writer holds (EPERM) where Linux
+  replaces it silently, so a fix written on one reads as flaky on the other.
+  Both answers are the same shape: ask **who owns this now**, not *did I put it
+  there*.
+- **An empty page skipped is every page after it renumbered.** `joinPages`
+  exists to keep page 7 as page 7 whether or not page 6 was blank, and
+  `extractXlsx` defeated it by skipping an empty sheet before calling it — so a
+  workbook with a blank tab in the middle cited its third sheet as sheet 2, and
+  whoever opened sheet 2 to check found a blank page. A citation is only worth
+  anything if the number leads somewhere; push the empty and let `joinPages` do
+  what it is for. `pptx` maps rather than filters and never had this; `pdf`
+  splits on the form feed and keeps every page.
+- **Two layers can each be right alone and lie together.** `extractCsv`
+  answered a heading for a header-only file — text, so extraction succeeded,
+  and a green test said so — and the chunker makes no passage out of a lone
+  heading, so the store refused it *for having no content*, about a file whose
+  text is on screen. Same shape as the edge-schema trap from the other side:
+  the test stopped above the consumer. When one layer's success is another's
+  input, one test has to drive the whole round trip and read the sentence a
+  person actually gets.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +
@@ -1071,6 +1101,15 @@ reservation window and cancelling a not-yet-started run are observable at all.
 put the line back. Three of the kernel tests were written against code that
 already worked, and only a deliberate sabotage of each showed they were testing
 the thing they claimed to.
+
+**A response body left unread holds the connection, and the server waits for
+it.** `server-harness.ts` talks to a real server over real `fetch`, so a case
+that asserts on a status or a header and never drains the body keeps the socket
+busy and — where the route streams a file — the file handle open. `app.close()`
+then waits its full timeout, and the suite reports a 30-second failure in
+`afterAll` that looks like a hung server rather than a test that forgot
+something. Two cases in `knowledge.test.ts` did it, and only one *ordering* of
+the file made it visible. Drain what you request: `await response.arrayBuffer()`.
 
 `apps/api/scripts/shots.mjs` is the design bench, not a check: it boots the
 real server, seeds a lived-in deployment (memories with a history, a day of

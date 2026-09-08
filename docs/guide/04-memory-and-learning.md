@@ -160,11 +160,14 @@ one is a link: it opens the document at the line that was quoted, so a claim
 can be checked rather than trusted. A passage whose document has changed since
 is marked *Replaced since* rather than quietly dropped.
 
-Two things the library refuses, and says so rather than storing something
+Three things the library refuses, and says so rather than storing something
 useless. A **scan** — a PDF that is a photograph of a page, with no text in it
-— cannot be read without OCR, which Metaclaude does not do. And the **same
-file twice** is refused by naming the document that already holds it, so a
-library does not fill up with copies.
+— cannot be read without OCR, which Metaclaude does not do. The **same file
+twice** is refused by naming the document that already holds it, so a library
+does not fill up with copies. And a document with **nothing under its
+headings** — an outline, or a spreadsheet export whose header row has no rows
+beneath it — is refused by saying exactly that: there is no passage in it to
+retrieve, and a document nothing can be found in is worse than no document.
 
 Two controls worth knowing. The switch on each document **pauses** it —
 kept and editable, never retrieved — which beats deleting a document you
