@@ -253,6 +253,37 @@ describe('a document that came from a file', () => {
     expect(store.list({}).map((one) => one.id)).toEqual([first.id]);
   });
 
+  it('answers the same 409 when the index catches what the check let through', async () => {
+    // The pre-check reads, then writes, which is not one decision: two
+    // uploads of a file racing each other both pass it, and the unique index
+    // is what actually stops the second. A single-threaded test cannot stage
+    // that race — but the *update* path reaches the same constraint, because
+    // it skips the pre-check by design, so that is what is driven here.
+    //
+    // The loser must be told the same thing as somebody who simply tried
+    // twice, not handed a constraint error that a 500 would report as a
+    // broken server.
+    const first = await upload('Le premier');
+    const second = await store.upsert({
+      workspaceId: null,
+      title: 'Le second',
+      content: 'Un autre document, avec son propre fichier.',
+      source: { ...source, name: 'autre.pdf', sha256: 'def456' },
+    });
+
+    await expect(
+      store.upsert({
+        id: second.id,
+        workspaceId: null,
+        title: 'Le second',
+        content: 'Un texte réécrit, pour forcer une écriture.',
+        // The first document's file: the row is about to claim bytes another
+        // row already holds.
+        source: { ...source, sha256: 'abc123' },
+      }),
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining(first.title) });
+  });
+
   it('keeps its text read-only: an edit of the content is refused', async () => {
     // The text is what the extractor produced, and the page and line locations
     // are true of that text alone. Re-extract, do not retype.

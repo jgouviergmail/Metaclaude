@@ -36,7 +36,7 @@ import type {
 
 import type { Db } from '../db/index.js';
 import { packEmbedding, toBool, tx, unpackEmbedding } from '../db/index.js';
-import { chunkDocument, chunkEmbeddingText } from './chunker.js';
+import { chunkDocument, chunkEmbeddingText, type Chunk } from './chunker.js';
 import { cosineSimilarity, type EmbeddingProvider, PENDING_EMBEDDING_MODEL } from './embeddings.js';
 import {
   MIN_ABSOLUTE_BM25,
@@ -398,17 +398,18 @@ export class KnowledgeStore {
       );
     }
 
-    // One document per file, enforced here so the message can name the one
-    // that already holds those bytes — the unique index alone would say
-    // "constraint failed".
+    // One document per file, checked here so the message can name the one that
+    // already holds those bytes — the unique index alone would say "constraint
+    // failed", which a 500 would then report as a broken server.
+    //
+    // The check is not the guarantee: two uploads of one file racing through
+    // this line both pass it, and the index is what actually stops the second.
+    // `duplicateName` below turns that constraint back into this same answer,
+    // so the loser of the race is told the same thing as somebody who simply
+    // tried twice.
     if (input.source && !existing) {
       const duplicate = this.findBySourceHash(input.source.sha256);
-      if (duplicate) {
-        throw new KnowledgeStoreError(
-          `This file is already in the library as “${duplicate.title}”.`,
-          409,
-        );
-      }
+      if (duplicate) throw this.duplicateOf(duplicate.title);
     }
 
     // Null on a creation only when the caller gave neither: `attachOnCreate`,
@@ -479,6 +480,58 @@ export class KnowledgeStore {
       };
     });
 
+    try {
+      this.write({ id, existing, input, title, content, hash, enabled, at, model, chunks: located, vectors, reach, source });
+    } catch (error) {
+      // The other end of the race above: whoever lost it gets the same
+      // sentence, not a constraint message dressed as a server fault.
+      if ((error as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE' && input.source) {
+        const holder = this.findBySourceHash(input.source.sha256);
+        throw this.duplicateOf(holder?.title ?? '');
+      }
+      throw error;
+    }
+    // Written, findable, and waiting: hand the vectors to the rebuild.
+    if (!vectors) this.options.embedLater?.(id);
+
+    return this.toDocument(this.rowById(id)!);
+  }
+
+  /** One 409, whichever guard reached it. */
+  private duplicateOf(title: string): KnowledgeStoreError {
+    return new KnowledgeStoreError(
+      title
+        ? `This file is already in the library as “${title}”.`
+        : 'This file is already in the library.',
+      409,
+    );
+  }
+
+  /** The whole write, in one transaction. Extracted so `upsert` can catch it. */
+  private write(args: {
+    id: string;
+    existing: DocumentRow | null;
+    input: { workspaceId: string | null; pageUnit?: KnowledgePageUnit | null };
+    title: string;
+    content: string;
+    hash: string;
+    enabled: boolean;
+    at: number;
+    model: string;
+    chunks: Array<{
+      chunk: Chunk;
+      lineStart: number;
+      lineEnd: number;
+      pageStart: number | null;
+      pageEnd: number | null;
+    }>;
+    vectors: Float32Array[] | null;
+    reach: ExtensionReach | null;
+    source: StoredSource | null;
+  }): void {
+    const { id, existing, input, title, content, hash, enabled, at, model, vectors, reach, source } =
+      args;
+    const located = args.chunks;
     tx(this.db, () => {
       if (existing) {
         // Chunks are replaced wholesale: diffing chunk boundaries against an
@@ -503,7 +556,7 @@ export class KnowledgeStore {
             content,
             hash,
             enabled ? 1 : 0,
-            chunks.length,
+            located.length,
             model,
             at,
             input.pageUnit ?? null,
@@ -530,7 +583,7 @@ export class KnowledgeStore {
             content,
             hash,
             enabled ? 1 : 0,
-            chunks.length,
+            located.length,
             model,
             at,
             at,
@@ -565,10 +618,6 @@ export class KnowledgeStore {
         );
       });
     });
-    // Written, findable, and waiting: hand the vectors to the rebuild.
-    if (!vectors) this.options.embedLater?.(id);
-
-    return this.toDocument(this.rowById(id)!);
   }
 
   get(id: string): KnowledgeDocument | null {
