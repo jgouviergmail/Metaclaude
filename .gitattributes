@@ -21,3 +21,25 @@ docker/Caddyfile text eol=lf
 Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# The knowledge-library fixtures, and the same reasoning one level down.
+#
+# Git decides text-versus-binary by looking for a NUL byte, and today all four
+# of these formats have one — so nothing is broken. But three of them also
+# carry `\r\n` *inside* their compressed streams, and the day a small enough
+# file has no NUL, an autocrlf checkout would rewrite those two bytes and
+# corrupt it: a PDF's cross-reference offsets all shift, and the reader reports
+# "not a PDF" about a file that was committed intact. Saying `binary` here
+# costs nothing and removes the guess.
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+
+# And their text siblings pinned to LF, so a fixture is the same bytes on every
+# machine as the ones the generator wrote — a test that asserts an exact
+# extraction should not depend on who checked it out.
+apps/api/src/learning/extract/fixtures/*.csv text eol=lf
+apps/api/src/learning/extract/fixtures/*.html text eol=lf
+apps/api/src/learning/extract/fixtures/*.md text eol=lf
+apps/api/src/learning/extract/fixtures/*.tex text eol=lf
