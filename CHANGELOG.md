@@ -11,6 +11,8 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.83.0] — 2026-09-08
+
 ### Added
 
 - **Drop files into the knowledge library, and let them reach several
