@@ -17,11 +17,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, Workflow } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Run, RunPolicy } from '@metaclaude/shared';
+import { routes } from '@metaclaude/shared';
 import { BetaCurve } from '@/components/analytics/BetaCurve';
 import { Badge, Skeleton } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { formatLocation } from '@/lib/knowledge';
 import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { cn, formatPercent } from '@/lib/utils';
 
@@ -200,14 +203,32 @@ export function RunGenesis({ run }: { run: Run }) {
                     {t('Passages consulted')}
                   </p>
                   <ul className="space-y-1">
-                    {genesis.data.documents.slice(0, 5).map((doc) => (
-                      <li key={doc.chunkId} className="flex items-center gap-2">
-                        <Badge tone="info">{t('doc')}</Badge>
-                        <span className="min-w-0 flex-1 truncate text-ink">
-                          {[doc.title, doc.heading].filter(Boolean).join(' › ')}
-                        </span>
-                      </li>
-                    ))}
+                    {genesis.data.documents.slice(0, 5).map((doc) => {
+                      const where = formatLocation(doc, t);
+                      return (
+                        <li key={doc.chunkId} className="flex items-center gap-2">
+                          <Badge tone="info">{t('doc')}</Badge>
+                          {/* A link to the passage itself, at the line it was
+                              quoted from: the point of showing a citation is
+                              that it can be checked. */}
+                          <Link
+                            to={routes.memoryDocument(doc.documentId, doc.lineStart)}
+                            className="min-w-0 flex-1 truncate text-ink hover:text-accent"
+                          >
+                            {[doc.title, doc.heading].filter(Boolean).join(' › ')}
+                          </Link>
+                          {where ? (
+                            <span className="shrink-0 text-subtle">{where}</span>
+                          ) : null}
+                          {doc.replaced ? (
+                            // The document has been edited or re-extracted
+                            // since. The citation still names what the run
+                            // saw; the text behind it has moved.
+                            <Badge tone="warning">{t('Replaced since')}</Badge>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}

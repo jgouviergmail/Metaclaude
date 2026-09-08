@@ -37,7 +37,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   normaliseTags,
@@ -289,8 +289,26 @@ export function MemoryPage() {
   const plural = usePlural();
   const queryClient = useQueryClient();
 
+  /**
+   * What the URL asked for.
+   *
+   * `routes.memory(workspaceId)` has been built by the kernel for every
+   * notification since the library existed, and nothing here read it — the
+   * link resolved to this page showing every workspace, which is the failure
+   * an operator reads as "this link is lying to me". `?document=` and
+   * `?line=` are the same idea one level down: the genesis strip links a
+   * consulted passage to the exact lines a run quoted.
+   */
+  const [params, setParams] = useSearchParams();
+
   /** `all` = every memory, `global` = unscoped only, anything else = a workspace id. */
-  const [scope, setScope] = useState<string>('all');
+  const [scope, setScope] = useState<string>(params.get('workspace') ?? 'all');
+
+  const documentParam = params.get('document');
+  const lineParam = Number(params.get('line'));
+  const openDocument = documentParam
+    ? { id: documentParam, line: Number.isFinite(lineParam) && lineParam > 0 ? lineParam : null }
+    : null;
   const [kind, setKind] = useState<KindFilter>('all');
   const [shelf, setShelf] = useState<ShelfFilter>('all');
   const [filterInput, setFilterInput] = useState('');
@@ -1355,7 +1373,22 @@ export function MemoryPage() {
             )}
           </section>
 
-          <KnowledgeSection embedder={systemQuery.data?.retrieval.embedder} scope={scope} workspaces={workspaces} />
+          <KnowledgeSection
+            embedder={systemQuery.data?.retrieval.embedder}
+            scope={scope}
+            openDocument={openDocument}
+            onViewerClosed={() => {
+              // The parameters are consumed once: leaving them in the address
+              // bar means every later navigation back to this page reopens a
+              // document the operator has already closed.
+              if (!documentParam) return;
+              const next = new URLSearchParams(params);
+              next.delete('document');
+              next.delete('line');
+              setParams(next, { replace: true });
+            }}
+            workspaces={workspaces}
+          />
       </Page>
 
       {/* -------------------------------- Modals -------------------------------- */}

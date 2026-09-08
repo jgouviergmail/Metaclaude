@@ -1,16 +1,17 @@
 /**
- * The knowledge library section: scope is worn on every card, saving goes
- * through the API with the scope the form shows, and the retrieval rehearsal
- * displays exactly what the API returned — passages, sources, scores.
+ * The knowledge library section.
+ *
+ * What is pinned here is what an operator does with it: filter by workspace,
+ * find a document by title, see where each one reaches, pause one without
+ * resending its text, and open a file-backed document rather than an editor
+ * that cannot change it.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import type { Workspace } from '@metaclaude/shared';
+import type { KnowledgeDocumentMeta, Workspace } from '@metaclaude/shared';
 
 import { renderWithProviders } from '@/test/render';
-
 import { KnowledgeSection } from './KnowledgeSection';
 
 const { apiMock, toastMock } = vi.hoisted(() => ({
@@ -20,6 +21,10 @@ const { apiMock, toastMock } = vi.hoisted(() => ({
       list: vi.fn(),
       get: vi.fn(),
       save: vi.fn(),
+      upload: vi.fn(),
+      patch: vi.fn(),
+      extract: vi.fn(),
+      sourceUrl: (id: string) => `/api/knowledge/${id}/source`,
       delete: vi.fn(),
       search: vi.fn(),
       reindex: vi.fn(),
@@ -31,12 +36,12 @@ vi.mock('@/lib/api', () => ({ api: apiMock, ApiError: class ApiError extends Err
 vi.mock('sonner', () => ({ toast: toastMock }));
 
 const WORKSPACES = [
-  { id: 'ws_a', name: 'Alpha' },
-  { id: 'ws_b', name: 'Beta' },
+  { id: 'ws_a', name: 'Alpha', color: '#6366f1' },
+  { id: 'ws_b', name: 'Beta', color: '#22c55e' },
 ] as Workspace[];
 
-const DOCS = [
-  {
+const doc = (over: Partial<KnowledgeDocumentMeta> = {}): KnowledgeDocumentMeta =>
+  ({
     id: 'doc_1',
     workspaceId: null,
     title: 'Conventions',
@@ -44,52 +49,161 @@ const DOCS = [
     enabled: true,
     chunkCount: 3,
     embeddingModel: 'hash-v1:512',
+    isGlobal: true,
+    workspaceIds: [],
+    source: null,
+    pageUnit: null,
+    pageCount: null,
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,
+    ...over,
+  }) as KnowledgeDocumentMeta;
+
+const LEASE = doc({
+  id: 'doc_2',
+  title: 'Bail — Résiliation',
+  isGlobal: false,
+  workspaceIds: ['ws_a'],
+  enabled: false,
+  source: {
+    name: 'bail.pdf',
+    mime: 'application/pdf',
+    bytes: 4096,
+    extractor: 'pdf@poppler-22.12.0',
   },
-  {
-    id: 'doc_2',
-    workspaceId: 'ws_a',
-    title: 'Bail — 12 rue des Lilas',
-    contentLength: 4096,
-    enabled: false,
-    chunkCount: 7,
-    embeddingModel: '',
-    createdAt: 1_700_000_000_000,
-    updatedAt: 1_700_000_000_000,
-  },
-];
+  pageUnit: 'page',
+  pageCount: 3,
+});
+
+const DOCS = [doc(), LEASE];
+
+/** Radix opens on pointerdown, not on click. */
+const openMenu = async (name: RegExp | string): Promise<void> => {
+  const trigger = screen.getByRole('button', { name });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  await screen.findByRole('menu');
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   apiMock.knowledge.list.mockResolvedValue({ documents: DOCS });
-  apiMock.knowledge.save.mockResolvedValue({
-    document: { ...DOCS[0], title: 'Nouveau', chunkCount: 2 },
+  apiMock.knowledge.patch.mockResolvedValue({ document: doc() });
+  apiMock.knowledge.get.mockResolvedValue({
+    document: { ...doc(), content: '# Titre\n\nLe contenu.' },
   });
-  apiMock.knowledge.delete.mockResolvedValue({ ok: true });
-  apiMock.knowledge.search.mockResolvedValue({ results: [] });
-  apiMock.knowledge.reindex.mockResolvedValue({ affected: 7 });
 });
 
 describe('the shelf', () => {
-  it('wears the scope on every card, and marks the paused one', async () => {
+  it('wears each document’s reach, its format and its pause', async () => {
     renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
 
     expect(await screen.findByText('Conventions')).toBeDefined();
-    // The global document says Global; the scoped one names its workspace.
     expect(screen.getByText('Global')).toBeDefined();
     expect(screen.getByText('Alpha')).toBeDefined();
-    // A disabled document is visibly paused, not silently absent.
+    expect(screen.getByText('PDF')).toBeDefined();
     expect(screen.getByText('Paused')).toBeDefined();
   });
 
-  it('saves a new document as global by default', async () => {
+  it('says how many pages a paged document has', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Bail — Résiliation');
+    expect(screen.getByText(/3 pages/)).toBeDefined();
+  });
+
+  it('pauses through a patch, without resending the text', async () => {
+    // The read-then-save it replaces cannot work for a file-backed document
+    // at all: the store refuses its text on the way back in.
     renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
     await screen.findByText('Conventions');
 
-    fireEvent.click(screen.getByRole('button', { name: /add document/i }));
-    fireEvent.change(await screen.findByLabelText(/title/i), { target: { value: 'Runbook' } });
-    fireEvent.change(screen.getByLabelText(/content/i), { target: { value: 'Le contenu.' } });
+    fireEvent.click(screen.getByRole('switch', { name: 'Retrieve from “Conventions”' }));
+
+    await waitFor(() =>
+      expect(apiMock.knowledge.patch).toHaveBeenCalledWith('doc_1', { enabled: false }),
+    );
+    expect(apiMock.knowledge.get).not.toHaveBeenCalled();
+  });
+
+  it('deletes only after the confirmation names the document', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    await openMenu('More actions for “Conventions”');
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
+    expect(apiMock.knowledge.delete).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: /delete document/i }));
+    await waitFor(() => expect(apiMock.knowledge.delete).toHaveBeenCalledWith('doc_1'));
+  });
+});
+
+describe('the filters', () => {
+  it('asks the server for the scope the page is showing', async () => {
+    // The page owns the workspace filter — one question, one control — and the
+    // library follows it.
+    renderWithProviders(<KnowledgeSection scope="ws_a" workspaces={WORKSPACES} />);
+    await waitFor(() =>
+      expect(apiMock.knowledge.list).toHaveBeenCalledWith({ workspaceId: 'ws_a' }),
+    );
+  });
+
+  it('asks for the global shelf alone when the page is showing it', async () => {
+    renderWithProviders(<KnowledgeSection scope="global" workspaces={WORKSPACES} />);
+    await waitFor(() => expect(apiMock.knowledge.list).toHaveBeenCalledWith({ scope: 'global' }));
+  });
+
+  it('finds a document by title, ignoring case and accents', async () => {
+    // A French library is full of accents and a phone keyboard is not.
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.change(screen.getByLabelText('Find a document'), { target: { value: 'resiliation' } });
+
+    expect(screen.getByText('Bail — Résiliation')).toBeDefined();
+    expect(screen.queryByText('Conventions')).toBeNull();
+  });
+
+  it('finds a document by its file’s name too', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.change(screen.getByLabelText('Find a document'), { target: { value: 'bail.pdf' } });
+
+    expect(screen.getByText('Bail — Résiliation')).toBeDefined();
+  });
+
+  it('keeps the controls and says how many are hidden when nothing matches', async () => {
+    // Hiding the filter row with the list is how an operator gets stuck
+    // inside a scope with nothing in it.
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.change(screen.getByLabelText('Find a document'), { target: { value: 'zzz' } });
+
+    expect(screen.getByLabelText('Find a document')).toBeDefined();
+    expect(screen.getByText(/2 hidden/)).toBeDefined();
+    expect(screen.getByText('No document matches')).toBeDefined();
+  });
+});
+
+describe('adding documents', () => {
+  it('offers a drop zone whose reach follows the scope', async () => {
+    renderWithProviders(<KnowledgeSection scope="ws_a" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    // The zone is there, and its input accepts the library's types.
+    const input = screen.getByLabelText(/choose files/i) as HTMLInputElement;
+    expect(input.accept).toContain('application/pdf');
+  });
+
+  it('saves a pasted document with the reach the picker shows', async () => {
+    apiMock.knowledge.save.mockResolvedValue({ document: doc({ title: 'Runbook' }) });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.click(screen.getByRole('button', { name: /paste a document/i }));
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Runbook' } });
+    fireEvent.change(screen.getByLabelText('Content'), { target: { value: 'Le contenu.' } });
     fireEvent.click(screen.getByRole('button', { name: /add to the library/i }));
 
     await waitFor(() =>
@@ -98,68 +212,150 @@ describe('the shelf', () => {
         content: 'Le contenu.',
         workspaceId: null,
         enabled: true,
+        reach: { global: true, workspaceIds: [] },
       }),
     );
   });
 
-  it('pre-selects the workspace when the page is already scoped to one', async () => {
+  it('aims a new document at the workspace the scope names', async () => {
+    apiMock.knowledge.save.mockResolvedValue({ document: doc() });
     renderWithProviders(<KnowledgeSection scope="ws_a" workspaces={WORKSPACES} />);
-    await waitFor(() => expect(apiMock.knowledge.list).toHaveBeenCalled());
+    await screen.findByText('Conventions');
 
-    fireEvent.click(screen.getByRole('button', { name: /add document/i }));
-    const select = (await screen.findByLabelText(/scope/i)) as HTMLSelectElement;
-    expect(select.value).toBe('ws_a');
+    fireEvent.click(screen.getByRole('button', { name: /paste a document/i }));
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Note' } });
+    fireEvent.change(screen.getByLabelText('Content'), { target: { value: 'Texte.' } });
+    fireEvent.click(screen.getByRole('button', { name: /add to the library/i }));
+
+    await waitFor(() =>
+      expect(apiMock.knowledge.save).toHaveBeenCalledWith(
+        expect.objectContaining({ reach: { global: false, workspaceIds: ['ws_a'] } }),
+      ),
+    );
+  });
+});
+
+describe('a document that came from a file', () => {
+  it('offers to view, download and re-read it, which a pasted one does not', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Bail — Résiliation');
+
+    await openMenu('More actions for “Bail — Résiliation”');
+    const menu = screen.getByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: /^view$/i })).toBeDefined();
+    expect(within(menu).getByRole('menuitem', { name: /download the original/i })).toBeDefined();
+    expect(within(menu).getByRole('menuitem', { name: /read the file again/i })).toBeDefined();
   });
 
-  it('deletes only after the confirmation names the document', async () => {
+  it('offers none of those for a document that was pasted', async () => {
     renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
     await screen.findByText('Conventions');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete “Conventions”' }));
-    expect(apiMock.knowledge.delete).not.toHaveBeenCalled();
+    await openMenu('More actions for “Conventions”');
+    const menu = screen.getByRole('menu');
+    expect(within(menu).queryByRole('menuitem', { name: /download the original/i })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: /read the file again/i })).toBeNull();
+  });
 
-    fireEvent.click(await screen.findByRole('button', { name: /delete document/i }));
-    await waitFor(() => expect(apiMock.knowledge.delete).toHaveBeenCalledWith('doc_1'));
+  it('re-reads the file on demand', async () => {
+    apiMock.knowledge.extract.mockResolvedValue({ document: LEASE });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Bail — Résiliation');
+
+    await openMenu('More actions for “Bail — Résiliation”');
+    fireEvent.click(screen.getByRole('menuitem', { name: /read the file again/i }));
+
+    await waitFor(() => expect(apiMock.knowledge.extract).toHaveBeenCalledWith('doc_2'));
+  });
+
+  it('opens the viewer rather than an editor that could not change it', async () => {
+    apiMock.knowledge.get.mockResolvedValue({
+      document: { ...LEASE, content: 'Article 1.\nArticle 2.' },
+    });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Bail — Résiliation' }));
+
+    // The viewer, which shows the text with line numbers and the original.
+    expect(await screen.findByRole('button', { name: /read the file again/i })).toBeDefined();
+    expect(screen.getByText('Article 1.')).toBeDefined();
+    expect(screen.queryByLabelText('Content')).toBeNull();
+  });
+
+  it('renames and re-aims it through a patch, never through a save', async () => {
+    apiMock.knowledge.patch.mockResolvedValue({ document: LEASE });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Bail — Résiliation');
+
+    await openMenu('More actions for “Bail — Résiliation”');
+    fireEvent.click(screen.getByRole('menuitem', { name: /rename and re-aim/i }));
+
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Bail 2026' } });
+    fireEvent.click(screen.getByRole('button', { name: /save document/i }));
+
+    await waitFor(() =>
+      expect(apiMock.knowledge.patch).toHaveBeenCalledWith('doc_2', {
+        title: 'Bail 2026',
+        enabled: false,
+        reach: { global: false, workspaceIds: ['ws_a'] },
+      }),
+    );
+    expect(apiMock.knowledge.save).not.toHaveBeenCalled();
+  });
+
+  it('does not offer a text box for a file’s text, and says why', async () => {
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Bail — Résiliation');
+
+    await openMenu('More actions for “Bail — Résiliation”');
+    fireEvent.click(screen.getByRole('menuitem', { name: /rename and re-aim/i }));
+
+    await screen.findByLabelText('Title');
+    expect(screen.queryByLabelText('Content')).toBeNull();
+    expect(screen.getByText(/read from a file/i)).toBeDefined();
   });
 });
 
 describe('the retrieval rehearsal', () => {
-  it('shows the passages a run would be shown, with their source and score', async () => {
+  it('shows each passage with its source, its location and its score', async () => {
     apiMock.knowledge.search.mockResolvedValue({
       results: [
         {
           chunkId: 'chk_1',
           documentId: 'doc_2',
-          documentTitle: 'Bail — 12 rue des Lilas',
-          workspaceId: 'ws_a',
+          documentTitle: 'Bail',
+          sourceName: 'bail.pdf',
+          workspaceId: null,
           heading: 'Résiliation',
-          text: 'Le préavis de résiliation est de 45 jours.',
-          score: 0.0331,
+          text: 'Le préavis est de trois mois.',
+          score: 0.87,
+          pageUnit: 'page',
+          pageStart: 2,
+          pageEnd: 2,
+          lineStart: 40,
+          lineEnd: 52,
         },
       ],
     });
-    renderWithProviders(<KnowledgeSection scope="ws_a" workspaces={WORKSPACES} />);
-    await screen.findByText('Conventions');
-
-    fireEvent.change(screen.getByLabelText(/rehearse a retrieval/i), {
-      target: { value: 'préavis ?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /preview/i }));
-
-    // The exact run pipeline was asked, scoped to this workspace.
-    await waitFor(() => expect(apiMock.knowledge.search).toHaveBeenCalledWith('préavis ?', 'ws_a'));
-    expect(await screen.findByText('Bail — 12 rue des Lilas › Résiliation')).toBeDefined();
-    expect(screen.getByText(/45 jours/)).toBeDefined();
-    expect(screen.getByText('0.033')).toBeDefined();
-  });
-
-  it('says plainly when a run would receive nothing', async () => {
     renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
     await screen.findByText('Conventions');
 
-    fireEvent.change(screen.getByLabelText(/rehearse a retrieval/i), {
-      target: { value: 'le la de' },
+    fireEvent.change(screen.getByLabelText('Rehearse a retrieval'), {
+      target: { value: 'préavis' },
     });
+    fireEvent.click(screen.getByRole('button', { name: /preview/i }));
+
+    expect(await screen.findByText('Bail › Résiliation')).toBeDefined();
+    expect(screen.getByText('p. 2 · l. 40–52')).toBeDefined();
+    expect(screen.getByText('0.870')).toBeDefined();
+  });
+
+  it('says plainly when a run would receive nothing', async () => {
+    apiMock.knowledge.search.mockResolvedValue({ results: [] });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
+    await screen.findByText('Conventions');
+
+    fireEvent.change(screen.getByLabelText('Rehearse a retrieval'), { target: { value: 'zzz' } });
     fireEvent.click(screen.getByRole('button', { name: /preview/i }));
 
     expect(await screen.findByText(/no passages for this/i)).toBeDefined();
@@ -168,71 +364,40 @@ describe('the retrieval rehearsal', () => {
 
 describe('re-indexing', () => {
   it('offers the button only once there is something to re-index', async () => {
-    apiMock.knowledge.list.mockResolvedValue({ documents: [] });
+    apiMock.knowledge.list.mockResolvedValueOnce({ documents: [] });
     renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
-    await screen.findByText(/nothing on the shelf yet/i);
+    await screen.findByText('Nothing on the shelf yet');
     expect(screen.queryByRole('button', { name: /re-index/i })).toBeNull();
   });
 
-  it('re-embeds every passage on demand — the twin of memory maintenance', async () => {
-    // After an embedding-provider change the dense arm silently stops
-    // contributing while the lexical arm keeps answering; without a button
-    // there is no way to notice or to fix it from the interface.
+  it('re-embeds every passage on demand', async () => {
+    apiMock.knowledge.reindex.mockResolvedValue({ affected: 7 });
     renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
     await screen.findByText('Conventions');
 
     fireEvent.click(screen.getByRole('button', { name: /re-index/i }));
+
     await waitFor(() => expect(apiMock.knowledge.reindex).toHaveBeenCalled());
-  });
-
-  it('counts in the singular when exactly one passage moved', async () => {
-    // Memory maintenance already says "1 memory affected"; a library that
-    // reports "1 passages" reads as a rounding artefact rather than a count.
-    apiMock.knowledge.reindex.mockResolvedValue({ affected: 1 });
-    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
-    await screen.findByText('Conventions');
-
-    fireEvent.click(screen.getByRole('button', { name: /re-index/i }));
-    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('1 passage re-embedded.'));
-  });
-
-  it('says so plainly when there was nothing to re-embed', async () => {
-    apiMock.knowledge.reindex.mockResolvedValue({ affected: 0 });
-    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
-    await screen.findByText('Conventions');
-
-    fireEvent.click(screen.getByRole('button', { name: /re-index/i }));
-    await waitFor(() =>
-      expect(toastMock.success).toHaveBeenCalledWith(
-        'Everything was already indexed with the current embedder.',
-      ),
-    );
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('7 passages re-embedded.'));
   });
 });
 
 describe('vectors pending', () => {
   it('marks a document whose chunks await the model, and only that one', async () => {
+    apiMock.knowledge.list.mockResolvedValue({
+      documents: [doc(), doc({ id: 'doc_3', title: 'Attente', embeddingModel: '' })],
+    });
     renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} />);
-
-    await screen.findByText('Conventions');
+    await screen.findByText('Attente');
     expect(screen.getAllByText('Vectors pending')).toHaveLength(1);
   });
-});
 
-describe('vectors pending after a change of embedder', () => {
   it('marks every document not embedded with the live provider', async () => {
-    renderWithProviders(<KnowledgeSection scope="all" embedder="st:Xenova/bge-m3" workspaces={WORKSPACES} />);
-
-    await screen.findByText('Conventions');
-    // The hashed one and the pending one: neither carries the live id.
+    apiMock.knowledge.list.mockResolvedValue({
+      documents: [doc({ embeddingModel: 'hash-v1:512' }), doc({ id: 'doc_3', title: 'Autre' })],
+    });
+    renderWithProviders(<KnowledgeSection scope="all" workspaces={WORKSPACES} embedder="st:Xenova/bge-m3" />);
+    await screen.findByText('Autre');
     expect(screen.getAllByText('Vectors pending')).toHaveLength(2);
-  });
-
-  it('marks none when every document is current', async () => {
-    renderWithProviders(<KnowledgeSection scope="all" embedder="hash-v1:512" workspaces={WORKSPACES} />);
-
-    await screen.findByText('Conventions');
-    // doc_2 was written pending and stays marked whatever the live id.
-    expect(screen.getAllByText('Vectors pending')).toHaveLength(1);
   });
 });

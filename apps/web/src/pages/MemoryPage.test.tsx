@@ -41,6 +41,10 @@ const { apiMock } = vi.hoisted(() => ({
       list: vi.fn(),
       get: vi.fn(),
       save: vi.fn(),
+      upload: vi.fn(),
+      patch: vi.fn(),
+      extract: vi.fn(),
+      sourceUrl: (id: string) => `/api/knowledge/${id}/source`,
       delete: vi.fn(),
       search: vi.fn(),
       reindex: vi.fn(),
@@ -314,6 +318,86 @@ describe('the knowledge library below it', () => {
     // question.
     renderWithProviders(<MemoryPage />);
     expect(await screen.findByText('Knowledge library')).toBeDefined();
+  });
+
+  it('follows the page’s workspace filter, with no second control of its own', async () => {
+    // One question, one control: an operator narrowing this screen to a
+    // project means both halves of it.
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Knowledge library');
+
+    expect(screen.getAllByRole('button', { name: /^Scope:/ })).toHaveLength(1);
+    await waitFor(() => expect(apiMock.knowledge.list).toHaveBeenCalledWith(undefined));
+  });
+});
+
+describe('what the URL asks for', () => {
+  /**
+   * `routes.memory(workspaceId)` has been built by the kernel for every
+   * notification since the library existed, and nothing here read it: the
+   * link resolved to this page showing every workspace, which reads as a link
+   * that lies.
+   */
+  it('opens on the workspace the link named', async () => {
+    renderWithProviders(<MemoryPage />, { route: '/memory?workspace=ws_a' });
+
+    await waitFor(() =>
+      expect(apiMock.memory).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'ws_a' })),
+    );
+    await waitFor(() =>
+      expect(apiMock.knowledge.list).toHaveBeenCalledWith({ workspaceId: 'ws_a' }),
+    );
+  });
+
+  it('opens the document a citation points at, at the line it quoted', async () => {
+    apiMock.knowledge.get.mockResolvedValue({
+      document: {
+        id: 'doc_2',
+        title: 'Bail',
+        content: ['Article 1.', 'Article 2.', 'Article 3.'].join('\n'),
+        source: { name: 'bail.pdf', mime: 'application/pdf', bytes: 10, extractor: 'pdf@pdfjs' },
+        contentLength: 30,
+        enabled: true,
+        chunkCount: 1,
+        embeddingModel: 'hash-v1:512',
+        isGlobal: true,
+        workspaceIds: [],
+        pageUnit: 'page',
+        pageCount: 1,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    });
+
+    renderWithProviders(<MemoryPage />, { route: '/memory?document=doc_2&line=2' });
+
+    expect(await screen.findByText('Article 2.')).toBeDefined();
+    await waitFor(() => expect(apiMock.knowledge.get).toHaveBeenCalledWith('doc_2'));
+  });
+
+  it('ignores a line that is not a line, rather than opening nowhere', async () => {
+    apiMock.knowledge.get.mockResolvedValue({
+      document: {
+        id: 'doc_2',
+        title: 'Bail',
+        content: 'Article 1.',
+        source: null,
+        contentLength: 10,
+        enabled: true,
+        chunkCount: 1,
+        embeddingModel: 'hash-v1:512',
+        isGlobal: true,
+        workspaceIds: [],
+        pageUnit: null,
+        pageCount: null,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    });
+
+    renderWithProviders(<MemoryPage />, { route: '/memory?document=doc_2&line=abc' });
+
+    expect(await screen.findByText('Article 1.')).toBeDefined();
   });
 });
 

@@ -47,7 +47,9 @@ import {
   type GoogleGrant,
   type KnowledgeDocumentMeta,
   type KnowledgeSearchHit,
+  type PatchKnowledgeRequest,
   type SaveKnowledgeRequest,
+  type UploadKnowledgeRequest,
   type LibraryListingEntry,
   type McpServerDescription,
   type McpServerRecord,
@@ -900,6 +902,30 @@ export const api = {
       request<{ document: KnowledgeDocumentMeta & { content: string } }>(`/api/knowledge/${id}`),
     save: (body: SaveKnowledgeRequest) =>
       request<{ document: KnowledgeDocumentMeta }>('/api/knowledge', { method: 'POST', body }),
+    /** A file, base64 in JSON — the same channel a message attachment uses. */
+    upload: (body: UploadKnowledgeRequest) =>
+      request<{ document: KnowledgeDocumentMeta }>('/api/knowledge/upload', {
+        method: 'POST',
+        body,
+      }),
+    /** Change a title, a pause or a reach without the text making a round trip. */
+    patch: (id: string, body: PatchKnowledgeRequest) =>
+      request<{ document: KnowledgeDocumentMeta }>(`/api/knowledge/${id}`, {
+        method: 'PATCH',
+        body,
+      }),
+    /** Read the kept file again, with whatever engine is installed now. */
+    extract: (id: string) =>
+      request<{ document: KnowledgeDocumentMeta }>(`/api/knowledge/${id}/extract`, {
+        method: 'POST',
+      }),
+    /**
+     * Where the original lives.
+     *
+     * A URL rather than a fetch: the browser downloads it itself, so a
+     * twenty-megabyte file never passes through this process's memory.
+     */
+    sourceUrl: (id: string): string => `/api/knowledge/${id}/source`,
     delete: (id: string) => request<{ ok: boolean }>(`/api/knowledge/${id}`, { method: 'DELETE' }),
     search: (q: string, workspaceId?: string) =>
       request<{ results: KnowledgeSearchHit[] }>(`/api/knowledge/search${qs({ q, workspaceId })}`),

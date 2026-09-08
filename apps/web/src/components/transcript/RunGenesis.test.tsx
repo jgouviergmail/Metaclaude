@@ -109,6 +109,78 @@ describe('RunGenesis', () => {
     expect(done.querySelector('.genesis-step')).toBeNull();
   });
 
+  it('links a consulted passage to the lines it was quoted from', async () => {
+    // The point of showing a citation is that it can be checked: the link
+    // opens the document at the line, not the library at the top.
+    apiMock.runGenesis.mockResolvedValue({
+      category: 'engineering',
+      source: 'learned',
+      memories: [],
+      arm: null,
+      explanation: '',
+      documents: [
+        {
+          chunkId: 'chk_1',
+          documentId: 'doc_2',
+          title: 'Bail',
+          heading: 'Résiliation',
+          score: 0.9,
+          replaced: false,
+          pageUnit: 'page',
+          pageStart: 2,
+          pageEnd: 2,
+          lineStart: 40,
+          lineEnd: 52,
+        },
+      ],
+    } as never);
+
+    renderWithProviders(<RunGenesis run={run()} />);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+
+    const link = await screen.findByRole('link', { name: 'Bail › Résiliation' });
+    expect(link.getAttribute('href')).toBe('/memory?document=doc_2&line=40');
+    expect(screen.getByText('p. 2 · l. 40–52')).toBeDefined();
+  });
+
+  it('says when the text behind a citation has moved since', async () => {
+    // Re-extracting a document replaces every passage. The citation still
+    // names what the run saw; pretending otherwise would rewrite its story.
+    apiMock.runGenesis.mockResolvedValue({
+      category: 'engineering',
+      source: 'learned',
+      memories: [],
+      arm: null,
+      explanation: '',
+      documents: [
+        {
+          chunkId: 'chk_1',
+          documentId: 'doc_2',
+          title: 'Bail',
+          heading: '',
+          score: 0.9,
+          replaced: true,
+          pageUnit: null,
+          pageStart: null,
+          pageEnd: null,
+          lineStart: null,
+          lineEnd: null,
+        },
+      ],
+    } as never);
+
+    renderWithProviders(<RunGenesis run={run()} />);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+
+    expect(await screen.findByText('Replaced since')).toBeDefined();
+    // No locator at all: a replaced passage kept none, and inventing one
+    // would send a reader to a line that no longer says that.
+    expect(screen.queryByText(/l\./)).toBeNull();
+    expect(
+      (await screen.findByRole('link', { name: 'Bail' })).getAttribute('href'),
+    ).toBe('/memory?document=doc_2');
+  });
+
   it('keeps polling an active run whose recall has not landed yet', async () => {
     apiMock.runGenesis.mockResolvedValue({
       category: 'engineering',

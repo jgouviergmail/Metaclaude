@@ -54,6 +54,16 @@ export const routes = {
   server: () => '/server',
   /** The whole shelf, or one workspace's — `kernel.ts` links the second. */
   memory: (workspaceId?: string) => `/memory${query({ workspace: workspaceId })}`,
+  /**
+   * One document of the library, opened at the line a run quoted.
+   *
+   * Built here rather than at each call site for the reason every route is:
+   * the parameter names are a contract between the genesis strip that writes
+   * them and the Memory page that reads them, and two spellings of `?line=`
+   * is a link that resolves and does nothing.
+   */
+  memoryDocument: (documentId: string, line?: number | null) =>
+    `/memory${query({ document: documentId, line: line ? String(line) : undefined })}`,
   automations: () => '/automations',
   agents: () => '/agents',
   plugins: () => '/plugins',
