@@ -1,6 +1,7 @@
 {
-  "at": "2026-09-08T10:36:24.909Z",
+  "at": "2026-09-08T11:03:43.361Z",
   "sdkVersion": "0.3.247",
+  "platform": "linux",
   "findings": {
     "initFrame": {
       "status": "measured",
@@ -82,9 +83,12 @@
     },
     "appendCacheCost": {
       "status": "measured",
-      "changedWrite": 11455,
-      "unchangedWrite": 173,
-      "ratio": 66
+      "prefixRewrittenOnChange": true,
+      "raw": {
+        "changedWrite": 11462,
+        "unchangedWrite": 643,
+        "ratio": 18
+      }
     },
     "quotaRefusal": {
       "status": "measured",

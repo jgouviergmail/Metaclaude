@@ -301,12 +301,29 @@ async function probeResumeAppend(query, cwd) {
     },
     appendCacheCost: {
       status: second.usage && third.usage ? OK : SKIP,
-      changedWrite: second.usage?.cacheWrite ?? null,
-      unchangedWrite: third.usage?.cacheWrite ?? null,
-      ratio:
+      /*
+       * The conclusion, not the magnitude.
+       *
+       * The raw figures move with the prompt, the working directory and the
+       * mounted tools - measured 11,455 on one run and 15,556 on the next, for
+       * behaviour that had not changed at all. Diffing them reported three
+       * changes where there were none, which is how an instrument teaches you
+       * to ignore it. What matters is whether changing the append rewrites the
+       * prefix: an order of magnitude is the signal, and it was 66x and 114x on
+       * two versions that behave identically.
+       */
+      prefixRewrittenOnChange:
         second.usage && third.usage && third.usage.cacheWrite > 0
-          ? Math.round(second.usage.cacheWrite / third.usage.cacheWrite)
+          ? second.usage.cacheWrite / third.usage.cacheWrite >= 10
           : null,
+      raw: {
+        changedWrite: second.usage?.cacheWrite ?? null,
+        unchangedWrite: third.usage?.cacheWrite ?? null,
+        ratio:
+          second.usage && third.usage && third.usage.cacheWrite > 0
+            ? Math.round(second.usage.cacheWrite / third.usage.cacheWrite)
+            : null,
+      },
     },
   };
 }
@@ -387,7 +404,7 @@ function diff(before, after, path = '') {
   for (const key of keys) {
     // Volatile by nature. A version string, a timestamp or a live utilisation
     // figure is not a behaviour, and reporting it as one buries the real changes.
-    if (['cliVersion', 'at', 'reason', 'globalWindows'].includes(key)) continue;
+    if (['cliVersion', 'at', 'reason', 'globalWindows', 'raw'].includes(key)) continue;
     const a = before?.[key];
     const b = after?.[key];
     const here = path ? `${path}.${key}` : key;
@@ -428,7 +445,17 @@ async function main() {
   Object.assign(findings, await probeResumeAppend(query, freshCwd()));
   Object.assign(findings, await probeQuota(query, freshCwd));
 
-  const report = { at: new Date().toISOString(), sdkVersion: sdkVersion(), findings };
+  const report = {
+    at: new Date().toISOString(),
+    sdkVersion: sdkVersion(),
+    // The init frame carries platform-specific keys - `powershell_path` on
+    // Windows, absent on Linux - so a baseline taken in the container and a
+    // measurement taken on a laptop differ for reasons that have nothing to do
+    // with the version. Recorded so the diff can say so instead of implying a
+    // change nobody made.
+    platform: process.platform,
+    findings,
+  };
 
   const out = flag('--out');
   if (out) writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
@@ -444,6 +471,13 @@ async function main() {
   console.log(JSON.stringify(report, null, 2));
   console.log(`\n${'='.repeat(64)}`);
   console.log(`baseline ${baseline.sdkVersion}  ->  now ${report.sdkVersion}`);
+  if (baseline.platform && baseline.platform !== report.platform) {
+    console.log(
+      `
+WARNING: baseline taken on ${baseline.platform}, measured on ${report.platform}. ` +
+        'Some init-frame keys are platform-specific; compare on one platform before concluding.',
+    );
+  }
 
   const skipped = Object.entries(report.findings)
     .filter(([, value]) => value.status === SKIP)

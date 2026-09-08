@@ -14,7 +14,7 @@ session, all five of these were true at once:
 
 | what the types say | what the CLI does |
 |---|---|
-| `rate_limits` is an object keyed by window | it sends a `limits` **array** of `{ kind, percent, scope }` |
+| `rate_limits` is an object keyed by window | it sends that object **and** a `limits` array; the per-model buckets live only in the array |
 | `SDKRateLimitInfo` has no `unifiedWindows` | every rejection carries one, and it is the only in-band discriminator |
 | `fallbackModel` covers a model that is "unavailable" | it does **not** cover quota |
 | the init frame carries `effort` | the key is not in the object |
@@ -47,6 +47,15 @@ tokens.
 
 Commit the baseline. It is the only record of what the current version does,
 and it is worthless if captured *after* the bump.
+
+**Capture and compare on the same platform.** The init frame carries
+platform-specific keys — `powershell_path` on Windows, absent on Linux — so a
+baseline taken in the container and a measurement taken on a laptop differ for
+reasons that have nothing to do with the version. The probe records
+`process.platform` and warns when they disagree; the honest comparison is the
+one run on the machine that actually serves. In practice that means the local
+run in phase 3 is a *smoke test*, and the run against production in phase 4 is
+the comparison that counts.
 
 Two of its probes — the quota refusal and the CLI's own fallback — can only run
 while a model is genuinely spent, which cannot be forced. They report an
@@ -95,6 +104,14 @@ node scripts/sdk-probe.mjs --baseline deploy/sdk-baseline.json
 
 It exits non-zero when anything it can see has moved, and prints each change as
 `path: before -> after`.
+
+It compares *conclusions*, not magnitudes, and that distinction was learned the
+hard way on its first use: the raw cache-write figures move with the prompt and
+the mounted tools — 11,455 tokens on one run, 15,556 on the next, for behaviour
+that had not changed at all — so diffing them reported three changes where there
+were none. An instrument that cries wolf is one you stop reading. The raw
+numbers stay in the report under `raw` for the record; what the diff watches is
+whether changing the append still rewrites the prefix at all.
 
 **A change is not automatically a regression.** `quotaFallback.coversQuota`
 turning `true` would mean the CLI now handles what Metaclaude handles itself,

@@ -11,6 +11,45 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.77.0] — 2026-09-08
+
+### Changed
+
+- **The Claude Agent SDK moves to 0.3.263** (the CLI's 2.1.263), from 0.3.247 —
+  sixteen patch releases — and it ships alone, which is the first rule of
+  `docs/SDK-UPGRADE.md`.
+
+  Phase 1, reading the declarations before installing them, found the delta
+  quiet in everything Metaclaude depends on: `SDKRateLimitInfo`, the
+  `rate_limits` declaration, the `SDKMessage` union, the init frame's `effort`
+  and `fallbackModel`'s documentation are byte-identical. The three new
+  `type:`/`subtype:` strings are control requests, not messages, which is why
+  the narrator test stayed green — it was predicted to, and did.
+
+  What is new and worth knowing: two hook events, `PreModelSwitch` and
+  `PostModelSwitch`, reporting `source: 'auto'` for an automatic fallback along
+  with `prompt_cache_warm`, `estimated_cache_write_usd` and `cache_ttl`. That
+  last one confirms the CLI models a one-hour cache TTL — and it appears only on
+  hook *inputs*, so it is reported, never chosen. There is still no knob.
+
+  Phase 3 re-measured and found no behavioural regression. One real change: the
+  declared object shape of `rate_limits` now carries `model_scoped`, which was
+  `undefined` before. `readRateLimitWindows` reads the array first so nothing
+  moves, and the object branch it keeps is now the complete one it was written
+  to be.
+
+### Fixed
+
+- **The SDK probe reported three changes that were not changes.** Its first
+  real use diffed raw cache-write token counts — 11,455 against 15,556 for
+  behaviour that had not moved — because those figures follow the prompt and the
+  mounted tools, not the version. It now diffs the conclusion (does changing the
+  append still rewrite the prefix?) and keeps the magnitudes under `raw` for the
+  record. It also records `process.platform` and warns when a baseline and a
+  measurement come from different ones: `powershell_path` in the init frame is a
+  Windows fact, not a version fact, and it was reported as one.
+
+
 ## [0.76.3] — 2026-09-08
 
 ### Fixed
