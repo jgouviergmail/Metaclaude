@@ -241,6 +241,84 @@ describe('reach in the store', () => {
     expect(titles({})).toEqual(['Everywhere', 'Nowhere', 'Shared']);
   });
 
+  /**
+   * The set-of-workspaces scope: what a run reads from its peers' shelves
+   * without starting a run there.
+   *
+   * The global shelf is deliberately out, unlike every other scope here: the
+   * asking run already receives it, so returning it again spends the answer's
+   * budget on what has already been read.
+   *
+   * Every document says something different, and each query names one of them.
+   * A first draft gave them near-identical text and the *unscoped* search
+   * answered one title out of four — the relevance gate doing its job — so the
+   * test measured ranking rather than reach. The same trap the neighbouring
+   * case documents, paid again.
+   */
+  describe('a set of workspaces', () => {
+    const filed = (title: string, subject: string, reach: ExtensionReach) =>
+      store.upsert({
+        workspaceId: null,
+        title,
+        content: `# ${subject}
+
+Ce document traite de ${subject} et de rien d’autre.`,
+        reach,
+      });
+
+    beforeEach(async () => {
+      await filed('Everywhere', 'la chaudière', GLOBAL);
+      await filed('Alpha only', 'le préavis', { global: false, workspaceIds: ['alpha'] });
+      await filed('Shared', 'le dépôt de garantie', { global: false, workspaceIds: ['alpha', 'beta'] });
+      await filed('Gamma only', 'les charges locatives', { global: false, workspaceIds: ['gamma'] });
+    });
+
+    const hits = async (query: string, workspaceIds: string[]) =>
+      (await store.search(query, { workspaceIds, limit: 20 })).map((hit) => hit.documentTitle);
+
+    it('reads those workspaces’ shelves and not the others’', async () => {
+      expect(await hits('le préavis', ['alpha'])).toEqual(['Alpha only']);
+      expect(await hits('le préavis', ['gamma'])).toEqual([]);
+      expect(await hits('les charges locatives', ['gamma'])).toEqual(['Gamma only']);
+    });
+
+    it('leaves the global shelf out, because the asking run already has it', async () => {
+      // The one behaviour that separates this scope from every other here. A
+      // run recalls its own workspace and the globals before it asks anything;
+      // handing them back would spend the answer on what it has already read.
+      expect(await hits('la chaudière', ['alpha', 'beta', 'gamma'])).toEqual([]);
+      expect(await hits('la chaudière', ['alpha'])).toEqual([]);
+      // And the same document is still reachable through the ordinary scope.
+      expect(
+        (await store.search('la chaudière', { workspaceId: 'alpha' })).map((h) => h.documentTitle),
+      ).toEqual(['Everywhere']);
+    });
+
+    it('returns a document reaching two of them once, not twice', async () => {
+      // `d.id IN (SELECT ... WHERE workspace_id IN (...))` rather than a join:
+      // a join multiplies a shared document by the number of its links, and a
+      // passage quoted twice is budget spent saying one thing.
+      expect(await hits('le dépôt de garantie', ['alpha', 'beta'])).toEqual(['Shared']);
+    });
+
+    it('answers nothing for an empty set rather than the whole library', async () => {
+      expect(await store.search('le préavis', { workspaceIds: [] })).toEqual([]);
+    });
+
+    it('refuses a scope that says two contradictory things', async () => {
+      await expect(
+        store.search('le préavis', { workspaceId: 'alpha', workspaceIds: ['beta'] }),
+      ).rejects.toThrow(/workspaceId/i);
+    });
+
+    it('never returns a document whose owner switched it off', async () => {
+      const alphaOnly = store.list({}).find((document) => document.title === 'Alpha only')!;
+      store.setEnabled(alphaOnly.id, false);
+
+      expect(await hits('le préavis', ['alpha'])).toEqual([]);
+    });
+  });
+
   it('makes retrieval obey the same predicate as the listing', async () => {
     // Two spellings of one rule is how a document becomes visible in a list
     // and invisible to the runs of the same workspace, or the reverse.

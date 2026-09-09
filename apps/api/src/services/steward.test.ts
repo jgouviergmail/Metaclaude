@@ -12,6 +12,7 @@ import type { ApprovalRequest, Automation, AdvisorProposal, Run, RunPolicy } fro
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo, defaultWorkspaceSettings } from '../kernel/repositories.js';
 import { HashingEmbedder } from '../learning/embeddings.js';
+import { KnowledgeStore } from '../learning/knowledge.js';
 import { MemoryStore } from '../learning/memory.js';
 import { listInsights, setInsightStatus } from '../learning/reflexion.js';
 import { AuditLog } from '../security/audit.js';
@@ -44,6 +45,7 @@ let sessions: SessionRepo;
 let runs: RunRepo;
 let transcript: TranscriptRepo;
 let memory: MemoryStore;
+let knowledge: KnowledgeStore;
 let audit: AuditLog;
 let systemId: string;
 let projectId: string;
@@ -127,6 +129,7 @@ function makeSteward(overrides: Partial<StewardDeps> = {}): Steward {
     runs,
     transcript,
     memory,
+    knowledge,
     insights: {
       list: (options) => listInsights(db, options),
       setStatus: (id, status) => setInsightStatus(db, id, status),
@@ -276,6 +279,10 @@ beforeEach(async () => {
   runs = new RunRepo(db);
   transcript = new TranscriptRepo(db);
   memory = new MemoryStore(db, new HashingEmbedder());
+  // Real, against the same in-memory database: what `knowledgeSearch` is worth
+  // testing for is that a slug narrows the reach and the provenance survives
+  // the projection, and both live between the steward and the rows.
+  knowledge = new KnowledgeStore(db, new HashingEmbedder());
   audit = new AuditLog(db);
 
   const settings = defaultWorkspaceSettings();
@@ -382,6 +389,49 @@ describe('reading', () => {
     expect(detail.toolCalls).toEqual([{ name: 'Read', status: 'ok' }]);
     expect(detail.finalText).toBe('All good.');
     expect(detail.eventCount).toBe(2);
+  });
+
+  /**
+   * The library, which the steward could not search at all.
+   *
+   * It could read every memory in the deployment and no document — while the
+   * interface has had a library search since the library shipped. Invisible
+   * until an application started asking through the gateway and the answer to
+   * its question was in a PDF.
+   */
+  it('searches the library, scoped by workspace, and keeps where each passage came from', async () => {
+    await knowledge.upsert({
+      workspaceId: null,
+      title: 'Bail commercial',
+      content: '# Préavis\n\nLe préavis de résiliation du bail est de six mois.',
+      reach: { global: false, workspaceIds: [projectId] },
+    });
+    await knowledge.upsert({
+      workspaceId: null,
+      title: 'Note interne',
+      content: '# Chaudière\n\nLe remplacement de la chaudière incombe au bailleur.',
+      reach: { global: false, workspaceIds: [systemId] },
+    });
+
+    const everywhere = await steward.knowledgeSearch('préavis de résiliation');
+    expect(everywhere.map((hit) => hit.document)).toEqual(['Bail commercial']);
+    // The provenance travels: a quotation nobody can attribute is a claim
+    // nobody can check.
+    expect(everywhere[0]).toMatchObject({ heading: 'Préavis' });
+
+    // A named workspace reaches its own shelf and the global one, and not a
+    // document filed against another project.
+    const fromSystem = await steward.knowledgeSearch('préavis de résiliation', {
+      workspace: 'metaclaude',
+    });
+    expect(fromSystem).toEqual([]);
+    expect((await steward.knowledgeSearch('chaudière', { workspace: 'metaclaude' })).map((h) => h.document)).toEqual([
+      'Note interne',
+    ]);
+  });
+
+  it('refuses a workspace that does not exist rather than searching everything', async () => {
+    await expect(steward.knowledgeSearch('x', { workspace: 'nowhere' })).rejects.toThrow(/no workspace/i);
   });
 
   it('browses the global tier alone when asked, and searches semantically', async () => {

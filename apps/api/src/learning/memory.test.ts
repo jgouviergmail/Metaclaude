@@ -577,6 +577,59 @@ describe('search', () => {
     expect(episodic).toEqual([]);
   });
 
+  /**
+   * The fourth scope: a *set* of workspaces, and only them.
+   *
+   * What a run needs to look outside its own workspace without starting a run
+   * there. The global tier is deliberately excluded — the caller already has
+   * it, since a run recalls its own workspace and the globals before it asks
+   * anything — so returning it again would spend the answer's budget on what
+   * has already been read.
+   */
+  describe('a set of workspaces', () => {
+    beforeEach(async () => {
+      // Three rows, not one: bm25's IDF is zero for a term present in one row
+      // of two and clamped to nothing on a one-row corpus, so a lexical arm
+      // tested on a thin corpus reads as broken.
+      await store.remember({ workspaceId: wsA, kind: 'semantic', title: 'Alpha lease', content: 'The alpha lease runs to December and the rent is indexed.' });
+      await store.remember({ workspaceId: wsB, kind: 'semantic', title: 'Beta lease', content: 'The beta lease was signed in March with no indexation.' });
+      await store.remember({ workspaceId: null, kind: 'semantic', title: 'Global lease note', content: 'Every lease is filed with the accountant once signed.' });
+    });
+
+    it('returns those workspaces and neither the others nor the global tier', async () => {
+      const found = await store.search('lease', { workspaceIds: [wsA] });
+      expect(found.map((r) => r.memory.title)).toEqual(['Alpha lease']);
+
+      const both = await store.search('lease', { workspaceIds: [wsA, wsB] });
+      expect(both.map((r) => r.memory.title).sort()).toEqual(['Alpha lease', 'Beta lease']);
+    });
+
+    it('answers nothing for an empty set rather than everything', async () => {
+      // The difference between "no peers to ask" and "no filter" is the whole
+      // corpus; a caller with no peers must get the first.
+      expect(await store.search('lease', { workspaceIds: [] })).toEqual([]);
+    });
+
+    it('refuses a scope that says two contradictory things', async () => {
+      await expect(
+        store.search('lease', { workspaceId: wsA, workspaceIds: [wsB] }),
+      ).rejects.toThrow(/workspaceId/i);
+    });
+
+    it('scopes a word every row shares, whichever arm ranks it', async () => {
+      // The word is in all three rows on purpose: unscoped, this query answers
+      // three. What decides is `candidateRows` — the lexical arm's own clause
+      // was sabotaged to check, and no test moved, because fusion drops any id
+      // that is not among the candidate rows. That clause narrows the index
+      // scan and keeps out-of-scope ids from taking rank positions; membership
+      // is decided once, above.
+      const found = await store.search('lease', { workspaceIds: [wsB] });
+      expect(found.map((r) => r.memory.title)).toEqual(['Beta lease']);
+
+      expect((await store.search('lease', {})).length).toBe(3);
+    });
+  });
+
   it('scopes results to a workspace plus global memories', async () => {
     await store.remember({
       workspaceId: wsA,

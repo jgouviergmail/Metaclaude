@@ -149,6 +149,12 @@ interface ConsultedRow {
 export interface KnowledgeRetrievalOptions {
   /** null = global shelf only; a concrete id = that workspace plus global. */
   workspaceId?: string | null;
+  /**
+   * A set of workspaces' shelves and only those — the global one excluded,
+   * because the asking run already has it. What a run reads from its peers
+   * without starting a run there. Mutually exclusive with `workspaceId`.
+   */
+  workspaceIds?: string[];
   limit?: number;
   candidatePool?: number;
   minSimilarity?: number;
@@ -255,8 +261,28 @@ const GLOBAL_ONLY = 'd.is_global = 1';
  * library, including any attached to nothing, which is what a management view
  * needs — `null` is the global shelf alone, an id is that workspace plus the
  * global shelf. The same three-way convention the registry uses.
+ *
+ * A *set* of ids is the fourth, and it is not the others repeated: it reads
+ * those workspaces' shelves and deliberately **not** the global one, because
+ * the caller is a run that already receives the global shelf and would be paid
+ * twice for it. `IN (...)` inside the subquery rather than a join, so a
+ * document reaching two of them comes back once — a join multiplies it by its
+ * links, and a passage quoted twice is budget spent saying one thing. An empty
+ * set is `0 = 1`: "no peers to ask" must never read as "no filter".
  */
-function reachClause(workspaceId: string | null | undefined): { sql: string; params: string[] } {
+function reachClause(
+  workspaceId: string | null | undefined,
+  workspaceIds?: readonly string[],
+): { sql: string; params: string[] } {
+  if (workspaceIds) {
+    if (workspaceIds.length === 0) return { sql: '0 = 1', params: [] };
+    return {
+      sql: `d.id IN (SELECT document_id FROM document_workspaces WHERE workspace_id IN (${workspaceIds
+        .map(() => '?')
+        .join(',')}))`,
+      params: [...workspaceIds],
+    };
+  }
   if (workspaceId === undefined) return { sql: '', params: [] };
   if (workspaceId === null) return { sql: GLOBAL_ONLY, params: [] };
   return { sql: REACH_OF_WORKSPACE, params: [workspaceId] };
@@ -805,6 +831,11 @@ export class KnowledgeStore {
     queryText: string,
     options: KnowledgeRetrievalOptions = {},
   ): Promise<KnowledgeSearchResult[]> {
+    // Refused rather than resolved: the two scopes disagree about the global
+    // shelf, so silently preferring one answers a question nobody asked.
+    if (options.workspaceIds && options.workspaceId !== undefined) {
+      throw new Error('Scope by workspaceId or by workspaceIds, never both.');
+    }
     const limit = Math.min(options.limit ?? 6, 50);
     const pool = Math.min(options.candidatePool ?? Math.max(limit * 6, 48), 500);
 
@@ -1074,7 +1105,7 @@ export class KnowledgeStore {
   }
 
   private candidateChunks(options: KnowledgeRetrievalOptions): ChunkRow[] {
-    const scope = reachClause(options.workspaceId);
+    const scope = reachClause(options.workspaceId, options.workspaceIds);
     const clauses = ['d.enabled = 1', ...(scope.sql ? [scope.sql] : [])];
     return this.db
       .prepare<unknown[], ChunkRow>(
@@ -1094,7 +1125,7 @@ export class KnowledgeStore {
     const match = toFtsQuery(queryText);
     if (!match) return [];
 
-    const scope = reachClause(options.workspaceId);
+    const scope = reachClause(options.workspaceId, options.workspaceIds);
     const clauses: string[] = [
       'document_chunks_fts MATCH ?',
       'd.enabled = 1',

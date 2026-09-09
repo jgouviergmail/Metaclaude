@@ -24,6 +24,7 @@ import { buildGatewayServer, type GatewayDeps } from '../services/mcp-gateway.js
 import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
 import { buildMemoryServer, type WorkspaceMemoryFacade } from './memory-tools.js';
+import { buildPeerServer, type PeerFacade } from './peer-tools.js';
 import { buildSessionsServer, type SessionsFacade } from './sessions-tools.js';
 import { buildSystemServer, type SystemFacade } from './system-tools.js';
 
@@ -189,6 +190,15 @@ const ACCEPTED_DROPS: Record<string, Record<string, string>> = {
     tools: 'consumed by the transcript view, not the facade; asserted in sessions-tools.test.ts',
     maxChars: 'consumed by the transcript view, not the facade; asserted in sessions-tools.test.ts',
   },
+  /*
+   * Both peer tools resolve the slug against the run's own peer list before
+   * anything reaches the facade — that guard is what keeps a call from
+   * reaching further than the directory named, so the slug is consumed rather
+   * than passed on. What it becomes is asserted in `peer-tools.test.ts`: for
+   * the search, the ids of exactly the workspaces named; for `delegate`, the
+   * slug the kernel is given.
+   */
+  search_workspaces: { workspace: 'resolved against the run’s peer list; asserted in peer-tools.test.ts' },
   ask_workspace: { workspace: RESOLVED_SLUG },
   start_run: { workspace: RESOLVED_SLUG },
   search_notes: { workspace: RESOLVED_SLUG },
@@ -350,6 +360,56 @@ describe('every field a tool accepts reaches its facade', () => {
       buildSessionsServer(rec.facade, { workspaceId: 'ws_1', sessionId: 'ses_1' }),
     );
     expect(Object.keys(tools).length).toBe(3);
+    for (const [name, tool] of Object.entries(tools)) await assertForwards(name, tool, rec);
+  });
+
+  /**
+   * The peer tools, whose scope is handed in rather than looked up.
+   *
+   * Both handlers resolve a slug against the peer list before they forward, so
+   * the recorded workspace has to be one of the peers — that guard is the
+   * whole reason the tool cannot reach further than the directory named, and a
+   * test that dodged it would drive neither handler.
+   */
+  it('holds for the peer tools', async () => {
+    const peer = {
+      id: 'ws_peer',
+      slug: 'sentinel_workspace',
+      name: 'peer',
+      description: '',
+      archived: false,
+      settings: { memoryEnabled: true, knowledgeEnabled: true },
+    } as never;
+    const rec = recorder<PeerFacade>({
+      delegate: async () => ({ status: 'succeeded', finalText: 'done', error: null }),
+    });
+    // Named rather than spread: `recorder` is a Proxy over an empty object, so
+    // `{...rec.facade}` copies no method at all and every call would land on
+    // `undefined` — which `asToolResult` swallows into an error result, so the
+    // tool looks as though it simply never called anything.
+    //
+    // The two stores are nested objects rather than methods, so they are
+    // recorded by hand and their calls appended to the same list.
+    const facade: PeerFacade = {
+      delegate: rec.facade.delegate,
+      memory: {
+        search: async (query, options) => {
+          rec.calls.push({ method: 'memory.search', args: [query, options] });
+          return [];
+        },
+      },
+      knowledge: {
+        search: async (query, options) => {
+          rec.calls.push({ method: 'knowledge.search', args: [query, options] });
+          return [];
+        },
+      },
+    };
+
+    const tools = registered(
+      buildPeerServer(facade, { runId: 'run_1', peers: [peer] }, { search: true, delegate: true }),
+    );
+    expect(Object.keys(tools).length).toBe(2);
     for (const [name, tool] of Object.entries(tools)) await assertForwards(name, tool, rec);
   });
 

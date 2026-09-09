@@ -76,6 +76,20 @@ function toMemory(row: MemoryRow): Memory {
 
 export interface RetrievalOptions {
   workspaceId?: string | null;
+  /**
+   * A *set* of workspaces, and only them — what a run reads when it looks
+   * outside its own workspace without starting a run there.
+   *
+   * The global tier is deliberately excluded, unlike `workspaceId`: the caller
+   * already has it, because a run recalls its own workspace and the globals
+   * before it asks anything, and returning them again would spend the answer's
+   * budget on what has already been read.
+   *
+   * An empty set answers nothing rather than everything. Mutually exclusive
+   * with `workspaceId`, which would otherwise say two contradictory things and
+   * let the reader guess which won.
+   */
+  workspaceIds?: string[];
   kinds?: MemoryKind[];
   /**
    * Leave the standing shelf out. The kernel does: standing memories reach a
@@ -93,6 +107,51 @@ export interface RetrievalOptions {
   minSimilarity?: number;
   /** Candidate pool size per retrieval arm before fusion. */
   candidatePool?: number;
+}
+
+/**
+ * The scope half of a retrieval query, spelled once for both arms.
+ *
+ * Both arms build their scope here, and it is worth being exact about what
+ * each one buys. `candidateRows` is what *decides*: fusion drops any id that
+ * is not among its rows, so an unscoped lexical arm cannot leak a memory — a
+ * sabotage of that clause alone moved no test, which is how this was
+ * established rather than assumed. The lexical clause narrows the index scan
+ * and stops out-of-scope rows taking rank positions from rows the caller may
+ * actually see, so it is about cost and ordering. Written once anyway, because
+ * two spellings of one convention is what drifts. `knowledge.ts` factored the
+ * same convention as `reachClause`; this side had it written out twice.
+ *
+ * Four scopes, and `alias` is what lets the lexical arm join through `m.`:
+ *
+ *  - `workspaceIds` — those workspaces alone, global excluded. An empty set is
+ *    `0 = 1`, because "no peers to ask" must not read as "no filter".
+ *  - `workspaceId: null` — the global tier alone.
+ *  - a concrete id — that workspace plus global, which is how project
+ *    knowledge inherits the defaults.
+ *  - absent — everything, which only a management view wants.
+ *
+ * `list`, `count` and `stats` deliberately do not share it: they answer a
+ * browsing question rather than a retrieval one, take no `workspaceIds`, and
+ * unifying them would restructure three queries this release does not touch.
+ */
+function scopeClause(
+  options: Pick<RetrievalOptions, 'workspaceId' | 'workspaceIds'>,
+  alias = '',
+): { sql: string; params: string[] } {
+  const column = `${alias}workspace_id`;
+  if (options.workspaceIds) {
+    if (options.workspaceIds.length === 0) return { sql: '0 = 1', params: [] };
+    return {
+      sql: `${column} IN (${options.workspaceIds.map(() => '?').join(',')})`,
+      params: [...options.workspaceIds],
+    };
+  }
+  if (options.workspaceId === null) return { sql: `${column} IS NULL`, params: [] };
+  if (options.workspaceId !== undefined) {
+    return { sql: `(${column} = ? OR ${column} IS NULL)`, params: [options.workspaceId] };
+  }
+  return { sql: '', params: [] };
 }
 
 export { DUPLICATE_THRESHOLD } from './retrieval.js';
@@ -506,6 +565,12 @@ export class MemoryStore {
    * re-weighted by a confidence and recency prior.
    */
   async search(queryText: string, options: RetrievalOptions = {}): Promise<MemorySearchResult[]> {
+    // Refused rather than resolved: the two scopes say different things about
+    // the global tier, so silently preferring one would answer a question the
+    // caller did not ask and there is no reading of "both" that is right.
+    if (options.workspaceIds && options.workspaceId !== undefined) {
+      throw new Error('Scope by workspaceId or by workspaceIds, never both.');
+    }
     const limit = Math.min(options.limit ?? 8, 100);
     const pool = Math.min(options.candidatePool ?? Math.max(limit * 6, 48), 500);
 
@@ -569,13 +634,10 @@ export class MemoryStore {
     const params: unknown[] = [FORGET_THRESHOLD];
     if (options.excludeStanding) clauses.push("shelf != 'standing'");
 
-    // `workspaceId: null` means global-only; a concrete id means that workspace
-    // plus global memories, which is how project knowledge inherits defaults.
-    if (options.workspaceId === null) {
-      clauses.push('workspace_id IS NULL');
-    } else if (options.workspaceId !== undefined) {
-      clauses.push('(workspace_id = ? OR workspace_id IS NULL)');
-      params.push(options.workspaceId);
+    const scope = scopeClause(options);
+    if (scope.sql) {
+      clauses.push(scope.sql);
+      params.push(...scope.params);
     }
 
     if (options.kinds && options.kinds.length > 0) {
@@ -598,11 +660,10 @@ export class MemoryStore {
     const clauses: string[] = ['memories_fts MATCH ?'];
     const params: unknown[] = [match];
 
-    if (options.workspaceId === null) {
-      clauses.push('m.workspace_id IS NULL');
-    } else if (options.workspaceId !== undefined) {
-      clauses.push('(m.workspace_id = ? OR m.workspace_id IS NULL)');
-      params.push(options.workspaceId);
+    const scope = scopeClause(options, 'm.');
+    if (scope.sql) {
+      clauses.push(scope.sql);
+      params.push(...scope.params);
     }
     if (options.kinds && options.kinds.length > 0) {
       clauses.push(`m.kind IN (${options.kinds.map(() => '?').join(',')})`);

@@ -34,7 +34,23 @@ import {
 } from '../http/guards.js';
 import { spreadInt, spreadTimestamp } from '../http/query.js';
 import { delegationPeers } from '../kernel/context.js';
-import { DELEGATION_SERVER_NAME } from '../kernel/supervisor.js';
+import { PEER_SERVER_NAME, PEER_TOOL_CATALOGUE } from '../kernel/peer-tools.js';
+
+/**
+ * How each pre-approvable in-process tool reads in the Tools picker.
+ *
+ * The operator's words, not the model's: the catalogue's own description tells
+ * an agent what a tool does, while this has to tell a person what ticking it
+ * lets an unattended run do. `workspace-settings.test.ts` holds this table to
+ * the catalogue's ring 2, so a tool promoted into that ring arrives with copy
+ * rather than with the sentence written for the model.
+ */
+const PEER_TOOL_PICKER_COPY: Record<string, string> = {
+  delegate:
+    'Ask another workspace of this Metaclaude to work on something and return its ' +
+    'answer. Ticking it lets an unattended run start a full run elsewhere with ' +
+    'nobody watching.',
+};
 
 export function registerWorkspaceRoutes(app: App, context: AppContext): void {
   const mustGetWorkspace = (id: string) => mustGetWorkspaceFrom(context, id);
@@ -158,20 +174,21 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     const internal = peers.length > 0
       ? [
           {
-            id: DELEGATION_SERVER_NAME,
-            name: DELEGATION_SERVER_NAME,
+            id: PEER_SERVER_NAME,
+            name: PEER_SERVER_NAME,
             describedAt: null,
             internal: true,
-            tools: [
-              {
-                bare: 'delegate',
-                qualified: mcpToolName(DELEGATION_SERVER_NAME, 'delegate'),
-                description:
-                  'Ask another workspace of this Metaclaude to work on something and return its ' +
-                  'answer. Ticking it lets an unattended run start a full run elsewhere with ' +
-                  'nobody watching.',
-              },
-            ],
+            // Ring 2 only, from the catalogue rather than by hand. The picker
+            // is for decisions the operator makes; a ring 1 tool is
+            // pre-approved with its own mount, so offering a tick for it would
+            // be a control that decides nothing — and the name is derived so a
+            // rename cannot leave the picker naming a tool that no longer
+            // exists while the pre-approval list keeps the old string.
+            tools: PEER_TOOL_CATALOGUE.filter((entry) => entry.ring === 2).map((entry) => ({
+              bare: entry.name,
+              qualified: mcpToolName(PEER_SERVER_NAME, entry.name),
+              description: PEER_TOOL_PICKER_COPY[entry.name] ?? entry.description,
+            })),
           },
         ]
       : [];

@@ -25,7 +25,7 @@
  * — the one decision an absent operator would want to have made themselves.
  */
 
-import { WorkspaceSettings, patchSchema } from '@metaclaude/shared';
+import { WorkspaceSettings, describeLocation, patchSchema } from '@metaclaude/shared';
 import type {
   AdvisorProposal,
   ApprovalRequest,
@@ -50,6 +50,7 @@ import type {
 import type { Kernel } from '../kernel/kernel.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from '../kernel/repositories.js';
 import { excerpt, finalAnswer, toolsCalled } from '../kernel/transcript-view.js';
+import type { KnowledgeStore } from '../learning/knowledge.js';
 import { MemoryReconcileError, type MemoryStore } from '../learning/memory.js';
 import type { AuditLog } from '../security/audit.js';
 import type { AdvisorService } from './advisor.js';
@@ -87,6 +88,11 @@ export interface StewardDeps {
   sessions: Pick<SessionRepo, 'get' | 'list' | 'update' | 'create'>;
   runs: Pick<RunRepo, 'get' | 'listRecent' | 'listBySession'>;
   transcript: Pick<TranscriptRepo, 'byRun' | 'countBySession'>;
+  /**
+   * The knowledge library, read-only. Wired for `knowledgeSearch`, which is
+   * what the steward was missing beside its memory search.
+   */
+  knowledge: Pick<KnowledgeStore, 'search'>;
   memory: Pick<
     MemoryStore,
     'get' | 'list' | 'search' | 'stats' | 'count' | 'update' | 'remember' | 'promote' | 'confine' | 'retire' | 'restore' | 'supersede'
@@ -454,6 +460,38 @@ export class Steward {
     const workspaceId = options.workspace ? this.findWorkspace(options.workspace).id : undefined;
     const results = await this.deps.memory.search(query, { workspaceId, limit: options.limit ?? 10 });
     return results.map((result) => ({ ...compactMemory(result.memory), score: result.score }));
+  }
+
+  /**
+   * The library, searched the way a run searches it.
+   *
+   * The steward could read every memory in the deployment and no document at
+   * all, while the interface has had a library search since the library
+   * shipped — so a question whose answer sat in a PDF was one this agent could
+   * not reach, and had no way of knowing it could not reach. The gap only
+   * became visible when an application started asking through the gateway.
+   *
+   * Where each passage came from travels with it, for the reason it does
+   * everywhere else: a quotation nobody can attribute is a claim nobody can
+   * check.
+   */
+  async knowledgeSearch(query: string, options: { workspace?: string; limit?: number } = {}) {
+    const workspaceId = options.workspace ? this.findWorkspace(options.workspace).id : undefined;
+    const results = await this.deps.knowledge.search(query, {
+      ...(workspaceId !== undefined ? { workspaceId } : {}),
+      limit: options.limit ?? 10,
+    });
+    return results.map((hit) => {
+      const location = describeLocation(hit);
+      return {
+        document: hit.documentTitle,
+        heading: hit.heading,
+        ...(location ? { location } : {}),
+        ...(hit.sourceName ? { source: hit.sourceName } : {}),
+        text: hit.text,
+        score: hit.score,
+      };
+    });
   }
 
   insights(options: { workspace?: string | 'global'; status?: Insight['status']; limit?: number } = {}) {

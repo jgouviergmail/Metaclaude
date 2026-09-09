@@ -2097,6 +2097,20 @@ describe('buildOptions — the delegation tool and its directory', () => {
     Object.keys(options.mcpServers ?? {});
   const appendOf = (options: ReturnType<AgentSupervisor['buildOptions']>) =>
     String((options.systemPrompt as { append?: string } | undefined)?.append ?? '');
+  /**
+   * The tool *names* one mounted server actually registers.
+   *
+   * Which server is mounted stopped being the whole answer when it grew a
+   * second verb: the cheap search and `delegate` are decided separately, so a
+   * test that only asked "is `metaclaude` there" would pass on a run holding
+   * the wrong one of the two.
+   */
+  const toolsOf = (options: ReturnType<AgentSupervisor['buildOptions']>, server: string) => {
+    const mounted = (options.mcpServers ?? {})[server] as
+      | { instance?: { _registeredTools?: Record<string, unknown> } }
+      | undefined;
+    return Object.keys(mounted?.instance?._registeredTools ?? {}).sort();
+  };
 
   it('mounts the server and names the peers it may reach', () => {
     const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
@@ -2156,7 +2170,7 @@ describe('buildOptions — the delegation tool and its directory', () => {
    * cannot run is the defect this pair exists to prevent. The gateway does not
    * get an exemption from that: it gets the same answer the interface would.
    */
-  it('withholds both from a gateway run whose workspace has not ticked delegate', () => {
+  it('gives a gateway run exactly what the workspace’s own settings allow', () => {
     const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
 
     const options = supervisor.buildOptions(
@@ -2166,8 +2180,12 @@ describe('buildOptions — the delegation tool and its directory', () => {
       }),
     );
 
-    expect(serversOf(options)).not.toContain('metaclaude');
-    expect(appendOf(options)).not.toContain('billing');
+    // The same answer an automation of this workspace gets: the cheap read,
+    // and not the verb whose tick the operator has not given. No exemption in
+    // either direction — that is what "behaves as it does from the interface"
+    // has to mean when the interface would have refused too.
+    expect(toolsOf(options, 'metaclaude')).toEqual(['search_workspaces']);
+    expect(appendOf(options)).not.toContain('`delegate`');
   });
 
   it('offers nothing when delegation is not wired at all', () => {
@@ -2248,6 +2266,32 @@ describe('buildOptions — the delegation tool and its directory', () => {
    * directory is context for planning, not a promise about this turn. Pinned
    * here so the next reader changes it on purpose, in either direction.
    */
+  /**
+   * Mounted *and* pre-approved, which is one fact and not two.
+   *
+   * A tool that is mounted and unticked is a card in `default` mode and a flat
+   * refusal under `dontAsk` — the CLI answers there without ever reaching the
+   * broker. The cheap search is the tool an unattended run most needs, so it
+   * rides with its own mount the way `memory_search` does; `delegate` does not,
+   * because it spends another workspace's quota.
+   */
+  it('pre-approves the search with its mount, and never delegate', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
+    // `dontAsk` is where it is observable *and* where it matters: the CLI
+    // answers there without reaching the broker, so a rule that is not in
+    // `managedSettings.permissions.allow` is a flat refusal.
+    const options = supervisor.buildOptions(
+      makeRequest({ policy: { ...makeRequest().policy, permissionMode: 'dontAsk' } }),
+    );
+
+    const allowed =
+      (options.managedSettings as { permissions?: { allow?: string[] } } | undefined)?.permissions
+        ?.allow ?? [];
+    expect(allowed).toContain('mcp__metaclaude__search_workspaces');
+    expect(allowed).not.toContain('mcp__metaclaude__delegate');
+  });
+
   it('keeps both under plan: a proposal is better for knowing who exists', () => {
     const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
 
@@ -2299,16 +2343,26 @@ describe('buildOptions — the delegation tool and its directory', () => {
    * refused rather than asked about, and briefing an automation about it every
    * hour would be this release's own defect upside down — words for a tool
    * that cannot run.
+   *
+   * The cheap search is a different case and gets the opposite answer: it
+   * reads what is already written, executes nothing, and is pre-approved with
+   * its own mount for exactly memory's reason — without that an automation
+   * would carry a lookup tool and be refused it every night, silently, while
+   * still landing as a success.
    */
-  it('says nothing to an unattended run that would only be refused', () => {
+  it('offers an unattended run the search and not the verb it would be refused', () => {
     const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
     const unattended = makeRequest();
     unattended.policy = { ...unattended.policy, permissionMode: 'dontAsk' };
 
     const options = supervisor.buildOptions(unattended);
 
-    expect(serversOf(options)).not.toContain('metaclaude');
-    expect(appendOf(options)).not.toContain('billing');
+    expect(serversOf(options)).toContain('metaclaude');
+    expect(toolsOf(options, 'metaclaude')).toEqual(['search_workspaces']);
+    // Named, since it is mounted; and the verb it does not have is not.
+    expect(appendOf(options)).toContain('search_workspaces');
+    expect(appendOf(options)).not.toContain('`delegate`');
+    expect(appendOf(options)).toContain('billing');
   });
 
   /**

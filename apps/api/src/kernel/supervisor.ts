@@ -14,9 +14,7 @@
  */
 
 import {
-  createSdkMcpServer,
   query as sdkQuery,
-  tool as sdkTool,
   type McpServerStatus,
   type Options,
   type Query,
@@ -54,16 +52,26 @@ import {
   DIRECTORY_CONTEXT_MINIMUM,
   delegationPeers,
   selectDirectoryContext,
+  type PeerVerbs,
 } from './context.js';
+import {
+  PEER_DELEGATE_TOOL,
+  PEER_SEARCH_TOOL,
+  PEER_SERVER_NAME,
+  buildPeerServer,
+  type PeerFacade,
+} from './peer-tools.js';
 
 /**
- * The in-process server carrying `delegate`.
+ * The in-process server carrying the two verbs that reach other workspaces.
  *
- * Named once: the mount, the pre-approval check and the tool name the CLI
- * reports all have to agree, and three spellings of one string is how they
- * stop agreeing.
+ * Re-exported under its old name because the mount, the pre-approval check and
+ * the tool name the CLI reports all have to agree, and because
+ * `mcp__metaclaude__delegate` is written into the pre-approved tool list of
+ * every workspace whose operator has ticked it: renaming the server would
+ * silently un-approve them all.
  */
-export const DELEGATION_SERVER_NAME = 'metaclaude';
+export const DELEGATION_SERVER_NAME = PEER_SERVER_NAME;
 import { boardToolNames, buildBoardServer, type BoardFacade } from './board-tools.js';
 import {
   MEMORY_SERVER_NAME,
@@ -235,8 +243,22 @@ export interface SupervisorDeps {
    */
   delegation?: {
     peers: () => readonly Workspace[];
-    /** How many characters of directory to inject. 0 switches delegation off. */
+    /** How many characters of directory to inject. 0 switches all of this off. */
     budget: () => number;
+    /**
+     * The two stores a peer search reads, wired together with the verb for the
+     * reason above: a deployment that offered the search with nothing to search
+     * would be a tool whose every call comes back empty, which reads to a model
+     * as "that workspace knows nothing" rather than as a misconfiguration.
+     *
+     * The key is still `delegation` although it now carries a read as well as
+     * a verb, because that is the word the settings (`delegable`,
+     * `delegationDirectoryChars`), the guide and the operator's own screens
+     * use for reaching another workspace. A second vocabulary in the code
+     * alone would cost more than the imprecision.
+     */
+    memory: PeerFacade['memory'];
+    knowledge: PeerFacade['knowledge'];
     run: (input: {
       /**
        * The run doing the asking. The kernel reads its workspace, what started
@@ -800,6 +822,20 @@ export class AgentSupervisor {
      */
     if (this.deps.board) preapproved.push(...boardToolNames());
     if (this.deps.advisor) preapproved.push(...advisorToolNames());
+    /*
+     * Reading what the other workspaces have written down, without a card.
+     *
+     * `memory_search`'s own argument, one workspace out: it reads text that is
+     * already written, executes nothing, touches no file and changes nothing
+     * anywhere. What makes the pre-approval necessary rather than merely kind
+     * is `dontAsk`, where the CLI refuses anything unticked without ever
+     * reaching the broker — so an automation or a gateway call would carry the
+     * tool and be unable to use it, silently, while still landing as a success.
+     *
+     * `delegate` stays out, in the tier above and for the reason just given:
+     * it spends another workspace's quota and starts a full run there.
+     */
+    if (this.peerScope(request).search) preapproved.push(PEER_SEARCH_TOOL);
     return { mode, preapproved: preapproved.filter((name) => !cut.has(name)), forbidden };
   }
 
@@ -839,24 +875,41 @@ export class AgentSupervisor {
    * description is unlisted and still reachable, so a person who names its
    * slug is answered exactly as before.
    */
-  private delegationDirectory(
+  private peerScope(request: Pick<RunRequest, 'workspace' | 'triggeredBy'>): {
+    peers: Workspace[];
+    search: boolean;
+  } {
+    const none = { peers: [] as Workspace[], search: false };
+    const delegation = this.deps.delegation;
+    if (!delegation) return none;
+    if (request.triggeredBy === 'delegation') return none;
+    if (delegation.budget() <= 0) return none;
+
+    const peers = delegationPeers(delegation.peers(), request.workspace.id);
+    if (peers.length === 0) return none;
+
+    // Not in the system workspace: `system_memory_search` already reads every
+    // workspace's memories and more besides, and two ways to do one thing is
+    // how a model picks the weaker one — memory's own rule, applied here.
+    return { peers, search: this.deps.steward?.workspaceId() !== request.workspace.id };
+  }
+
+  /**
+   * Which verbs this run holds over its peers, and what it is told about them.
+   * One answer for the mount and the briefing, so they cannot disagree.
+   *
+   * `scope` carries everything that does not depend on the pre-approval —
+   * `resolvePreapproval` needs the search half before it can pre-approve it,
+   * so the two halves are computed apart and joined here rather than in a
+   * cycle.
+   */
+  private peerDirectory(
     request: RunRequest,
     resolved: { mode: RunPolicy['permissionMode']; preapproved: string[] },
-  ): { mounted: boolean; text: string } {
-    const silent = { mounted: false, text: '' };
-    const delegation = this.deps.delegation;
-    if (!delegation) return silent;
-    if (request.triggeredBy === 'delegation') return silent;
-
-    // Plan mode is deliberately *not* a reason to withhold, and it was almost
-    // made one on the way to this release: nothing executes under plan, so a
-    // mounted `delegate` is a tool the CLI refuses. What plan produces is a
-    // *proposal*, and a proposal written by an agent that does not know the
-    // billing workspace exists is a worse proposal — the directory is context
-    // for planning, not a promise about this turn. Five other in-process
-    // servers are mounted under plan for the same reason, and silencing this
-    // one alone would have changed what the composer's Plan mode answers, for
-    // a token ceiling it was never about.
+    scope: { peers: Workspace[]; search: boolean },
+  ): { verbs: PeerVerbs; text: string } {
+    const silent = { verbs: { search: false, delegate: false }, text: '' };
+    if (scope.peers.length === 0) return silent;
 
     // `dontAsk` never reaches the broker: the CLI answers "denied, nothing is
     // pre-approved" itself, so a mounted `delegate` is refused rather than
@@ -869,26 +922,24 @@ export class AgentSupervisor {
     // mode promises and the operator's call — so `allowedTools` naming it is
     // honoured, and nothing else is assumed. A gateway run is no exception:
     // the workspace's own tick decides, exactly as it does from the interface.
-    if (
-      resolved.mode === 'dontAsk' &&
-      !resolved.preapproved.includes(mcpToolName(DELEGATION_SERVER_NAME, 'delegate'))
-    ) {
-      return silent;
-    }
-
-    const budget = delegation.budget();
-    if (budget <= 0) return silent;
-
-    const peers = delegationPeers(delegation.peers(), request.workspace.id);
-    if (peers.length === 0) return silent;
+    //
+    // The cheap search is not gated on it and does not need to be: it reads
+    // what is already written, executes nothing, and rides with the mount the
+    // way `memory_search` does.
+    const verbs: PeerVerbs = {
+      search: scope.search,
+      delegate:
+        resolved.mode !== 'dontAsk' || resolved.preapproved.includes(PEER_DELEGATE_TOOL),
+    };
+    if (!verbs.search && !verbs.delegate) return silent;
 
     // A non-zero budget is raised to the floor rather than honoured to the
     // letter. Below it the block cannot fit even the sentence explaining why
-    // there is no list, and dropping *that* would leave the tool mounted and
+    // there is no list, and dropping *that* would leave the tools mounted and
     // unexplained — the defect this pair exists to fix, reintroduced by a
-    // setting. 0 remains the off switch, and it is handled above.
-    const room = Math.max(budget, DIRECTORY_CONTEXT_MINIMUM);
-    return { mounted: true, text: selectDirectoryContext(peers, room).text };
+    // setting. 0 remains the off switch, and `peerScope` handles it.
+    const room = Math.max(this.deps.delegation!.budget(), DIRECTORY_CONTEXT_MINIMUM);
+    return { verbs, text: selectDirectoryContext(scope.peers, room, verbs).text };
   }
 
   /**
@@ -998,7 +1049,8 @@ export class AgentSupervisor {
      * for a run whose human had already typed a slug — which is the one case
      * where the agent did not need to be told anything.
      */
-    const directory = this.delegationDirectory(request, resolved);
+    const peerScope = this.peerScope(request);
+    const directory = this.peerDirectory(request, resolved, peerScope);
     if (directory.text) steering.push(directory.text);
 
     const promptAppend = [request.systemPromptAppend, ...steering].filter(Boolean).join('\n\n');
@@ -1152,12 +1204,25 @@ export class AgentSupervisor {
     }
     if (settings.checkpointing) options.enableFileCheckpointing = true;
 
-    // The delegation tool. `delegationDirectory` owns every reason it might be
-    // withheld, and the steering above was written from the same answer, so
-    // the tool and the block that explains it cannot come apart.
-    const delegationServer: NonNullable<Options['mcpServers']> = directory.mounted
-      ? { [DELEGATION_SERVER_NAME]: this.buildDelegationServer(request) }
-      : {};
+    // The tools that reach other workspaces. `peerDirectory` owns every reason
+    // either might be withheld, and the steering above was written from the
+    // same answer, so a tool and the block that explains it cannot come apart.
+    // The peer list is handed to the server rather than re-derived, so the
+    // scope a call may read is exactly the one the agent was shown.
+    const delegationServer: NonNullable<Options['mcpServers']> =
+      this.deps.delegation && (directory.verbs.search || directory.verbs.delegate)
+        ? {
+            [PEER_SERVER_NAME]: buildPeerServer(
+              {
+                delegate: this.deps.delegation.run,
+                memory: this.deps.delegation.memory,
+                knowledge: this.deps.delegation.knowledge,
+              },
+              { runId: request.runId, peers: peerScope.peers },
+              directory.verbs,
+            ),
+          }
+        : {};
     // The board tools, scoped to this run's workspace and signing as this run.
     // No depth rule here, unlike delegation: a delegated run updating the
     // cards it works is exactly what the board is for.
@@ -1941,73 +2006,10 @@ export class AgentSupervisor {
     }
   }
 
-  /**
-   * The in-process MCP server carrying the delegation tool.
-   *
-   * The tool call itself still flows through `canUseTool` like any other, so
-   * the permission prompt shows exactly which workspace is being asked and
-   * what — a delegation is a full run of someone else's agent, and the
-   * human gets to say no to each one.
-   */
-  private buildDelegationServer(request: RunRequest): ReturnType<typeof createSdkMcpServer> {
-    return createSdkMcpServer({
-      name: DELEGATION_SERVER_NAME,
-      version: '1.0.0',
-      tools: [
-        sdkTool(
-          'delegate',
-          'Ask another workspace of this Metaclaude instance to work on something and return its answer. ' +
-            'The target runs with its own memory, skills, conventions and permission mode — use this to ' +
-            'consult a project through its own agent rather than reading its files cold. Costs a full run ' +
-            'there, and the answer can take minutes. The target cannot delegate further.',
-          {
-            workspace: z
-              .string()
-              .describe(
-                "The target workspace's slug, exactly as written in the directory of other " +
-                  'workspaces in your instructions.',
-              ),
-            prompt: z
-              .string()
-              .describe('What to ask. Self-contained — the target does not see this conversation.'),
-          },
-          async (args) => {
-            try {
-              const result = await this.deps.delegation!.run({
-                fromRunId: request.runId,
-                target: args.workspace,
-                prompt: args.prompt,
-              });
-              if (result.status !== 'succeeded') {
-                return {
-                  content: [
-                    {
-                      type: 'text',
-                      text: `The delegated run ${result.status}${result.error ? `: ${result.error}` : '.'}`,
-                    },
-                  ],
-                  isError: true,
-                };
-              }
-              return {
-                content: [
-                  {
-                    type: 'text',
-                    text: result.finalText || 'The delegated run finished without a final message.',
-                  },
-                ],
-              };
-            } catch (error) {
-              return {
-                content: [{ type: 'text', text: (error as Error).message }],
-                isError: true,
-              };
-            }
-          },
-        ),
-      ],
-    });
-  }
+  /* `buildPeerServer` in peer-tools.ts carries these tools now: one module per
+   * in-process server, with a catalogue the pre-approval and the forwarding
+   * test both derive from — the shape the board, memory, advisor and session
+   * tools already had, and the one this server predated. */
 
   /**
    * The subscription's quota picture, from the CLI's own usage endpoint.

@@ -173,17 +173,29 @@ export function selectKnowledgeContext(
 /**
  * Upper bound on the injected directory block, in characters.
  *
- * Measured rather than guessed, with descriptions of the length an operator
- * actually writes: up to twenty peers every one keeps its description and the
- * block costs about 550 tokens; past roughly twenty-seven the descriptions go
- * together and the names remain, at half that cost; past about eighty the
- * names themselves stop fitting and the block says how many it left out.
+ * Re-measured when the block gained its second verb, with descriptions of the
+ * length an operator actually writes: up to twenty-seven peers every one keeps
+ * its description and the block costs about 750 tokens at its fullest; past
+ * that the descriptions go together and the names remain, at a third of that;
+ * past about a hundred and ten the names themselves stop fitting and the block
+ * says how many it left out.
  *
  * It is the default only — `delegationDirectoryChars` overrides it at runtime,
- * and 0 there switches peer delegation off entirely rather than leaving a tool
- * mounted with nothing to say about it.
+ * and 0 there switches everything between workspaces off entirely rather than
+ * leaving a tool mounted with nothing to say about it.
  */
 export const DIRECTORY_CONTEXT_BUDGET = 3000;
+
+/**
+ * What sits between a slug and its description, and it has to be paid for.
+ *
+ * `sizeOf` counted the header and the name lines and not this, so every
+ * described entry overshot the budget by three characters — 63 over at
+ * twenty-seven peers, measured. Invisible because the one test that watched
+ * the budget used a case where descriptions are dropped, so the separator was
+ * never written: a test that cannot fail proving a bound that did not hold.
+ */
+const DIRECTORY_SEPARATOR = ' — ';
 
 /** The most of one description that is ever shown. */
 const DIRECTORY_ENTRY_MAX = 300;
@@ -198,9 +210,37 @@ const DIRECTORY_ENTRY_MAX = 300;
  */
 const DIRECTORY_ENTRY_MIN = 60;
 
-const DIRECTORY_HEADER = `## Other workspaces of this Metaclaude
+/**
+ * Which verbs this run actually holds over its peers.
+ *
+ * The header is composed from them rather than written once, because the two
+ * are not mounted together: `search_workspaces` rides with the mount wherever
+ * peers exist, while `delegate` waits for the workspace's own tick under
+ * `dontAsk`. A block promising a tool the run does not have is the defect this
+ * whole pair exists to prevent, and a block silent about one it *does* have is
+ * the same defect from the other side — measured, `delegate` went unused for
+ * releases while nothing named it.
+ */
+export interface PeerVerbs {
+  search: boolean;
+  delegate: boolean;
+}
 
-You can consult any of these with the \`delegate\` tool, quoting its slug exactly as written. Each runs its own agent, with its own memory, conventions and permission mode, so asking one about its own project beats reading its files cold. It costs a full run there and can take minutes, so ask when the work genuinely belongs to that project rather than out of curiosity. Take the answer back and continue yourself: the workspace you ask cannot delegate onwards.`;
+const DIRECTORY_TITLE = '## Other workspaces of this Metaclaude';
+
+/** The sentence for each verb, in the order they should be reached for. */
+const SEARCH_LINE =
+  'Search what they have already written down — their notes and their reference documents — with `search_workspaces`, quoting a slug exactly as written. It reads, nothing runs, and it answers at once: reach for it before concluding that this Metaclaude does not know something, and say which workspace an answer came from.';
+const DELEGATE_LINE =
+  'Ask one of them to *work* with `delegate`. It runs its own agent, with its own memory, conventions and permission mode, so it answers about its own project better than its files read cold — and it costs a full run there and can take minutes, so ask when the work genuinely belongs to that project rather than out of curiosity. Take the answer back and continue yourself: the workspace you ask cannot delegate onwards.';
+
+const directoryHeader = (verbs: PeerVerbs): string =>
+  [
+    DIRECTORY_TITLE,
+    '',
+    ...(verbs.search ? [SEARCH_LINE] : []),
+    ...(verbs.delegate ? [DELEGATE_LINE] : []),
+  ].join('\n');
 
 /** How the block names a count of workspaces it is not listing. */
 const workspaceCount = (count: number) =>
@@ -215,9 +255,9 @@ const workspaceCount = (count: number) =>
  * be worth using — which is also the only place an operator's missing
  * descriptions can surface to anyone.
  */
-const undescribedNote = (count: number) => `## Other workspaces of this Metaclaude
+const undescribedNote = (count: number, verbs: PeerVerbs) => `${directoryHeader(verbs)}
 
-This Metaclaude has ${workspaceCount(count)} you could consult with the \`delegate\` tool, but not one of them has described what it is for, so there is nothing here to choose between. Ask the operator for the exact slug if the work belongs to another project.`;
+This Metaclaude has ${workspaceCount(count)} you could reach, but not one of them has described what it is for, so there is nothing here to choose between. Ask the operator for the exact slug if the work belongs to another project.`;
 
 /**
  * The budget cannot hold even one entry.
@@ -227,9 +267,9 @@ This Metaclaude has ${workspaceCount(count)} you could consult with the \`delega
  * described what it is for" when the real cause is a budget the operator
  * squeezed sends them editing descriptions that were already there.
  */
-const noRoomNote = (count: number) => `## Other workspaces of this Metaclaude
+const noRoomNote = (count: number, verbs: PeerVerbs) => `${directoryHeader(verbs)}
 
-This Metaclaude has ${workspaceCount(count)} you could consult with the \`delegate\` tool, but this block has no room to list any of them. Ask the operator for the exact slug if the work belongs to another project.`;
+This Metaclaude has ${workspaceCount(count)} you could reach, but this block has no room to list any of them. Ask the operator for the exact slug if the work belongs to another project.`;
 
 /**
  * The least budget a directory can say anything true in.
@@ -238,9 +278,11 @@ This Metaclaude has ${workspaceCount(count)} you could consult with the \`delega
  * list is itself dropped for want of room — which lands back on a mounted
  * tool nobody is told about. `context.test.ts` derives the check from the
  * notes rather than trusting this number, so rewording one cannot quietly
- * outgrow it.
+ * outgrow it — and it did: the notes carry the header, the header gained a
+ * second verb, and 600 stopped fitting. Measured at 1006 for the longest of
+ * them (both verbs, nobody described), rounded up for the next sentence.
  */
-export const DIRECTORY_CONTEXT_MINIMUM = 600;
+export const DIRECTORY_CONTEXT_MINIMUM = 1100;
 
 /**
  * The workspaces this run may consult, in the order the directory shows them.
@@ -316,18 +358,26 @@ function clip(text: string, max: number): string {
  * an agent handed a truncated list believes it has seen everything.
  *
  * A peer with no description is reachable and unlisted: the directory says who
- * declared a role, while `delegate` still accepts any reachable slug a person
+ * declared a role, while the tools still accept any reachable slug a person
  * names. Listing a roleless entry would spend budget on a line nobody can
  * choose from.
+ *
+ * `verbs` decides the opening, because the two are not mounted together: the
+ * cheap search rides with the mount wherever peers exist, while `delegate`
+ * waits for the workspace's own tick under `dontAsk`. Describing a verb this
+ * run does not hold is the defect this block exists to prevent, and staying
+ * silent about one it does hold is the same defect turned round.
  */
 export function selectDirectoryContext(
   peers: readonly Workspace[],
   budget: number = DIRECTORY_CONTEXT_BUDGET,
+  verbs: PeerVerbs = { search: true, delegate: true },
 ): { text: string; described: Workspace[] } {
   if (peers.length === 0) return { text: '', described: [] };
 
+  const header = directoryHeader(verbs);
   const described = peers.filter((one) => one.description.trim().length > 0);
-  if (described.length === 0) return { text: undescribedNote(peers.length), described: [] };
+  if (described.length === 0) return { text: undescribedNote(peers.length, verbs), described: [] };
 
   const names = described.map((one) => `- **${one.slug}**${nameIfItAdds(one)}`);
   const omission = (count: number) =>
@@ -338,26 +388,28 @@ export function selectDirectoryContext(
   // line grows as the count does, so the two are mutually recursive and a
   // closed form would be a cleverness nobody could check.
   const sizeOf = (kept: number) =>
-    DIRECTORY_HEADER.length +
+    header.length +
     1 +
     names.slice(0, kept).reduce((total, line) => total + line.length + 1, 0) +
     (kept < names.length ? omission(names.length - kept).length + 1 : 0);
 
   let kept = names.length;
   while (kept > 0 && sizeOf(kept) > budget) kept -= 1;
-  if (kept === 0) return { text: noRoomNote(peers.length), described: [] };
+  if (kept === 0) return { text: noRoomNote(peers.length, verbs), described: [] };
 
-  const share = Math.floor((budget - sizeOf(kept)) / kept);
+  // The separator is reserved before the descriptions are sized, or each one
+  // costs three characters nobody counted. See `DIRECTORY_SEPARATOR`.
+  const share = Math.floor((budget - sizeOf(kept) - DIRECTORY_SEPARATOR.length * kept) / kept);
   const perEntry = share >= DIRECTORY_ENTRY_MIN ? Math.min(share, DIRECTORY_ENTRY_MAX) : 0;
 
   const lines = names.slice(0, kept).map((line, index) => {
     if (perEntry === 0) return line;
-    return `${line} — ${clip(described[index]!.description, perEntry)}`;
+    return `${line}${DIRECTORY_SEPARATOR}${clip(described[index]!.description, perEntry)}`;
   });
   if (kept < names.length) lines.push(omission(names.length - kept));
 
   return {
-    text: `${DIRECTORY_HEADER}\n\n${lines.join('\n')}`,
+    text: `${header}\n\n${lines.join('\n')}`,
     described: perEntry === 0 ? [] : described.slice(0, kept),
   };
 }

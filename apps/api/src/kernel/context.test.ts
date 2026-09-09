@@ -521,10 +521,27 @@ describe('selectDirectoryContext', () => {
     }
   });
 
-  it('stays inside its budget', () => {
-    const { text } = selectDirectoryContext(many(40, 'x'.repeat(2000)));
+  /**
+   * Both shapes, and the second is the one that was not held.
+   *
+   * At forty peers the descriptions are dropped, so the block is header plus
+   * names and the bound is trivially met — which is the only case this test
+   * covered. With few enough peers to keep their descriptions, each entry also
+   * pays for the ` — ` between the slug and the text, and `sizeOf` counted
+   * everything except that: measured at 3063 characters against a budget of
+   * 3000, twenty-seven peers by three characters each.
+   */
+  it('stays inside its budget, descriptions kept or dropped', () => {
+    for (const count of [3, 10, 20, 27, 40, 120]) {
+      const { text } = selectDirectoryContext(many(count, 'x'.repeat(2000)));
+      expect(text.length, `${count} peers`).toBeLessThanOrEqual(DIRECTORY_CONTEXT_BUDGET);
+    }
 
+    // A description long enough to be clipped, at the count where the clip is
+    // widest: the arithmetic is tightest where `perEntry` is largest.
+    const { text } = selectDirectoryContext(many(4, 'y'.repeat(5000)));
     expect(text.length).toBeLessThanOrEqual(DIRECTORY_CONTEXT_BUDGET);
+    expect(text).toContain(' — ');
   });
 
   /**

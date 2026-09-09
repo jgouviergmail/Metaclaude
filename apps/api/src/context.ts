@@ -722,6 +722,12 @@ export async function createAppContext(
         if (!kernelRef) throw new Error('The kernel is not ready yet.');
         return kernelRef.delegate(input);
       },
+      // The two stores, as they are: both already take a set of workspace ids
+      // and both already exclude the global tier for it, so the peer search
+      // reads exactly what a run in one of those workspaces would — no second
+      // retrieval path to keep in step with the first.
+      memory,
+      knowledge,
     },
     board,
     // The store itself: `MemoryStore` satisfies the facade as it stands, and
@@ -1141,6 +1147,7 @@ export async function createAppContext(
     runs: runRepo,
     transcript: transcriptRepo,
     memory,
+    knowledge,
     insights: {
       list: (options) => listInsights(db, options),
       setStatus: (id, status) => setInsightStatus(db, id, status),

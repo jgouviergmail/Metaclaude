@@ -31,6 +31,7 @@ export type SystemFacade = Pick<
   | 'run'
   | 'memories'
   | 'memorySearch'
+  | 'knowledgeSearch'
   | 'memoryRetire'
   | 'insights'
   | 'automations'
@@ -180,6 +181,18 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
       'built-in hashing embedder, or while a model loads, it matches words, so title memories with the words you will search for.',
     schema: { query: z.string().min(1), workspace: WORKSPACE.optional(), limit: LIMIT },
     handle: (facade, _scope, args) => facade.memorySearch(args.query, { workspace: args.workspace, limit: args.limit }),
+  }),
+  tool({
+    name: 'system_knowledge_search',
+    ring: 1,
+    description:
+      'Search the knowledge library — the operator’s own reference documents — with the same retrieval a ' +
+      'run gets. Each hit says which document, which section, and the page or lines when the document has ' +
+      'them, so a quotation can be attributed rather than merely repeated. Omit the workspace to search ' +
+      'every document; name one to search what that workspace reaches, its shelf plus the global one.',
+    schema: { query: z.string().min(1), workspace: WORKSPACE.optional(), limit: LIMIT },
+    handle: (facade, _scope, args) =>
+      facade.knowledgeSearch(args.query, { workspace: args.workspace, limit: args.limit }),
   }),
   tool({
     name: 'system_insights',

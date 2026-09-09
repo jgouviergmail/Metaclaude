@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { PEER_TOOL_CATALOGUE } from '../kernel/peer-tools.js';
 import { CSRF_COOKIE } from '@metaclaude/shared';
 import { loadConfig } from '../config.js';
 import type { AppContext } from '../context.js';
@@ -426,6 +427,30 @@ describe('the MCP tools a workspace can pre-approve', () => {
     expect(found).toBeTruthy();
     expect(found!.tools.map((tool) => tool.qualified)).toEqual(['mcp__metaclaude__delegate']);
     expect(found!.describedAt).toBeNull();
+  });
+
+  /**
+   * The picker offers the tools an operator *decides*, and only those.
+   *
+   * The peer server carries two verbs and they sit in different tiers: the
+   * cheap search is pre-approved with its own mount, so a tick for it would be
+   * a control that changes nothing, while `delegate` spends another
+   * workspace's quota and stays the operator's call. Derived from the
+   * catalogue on both sides so a tool moved between rings shows up here rather
+   * than silently gaining or losing a control.
+   */
+  it('offers exactly the peer tools that are an operator’s decision, with copy for each', async () => {
+    await post('/api/workspaces', { name: 'A peer', description: 'Does peer things.' });
+
+    const found = (await tools()).servers.find((one) => one.name === 'metaclaude');
+    const ringTwo = PEER_TOOL_CATALOGUE.filter((entry) => entry.ring === 2).map((entry) => entry.name);
+
+    expect(found!.tools.map((tool) => tool.bare)).toEqual(ringTwo);
+    // Written for a person rather than for the model: every offered tool has
+    // its own sentence about what ticking it permits.
+    for (const tool of found!.tools) {
+      expect(tool.description, tool.bare).toMatch(/Ticking it/);
+    }
   });
 
   it('names a tool exactly as the pre-approval list stores it', async () => {
