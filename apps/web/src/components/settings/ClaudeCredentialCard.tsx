@@ -14,7 +14,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type { ClaudeCredentialStatus, ClaudePairingStart } from '@metaclaude/shared';
+import type {
+  ClaudeCredentialStatus,
+  ClaudePairingKind,
+  ClaudePairingStart,
+} from '@metaclaude/shared';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { CopyableCode } from '@/components/ui/CopyableCode';
 import {
@@ -67,24 +71,44 @@ export function ClaudeCredentialCard() {
   };
 
   const begin = useMutation({
-    mutationFn: () => api.claudePairing.begin('claudeai'),
+    mutationFn: (kind: ClaudePairingKind) => api.claudePairing.begin('claudeai', kind),
     onSuccess: (next) => {
       setStart(next);
       setCode('');
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('Could not start pairing.')),
+    onError: (error, kind) =>
+      toast.error(
+        error instanceof ApiError
+          ? error.message
+          : kind === 'account'
+            ? t('Could not start signing in.')
+            : t('Could not start pairing.'),
+      ),
   });
 
   const complete = useMutation({
     mutationFn: (pasted: string) => api.claudePairing.complete(pasted),
     onSuccess: (next) => {
+      // Read before the wizard folds: which flow just finished decides what
+      // the owner is told, and a renewed sign-in is not a paired token.
+      const renewed = start?.kind === 'account';
       setStart(null);
       setCode('');
+      if (renewed) {
+        refresh();
+        toast.success(t('Your Claude account sign-in was renewed.'));
+        return;
+      }
       paired(next);
     },
     onError: (error) => {
-      toast.error(error instanceof ApiError ? error.message : t('Pairing failed.'));
+      toast.error(
+        error instanceof ApiError
+          ? error.message
+          : start?.kind === 'account'
+            ? t('Signing in failed.')
+            : t('Pairing failed.'),
+      );
       // 409 means the server no longer holds this attempt (a restart, or a
       // newer one elsewhere) — the code box would only ever fail, so fold
       // the wizard back to its start.
@@ -114,10 +138,17 @@ export function ClaudeCredentialCard() {
 
   const clear = useMutation({
     mutationFn: () => api.claudeCredential.clear(),
-    onSuccess: () => {
+    onSuccess: (next) => {
       refresh();
       setConfirmClear(false);
-      toast.success(t('Credential removed.'));
+      // What happened is decided by what took over, not by what was removed:
+      // dropping a token that was shadowing a sign-in is a switch, and calling
+      // it a removal would read as a loss.
+      toast.success(
+        next.source === 'cli-login'
+          ? t('Runs now use your Claude account sign-in.')
+          : t('Credential removed.'),
+      );
     },
   });
 
@@ -177,17 +208,45 @@ export function ClaudeCredentialCard() {
             )}
           </p>
         ) : status.data?.cliLogin ? (
-          <p className="rounded-lg border border-dashed border-line px-3 py-2.5 text-caption leading-relaxed text-muted">
-            {t(
-              'A CLI account sign-in also exists{scope}, but the {source} token overrides it. Remove the token to let the account sign-in take over.',
-              {
-                scope: status.data.cliLogin.full ? t(
-                  ' (full scope — claude.ai session sync)',
-                ) : '',
-                source: status.data.source === 'stored' ? t('paired') : t('environment'),
-              },
-            )}
-          </p>
+          <div className="space-y-2 rounded-lg border border-dashed border-line px-3 py-2.5">
+            {/* Two sentences rather than one with a hole in it: only a
+                stored token can be dropped from here, and telling someone to
+                "remove the token" when the token is an environment variable
+                sends them looking for a control that does not exist. */}
+            <p className="text-caption leading-relaxed text-muted">
+              {stored
+                ? t(
+                    'A Claude account sign-in also exists{scope}, and the paired token is standing in front of it.',
+                    {
+                      scope: status.data.cliLogin.full
+                        ? t(' (full scope — claude.ai session sync)')
+                        : '',
+                    },
+                  )
+                : t(
+                    'A Claude account sign-in also exists{scope}, but a token in the server environment overrides it. Remove it there to let the sign-in take over.',
+                    {
+                      scope: status.data.cliLogin.full
+                        ? t(' (full scope — claude.ai session sync)')
+                        : '',
+                    },
+                  )}
+            </p>
+            {/* Saying what to do and not offering it is a dead end on a phone,
+                where "remove the token" means finding the control below and
+                deciding whether the warning on it applies. It does not: there
+                is a sign-in to fall back to, which is the whole point. */}
+            {stored ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={clear.isPending}
+                onClick={() => clear.mutate()}
+              >
+                {t('Use the account sign-in')}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
 
         {/*
@@ -206,18 +265,54 @@ export function ClaudeCredentialCard() {
           source={status.data?.source ?? null}
         />
 
-        {/* ------------------------- Guided pairing ------------------------- */}
-        <div className="space-y-3">
-          <h3 className="text-body font-semibold text-ink">{t(
-            'Pair with your Claude account',
-          )}</h3>
+        {/* ------------------------- Guided flows --------------------------- */}
+        {/*
+          Two credentials, one wizard.
 
-          {start === null ? (
-            <>
+          The server holds a single attempt at a time, so the screen shows a
+          single wizard: two open panels would let a code minted for one flow
+          be pasted into the other, which installs the wrong credential in the
+          wrong place. While nothing is running, both doors are described; once
+          one is open, it is the only thing on screen.
+        */}
+        {start === null ? (
+          <div className="space-y-5">
+            {/* The fuller credential, and therefore the one offered first. The
+                loading state asks which kind is in flight: two buttons share
+                one mutation, so pressing either would otherwise spin both. */}
+            <div className="space-y-3">
+              <h3 className="text-body font-semibold text-ink">{t(
+                'Claude account sign-in',
+              )}</h3>
+              <p className="text-caption leading-relaxed text-muted">
+                {t(
+                  'The complete credential: it reports your plan’s quota windows, syncs sessions with claude.ai and carries MCP servers. It is fixed-term, and this is where it is renewed — no shell, no SSH.',
+                )}
+              </p>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={begin.isPending && begin.variables === 'account'}
+                // Which word this button carries depends on whether a sign-in
+                // exists, so it stays out of reach until that is known rather
+                // than changing under a thumb already on its way down.
+                disabled={status.isPending}
+                onClick={() => begin.mutate('account')}
+              >
+                {status.data?.cliLogin
+                  ? t('Renew the sign-in')
+                  : t('Sign in to a Claude account')}
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-body font-semibold text-ink">{t(
+                'Pair with your Claude account',
+              )}</h3>
               <p className="text-caption leading-relaxed text-muted">
                 <Trans
                   template={t(
-                    'Metaclaude runs the {command} flow for you: sign in at claude.ai, approve, paste back the code it shows. Works entirely from this device. Console (per-token) accounts paste their API key below instead.',
+                    'Metaclaude runs the {command} flow for you: sign in at claude.ai, approve, paste back the code it shows. A paired token runs work for a year and reports no quota — it asks for inference alone. Console (per-token) accounts paste their API key below instead.',
                   )}
                   values={{ command: <code className="font-mono">{t(
                     'claude setup-token',
@@ -225,15 +320,22 @@ export function ClaudeCredentialCard() {
                 />
               </p>
               <Button
-                variant="primary"
+                variant="secondary"
                 size="sm"
-                loading={begin.isPending}
-                onClick={() => begin.mutate()}
+                loading={begin.isPending && begin.variables === 'token'}
+                onClick={() => begin.mutate('token')}
               >
                 {t('Start pairing')}
               </Button>
-            </>
-          ) : (
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <h3 className="text-body font-semibold text-ink">
+              {start.kind === 'account'
+                ? t('Sign in to your Claude account')
+                : t('Pair with your Claude account')}
+            </h3>
             <div className="space-y-3 rounded-lg border border-line bg-sunken p-3">
               <div className="space-y-2">
                 <p className="text-body text-ink">
@@ -282,7 +384,7 @@ export function ClaudeCredentialCard() {
                   loading={complete.isPending}
                   onClick={() => complete.mutate(code)}
                 >
-                  {t('Finish pairing')}
+                  {start.kind === 'account' ? t('Finish signing in') : t('Finish pairing')}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => cancel.mutate()}>
                   {t('Cancel')}
@@ -292,8 +394,8 @@ export function ClaudeCredentialCard() {
                 )}</span>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* ------------------------- Manual fallback ------------------------ */}
         <div className="space-y-2">
@@ -365,9 +467,19 @@ export function ClaudeCredentialCard() {
         open={confirmClear}
         onOpenChange={setConfirmClear}
         title={t('Remove the stored credential?')}
-        description={t(
-          'Agent runs will fall back to whatever the server environment provides, and will fail if it provides nothing.',
-        )}
+        description={
+          /* What happens next depends on what is behind it. Telling an owner
+             with a valid account sign-in that runs 'will fail if it provides
+             nothing' is a warning about a situation they are not in, and it is
+             the situation the button is usually pressed to reach. */
+          status.data?.cliLogin
+            ? t(
+                'Agent runs will use your Claude account sign-in instead, which is the fuller credential.',
+              )
+            : t(
+                'Agent runs will fall back to whatever the server environment provides, and will fail if it provides nothing.',
+              )
+        }
         confirmLabel={t('Remove')}
         danger
         onConfirm={() => clear.mutate()}

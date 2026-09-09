@@ -1311,6 +1311,18 @@ export type ClaudeCliLoginInfo = z.infer<typeof ClaudeCliLoginInfo>;
 
 
 
+/**
+ * Which credential a guided flow is out to obtain.
+ *
+ * `token` is `claude setup-token`: inference scope, a year long, sealed in the
+ * vault. `account` is `claude auth login`: the full sign-in scopes, installed
+ * in the CLI's own store, and the only one Anthropic grants session sync to.
+ * They are not interchangeable and finishing one as the other would install
+ * the wrong credential in the wrong place — hence a kind rather than a flag.
+ */
+export const ClaudePairingKind = z.enum(['token', 'account']);
+export type ClaudePairingKind = z.infer<typeof ClaudePairingKind>;
+
 /** Type-only on purpose: only the API builds it. */
 export interface PushStatus {
   /** The VAPID public key browsers subscribe with. Public by design. */
@@ -1325,11 +1337,20 @@ export interface ClaudePairingStart {
   url: string;
   /** When this attempt stops being accepted (epoch ms). */
   expiresAt: number;
+  /** Which credential this attempt will produce. */
+  kind: ClaudePairingKind;
 }
 
 export interface ClaudePairingState {
   active: boolean;
   expiresAt: number | null;
+  /**
+   * The open attempt's kind, or null when none is open. The server is what
+   * knows: a reloaded page that assumed the wrong one would finish an account
+   * sign-in as a token, sealing a full-scope grant in the vault where it would
+   * shadow the sign-in it was meant to renew.
+   */
+  kind: ClaudePairingKind | null;
 }
 
 /* -------------------------------------------------------------------------- */

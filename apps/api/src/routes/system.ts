@@ -160,18 +160,22 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
   });
 
   /**
-   * Guided pairing — the `setup-token` OAuth exchange run by the server, so
-   * the whole flow fits on a phone. Owner-only like the credential itself.
-   * What goes back to the browser is a sign-in URL and, at the end, the same
-   * status the credential routes return; the token never does.
+   * The guided flows — the CLI's own OAuth exchanges, run by the server, so
+   * neither needs a shell. `kind` chooses which: a `setup-token` pairing,
+   * sealed in the vault, or an account sign-in, installed in the CLI's own
+   * store. Owner-only like the credential itself. What goes back to the
+   * browser is a sign-in URL and, at the end, the same status the credential
+   * routes return; no token ever does.
    */
   app.post('/api/claude/pairing', async (request, reply) => {
     const user = requireOwner(request);
     const input = ClaudePairingBeginInput.parse(request.body ?? {});
-    const start = context.claudePairing.begin(input.account);
+    const start = context.claudePairing.begin(input.account, input.kind);
     context.audit.record({
       actor: user.username,
-      action: 'claude.pairing.start',
+      // Two different credentials in two different places: the trail says
+      // which one was being obtained, not merely that a flow was started.
+      action: input.kind === 'account' ? 'claude.signin.start' : 'claude.pairing.start',
       target: input.account,
       outcome: 'success',
       ipAddress: request.ip,
@@ -182,15 +186,29 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
   app.post('/api/claude/pairing/code', async (request, reply) => {
     const user = requireOwner(request);
     const input = ClaudePairingCodeInput.parse(request.body);
+    // Read before the exchange clears it: the attempt is gone by the time the
+    // status comes back, and the trail has to name what was installed.
+    const kind = context.claudePairing.status().kind;
     const status = await context.claudePairing.complete(input.code);
     context.audit.record({
       actor: user.username,
-      action: 'claude.credential.set',
+      action: kind === 'account' ? 'claude.signin.renew' : 'claude.credential.set',
       target: status.mode,
       outcome: 'success',
       ipAddress: request.ip,
-      // The value never reaches the audit log; the hint identifies it.
-      detail: status.hint ?? '',
+      /*
+       * Never the value; something true about what was installed.
+       *
+       * The hint identifies a stored token, and a renewed sign-in has no hint
+       * because nothing is injected for it — so reading the hint there would
+       * put the *paired token's* last four characters on a line about the
+       * sign-in, which is a different credential entirely. The plan is what
+       * the renewal actually established.
+       */
+      detail:
+        kind === 'account'
+          ? (status.cliLogin?.subscriptionType ?? 'account')
+          : (status.hint ?? ''),
     });
     return reply.send(status);
   });

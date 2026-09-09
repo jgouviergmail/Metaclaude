@@ -69,7 +69,7 @@ import { Vault } from './security/vault.js';
 import { BoardAutopilot, planUtilization } from './services/board-autopilot.js';
 import { startTaskRun } from './services/board-run.js';
 import { buildPushEventHandlers, PushService } from './services/push.js';
-import { readCliLogin } from './services/claude-cli-login.js';
+import { readCliLogin, writeCliLogin } from './services/claude-cli-login.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { ClaudePairing } from './services/claude-pairing.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
@@ -184,6 +184,29 @@ export interface AppContext {
 }
 
 /**
+ * Where the CLI keeps its own credentials, resolved once for everyone.
+ *
+ * Three things have to agree on this path: the reader that reports the
+ * sign-in, the writer that renews it, and the CLI child that authenticates
+ * runs with it. They did not. The reader honoured `CLAUDE_CONFIG_DIR` and the
+ * child was never told about it, so on any machine that sets the variable the
+ * interface described one file while runs used another. Cosmetic while the
+ * file was only read; the day a renewal writes, it becomes a sign-in installed
+ * where nothing looks for it, under a message saying it worked.
+ *
+ * The fix is to *forward* the variable rather than to compute a value and
+ * impose it. Imposing one was tried and measured: with nothing set, the child
+ * resolves its own config directory and already agrees, and handing it an
+ * explicit path changed which settings a run inherited on a developer machine
+ * — the gateway check went red on the very first run. A no-op that is not a
+ * no-op is worse than the gap it closes. No deployment sets this variable, so
+ * in the container all three read `/home/metaclaude/.claude` either way.
+ */
+export function claudeConfigDir(): string {
+  return process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
+}
+
+/**
  * Environment handed to every Claude CLI subprocess.
  *
  * Deliberately built from an allow-list rather than spreading `process.env`:
@@ -202,7 +225,11 @@ export function buildClaudeEnv(config: Config): Record<string, string> {
     CI: '1',
   };
 
-  for (const key of ['TZ', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY']) {
+  // Forwarded, never invented — see `claudeConfigDir`. Where it is set, the
+  // reader, the writer and the child must all mean the same file; where it is
+  // not, the child resolves the same directory the reader does and being told
+  // would change nothing except on a machine whose HOME disagrees with itself.
+  for (const key of ['CLAUDE_CONFIG_DIR', 'TZ', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY']) {
     const value = process.env[key];
     if (value) env[key] = value;
   }
@@ -472,17 +499,19 @@ export async function createAppContext(
     vault,
     env: claudeEnv,
     fromEnvironment: { oauthToken: config.claude.oauthToken, apiKey: config.claude.apiKey },
-    // The CLI's own store, where `claude auth login` run in the container
-    // leaves a sign-in the metaclaude-home volume persists. Same resolution
-    // the CLI applies: an explicit config dir first, else ~/.claude.
-    cliLogin: () => readCliLogin(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')),
+    // The CLI's own store, where `claude auth login` — run in the container or
+    // renewed from the interface — leaves a sign-in the metaclaude-home volume
+    // persists. One resolution, shared with the writer and the CLI child.
+    cliLogin: () => readCliLogin(claudeConfigDir()),
     log: (level, message) => log[level](message),
   });
 
-  // The guided pairing flow ends in `claudeCredentials.save`, so a token it
-  // obtains takes effect on the very next run like a pasted one would.
+  // Both guided flows. A paired token ends in `claudeCredentials.save`, so it
+  // takes effect on the very next run like a pasted one would; a renewed
+  // sign-in ends in the CLI's own store, which the child reads for itself.
   const claudePairing = new ClaudePairing({
     credentials: claudeCredentials,
+    installSignIn: (tokens) => writeCliLogin(claudeConfigDir(), tokens),
     log: (level, message) => log[level](message),
   });
 

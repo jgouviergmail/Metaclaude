@@ -20,6 +20,7 @@ import {
   ClaudeCommandInfo,
   ClaudeMcpServerStatus,
   ClaudeModelInfo,
+  ClaudePairingKind,
   EffortLevel,
   MarketplacePlugin,
   GoogleGrant,
@@ -297,6 +298,11 @@ export type ClaudeCredentialStatus = z.infer<typeof ClaudeCredentialStatus>;
  */
 export const ClaudePairingBeginInput = z.object({
   account: z.enum(['claudeai', 'console']).default('claudeai'),
+  /**
+   * `token` pairs a setup token; `account` renews the CLI's own sign-in.
+   * Defaulted so the pairing this shipped with keeps working unchanged.
+   */
+  kind: ClaudePairingKind.default('token'),
 });
 export type ClaudePairingBeginInput = z.infer<typeof ClaudePairingBeginInput>;
 

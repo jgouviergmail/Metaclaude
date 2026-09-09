@@ -451,6 +451,61 @@ results.section("claude's catalogue");
   }
 }
 
+results.section('the two guided credential flows are told apart');
+{
+  /*
+   * Two credentials, two homes: a setup token asks for inference and is sealed
+   * in the vault; an account sign-in asks for the scopes an interactive
+   * `claude auth login` asks for and is installed in the CLI's own store.
+   * Only the second reports plan quota, and only the second can be renewed at
+   * all — which is why finishing one flow as the other would be a silent
+   * downgrade rather than an error.
+   *
+   * What this reaches that no unit test does is the edge: the route, the
+   * schema that decides what may be submitted, and the link the browser is
+   * actually handed. Nothing here leaves the machine — beginning an attempt
+   * builds a URL, it does not call Anthropic.
+   */
+  const scopeOf = (link) => new URL(link).searchParams.get('scope');
+
+  const token = await api.call('/api/claude/pairing', { method: 'POST', body: {} });
+  results.check('a pairing attempt starts', token.status === 200, token.text.slice(0, 200));
+  results.check('and it defaults to a setup token', token.body.kind === 'token');
+  results.check(
+    'which asks for inference alone',
+    scopeOf(token.body.url) === 'user:inference',
+    scopeOf(token.body.url),
+  );
+
+  const account = await api.call('/api/claude/pairing', {
+    method: 'POST',
+    body: { kind: 'account' },
+  });
+  results.check('an account sign-in starts', account.status === 200, account.text.slice(0, 200));
+  results.check('and says so', account.body.kind === 'account');
+  results.check(
+    'asking for the session scope a token can never carry',
+    (scopeOf(account.body.url) ?? '').split(' ').includes('user:sessions:claude_code'),
+    scopeOf(account.body.url),
+  );
+  results.check(
+    'the link is the manual one this server can actually complete',
+    new URL(account.body.url).searchParams.get('redirect_uri') ===
+      'https://platform.claude.com/oauth/code/callback',
+  );
+
+  // One attempt at a time, and cancelling has to clear the kind with it: a
+  // stale kind is how a code gets finished as the wrong credential.
+  const cancelled = await api.call('/api/claude/pairing', { method: 'DELETE' });
+  results.check('cancelling clears it', cancelled.body.active === false && cancelled.body.kind === null);
+
+  const refused = await api.call('/api/claude/pairing', {
+    method: 'POST',
+    body: { kind: 'signin' },
+  });
+  results.check('an unknown kind is refused at the edge', refused.status === 400, String(refused.status));
+}
+
 results.section('automations');
 {
   const created = await api.call('/api/automations', {

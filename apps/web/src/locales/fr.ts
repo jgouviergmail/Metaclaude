@@ -963,12 +963,31 @@ export const fr: Record<string, string> = {
   /* Identifiants Claude */
   'Claude credentials': 'Identifiants Claude',
   'Pair with your Claude account': 'Appairer votre compte Claude',
-  'Metaclaude runs the {command} flow for you: sign in at claude.ai, approve, paste back the code it shows. Works entirely from this device. Console (per-token) accounts paste their API key below instead.':
-    'Metaclaude déroule {command} pour vous : connectez-vous sur claude.ai, approuvez, recollez le code affiché. Tout se fait depuis cet appareil. Les comptes Console (facturés au jeton) collent plutôt leur clé d’API ci-dessous.',
+  'Metaclaude runs the {command} flow for you: sign in at claude.ai, approve, paste back the code it shows. A paired token runs work for a year and reports no quota — it asks for inference alone. Console (per-token) accounts paste their API key below instead.':
+    'Metaclaude déroule {command} pour vous : connectez-vous sur claude.ai, approuvez, recollez le code affiché. Un jeton appairé fait tourner les runs pendant un an et ne remonte aucun quota — il ne demande que l’inférence. Les comptes Console (facturés au jeton) collent plutôt leur clé d’API ci-dessous.',
   'Start pairing': 'Démarrer l’appairage',
   'Paste the code here': 'Collez le code ici',
   'Finish pairing': 'Terminer l’appairage',
+  'Claude account sign-in': 'Connexion au compte Claude',
+  'The complete credential: it reports your plan’s quota windows, syncs sessions with claude.ai and carries MCP servers. It is fixed-term, and this is where it is renewed — no shell, no SSH.':
+    'L’identifiant complet : il remonte les fenêtres de quota du forfait, synchronise les sessions avec claude.ai et porte les serveurs MCP. Sa durée est fixe, et c’est ici qu’elle se renouvelle — sans terminal ni SSH.',
+  'Renew the sign-in': 'Renouveler la connexion',
+  'Sign in to a Claude account': 'Connecter un compte Claude',
+  'Sign in to your Claude account': 'Connectez votre compte Claude',
+  'Finish signing in': 'Terminer la connexion',
+  'Could not start signing in.': 'Impossible de démarrer la connexion.',
+  'Signing in failed.': 'La connexion a échoué.',
+  'Use the account sign-in': 'Utiliser la connexion au compte',
+  'Your Claude account sign-in was renewed.': 'Votre connexion au compte Claude a été renouvelée.',
+  'A Claude account sign-in also exists{scope}, and the paired token is standing in front of it.':
+    'Une connexion au compte Claude existe aussi{scope}, et le jeton appairé passe devant elle.',
+  'A Claude account sign-in also exists{scope}, but a token in the server environment overrides it. Remove it there to let the sign-in take over.':
+    'Une connexion au compte Claude existe aussi{scope}, mais un jeton présent dans l’environnement du serveur passe devant. Retirez-le là-bas pour laisser la connexion prendre le relais.',
+  'Runs now use your Claude account sign-in.':
+    'Les runs utilisent désormais votre connexion au compte Claude.',
   'Remove the stored credential?': 'Supprimer l’identifiant enregistré ?',
+  'Agent runs will use your Claude account sign-in instead, which is the fuller credential.':
+    'Les runs d’agent utiliseront votre connexion au compte Claude à la place, qui est l’identifiant le plus complet.',
   'QR code — scan it with your authenticator app':
     'QR code — scannez-le avec votre application d’authentification',
 
@@ -1635,8 +1654,6 @@ export const fr: Record<string, string> = {
     'La CLI est connectée avec un compte Claude{plan}{scope} — les runs utilisent cette connexion. Appairer un jeton ci-dessous la remplacerait.',
   ', full scope': ', portée complète',
   ', inference only': ', inférence seule',
-  'A CLI account sign-in also exists{scope}, but the {source} token overrides it. Remove the token to let the account sign-in take over.':
-    'Une connexion par compte CLI existe aussi{scope}, mais le jeton {source} la remplace. Retirez le jeton pour laisser la connexion par compte reprendre la main.',
   ' (full scope — claude.ai session sync)': ' (portée complète — synchronisation de session claude.ai)',
   'paired': 'appairé',
   'environment': "d’environnement",

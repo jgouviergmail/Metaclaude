@@ -655,6 +655,33 @@ bringing the stack up with the new key, having noted the values beforehand.
 survive. This is a different thing from rotating `CLAUDE_CODE_OAUTH_TOKEN`,
 which has no ciphertext behind it and is an ordinary `.env` edit.
 
+### The one secret that is not in the vault
+
+The Claude **account sign-in** lives in the CLI's own `.credentials.json`, in
+the container's home volume, at mode 0600 — not in the sealed vault. That is
+not an oversight: the CLI reads that file to authenticate, refreshes the token
+in place, and marks a logout by blanking it. A copy sealed elsewhere would be
+a second source of truth that goes stale the first time the CLI refreshes.
+
+Renewing the sign-in from the interface writes that file, and what it writes is
+never invented: it is exactly what Anthropic's token endpoint returned for an
+authorization the owner approved in their own browser, through the same OAuth
+client, the same manual redirect and the same scopes `claude auth login` asks
+for — all four read out of the CLI binary the image ships. Three properties
+bound the write: a grant narrower than a sign-in (no `user:sessions:claude_code`)
+is refused rather than installed, since it would end the sign-in it was meant
+to renew; every key in the file this code does not recognise is left where it
+was; and the write is a rename over a unique temporary, read back afterwards to
+confirm the CLI did not rewrite the file in the same instant. Losing that race
+is reported, never reported as success.
+
+Two consequences worth stating. The sign-in is **not** in the nightly backup,
+which covers the data volume — losing the home volume costs a sign-in and not a
+paired token. And a Metaclaude owner can obtain an account-scoped credential for
+whichever Claude account they approve in their browser; that is the same power
+`claude auth login` in the container has always given them, and owner is already
+the role that can read and set the deployment's credential.
+
 ---
 
 ## Audit

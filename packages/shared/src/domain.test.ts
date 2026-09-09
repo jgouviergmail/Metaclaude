@@ -261,6 +261,16 @@ describe('the pairing contracts', () => {
     expect(ClaudePairingCodeInput.safeParse({ code: 'a'.repeat(4097) }).success).toBe(false);
     expect(ClaudePairingCodeInput.parse({ code: 'abc#def' }).code).toBe('abc#def');
   });
+
+  it('accepts the two kinds, and defaults to the one that shipped first', () => {
+    // The kind decides which credential is obtained and where it is put, so an
+    // edge schema that dropped it would silently seal an account grant in the
+    // vault — a full-scope token shadowing the sign-in it was meant to renew,
+    // with every service test still green.
+    expect(ClaudePairingBeginInput.parse({}).kind).toBe('token');
+    expect(ClaudePairingBeginInput.parse({ kind: 'account' }).kind).toBe('account');
+    expect(ClaudePairingBeginInput.safeParse({ kind: 'signin' }).success).toBe(false);
+  });
 });
 
 describe('the passkey contracts', () => {

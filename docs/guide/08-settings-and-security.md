@@ -22,41 +22,62 @@ machine.
   password form.
 - **Sessions.** Every signed-in device is listed and individually revocable.
 
-## Claude pairing
+## Claude credentials
 
-The agent runs on your Claude subscription, and pairing it happens entirely
-from this screen — no shell anywhere. Press **Start pairing**: Metaclaude
-runs the same OAuth flow `claude setup-token` would, and hands you the
-sign-in link. Open it (on this device, or copy it to any other), approve
-with your Pro or Max account, and paste back the code Claude displays. The
-server exchanges that code for a year-long token, seals it in the encrypted
-vault, and the very next run uses it — no restart. The token itself never
-passes through your browser.
+The agent runs on your Claude subscription, and both ways of attaching one
+happen entirely from this screen — no shell anywhere. They are two different
+credentials, and the screen offers the fuller one first.
+
+### The account sign-in
+
+Press **Renew the sign-in** (or **Sign in to a Claude account** the first
+time). Metaclaude runs the same OAuth flow `claude auth login` runs, asking
+for the same permissions, and hands you the sign-in link. Open it — on this
+device or any other — approve with your Pro or Max account, and paste back
+the code Claude displays. What comes back is installed in the CLI's own
+credentials store, exactly where an interactive sign-in would have put it, and
+the CLI refreshes it from there on its own.
+
+This is the complete credential, and three things depend on it: the plan quota
+windows the Analytics screen reads, claude.ai session sync, and MCP servers
+attached to your account. It is also the one that lapses — on a fixed date a
+few weeks out, which is why renewing it needed to be possible without SSH.
+
+The renewal is refused, rather than half-applied, if Claude comes back with
+narrower permissions than a sign-in needs: installing those would end the
+sign-in it was meant to renew.
+
+### Pairing a token
+
+Press **Start pairing**: Metaclaude runs the same OAuth flow
+`claude setup-token` would. Same link, same paste-back. The server exchanges
+that code for a year-long token, seals it in the encrypted vault, and the very
+next run uses it — no restart. The token itself never passes through your
+browser.
+
+A paired token asks for inference and nothing else. It runs work perfectly and
+reports no quota at all, which is why the Analytics screen says so plainly
+rather than blaming your billing. It lives a year and sits in the sealed
+vault, so it rides along in the nightly backup: losing the home volume costs
+you a sign-in but not a paired token.
+
+### Both at once
+
+A token Metaclaude injects **overrides** the account sign-in — the CLI says
+so itself. When both exist the card says which one is in force and offers
+**Use the account sign-in**, which forgets the token in one tap. That is
+usually the upgrade, not a loss.
 
 The link stays valid for ten minutes and one attempt exists at a time;
-starting again simply replaces it. If Claude rejects the code, paste it
-again or start afresh — a code belongs to the link that produced it.
+starting either flow replaces whatever was open. If Claude rejects the code,
+paste it again or start afresh — a code belongs to the link that produced it.
 
 Pasting a ready-made credential still works below the wizard: a
 `sk-ant-oat…` token from `claude setup-token` on any signed-in machine, or
 a `sk-ant-api…` key for per-token Console billing — Metaclaude tells them
 apart on its own. The **System** card shows what is actually live: CLI
-version, authentication mode, and where the credential came from.
-
-A third source exists: the CLI's own account sign-in (`claude auth login`,
-run once in the container), which is what claude.ai session sync requires —
-see the sessions chapter. The card reports it, says when runs are using it,
-and warns when a paired token is overriding it, because removing a token is
-sometimes the upgrade.
-
-**It also says when that sign-in ends**, and the difference between the two
-sources is worth knowing before you choose one. An account sign-in is held in
-the container's home volume and lapses on a fixed date a few weeks out —
-measured on a real deployment, the date did not move across a day of use, so
-activity does not extend it. A paired token lives a year, sits in the sealed
-vault, and therefore rides along in the nightly backup: losing the home volume
-costs you a sign-in but not a paired token. Session sync is the one thing only
-the account sign-in can do.
+version, authentication mode, and where the credential came from; the card
+here shows when whichever is in force runs out.
 
 ## Notifications
 

@@ -163,13 +163,18 @@ inference only, server-side, on purpose. A paired token is therefore enough
 for everything Metaclaude does by itself, and never enough for claude.ai
 sync. The CLI states it in as many words when asked.
 
-The supported way to a full sign-in is the CLI's own login, run once inside
-the container:
+A full sign-in is obtained from **Settings → Server**, on the Claude
+credentials card, with
+**Sign in to a Claude account**: Metaclaude runs the same OAuth flow the CLI
+runs, asking for the same permissions, and installs the result where the CLI
+keeps its own. The equivalent by hand, if you have a shell, is:
 
     cd /opt/metaclaude && sudo docker compose exec app claude auth login
 
-That sign-in lands in the CLI's home volume, survives restarts and
-redeployments, and the CLI refreshes it by itself. One more fact matters:
+Either way the sign-in lands in the CLI's home volume, survives restarts and
+redeployments, and the CLI refreshes it by itself. It is fixed-term, so it
+eventually has to be renewed — which is the same button, and the reason it
+exists. One more fact matters:
 an injected token **overrides** it. Metaclaude therefore treats the sign-in
 as its last-resort credential — with no token paired here and none in
 `.env`, runs use the account sign-in, and the credentials card in Settings

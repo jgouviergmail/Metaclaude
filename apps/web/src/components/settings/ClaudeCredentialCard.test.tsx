@@ -45,13 +45,17 @@ beforeEach(() => {
     error: null,
     checkedAt: 0,
   });
-  apiMock.claudePairing.begin.mockResolvedValue({ url: AUTHORIZE_URL, expiresAt: 9_999 });
+  apiMock.claudePairing.begin.mockResolvedValue({
+    url: AUTHORIZE_URL,
+    expiresAt: 9_999,
+    kind: 'token',
+  });
   apiMock.claudePairing.complete.mockResolvedValue({
     mode: 'subscription',
     source: 'stored',
     hint: '…DDDD',
   });
-  apiMock.claudePairing.cancel.mockResolvedValue({ active: false, expiresAt: null });
+  apiMock.claudePairing.cancel.mockResolvedValue({ active: false, expiresAt: null, kind: null });
 });
 
 async function startPairing() {
@@ -65,7 +69,7 @@ describe('the guided pairing wizard', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     await startPairing();
 
-    expect(apiMock.claudePairing.begin).toHaveBeenCalledWith('claudeai');
+    expect(apiMock.claudePairing.begin).toHaveBeenCalledWith('claudeai', 'token');
     fireEvent.click(screen.getByRole('button', { name: /open claude\.ai/i }));
     expect(open).toHaveBeenCalledWith(AUTHORIZE_URL, '_blank', 'noopener,noreferrer');
     // The copyable rendering is what makes the cross-device story real.
@@ -150,8 +154,8 @@ describe('the CLI account sign-in', () => {
     expect(screen.getByText(/full scope/i)).toBeTruthy();
   });
 
-  it('says when a paired token is shadowing the sign-in, and what removes it', async () => {
-    // Removing a token is sometimes the upgrade — without this note it reads
+  it('says when a paired token is shadowing the sign-in, and offers the way out', async () => {
+    // Dropping a token is sometimes the upgrade — without this note it reads
     // as a downgrade, and the full-scope sign-in stays shadowed forever.
     apiMock.claudeCredential.get.mockResolvedValue({
       mode: 'subscription',
@@ -161,8 +165,24 @@ describe('the CLI account sign-in', () => {
     });
     renderWithProviders(<ClaudeCredentialCard />);
 
-    expect(await screen.findByText(/overrides it/i)).toBeTruthy();
-    expect(screen.getByText(/remove the token/i)).toBeTruthy();
+    expect(await screen.findByText(/standing in front of it/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /use the account sign-in/i })).toBeTruthy();
+  });
+
+  it('sends the owner to the server environment when that is where the token is', async () => {
+    // The button can only drop a *stored* credential. Telling someone to press
+    // it when the token is an environment variable sends them to a control
+    // that cannot help, so that case gets its own sentence and no button.
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'environment',
+      hint: '…AAAA',
+      cliLogin: LOGIN,
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    expect(await screen.findByText(/server environment/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /use the account sign-in/i })).toBeNull();
   });
 
   it('stays silent when the CLI store holds no sign-in', async () => {
@@ -336,5 +356,109 @@ describe('the CLI version', () => {
 
     await screen.findByText(/claude credentials/i);
     expect(screen.queryByText(/claude cli/i)).toBeNull();
+  });
+});
+
+/**
+ * Renewing the account sign-in from the interface.
+ *
+ * The account sign-in and a paired token are two credentials with two homes,
+ * and the whole risk of putting both on one screen is that a wizard started
+ * for one finishes as the other. Every case below is about the flows staying
+ * told apart — in what is asked for, in what the owner is told, and in what
+ * happens when the token they already have is standing in front of the
+ * sign-in they just renewed.
+ */
+const SIGN_IN = {
+  full: true,
+  scopes: ['user:profile', 'user:inference', 'user:sessions:claude_code', 'user:mcp_servers'],
+  subscriptionType: 'max',
+  expiresAt: Date.now() + 3_600_000,
+  signInEndsAt: Date.now() + 20 * 86_400_000,
+};
+
+describe('renewing the account sign-in', () => {
+  it('asks for an account sign-in, not a token', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'cli-login',
+      hint: null,
+      cliLogin: SIGN_IN,
+      expiresAt: SIGN_IN.signInEndsAt,
+    });
+    apiMock.claudePairing.begin.mockResolvedValue({
+      url: AUTHORIZE_URL,
+      expiresAt: 9_999,
+      kind: 'account',
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /renew the sign-in/i }));
+    await screen.findByText(AUTHORIZE_URL);
+
+    expect(apiMock.claudePairing.begin).toHaveBeenCalledWith('claudeai', 'account');
+    // The two wizards say what they will produce: a code pasted into the wrong
+    // one installs the wrong credential in the wrong place.
+    expect(screen.getByRole('button', { name: /finish signing in/i })).toBeTruthy();
+  });
+
+  it('offers to sign in when no account sign-in exists at all', async () => {
+    renderWithProviders(<ClaudeCredentialCard />);
+    expect(await screen.findByRole('button', { name: /sign in to a claude account/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /renew the sign-in/i })).toBeNull();
+  });
+
+  it('offers to drop the token standing in front of the sign-in', async () => {
+    // The renewal cannot take effect while a stored token shadows it, and
+    // saying so without offering the one-tap fix is a dead end on a phone.
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'stored',
+      hint: '…DDDD',
+      cliLogin: SIGN_IN,
+      expiresAt: null,
+    });
+    apiMock.claudeCredential.clear.mockResolvedValue({
+      mode: 'subscription',
+      source: 'cli-login',
+      hint: null,
+      cliLogin: SIGN_IN,
+      expiresAt: SIGN_IN.signInEndsAt,
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /use the account sign-in/i }));
+    await waitFor(() => expect(apiMock.claudeCredential.clear).toHaveBeenCalled());
+  });
+
+  it('does not offer that when there is no sign-in to fall back to', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'stored',
+      hint: '…DDDD',
+      cliLogin: null,
+      expiresAt: null,
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    await screen.findByText(/claude credentials/i);
+    expect(screen.queryByRole('button', { name: /use the account sign-in/i })).toBeNull();
+  });
+
+  it('still pairs a token from the same screen', async () => {
+    // The fallback stays a first-class path: a token minted elsewhere is a
+    // valid way in, and the account flow must not have quietly replaced it.
+    apiMock.claudePairing.begin.mockResolvedValue({
+      url: AUTHORIZE_URL,
+      expiresAt: 9_999,
+      kind: 'token',
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /start pairing/i }));
+    await screen.findByText(AUTHORIZE_URL);
+
+    expect(apiMock.claudePairing.begin).toHaveBeenCalledWith('claudeai', 'token');
+    expect(screen.getByRole('button', { name: /finish pairing/i })).toBeTruthy();
   });
 });

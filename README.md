@@ -133,6 +133,13 @@ Open **https://localhost**. Caddy signs with its own certificate authority by
 default, so your browser will ask once. Sign in with the bootstrap credentials
 and turn on two-factor authentication under Settings → Security.
 
+The token in `.env` is a bootstrap, and the shell above is the only place one
+is needed. From **Settings → Server**, on the Claude credentials card, the whole thing
+is done from
+the browser: pairing a token, and signing in to — or renewing — the Claude
+account itself, which is the credential that reports plan quota and carries
+claude.ai session sync.
+
 To reach it from a server, and from your phone, see
 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The first decision it walks you
 through is how you obtain a certificate, because this app needs a *secure

@@ -11,6 +11,57 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.88.0] — 2026-09-09
+
+### Added
+
+- **The Claude account sign-in can be renewed from the application.** It was
+  the one credential that still needed a shell. An account sign-in is
+  fixed-term — measured on this deployment, thirty days, and the date does not
+  move with use — so every few weeks the only way to keep plan quota, claude.ai
+  session sync and account MCP servers was `docker compose exec app claude auth
+  login` over SSH, on a system whose whole point is being operated from a
+  phone. The owner's answer to that was to pair a setup token instead, which
+  runs work perfectly and silently gives up all three.
+
+  Settings → Claude credentials now offers both, fuller one first. **Sign in to
+  a Claude account** runs the same OAuth flow `claude auth login` runs — same
+  public client, same manual paste-back redirect, same six scopes, all read out
+  of the CLI binary the image ships rather than guessed — and installs the
+  result in the CLI's own credentials store, where the CLI refreshes it by
+  itself. The manual redirect is not a lesser path: the CLI builds both links
+  on every sign-in and offers whichever fits, and this server can never be the
+  localhost a browser reaches.
+
+  What is written is never invented. A grant that comes back without
+  `user:sessions:claude_code` is refused rather than installed — it is an
+  inference token, and writing it would *end* the sign-in it was meant to renew
+  — every key in the file this code does not recognise is left untouched, and
+  the write is read back afterwards to confirm the CLI did not rewrite the file
+  in the same instant. Losing that race says so; it does not report success.
+
+- **A one-tap way out of the shadowing.** A token Metaclaude injects overrides
+  the account sign-in, so renewing while a token is paired changes nothing an
+  owner can see. The card already said that and left them to work out that the
+  ominous **Remove** button below was, in this case, the upgrade. It now offers
+  **Use the account sign-in** beside the sentence, and the confirmation for
+  removing a credential stops warning about runs failing when there is a
+  sign-in waiting to take over.
+
+### Fixed
+
+- **`CLAUDE_CONFIG_DIR` reached the reader and not the CLI.** The status screen
+  honoured it; the CLI child was never told, so on a machine that sets it the
+  interface described one file while runs authenticated from another. Harmless
+  while the file was only read, and not harmless at all once a renewal writes
+  — a sign-in installed where nothing looks for it, under a message saying it
+  worked. It is now forwarded. Forwarded rather than computed: imposing a
+  value was written first and measured, and the end-to-end gateway check went
+  red on the first run because the child then inherited a different settings
+  directory. No deployment sets the variable, so in the container all three
+  read the same path either way.
+
+
 ## [0.87.1] — 2026-09-09
 
 ### Fixed

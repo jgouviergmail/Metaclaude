@@ -10,10 +10,17 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ClaudeCliLoginInfo } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { Vault } from '../security/vault.js';
+import { CliLoginWriteError, type CliLoginTokens } from './claude-cli-login.js';
 import { ClaudeCredentials } from './claude-credentials.js';
-import { ClaudePairing, PairingError, type PairingExchange } from './claude-pairing.js';
+import {
+  ClaudePairing,
+  PairingError,
+  type AccountProfile,
+  type PairingExchange,
+} from './claude-pairing.js';
 
 const TOKEN = 'sk-ant-oat01-freshly-minted-by-the-exchange-DDDD';
 
@@ -85,14 +92,14 @@ describe('beginning a pairing attempt', () => {
 
   it('reports the attempt while it lives, and its expiry', () => {
     const { pairing } = build({ now: () => 1_000_000 });
-    expect(pairing.status()).toEqual({ active: false, expiresAt: null });
+    expect(pairing.status()).toEqual({ active: false, expiresAt: null, kind: null });
 
     const start = pairing.begin('claudeai');
     expect(start.expiresAt).toBe(1_000_000 + 10 * 60_000);
-    expect(pairing.status()).toEqual({ active: true, expiresAt: start.expiresAt });
+    expect(pairing.status()).toEqual({ active: true, expiresAt: start.expiresAt, kind: 'token' });
 
     pairing.cancel();
-    expect(pairing.status()).toEqual({ active: false, expiresAt: null });
+    expect(pairing.status()).toEqual({ active: false, expiresAt: null, kind: null });
   });
 
   it('replaces the previous attempt: only the newest state is on the link', () => {
@@ -312,6 +319,213 @@ describe('the real token endpoint call', () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+/**
+ * Renewing the account sign-in — the same flow, a different destination.
+ *
+ * A paired token and an account sign-in are two credentials with two
+ * lifetimes, two scope sets and two homes: the vault for one, the CLI's own
+ * store for the other. Everything between the link and the pasted code is
+ * shared; what must not be shared is where the answer lands, because putting
+ * an account grant in the vault would shadow the very sign-in it renewed, and
+ * putting an inference token in the CLI's store would end it.
+ */
+const ACCOUNT_ANSWER: PairingExchange = {
+  status: 200,
+  statusText: 'OK',
+  get body() {
+    return ACCOUNT_GRANT;
+  },
+};
+
+const ACCOUNT_GRANT = {
+  access_token: 'sk-ant-oat01-account-grant',
+  refresh_token: 'sk-ant-ort01-account-grant',
+  expires_in: 28_800,
+  refresh_token_expires_in: 2_592_000,
+  scope: 'user:profile user:inference user:sessions:claude_code user:mcp_servers',
+};
+
+/** A pairing service whose account grants land in a recording store. */
+function buildAccount(
+  options: {
+    answer?: PairingExchange;
+    profile?: (token: string) => Promise<AccountProfile | null>;
+    install?: (tokens: CliLoginTokens) => ClaudeCliLoginInfo;
+  } = {},
+) {
+  const installed: CliLoginTokens[] = [];
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  // The store the install writes to, read back by the credential service the
+  // way the real one reads `.credentials.json` — so the status this flow
+  // returns is derived from what was installed, never asserted about it.
+  let signIn: ClaudeCliLoginInfo | null = null;
+  const pairing = new ClaudePairing({
+    credentials: new ClaudeCredentials({
+      vault,
+      env,
+      fromEnvironment: { oauthToken: null, apiKey: null },
+      cliLogin: () => signIn,
+    }),
+    post: async (url, body) => {
+      calls.push({ url, body });
+      return options.answer ?? { status: 200, statusText: 'OK', body: ACCOUNT_GRANT };
+    },
+    installSignIn: (tokens) => {
+      installed.push(tokens);
+      if (options.install) return options.install(tokens);
+      signIn = {
+        full: true,
+        scopes: tokens.scopes,
+        subscriptionType: tokens.subscriptionType,
+        expiresAt: tokens.expiresAt,
+        signInEndsAt: tokens.refreshTokenExpiresAt,
+      };
+      return signIn;
+    },
+    profile: options.profile,
+    now: () => 1_000_000,
+  });
+  return { pairing, installed, calls };
+}
+
+describe('renewing the account sign-in', () => {
+  it('asks for the scopes the CLI’s own sign-in asks for', () => {
+    const { pairing } = buildAccount();
+    const url = new URL(pairing.begin('claudeai', 'account').url);
+    // Read out of the shipped CLI binary, in its order. Asking for less is an
+    // untested subset; asking for more is a consent screen nobody agreed to.
+    expect(url.searchParams.get('scope')).toBe(
+      'org:create_api_key user:profile user:inference user:sessions:claude_code ' +
+        'user:mcp_servers user:file_upload',
+    );
+    // Everything else about the link is the same flow.
+    expect(url.searchParams.get('code')).toBe('true');
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+  });
+
+  it('still asks for inference alone when pairing a token', () => {
+    const { pairing } = buildAccount();
+    expect(new URL(pairing.begin('claudeai').url).searchParams.get('scope')).toBe('user:inference');
+  });
+
+  it('says which kind of attempt is open', () => {
+    const { pairing } = buildAccount();
+    expect(pairing.status().kind).toBeNull();
+    pairing.begin('claudeai', 'account');
+    // A reloaded page asks the server rather than remembering: finishing an
+    // account attempt as a token one would seal a full-scope grant in the
+    // vault, where it would shadow the sign-in it was meant to renew.
+    expect(pairing.status().kind).toBe('account');
+  });
+
+  it('installs the grant in the CLI store and leaves the vault alone', async () => {
+    const { pairing, installed } = buildAccount();
+    pairing.begin('claudeai', 'account');
+    const status = await pairing.complete('code');
+
+    expect(installed).toHaveLength(1);
+    expect(installed[0]).toMatchObject({
+      accessToken: ACCOUNT_GRANT.access_token,
+      refreshToken: ACCOUNT_GRANT.refresh_token,
+      expiresAt: 1_000_000 + 28_800 * 1000,
+      refreshTokenExpiresAt: 1_000_000 + 2_592_000 * 1000,
+      scopes: ACCOUNT_GRANT.scope.split(' '),
+      clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+    });
+    // Nothing was sealed: the account sign-in is not a Metaclaude secret, and
+    // a stored token would override it on the very next run.
+    expect(vault.get('global', 'claude.oauth_token')).toBeNull();
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    expect(status.source).toBe('cli-login');
+  });
+
+  it('does not ask for a year, the way a setup token does', async () => {
+    const { pairing, calls } = buildAccount();
+    pairing.begin('claudeai', 'account');
+    await pairing.complete('code');
+    // Measured in the CLI: `expires_in` rides the exchange only for
+    // `setup-token`. A sign-in's access token is hours long and refreshed;
+    // asking for a year would be asking for a different credential.
+    expect(calls[0]?.body).not.toHaveProperty('expires_in');
+    expect(calls[0]?.body.grant_type).toBe('authorization_code');
+  });
+
+  it('refuses a grant that came back without the session scope', async () => {
+    const { pairing, installed } = buildAccount({
+      answer: {
+        status: 200,
+        statusText: 'OK',
+        body: { ...ACCOUNT_GRANT, scope: 'user:profile user:inference' },
+      },
+    });
+    pairing.begin('claudeai', 'account');
+    await expect(pairing.complete('code')).rejects.toThrow(PairingError);
+    // Nothing installed: a downgrade written here would end the sign-in.
+    expect(installed).toHaveLength(0);
+  });
+
+  it('refuses a grant with no refresh token, which is a sign-in that cannot last', async () => {
+    const { pairing, installed } = buildAccount({
+      answer: {
+        status: 200,
+        statusText: 'OK',
+        body: { ...ACCOUNT_GRANT, refresh_token: undefined },
+      },
+    });
+    pairing.begin('claudeai', 'account');
+    await expect(pairing.complete('code')).rejects.toThrow(/refresh/i);
+    expect(installed).toHaveLength(0);
+  });
+
+  it('fills the plan from the profile call when it answers', async () => {
+    const { pairing, installed } = buildAccount({
+      profile: async () => ({ subscriptionType: 'max', rateLimitTier: 'default_claude_max_20x' }),
+    });
+    pairing.begin('claudeai', 'account');
+    await pairing.complete('code');
+    expect(installed[0]?.subscriptionType).toBe('max');
+  });
+
+  it('renews anyway when the profile call fails', async () => {
+    // Best-effort by design: the plan label is decoration, and a renewal that
+    // failed on it would leave the owner with an approved authorization and
+    // no sign-in. Null then means "keep what the store already had".
+    const { pairing, installed } = buildAccount({
+      profile: async () => {
+        throw new Error('network down');
+      },
+    });
+    pairing.begin('claudeai', 'account');
+    const status = await pairing.complete('code');
+    expect(installed[0]?.subscriptionType).toBeNull();
+    expect(status.source).toBe('cli-login');
+  });
+
+  it('ends the attempt when the store cannot be written, because the code is spent', async () => {
+    // The exchange succeeded, so Anthropic has consumed that code: re-pasting
+    // it could only ever fail. The writer's message survives — it is the
+    // useful one — and the status becomes the 409 the web client folds the
+    // wizard on, rather than leaving an owner retyping something dead.
+    const { pairing } = buildAccount({
+      install: () => {
+        throw new CliLoginWriteError('read-only file system');
+      },
+    });
+    pairing.begin('claudeai', 'account');
+    await expect(pairing.complete('code')).rejects.toThrow(/read-only file system/);
+    expect(pairing.status()).toEqual({ active: false, expiresAt: null, kind: null });
+  });
+
+  it('refuses to open a wizard it could not finish', () => {
+    // Finding out after the owner has approved an authorization costs them a
+    // spent code for nothing.
+    const pairing = new ClaudePairing({ credentials, post: async () => ACCOUNT_ANSWER });
+    expect(() => pairing.begin('claudeai', 'account')).toThrow(PairingError);
+    // The token flow needs no writer and is unaffected.
+    expect(pairing.begin('claudeai').kind).toBe('token');
   });
 });
 

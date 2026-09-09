@@ -23,6 +23,7 @@ import {
   type CreateApiTokenRequest,
   type ClaudeCredentialStatus,
   type ClaudePairingStart,
+  type ClaudePairingKind,
   type ClaudePairingState,
   type PushStatus,
   type RunGenesis,
@@ -1034,8 +1035,11 @@ export const api = {
   },
 
   claudePairing: {
-    begin: (account: 'claudeai' | 'console' = 'claudeai') =>
-      request<ClaudePairingStart>('/api/claude/pairing', { method: 'POST', body: { account } }),
+    begin: (account: 'claudeai' | 'console' = 'claudeai', kind: ClaudePairingKind = 'token') =>
+      request<ClaudePairingStart>('/api/claude/pairing', {
+        method: 'POST',
+        body: { account, kind },
+      }),
     complete: (code: string) =>
       request<ClaudeCredentialStatus>('/api/claude/pairing/code', {
         method: 'POST',
