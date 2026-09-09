@@ -62,16 +62,6 @@ import {
   type PeerFacade,
 } from './peer-tools.js';
 
-/**
- * The in-process server carrying the two verbs that reach other workspaces.
- *
- * Re-exported under its old name because the mount, the pre-approval check and
- * the tool name the CLI reports all have to agree, and because
- * `mcp__metaclaude__delegate` is written into the pre-approved tool list of
- * every workspace whose operator has ticked it: renaming the server would
- * silently un-approve them all.
- */
-export const DELEGATION_SERVER_NAME = PEER_SERVER_NAME;
 import { boardToolNames, buildBoardServer, type BoardFacade } from './board-tools.js';
 import {
   MEMORY_SERVER_NAME,
@@ -904,7 +894,6 @@ export class AgentSupervisor {
    * cycle.
    */
   private peerDirectory(
-    request: RunRequest,
     resolved: { mode: RunPolicy['permissionMode']; preapproved: string[] },
     scope: { peers: Workspace[]; search: boolean },
   ): { verbs: PeerVerbs; text: string } {
@@ -1050,7 +1039,7 @@ export class AgentSupervisor {
      * where the agent did not need to be told anything.
      */
     const peerScope = this.peerScope(request);
-    const directory = this.peerDirectory(request, resolved, peerScope);
+    const directory = this.peerDirectory(resolved, peerScope);
     if (directory.text) steering.push(directory.text);
 
     const promptAppend = [request.systemPromptAppend, ...steering].filter(Boolean).join('\n\n');

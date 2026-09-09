@@ -230,7 +230,7 @@ const DIRECTORY_TITLE = '## Other workspaces of this Metaclaude';
 
 /** The sentence for each verb, in the order they should be reached for. */
 const SEARCH_LINE =
-  'Search what they have already written down — their notes and their reference documents — with `search_workspaces`, quoting a slug exactly as written. It reads, nothing runs, and it answers at once: reach for it before concluding that this Metaclaude does not know something, and say which workspace an answer came from.';
+  'Search what they have already written down — their notes and their reference documents — with `search_workspaces`, which reads all of them at once unless you name one. Nothing runs and it answers immediately, so reach for it before concluding that this Metaclaude does not know something. Attribute what you use: a note names the workspace holding it, a passage names its document.';
 const DELEGATE_LINE =
   'Ask one of them to *work* with `delegate`. It runs its own agent, with its own memory, conventions and permission mode, so it answers about its own project better than its files read cold — and it costs a full run there and can take minutes, so ask when the work genuinely belongs to that project rather than out of curiosity. Take the answer back and continue yourself: the workspace you ask cannot delegate onwards.';
 
@@ -278,11 +278,13 @@ This Metaclaude has ${workspaceCount(count)} you could reach, but this block has
  * list is itself dropped for want of room — which lands back on a mounted
  * tool nobody is told about. `context.test.ts` derives the check from the
  * notes rather than trusting this number, so rewording one cannot quietly
- * outgrow it — and it did: the notes carry the header, the header gained a
- * second verb, and 600 stopped fitting. Measured at 1006 for the longest of
- * them (both verbs, nobody described), rounded up for the next sentence.
+ * outgrow it — and it did, twice in one release: the notes carry the header,
+ * the header gained a second verb, and 600 stopped fitting; then a clause
+ * added to that verb's sentence pushed it past the first replacement. Measured
+ * at 1068 for the longest of them (both verbs, nobody described), with room
+ * for the next sentence rather than the next character.
  */
-export const DIRECTORY_CONTEXT_MINIMUM = 1100;
+export const DIRECTORY_CONTEXT_MINIMUM = 1200;
 
 /**
  * The workspaces this run may consult, in the order the directory shows them.

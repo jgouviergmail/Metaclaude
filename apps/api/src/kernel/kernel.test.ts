@@ -1236,6 +1236,38 @@ describe('delegation', () => {
     ).rejects.toThrow(/cannot delegate/i);
   });
 
+  /**
+   * Two asks at once land in two sessions, not one refusal.
+   *
+   * The window looks open — the standing session is chosen, then the run is
+   * submitted — and it is closed by construction rather than by a lock: every
+   * step between the two is synchronous, and `submit` reserves the session
+   * before its first `await`, so the second caller cannot observe the session
+   * as idle. Worth pinning because the guarantee is a property of where the
+   * awaits are, which a later refactor could move without noticing.
+   */
+  it('opens a second session for a concurrent ask rather than refusing one', async () => {
+    const fx = setup({ maxConcurrentRuns: 4 });
+    try {
+      fx.workspaces.create({
+        name: 'docs', slug: 'docs', description: '',
+        path: '/tmp/metaclaude-docs', color: '#6366f1', icon: 'folder',
+        settings: WorkspaceSettingsSchema.parse({}),
+      });
+
+      const [first, second] = await Promise.all([
+        fx.kernel.delegate({ fromRunId: originRun(fx).id, target: 'docs', prompt: 'one' }),
+        fx.kernel.delegate({ fromRunId: originRun(fx).id, target: 'docs', prompt: 'two' }),
+      ]);
+
+      expect(first.sessionId).not.toBe(second.sessionId);
+      expect(first.status).toBe('succeeded');
+      expect(second.status).toBe('succeeded');
+    } finally {
+      fx.db.close();
+    }
+  });
+
   it('refuses to delegate from a run that does not exist', async () => {
     // The origin row is where the workspace, the trigger and the ceiling all
     // come from. Answering "unknown run" beats defaulting any of the three.

@@ -343,6 +343,13 @@ A directory, plus the agent policy that applies inside it. Optional git clone on
 creation, a file browser with a real editor, and a source-control panel with
 staging, diffs and commits.
 
+A run can **consult the other workspaces**, and the cheap verb comes first:
+`search_workspaces` reads what they have already written down — their notes and
+the documents filed with them — without starting anything anywhere, while
+`delegate` asks one of them to actually work, which costs a full run there.
+Each workspace decides whether it answers at all, and the peer directory in
+every run's instructions is what tells an agent who is worth asking.
+
 A run can also read the workspace's **other sessions** — find one by title,
 read what was said in it, optionally windowed to the last N hours, or pull one
 run in full with its final answer. So *"use the data from the session about the
@@ -430,9 +437,20 @@ redirect.
 The registry above is Metaclaude *consuming* other people's servers. It also
 exposes one of its own, so your other software can ask this agent to work:
 one endpoint, and tools for running a prompt in a workspace and waiting for
-the answer, starting one without waiting, searching a workspace's notes and
-reading its board. A line of `claude mcp add --transport http` connects it;
-so does anything else that speaks MCP.
+the answer, starting one without waiting, searching what the deployment has
+written down and reading a board. A line of `claude mcp add --transport http`
+connects it; so does anything else that speaks MCP.
+
+**Behind the door it behaves as it does for you.** The token chooses which
+workspace an application may knock at; what the agent may do there is that
+workspace's own settings, not a narrower set kept for machines. That is a
+reversal of how it shipped, and it was measured into existence: asked a
+question whose answer sat in a pinned note of the *next* workspace, a gateway
+run called no tool at all — it had none that reached outside its own — and
+reported that this Metaclaude did not know. What still bounds such a run is its
+ceiling, and that ceiling now travels: a run started under one hands it to
+every run it causes, so a token capped at "run what is already allowed" cannot
+reach further by asking an agent to ask another.
 
 The credential is minted under **Settings → Connections**, owner-only, and it
 is a capability rather than a second account: an expiry that is never null, a

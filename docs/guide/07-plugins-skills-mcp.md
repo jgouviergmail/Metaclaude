@@ -267,6 +267,14 @@ bounded — past roughly a dozen runs' worth of transcript the next call starts 
 fresh one, under the same name. Context that grows without end is a bill that
 grows without end.
 
+That bound is also where the cost sits. A run started through the gateway now
+carries the same tools a run you started would, so it pays the same opening
+prefix — which for the **Metaclaude** workspace is the largest in the
+deployment, its whole system table. The first call of a session writes that
+prefix to the cache and every call after it reads the cache instead, so the
+expensive moment is a session's first question, not each one. Nothing here
+calls a model that a run of your own would not.
+
 **What `search_notes` returns.** Both kinds of thing this deployment has
 written down: the reference documents in the knowledge base, and the notes its
 agents keep. Each result says which it is, because they are not the same sort

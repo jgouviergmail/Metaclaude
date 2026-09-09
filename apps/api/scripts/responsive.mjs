@@ -518,6 +518,11 @@ const DIALOGS = [
   ['/board', { 'en-US': 'New task', 'fr-FR': 'Nouvelle tâche' }],
   ['/workspaces', { 'en-US': 'New workspace', 'fr-FR': 'Nouveau workspace' }],
   ['/memory', { 'en-US': 'Memory maintenance', 'fr-FR': 'Maintenance de la mémoire' }],
+  // The token dialog: the longest form on any settings screen, and the one
+  // whose copy carries a consequence the operator has to read before ticking
+  // anything — so it is also the one whose sentences are most likely to push a
+  // control out of a phone's frame.
+  ['/settings/connections', { 'en-US': 'New token', 'fr-FR': 'Nouveau jeton' }],
 ];
 
 /**

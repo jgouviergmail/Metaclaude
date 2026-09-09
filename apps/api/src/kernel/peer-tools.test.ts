@@ -16,7 +16,6 @@ import {
   PEER_TOOL_CATALOGUE,
   buildPeerServer,
   createPeerHandlers,
-  peerToolNames,
   type PeerFacade,
 } from './peer-tools.js';
 
@@ -112,8 +111,9 @@ describe('the catalogue', () => {
     expect(registered({ search: true, delegate: true })).toEqual(
       PEER_TOOL_CATALOGUE.map((entry) => entry.name).sort(),
     );
-    expect(peerToolNames()).toEqual(
-      PEER_TOOL_CATALOGUE.map((entry) => `mcp__metaclaude__${entry.name}`),
+    // And the qualified spelling the pre-approvals use is the catalogue's own.
+    expect([PEER_SEARCH_TOOL, PEER_DELEGATE_TOOL].sort()).toEqual(
+      PEER_TOOL_CATALOGUE.map((entry) => `mcp__metaclaude__${entry.name}`).sort(),
     );
   });
 
@@ -213,10 +213,17 @@ describe('search_workspaces', () => {
     expect(answer).toMatchObject({ memories: [], passages: [] });
   });
 
-  it('labels every hit with the workspace it came from', async () => {
-    // Without it an agent quotes "the lease runs to December" and its operator
-    // cannot tell which project's lease that is — and the slug is also exactly
-    // what `delegate` takes for the follow-up.
+  /**
+   * A note says which workspace it is from; a passage says which document.
+   *
+   * Not a gap. A memory belongs to exactly one tier, so its workspace is a
+   * fact and it is also exactly what `delegate` takes for the follow-up. A
+   * document can reach several workspaces at once, so naming one would be a
+   * guess — and the field that looks like it answers is the record of where
+   * the document was *first filed*, which survives a later change of reach.
+   * A passage is attributed by its document, section and page instead.
+   */
+  it('names the workspace of a note, and attributes a passage by its document', async () => {
     const fx = make([peer('billing'), peer('shop')], {
       memories: [memoryHit('ws_shop', 'Opening hours')],
       passages: [passageHit('ws_billing', 'Bail commercial')],
@@ -229,7 +236,6 @@ describe('search_workspaces', () => {
     ]);
     expect(answer.passages).toEqual([
       {
-        workspace: 'billing',
         document: 'Bail commercial',
         heading: 'Préavis',
         location: 'page 4',
@@ -237,6 +243,19 @@ describe('search_workspaces', () => {
         text: 'trois mois',
       },
     ]);
+    // Said out loud: the passage carries no workspace, and that is the design.
+    expect(answer.passages[0]).not.toHaveProperty('workspace');
+  });
+
+  it('falls back to a traceable id rather than an empty label', async () => {
+    // Unreachable through the scope, which excludes the global tier — but an
+    // empty string would read as a workspace called nothing, and an id can at
+    // least be looked up.
+    const fx = make([peer('billing')], { memories: [memoryHit('ws_gone', 'Orpheline')] });
+
+    const answer = await fx.handlers.search({ query: 'x' });
+
+    expect(answer.memories[0]?.workspace).toBe('ws_gone');
   });
 
   it('caps what one call may pull back', async () => {

@@ -77,6 +77,13 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
   are dropped, so the separator was never written and the bound it proved was
   one that did not hold.
 
+- **A passage was labelled with the workspace a document was first filed in.**
+  A memory belongs to exactly one tier, so naming its workspace is a fact; a
+  document can reach several at once, and the field that looked like it
+  answered is the record of where it was *first* filed — which a later change
+  of reach leaves behind. A passage now names its document, its section and its
+  page, which is what attribution needs, and carries no workspace at all.
+
 - **The `Delegations` session never rotated.** The gateway's standing session
   and the steward's both open a fresh one past an event ceiling, because a
   session nobody closes grows its context every day; delegation had a third

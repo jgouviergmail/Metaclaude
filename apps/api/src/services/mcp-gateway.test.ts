@@ -476,7 +476,6 @@ describe('search_notes', () => {
     expect(await handlers.searchNotes({ workspace: 'ws_mine', query: 'préavis' })).toEqual([
       {
         kind: 'passage',
-        workspace: 'mine',
         title: 'Bail',
         heading: 'Résiliation',
         location: 'page 2, lines 40–52',
@@ -526,6 +525,27 @@ describe('search_notes', () => {
     ]);
   });
 
+  /**
+   * A note carries its workspace; a passage does not, and that is the truth
+   * rather than an omission. A memory belongs to exactly one tier. A document
+   * can reach several at once, and the field that looks like it says which is
+   * the record of where it was first filed — which a later change of reach
+   * leaves behind, so a passage labelled from it would be confidently wrong.
+   */
+  it('gives a passage no workspace, because a document can reach several', async () => {
+    const wired = deps({
+      knowledge: {
+        search: vi.fn(async () => [
+          searchHit({ documentTitle: 'Bail', heading: 'X', text: 'Du texte.', workspaceId: 'ws_theirs' }),
+        ]),
+      },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    const [hit] = await handlers.searchNotes({ workspace: 'ws_mine', query: 'x' });
+    expect(hit).not.toHaveProperty('workspace');
+  });
+
   it('names the workspace a global note is not filed under, rather than inventing one', async () => {
     // A global memory belongs to no workspace, and saying it came from the one
     // that happened to be asked would be a provenance the caller could not
@@ -559,7 +579,7 @@ describe('search_notes', () => {
     const handlers = createGatewayHandlers(wired, TOKEN);
 
     expect(await handlers.searchNotes({ workspace: 'ws_mine', query: 'x' })).toEqual([
-      { kind: 'passage', workspace: 'global', title: 'Note', heading: '', text: 'Du texte.' },
+      { kind: 'passage', title: 'Note', heading: '', text: 'Du texte.' },
     ]);
   });
 });

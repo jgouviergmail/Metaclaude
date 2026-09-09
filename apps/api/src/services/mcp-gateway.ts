@@ -336,7 +336,8 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
     }): Promise<
       Array<{
         kind: 'memory' | 'passage';
-        workspace: string;
+        /** Only a memory has one. See the note beside `named` below. */
+        workspace?: string;
         title: string;
         heading: string;
         location?: string;
@@ -358,8 +359,10 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
           })();
 
       const limit = Math.min(input.limit ?? 6, 20);
-      // Both stores at once: they touch different tables and neither waits on
-      // the other, so the call costs the slower rather than their sum.
+      // Both stores at once. The SQL and the fusion overlap; the two query
+      // embeddings do not, because a sentence-transformer serialises its own
+      // calls — so this is less than their sum rather than the slower of the
+      // two, which is the honest claim.
       const [passages, memories] = await Promise.all([
         deps.knowledge.search(input.query, { ...scope, limit }),
         deps.memory.search(input.query, { ...scope, limit }),
@@ -369,8 +372,16 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
       // of this gateway quotes what it is given, and a note it cannot
       // attribute is a claim it cannot check. `location` and `source` are
       // omitted rather than sent empty, so a caller can tell "no page" from
-      // "page nothing" — and `workspace` says `global` for what is filed
-      // against no project at all, rather than borrowing the name of the one
+      // "page nothing".
+      //
+      // Only a *memory* carries a workspace, and the asymmetry is the truth
+      // rather than an omission: a memory belongs to exactly one tier, while a
+      // document can reach several at once — and the document field that looks
+      // like it answers is the record of where it was first filed, which a
+      // later change of reach leaves behind, so a passage labelled from it
+      // would be confidently wrong. A passage is attributed by its document,
+      // its section and its page. `global` is what a memory filed against no
+      // project is called, rather than borrowing the name of the workspace
       // that happened to be asked.
       const named = (workspaceId: string | null): string =>
         workspaceId === null
@@ -382,7 +393,6 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
           const location = describeLocation(hit);
           return {
             kind: 'passage' as const,
-            workspace: named(hit.workspaceId),
             title: hit.documentTitle,
             heading: hit.heading,
             ...(location ? { location } : {}),

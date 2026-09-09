@@ -97,10 +97,19 @@ const asMemory = (workspace: string, result: MemorySearchResult) => ({
   kind: result.memory.kind,
 });
 
-const asPassage = (workspace: string, hit: KnowledgeSearchResult) => {
+/**
+ * A passage, and deliberately without a workspace on it.
+ *
+ * A memory belongs to exactly one tier, so naming its workspace is a fact. A
+ * *document* can reach several at once, so naming one would be a guess — and
+ * the field that looks like it answers, `KnowledgeSearchResult.workspaceId`, is
+ * the record of where the document was first filed, which a later change of
+ * reach leaves behind. What attributes a passage is its document, its section
+ * and its page, and all three are here.
+ */
+const asPassage = (hit: KnowledgeSearchResult) => {
   const location = describeLocation(hit);
   return {
-    workspace,
     document: hit.documentTitle,
     heading: hit.heading,
     ...(location ? { location } : {}),
@@ -144,9 +153,11 @@ export function createPeerHandlers(facade: PeerFacade, scope: PeerToolScope) {
       const remembering = chosen.filter((peer) => peer.settings.memoryEnabled).map((peer) => peer.id);
       const filed = chosen.filter((peer) => peer.settings.knowledgeEnabled).map((peer) => peer.id);
 
-      // Both arms in flight together: they touch different tables and neither
-      // waits on the other, so the call costs the slower of the two rather
-      // than their sum.
+      // Both together, which is worth being exact about: the SQL and the
+      // fusion genuinely overlap, but a sentence-transformer serialises its
+      // own calls, so the two query embeddings queue rather than run side by
+      // side. The saving is real and partial — not the slower of the two, but
+      // less than their sum.
       const [memories, passages] = await Promise.all([
         remembering.length > 0
           ? facade.memory.search(args.query, { workspaceIds: remembering, limit })
@@ -163,10 +174,17 @@ export function createPeerHandlers(facade: PeerFacade, scope: PeerToolScope) {
       // to a reader anyway.
       return {
         searched: chosen.map((peer) => peer.slug),
+        // A memory searched here always belongs to one of the peers — the
+        // scope excludes the global tier — so the map answers. Its own id is
+        // the fallback rather than an empty string: a label nobody can trace
+        // is worse than an ugly one.
         memories: memories.map((result) =>
-          asMemory(slugOf.get(result.memory.workspaceId ?? '') ?? '', result),
+          asMemory(
+            slugOf.get(result.memory.workspaceId ?? '') ?? result.memory.workspaceId ?? 'unknown',
+            result,
+          ),
         ),
-        passages: passages.map((hit) => asPassage(slugOf.get(hit.workspaceId ?? '') ?? '', hit)),
+        passages: passages.map(asPassage),
       };
     },
 
@@ -241,12 +259,15 @@ export const PEER_TOOL_CATALOGUE: ReadonlyArray<{
   },
 ];
 
-/** The names as the CLI and the broker see them. */
-export function peerToolNames(): string[] {
-  return PEER_TOOL_CATALOGUE.map((entry) => mcpToolName(PEER_SERVER_NAME, entry.name));
-}
-
-/** The one that is pre-approved wherever it is mounted. See the catalogue. */
+/**
+ * The two names the supervisor pre-approves by, qualified as the CLI and the
+ * broker see them.
+ *
+ * Named individually rather than as one list, because the two are decided
+ * separately: the search rides with its own mount, `delegate` waits for the
+ * workspace's tick. A `peerToolNames()` covering both would have exactly one
+ * caller — its own test — which is a helper that exists to be tested.
+ */
 export const PEER_SEARCH_TOOL = mcpToolName(PEER_SERVER_NAME, 'search_workspaces');
 export const PEER_DELEGATE_TOOL = mcpToolName(PEER_SERVER_NAME, 'delegate');
 
@@ -276,9 +297,9 @@ export function buildPeerServer(
                 'agents keep and the reference documents filed with them. Read-only, no model call, and ' +
                 'it answers at once. **Try this before delegate**, and before telling anyone this ' +
                 'deployment does not know something: most questions about another project are answered ' +
-                'by what that project already noted. Say which workspace an answer came from when you ' +
-                'use it. Your own workspace and anything filed globally are already in front of you and ' +
-                'are not searched again here.',
+                'by what that project already noted. Attribute what you use: a note names the workspace ' +
+                'that holds it, a passage names its document, section and page. Your own workspace and ' +
+                'anything filed globally are already in front of you and are not searched again here.',
               {
                 query: z.string().min(1).max(500).describe('What you are looking for, in words.'),
                 workspace: WORKSPACE_SLUG.optional().describe(
