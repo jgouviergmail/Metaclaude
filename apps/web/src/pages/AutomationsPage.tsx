@@ -66,7 +66,7 @@ import {
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { TOUCH_TARGET } from '@/components/ui/touch-target';
-import { cn, formatDateTime, formatRelative } from '@/lib/utils';
+import { cn, formatDateTime, formatRelative, formatUntil } from '@/lib/utils';
 import { usePlural, useT, type TranslateFn } from '@/lib/i18n';
 import { effortOptions, modelOptions } from '@/lib/claude-catalogue';
 import { routes, type EffortLevel, type ModelSelector } from '@metaclaude/shared';
@@ -496,7 +496,7 @@ export function AutomationsPage() {
                       {automation.enabled && automation.nextRunAt ? (
                         <Tooltip content={formatDateTime(automation.nextRunAt)}>
                           <span className="cursor-help underline decoration-dotted underline-offset-2">
-                            {t('next')} {formatRelative(automation.nextRunAt)}
+                            {t('next')} {formatUntil(automation.nextRunAt)}
                           </span>
                         </Tooltip>
                       ) : null}

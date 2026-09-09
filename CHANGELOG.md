@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.88.1] — 2026-09-09
+
+### Fixed
+
+- **Every countdown in the app read "just now".** `formatRelative` answers "how
+  long since", and says so in its own code: a timestamp in the future is a
+  clock disagreement, not a prediction, so its first branch catches every
+  negative delta. Four call sites were asking the opposite question. The
+  credential countdown shipped the day before read "just now" whether the token
+  had four days or a year left — the feature was dead on arrival — and the
+  automations list said the next run was "just now" for every schedule on it,
+  which it had been doing for far longer. Nothing could see it: both are
+  perfectly plausible sentences, and no test asserted the *value*.
+
+  `formatUntil` is the other direction, same scale, same fall back to an
+  absolute date. Its test pins the defect as well as the fix, so the two
+  functions cannot quietly swap again.
+
+- **A shadowed sign-in expired with nothing on screen about it.** The countdown
+  follows the credential in force, which is the fix this area came from — but
+  an account sign-in standing behind a paired token still runs out on its own
+  fixed date, and the owner would have found out on the day they dropped the
+  token and discovered nothing behind it. The line that is *about* that other
+  credential now carries its end date. Absent stays absent: a store with no
+  such field says nothing rather than inventing one.
+
+
 ## [0.88.0] — 2026-09-09
 
 ### Added

@@ -169,6 +169,38 @@ describe('the CLI account sign-in', () => {
     expect(screen.getByRole('button', { name: /use the account sign-in/i })).toBeTruthy();
   });
 
+  it('says when the shadowed sign-in itself runs out', async () => {
+    // The countdown above follows the credential in force, so a shadowed
+    // sign-in expires with nothing on screen about it — and the owner finds
+    // out on the day they drop the token and discover nothing behind it.
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'stored',
+      hint: '…AAAA',
+      cliLogin: { ...LOGIN, signInEndsAt: Date.now() + 9 * 86_400_000 },
+      expiresAt: null,
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    expect(await screen.findByText(/it ends/i)).toBeTruthy();
+  });
+
+  it('says nothing about an end the CLI store does not carry', async () => {
+    // Absent is unknown, never "expired": a setup token's store has no such
+    // field, and inventing a date is the defect this whole area came from.
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription',
+      source: 'stored',
+      hint: '…AAAA',
+      cliLogin: { ...LOGIN, signInEndsAt: null },
+      expiresAt: null,
+    });
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    await screen.findByText(/standing in front of it/i);
+    expect(screen.queryByText(/it ends/i)).toBeNull();
+  });
+
   it('sends the owner to the server environment when that is where the token is', async () => {
     // The button can only drop a *stored* credential. Telling someone to press
     // it when the token is an environment variable sends them to a control

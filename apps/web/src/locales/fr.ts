@@ -983,6 +983,7 @@ export const fr: Record<string, string> = {
     'Une connexion au compte Claude existe aussi{scope}, et le jeton appairé passe devant elle.',
   'A Claude account sign-in also exists{scope}, but a token in the server environment overrides it. Remove it there to let the sign-in take over.':
     'Une connexion au compte Claude existe aussi{scope}, mais un jeton présent dans l’environnement du serveur passe devant. Retirez-le là-bas pour laisser la connexion prendre le relais.',
+  'It ends {when}.': 'Elle prend fin {when}.',
   'Runs now use your Claude account sign-in.':
     'Les runs utilisent désormais votre connexion au compte Claude.',
   'Remove the stored credential?': 'Supprimer l’identifiant enregistré ?',

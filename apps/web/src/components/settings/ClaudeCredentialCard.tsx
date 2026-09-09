@@ -30,7 +30,7 @@ import {
 import { Section } from '@/components/ui/layout';
 import { api, ApiError } from '@/lib/api';
 import { Trans, useT } from '@/lib/i18n';
-import { cn, formatRelative } from '@/lib/utils';
+import { cn, formatUntil } from '@/lib/utils';
 
 export function ClaudeCredentialCard() {
   const t = useT();
@@ -231,11 +231,25 @@ export function ClaudeCredentialCard() {
                         : '',
                     },
                   )}
+              {/* The countdown above follows the credential in force, which is
+                  right — but a shadowed sign-in still expires, silently, and
+                  the owner finds out on the day they drop the token and
+                  discover there is nothing behind it. Said here because this
+                  is the only line that is about the other credential. */}
+              {status.data.cliLogin.signInEndsAt !== null ? (
+                <>
+                  {' '}
+                  {t('It ends {when}.', {
+                    when: formatUntil(status.data.cliLogin.signInEndsAt),
+                  })}
+                </>
+              ) : null}
             </p>
-            {/* Saying what to do and not offering it is a dead end on a phone,
-                where "remove the token" means finding the control below and
-                deciding whether the warning on it applies. It does not: there
-                is a sign-in to fall back to, which is the whole point. */}
+            {/* Naming the situation and not offering the way out is a dead
+                end on a phone: it leaves an owner scrolling to the Remove
+                control below and deciding whether its warning applies. It does
+                not — there is a sign-in waiting to take over, which is the
+                whole point — so the switch belongs beside the sentence. */}
             {stored ? (
               <Button
                 variant="secondary"
@@ -532,10 +546,10 @@ function CredentialEnds({
       {days > 0
         ? paired
           ? t('This paired token expires {when} — pair again before then.', {
-              when: formatRelative(endsAt),
+              when: formatUntil(endsAt),
             })
           : t('This sign-in ends {when} — renew it before then, or pair a token below.', {
-              when: formatRelative(endsAt),
+              when: formatUntil(endsAt),
             })
         : paired
           ? t('This paired token has expired. Pair again to let runs authenticate.')

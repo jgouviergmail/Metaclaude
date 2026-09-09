@@ -1062,6 +1062,21 @@ restates the code is noise; one that records a decision or a trap is not.
   anything if the number leads somewhere; push the empty and let `joinPages` do
   what it is for. `pptx` maps rather than filters and never had this; `pdf`
   splits on the form feed and keeps every page.
+- **A relative-time helper answers one direction, and a deadline is the
+  other.** `formatRelative` computes `now - timestamp` and its first branch
+  returns "just now" for anything under 45 seconds — which is every negative
+  delta, i.e. every date in the future, however far. The comment above it says
+  so on purpose: a recorded event in the future is a clock disagreement. Four
+  call sites were deadlines rather than events, and all four rendered "just
+  now" forever: a credential countdown shipped one evening was dead by the next
+  morning whether the token had four days or a year left, and the automations
+  list had been announcing the next run as "just now" for every schedule since
+  it was written. Neither is visible to a reader or a test that only asserts
+  the sentence appears — both are plausible English. `formatUntil` is the other
+  direction; **a timestamp that has not happened yet never goes through
+  `formatRelative`**, and a test on a time helper asserts the value, never the
+  shape.
+
 - **Two layers can each be right alone and lie together.** `extractCsv`
   answered a heading for a header-only file — text, so extraction succeeded,
   and a green test said so — and the chunker makes no passage out of a lone

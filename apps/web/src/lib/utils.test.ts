@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { cn } from './utils';
+import { cn, formatRelative, formatUntil } from './utils';
 
 describe('cn and the type scale', () => {
   const ROLES = ['display', 'title', 'heading', 'body', 'label', 'caption'];
@@ -89,5 +89,42 @@ describe('cn and the colour tokens', () => {
     for (const colour of ['accent', 'danger', 'success', 'warning', 'info']) {
       expect(cn(`text-caption text-${colour}`), colour).toBe(`text-caption text-${colour}`);
     }
+  });
+});
+
+/**
+ * Counting down, which `formatRelative` could not do.
+ *
+ * Its first branch catches every negative delta and answers "just now", by
+ * design — a recorded event in the future is a clock disagreement. Four call
+ * sites were deadlines: the credential countdown, which read "just now"
+ * whether a token had four days or a year left, and the automations list,
+ * which said the next run was "just now" for every schedule on it. Both are
+ * plausible sentences, which is why nothing caught them.
+ */
+describe('formatUntil', () => {
+  const NOW = Date.UTC(2026, 4, 1, 12, 0, 0);
+
+  it('counts forward where formatRelative counted nothing', () => {
+    const inFourDays = NOW + 4 * 86_400_000;
+    expect(formatUntil(inFourDays, NOW)).toBe('in 4d');
+    // The defect this exists for, pinned rather than described.
+    expect(formatRelative(inFourDays, NOW)).toBe('just now');
+  });
+
+  it('walks the whole scale', () => {
+    expect(formatUntil(NOW + 20 * 60_000, NOW)).toBe('in 20m');
+    expect(formatUntil(NOW + 5 * 3_600_000, NOW)).toBe('in 5h');
+    expect(formatUntil(NOW + 3 * 86_400_000, NOW)).toBe('in 3d');
+  });
+
+  it('falls back to a date once "in N days" stops helping', () => {
+    // A year out is where the paired token sits, and "in 365d" helps nobody.
+    expect(formatUntil(NOW + 365 * 86_400_000, NOW)).toMatch(/2027/);
+  });
+
+  it('says "any moment" for something due, rather than counting backwards', () => {
+    expect(formatUntil(NOW + 10_000, NOW)).toBe('any moment now');
+    expect(formatUntil(NOW - 86_400_000, NOW)).toBe('any moment now');
   });
 });

@@ -119,6 +119,22 @@ const RELATIVE = {
   },
 } as const;
 
+/** The same scale, pointing the other way. See `formatUntil`. */
+const UNTIL = {
+  en: {
+    now: 'any moment now',
+    minutes: (n: number) => `in ${n}m`,
+    hours: (n: number) => `in ${n}h`,
+    days: (n: number) => `in ${n}d`,
+  },
+  fr: {
+    now: 'd’un instant à l’autre',
+    minutes: (n: number) => `dans ${n} min`,
+    hours: (n: number) => `dans ${n} h`,
+    days: (n: number) => `dans ${n} j`,
+  },
+} as const;
+
 /**
  * Relative time, switching to an absolute date once "days ago" stops helping.
  *
@@ -132,6 +148,41 @@ export function formatRelative(timestamp: number, now: number = Date.now()): str
   const words = RELATIVE[currentLang()];
   const delta = now - timestamp;
   // A timestamp in the future is a clock disagreement, not a prediction.
+  if (delta < 45_000) return words.now;
+  if (delta < 3_600_000) return words.minutes(Math.round(delta / 60_000));
+  if (delta < 86_400_000) return words.hours(Math.round(delta / 3_600_000));
+  if (delta < 7 * 86_400_000) return words.days(Math.round(delta / 86_400_000));
+
+  return new Date(timestamp).toLocaleDateString(currentLang(), {
+    month: 'short',
+    day: 'numeric',
+    ...(new Date(timestamp).getFullYear() !== new Date(now).getFullYear()
+      ? { year: 'numeric' }
+      : {}),
+  });
+}
+
+/**
+ * How long *until* a moment that has not happened yet.
+ *
+ * `formatRelative` answers the opposite question and says so in its own code:
+ * "a timestamp in the future is a clock disagreement, not a prediction", so its
+ * first branch catches every negative delta and returns "just now". That is
+ * right for a recorded event and silently wrong for a deadline — and it was
+ * used for four of them. Measured on a running deployment: a credential
+ * countdown read "just now" whether the token had four days or a year left,
+ * and the automations list said the next run was "just now" for every schedule
+ * on it. Nothing could see it, because both are perfectly plausible sentences.
+ *
+ * Same scale, same fall back to an absolute date once "in N days" stops
+ * helping. A deadline already past answers `now` rather than counting
+ * backwards: a caller that cares whether it has passed is asking a different
+ * question and should compare the numbers itself, which is what
+ * `CredentialEnds` does.
+ */
+export function formatUntil(timestamp: number, now: number = Date.now()): string {
+  const words = UNTIL[currentLang()];
+  const delta = timestamp - now;
   if (delta < 45_000) return words.now;
   if (delta < 3_600_000) return words.minutes(Math.round(delta / 60_000));
   if (delta < 86_400_000) return words.hours(Math.round(delta / 3_600_000));
