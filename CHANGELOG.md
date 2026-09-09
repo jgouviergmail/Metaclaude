@@ -11,6 +11,86 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.84.0] — 2026-09-09
+
+### Added
+
+- **An automation can now wait for another one to finish.** An event trigger
+  chooses between two populations of runs: the ones a person, a token or a
+  delegation started — the only thing it could watch until now — or the end of
+  automations you tick by name. That makes a chain expressible for the first
+  time (tests, then deploy, then the report), and the form offers the
+  workspace's automations rather than asking for ids.
+
+  What stood in the way was a deliberate guard: `onRunFinished` refused every
+  run an automation produced, because two watchers of failures whose firings
+  can fail feed each other forever. The refusal moves to where the edges are
+  now declared — a trigger that would close a loop is rejected at create and at
+  update, with the path it found, and the form does not offer the tick at all.
+  Structural rather than conditional: a paused link is still an edge, since
+  resuming it revalidates nothing.
+
+  Which automation a run *belongs to* is its session, which is what
+  `recordOutcome` has always read — so **Run now** on a source triggers what
+  waits on it, exactly as its schedule would. One rule, no exception: the
+  button stays on every row, including watchers, and now says what it will do.
+  A watcher fired by hand is told there is no triggering run to react to,
+  rather than left to invent one.
+
+  The two modes are exclusive, filter included: a firing's prompt is the
+  automation's own, so a filter over it would either always match or silently
+  never — a watcher that looks configured and is dead.
+
+- **The filter field says what can go in it.** It is matched against a run's
+  category or prompt, and the categories are English identifiers the classifier
+  assigns; a French screen asking for one unnamed is asking for a filter that
+  matches nothing. `TASK_CATEGORIES` moved to `packages/shared` — it is what
+  `Run.category` holds, so both sides are entitled to it — and the form lists
+  the thirteen.
+
+### Fixed
+
+- **A list of ids in JSON is a foreign key nothing enforces.** Deleting or
+  moving an automation now removes it from every trigger that named it, in the
+  same transaction. The watcher is left with an empty list and *says* so —
+  "watches nothing since its source went away" on the list, a refused save in
+  the editor until a source is ticked or the mode is changed — where falling
+  back to the absent-list meaning would silently turn a chain link into a
+  watcher of everybody's runs. Same family as the gateway token that went on
+  naming a deleted workspace.
+
+- **`update` validated the trigger only when the patch named it**, which was
+  enough while a trigger meant a cron expression, and wrong for one that names
+  automations: sources are resolved inside a workspace, so a move carrying them
+  would leave a watcher enabled and permanently mute. A move revalidates
+  against the destination, and the family propagation drops such a trigger
+  instead of failing the copy — the operator's own save lands, the copies keep
+  theirs.
+
+- **A clock on everything that was not continuous.** The trigger icon was a
+  ternary over one field, so a manual runbook and — once watchers could name
+  their sources — a row whose own summary reads *after Tests de nuit succeeds*
+  both showed a schedule's clock, the picture contradicting the sentence under
+  it. One icon per kind, from an exhaustive `Record` that fails the build when
+  a kind is added, the way `INSIGHT_TONE` does on the Memory screen.
+
+- **Three confirmation titles and one chart label were English on a French
+  screen.** `` title={`Delete "${name}"?`} `` is a template literal, and all
+  three i18n measures look for a translated *call* — so the automations dialog,
+  the workspaces dialog and the posterior curve's accessible name had never
+  been translated and nothing could see it. Found by reading the rendered
+  dialog rather than the source. The new `templateCopyProps` ratchet closes the
+  shape: it read **1** on its first run, naming a site nobody knew about, and
+  it does not indict a template that carries no prose.
+
+- **The trigger picker's buttons were 32px under a thumb.** Raised to 44 on a
+  coarse pointer by the box rather than by an inset pseudo-element: these sit a
+  `gap-1.5` apart, and opposing vertical hit areas would have overlapped by
+  exactly that gap, the lower button quietly taking presses meant for the one
+  above. The event block is also set off by a rule down its left — it asks two
+  further questions, and flush left they read as six choices at one level
+  rather than two.
+
 ## [0.83.3] — 2026-09-08
 
 ### Fixed

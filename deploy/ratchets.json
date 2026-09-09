@@ -1,7 +1,7 @@
 {
   "metrics": {
-    "tests": 3820,
-    "testFiles": 264,
+    "tests": 3856,
+    "testFiles": 265,
     "rawPaletteClasses": 0,
     "untestedCriticalModules": 0,
     "initialJsGzipKb": 193,
@@ -27,7 +27,8 @@
     "displayBesideDensityHelp": 0,
     "hardcodedRoutes": 0,
     "boxedSections": 1,
-    "deadImports": 0
+    "deadImports": 0,
+    "templateCopyProps": 0
   },
-  "updated": "2026-09-08"
+  "updated": "2026-09-09"
 }

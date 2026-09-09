@@ -1930,8 +1930,46 @@ export const fr: Record<string, string> = {
   'On a failed run': 'Quand un run échoue',
   'On a succeeded run': 'Quand un run réussit',
   'Filter (optional)': 'Filtre (facultatif)',
-  'Fires when a run you, a token or a delegation started in this workspace ends that way — never one another automation produced, which would chain. The filter is a word that must appear in the run’s category or prompt.':
-    'Se déclenche quand un run lancé par vous, un jeton ou une délégation dans ce workspace se termine ainsi — jamais un run produit par une autre automation, ce qui ferait une chaîne. Le filtre est un mot qui doit apparaître dans la catégorie ou le prompt du run.',
+  'What it watches': 'Ce qu’elle surveille',
+  'Runs people start': 'Les runs lancés par des personnes',
+  'Other automations finishing': 'La fin d’autres automations',
+  'Fires when a run you, a token or a delegation started in this workspace ends that way. The filter is optional: one word that must appear in the run’s category or prompt, matched anywhere in it and ignoring case.':
+    'Se déclenche quand un run lancé par vous, un jeton ou une délégation dans ce workspace se termine ainsi. Le filtre est facultatif : un mot qui doit apparaître dans la catégorie ou le prompt du run, cherché n’importe où et sans tenir compte de la casse.',
+  'Categories a run can have:': 'Catégories possibles d’un run :',
+  'Automations to watch': 'Automations à surveiller',
+  '{name} (paused)': '{name} (en pause)',
+  'This workspace has no other automation to watch — one that already waits on this one is not offered, because that would loop.':
+    'Ce workspace n’a aucune autre automation à surveiller — celle qui attend déjà celle-ci n’est pas proposée, car cela ferait une boucle.',
+  'Fires when one of these finishes that way, however it was started — its schedule, "Run now", or a message in its session. It hears nothing else: the runs you start yourself go to the other mode.':
+    'Se déclenche quand l’une d’elles se termine ainsi, quelle que soit la façon dont elle a été lancée : sa planification, « Exécuter maintenant », ou un message dans sa session. Elle n’entend rien d’autre : les runs que vous lancez vous-même relèvent de l’autre mode.',
+  'Tick at least one, or switch to the runs people start.':
+    'Cochez-en au moins une, ou revenez aux runs lancés par des personnes.',
+  'Automations are watched inside one workspace, so the ones chosen in the other are not carried over.':
+    'Les automations se surveillent au sein d’un même workspace : celles choisies dans l’autre ne sont pas reprises.',
+  'An automation this one watched is no longer there.':
+    'Une automation surveillée par celle-ci n’existe plus.',
+  'Runs the prompt now, with no triggering run to react to.':
+    'Lance le prompt tout de suite, sans run déclencheur à analyser.',
+  'Finishing will also trigger {names}.': 'Sa fin déclenchera aussi {names}.',
+  'Not while it watches this workspace’s automations.':
+    'Pas tant qu’elle surveille des automations de ce workspace.',
+  'Delete “{name}”?': 'Supprimer « {name} » ?',
+  'Posterior: {mean} expected over {trials} trials':
+    'Postérieure : {mean} attendu sur {trials} essais',
+  '{n} automation waits for this one and will watch nothing after this:':
+    '{n} automation attend celle-ci et ne surveillera plus rien ensuite :',
+  '{n} automations wait for this one and will watch nothing after this:':
+    '{n} automations attendent celle-ci et ne surveilleront plus rien ensuite :',
+  'cron: {expression}': 'cron : {expression}',
+  'every {count}h': 'toutes les {count} h',
+  'every {count}m': 'toutes les {count} min',
+  'on a failed run': 'quand un run échoue',
+  'on a succeeded run': 'quand un run réussit',
+  'after {sources} fails': 'après l’échec de {sources}',
+  'after {sources} succeeds': 'après la réussite de {sources}',
+  'watches nothing since its source went away':
+    'ne surveille plus rien depuis la disparition de sa source',
+  'manual only': 'manuel uniquement',
   'Notify me when a firing ends': 'Me prévenir à la fin de chaque déclenchement',
   'Automations are silent by default so the machinery never wakes you. Tick this for the ones whose whole point is to be read — a morning brief computed at eight and read at six has ten hours.':
     'Les automations sont silencieuses par défaut, pour que la mécanique ne vous réveille jamais. Cochez pour celles qui n’existent que pour être lues — un brief du matin calculé à huit heures et lu à dix-huit a dix heures.',

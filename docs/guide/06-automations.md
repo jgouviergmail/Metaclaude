@@ -14,14 +14,50 @@ and a trigger.
 - **Interval** — every N minutes, for polling-shaped work.
 - **Manual** — a button, for runbooks you invoke on demand.
 - **Event** — fire on another run's outcome in the same workspace: **a
-  failed run** or **a succeeded run**. Only runs you, a token or a delegation
-  started count — never one another automation produced, which would let two
-  watchers feed each other forever. An optional filter is a word that must
-  appear in the run's category or prompt, and the firing's prompt opens with
-  which run it is reacting to and why. Two further events, an idle session
-  and a changed file, have been named in the schema since the first release
-  and nothing emits them; the server refuses them at creation rather than
-  accept a trigger that never fires.
+  failed run** or **a succeeded run**. Two further events, an idle session and
+  a changed file, have been named in the schema since the first release and
+  nothing emits them; the server refuses them at creation rather than accept a
+  trigger that never fires.
+
+  An event trigger watches **one of two populations**, and the form makes you
+  choose:
+
+  - **Runs people start** — what you, a token or a delegation ran. The
+    optional filter is one word that must appear in the run's **category** or
+    its **prompt**, matched anywhere in it and ignoring case. The categories
+    are identifiers the classifier assigns and are never translated:
+    `code_write`, `code_edit`, `debug`, `review`, `test`, `refactor`,
+    `research`, `explain`, `plan`, `ops`, `data`, `write`, `chat`. A word of
+    the prompt works too, and a marker you put in your own prompts — `[nightly]`,
+    `#prod` — is the most reliable of the three, because the category is
+    guessed and the prompt is yours.
+  - **Other automations finishing** — tick the ones to wait on, and you have a
+    chain: tests, then deploy, then the report. It fires when one of them
+    finishes that way *however it was started* — its schedule, **Run now**, or
+    a message typed into its session — and it hears nothing else.
+
+  The two are exclusive: a watcher of automations takes no filter, because a
+  firing's prompt is the automation's own and a filter over it would either
+  always match or silently never.
+
+  **Loops are refused where you build them**, not at firing time. Pointing an
+  automation at something that already leads back to it is rejected with the
+  path it found, and the form does not offer the tick in the first place. That
+  is what replaced the old blanket rule — "never react to a run an automation
+  produced" — which made chains impossible in order to make loops impossible.
+
+  **Sources live in one workspace.** Deleting or moving an automation removes
+  it from the triggers that named it, and a watcher left with none says so on
+  the list — *watches nothing since its source went away* — rather than
+  quietly reverting to watching your own runs. For the same reason a watcher
+  that names sources cannot be duplicated into another workspace: create it
+  there and choose its sources from that workspace.
+
+  **Run now** works on watchers like on everything else. There is no
+  triggering run when you press it, so the firing is told exactly that instead
+  of being left to invent a subject — and whatever waits on that automation
+  will hear it finish, just as if the event had happened. To try one in
+  isolation, pause what waits on it.
 
 Each automation carries its own policy — model, effort, permission mode, a
 turn ceiling — independent of the workspace defaults. Leave the model unset

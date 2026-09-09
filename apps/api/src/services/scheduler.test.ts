@@ -1136,6 +1136,331 @@ describe('event triggers', () => {
   });
 });
 
+/**
+ * Watching another automation rather than the runs people start.
+ *
+ * The blanket "never react to a run an automation produced" was the loop
+ * guard, and it made chains impossible: a deploy that runs when the tests pass
+ * could not be expressed. The guard moves to where the edges are declared —
+ * `validateTrigger` refuses a graph with a cycle — and the emitter reads a
+ * run's *session* to decide which automation it belongs to, which is the
+ * question `recordOutcome` has always asked of the same run.
+ *
+ * The two populations are exclusive by construction here: a watcher with
+ * sources hears only its sources, a watcher without hears only what a person,
+ * a token or a delegation started.
+ */
+describe('an event trigger that watches automations', () => {
+  const finished = (over: Partial<Parameters<Scheduler['onRunFinished']>[0]> = {}) => ({
+    id: 'run_src',
+    workspaceId: workspace.id,
+    sessionId: 'ses_src',
+    status: 'succeeded' as const,
+    triggeredBy: 'user' as const,
+    category: 'ops',
+    prompt: 'Deploy the API',
+    error: null,
+    ...over,
+  });
+
+  /** Fire `source` and hand back the session its firing used — what identifies it later. */
+  const fireAndGetSession = async (source: Automation): Promise<string> => {
+    await scheduler.fire(source.id);
+    kernel.submit.mockClear();
+    return scheduler.get(source.id)!.sessionId as string;
+  };
+
+  it('hears the end of a named automation, and ignores the runs people start', async () => {
+    const source = make({ name: 'Tests', trigger: { type: 'manual' }, continuous: true });
+    const watcher = make({
+      name: 'Deploy',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+    const humanWatcher = make({
+      name: 'On any success',
+      trigger: { type: 'event', event: 'run_succeeded' },
+    });
+    const session = await fireAndGetSession(source);
+
+    // A person's run: only the sourceless watcher hears it.
+    expect(await scheduler.onRunFinished(finished())).toBe(1);
+    expect(scheduler.get(watcher.id)!.runCount).toBe(0);
+    expect(scheduler.get(humanWatcher.id)!.runCount).toBe(1);
+
+    kernel.submit.mockClear();
+    // The source finishing: only the watcher that named it hears that.
+    expect(await scheduler.onRunFinished(finished({ sessionId: session, triggeredBy: 'loop' }))).toBe(1);
+    expect(scheduler.get(watcher.id)!.runCount).toBe(1);
+    expect(scheduler.get(humanWatcher.id)!.runCount).toBe(1);
+
+    const prompt = (kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt;
+    expect(prompt).toContain('Triggered by the automation "Tests" (run run_src), which succeeded.');
+  });
+
+  /**
+   * The whole point of the feature, and the case the old guard forbade
+   * outright: A finishes, B fires; B finishes, C fires; C names nobody
+   * downstream, so it stops.
+   */
+  it('runs a chain of three and stops at its end', async () => {
+    const a = make({ name: 'A', trigger: { type: 'manual' }, continuous: true });
+    const b = make({
+      name: 'B',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [a.id] },
+      continuous: true,
+    });
+    const c = make({
+      name: 'C',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [b.id] },
+      continuous: true,
+    });
+    const sessionA = await fireAndGetSession(a);
+
+    expect(await scheduler.onRunFinished(finished({ sessionId: sessionA, triggeredBy: 'loop' }))).toBe(1);
+    const sessionB = scheduler.get(b.id)!.sessionId as string;
+    expect(await scheduler.onRunFinished(finished({ sessionId: sessionB, triggeredBy: 'loop' }))).toBe(1);
+    const sessionC = scheduler.get(c.id)!.sessionId as string;
+    expect(await scheduler.onRunFinished(finished({ sessionId: sessionC, triggeredBy: 'loop' }))).toBe(0);
+
+    expect(scheduler.get(b.id)!.runCount).toBe(1);
+    expect(scheduler.get(c.id)!.runCount).toBe(1);
+  });
+
+  /**
+   * "Run now" on a source is that source finishing, whoever pressed it.
+   *
+   * One rule, no exception: the button produces a `user` run inside the
+   * automation's own session, which `recordOutcome` already reads as that
+   * automation's outcome. Reading it any other way here would have the two
+   * halves of the system disagree about whose run it is.
+   */
+  it('treats a hand-fired source as that source finishing', async () => {
+    const source = make({ name: 'Tests', trigger: { type: 'manual' }, continuous: true });
+    const watcher = make({
+      name: 'Deploy',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+    await scheduler.fire(source.id, 'user');
+    const session = scheduler.get(source.id)!.sessionId as string;
+    kernel.submit.mockClear();
+
+    expect(await scheduler.onRunFinished(finished({ sessionId: session, triggeredBy: 'user' }))).toBe(1);
+    expect(scheduler.get(watcher.id)!.runCount).toBe(1);
+  });
+
+  /** A watcher hand-fired has no triggering run, and is told so rather than left to invent one. */
+  it('tells a hand-fired watcher there is no run to look at', async () => {
+    const watcher = make({ trigger: { type: 'event', event: 'run_failed' } });
+    await scheduler.fire(watcher.id, 'user');
+
+    const prompt = (kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt;
+    expect(prompt).toContain('Run by hand, not by the event this automation watches');
+    expect(prompt.endsWith('Summarise what changed today.')).toBe(true);
+
+    // A cron automation has no event to explain, so it gets its prompt bare.
+    kernel.submit.mockClear();
+    const nightly = make({ trigger: { type: 'cron', expression: '0 9 * * *' } });
+    await scheduler.fire(nightly.id, 'user');
+    expect((kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt).toBe(
+      'Summarise what changed today.',
+    );
+  });
+
+  it('refuses a source that does not exist, one from another workspace, and itself', () => {
+    const elsewhere = workspaces.create({
+      name: 'Beta',
+      slug: 'beta',
+      description: '',
+      path: '/tmp/beta',
+      color: '#f59e0b',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+    const abroad = make({ workspaceId: elsewhere.id, trigger: { type: 'manual' } });
+
+    expect(() => make({ trigger: { type: 'event', event: 'run_failed', automations: ['aut_nope'] } })).toThrow(
+      /no automation "aut_nope"/,
+    );
+    expect(() => make({ trigger: { type: 'event', event: 'run_failed', automations: [abroad.id] } })).toThrow(
+      /no automation/,
+    );
+
+    const watcher = make({ trigger: { type: 'event', event: 'run_failed' } });
+    expect(() =>
+      scheduler.update(watcher.id, {
+        trigger: { type: 'event', event: 'run_failed', automations: [watcher.id] },
+      }),
+    ).toThrow(/cannot watch itself/);
+  });
+
+  it('refuses an empty list, a duplicate, and a filter alongside sources', () => {
+    const source = make({ trigger: { type: 'manual' } });
+
+    expect(() => make({ trigger: { type: 'event', event: 'run_failed', automations: [] } })).toThrow(
+      /Name at least one automation/,
+    );
+    expect(() =>
+      make({ trigger: { type: 'event', event: 'run_failed', automations: [source.id, source.id] } }),
+    ).toThrow(/named twice/);
+    expect(() =>
+      make({
+        trigger: { type: 'event', event: 'run_failed', filter: 'deploy', automations: [source.id] },
+      }),
+    ).toThrow(/not both/);
+  });
+
+  /**
+   * The loop guard, now that a run an automation produced can be heard.
+   *
+   * Checked over the declared graph and not over the enabled one: a paused
+   * link is still an edge, and `setEnabled` revalidates nothing, so a cycle
+   * closed through a paused automation would come alive the moment somebody
+   * pressed Resume.
+   */
+  it('refuses a cycle, however long, and through a paused link', () => {
+    const a = make({ name: 'A', trigger: { type: 'manual' } });
+    const b = make({
+      name: 'B',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [a.id] },
+      enabled: false,
+    });
+    const c = make({
+      name: 'C',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [b.id] },
+    });
+
+    // A ← B ← C, so pointing A at C closes a loop of three through paused B.
+    expect(() =>
+      scheduler.update(a.id, {
+        trigger: { type: 'event', event: 'run_succeeded', automations: [c.id] },
+      }),
+    ).toThrow(/would loop: C → B → A/);
+
+    // The same edge in the other direction is a fan-in, not a loop.
+    expect(() =>
+      scheduler.update(c.id, {
+        trigger: { type: 'event', event: 'run_succeeded', automations: [a.id, b.id] },
+      }),
+    ).not.toThrow();
+  });
+
+  /**
+   * A list of ids in JSON is a foreign key nothing enforces, and what makes
+   * one survivable is that removing the referent removes every reference —
+   * on every path that can remove it, which here is a delete and a move.
+   */
+  it('prunes a deleted source, leaving the watcher sourceless rather than watching people', async () => {
+    const source = make({ name: 'Tests', trigger: { type: 'manual' }, continuous: true });
+    const watcher = make({
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+
+    expect(scheduler.delete(source.id)).toBe(true);
+    expect(scheduler.get(watcher.id)!.trigger).toEqual({
+      type: 'event',
+      event: 'run_succeeded',
+      automations: [],
+    });
+
+    // Sourceless is not "watches everybody": a person's run must not wake it.
+    expect(await scheduler.onRunFinished(finished())).toBe(0);
+    expect(kernel.submit).not.toHaveBeenCalled();
+  });
+
+  it('prunes a source that moves to another workspace', () => {
+    const elsewhere = workspaces.create({
+      name: 'Beta',
+      slug: 'beta',
+      description: '',
+      path: '/tmp/beta',
+      color: '#f59e0b',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+    const source = make({ name: 'Tests', trigger: { type: 'manual' } });
+    const watcher = make({
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+
+    scheduler.update(source.id, { workspaceId: elsewhere.id });
+
+    expect(scheduler.get(watcher.id)!.trigger).toEqual({
+      type: 'event',
+      event: 'run_succeeded',
+      automations: [],
+    });
+  });
+
+  /**
+   * A move revalidates the trigger even when the patch does not name it.
+   *
+   * `if (patch.trigger)` was enough while a trigger meant a cron expression,
+   * which means the same thing everywhere. Sources are resolved in one
+   * workspace, so a move carrying them would leave a watcher enabled and
+   * permanently mute — the exact failure this feature exists to make visible.
+   */
+  it('refuses to move a watcher away from the automations it watches', () => {
+    const elsewhere = workspaces.create({
+      name: 'Beta',
+      slug: 'beta',
+      description: '',
+      path: '/tmp/beta',
+      color: '#f59e0b',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+    const source = make({ name: 'Tests', trigger: { type: 'manual' } });
+    const watcher = make({
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+
+    expect(() => scheduler.update(watcher.id, { workspaceId: elsewhere.id })).toThrow(
+      /no automation/,
+    );
+    expect(scheduler.get(watcher.id)!.workspaceId).toBe(workspace.id);
+  });
+
+  /** A copy always lands in another workspace, where its sources do not exist. */
+  it('refuses to duplicate a watcher that names sources, and says why', () => {
+    const elsewhere = workspaces.create({
+      name: 'Beta',
+      slug: 'beta',
+      description: '',
+      path: '/tmp/beta',
+      color: '#f59e0b',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+    const source = make({ name: 'Tests', trigger: { type: 'manual' } });
+    const watcher = make({
+      name: 'Deploy',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+
+    expect(() => scheduler.duplicate(watcher.id, elsewhere.id)).toThrow(
+      /watches automations of its own workspace/,
+    );
+    // A sourceless watcher still duplicates: nothing about it is local.
+    const plain = make({ trigger: { type: 'event', event: 'run_succeeded', filter: 'deploy' } });
+    expect(() => scheduler.duplicate(plain.id, elsewhere.id)).not.toThrow();
+  });
+
+  /**
+   * The two cases the old blanket refusal covered that nothing else does: a
+   * run produced by an automation that has since been deleted or moved, and
+   * the advisor's own `system` analyses. Neither belongs to any automation, so
+   * neither can have been named by anyone.
+   */
+  it('ignores an automation-produced run that no automation claims', async () => {
+    make({ trigger: { type: 'event', event: 'run_succeeded' } });
+
+    for (const triggeredBy of ['automation', 'loop', 'system'] as const) {
+      expect(await scheduler.onRunFinished(finished({ triggeredBy }))).toBe(0);
+    }
+    expect(kernel.submit).not.toHaveBeenCalled();
+  });
+});
+
 describe('notifying', () => {
   it('names an automation that asked to be notified, for the session its firings use', async () => {
     const quiet = make({ trigger: { type: 'manual' } });

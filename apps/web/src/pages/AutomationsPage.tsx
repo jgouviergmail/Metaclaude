@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Clock,
   Filter,
+  MousePointerClick,
   MoreVertical,
   Pause,
   Play,
@@ -20,9 +21,10 @@ import {
   Repeat,
   Timer,
   Trash2,
+  Webhook,
   Zap,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AvailabilityFilter, filterByAvailability, type Availability } from '@/components/registry/AvailabilityFilter';
 import { BulkActions } from '@/components/registry/BulkActions';
 import { FILTER_ROW } from '@/components/ui/layout';
@@ -33,13 +35,18 @@ import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
+  declaredSources,
   EMITTED_AUTOMATION_EVENTS,
   PERMISSION_MODE_INFO,
+  TASK_CATEGORIES,
+  watchesAutomations,
+  watchPath,
   type Automation,
   type AutomationTrigger,
   type PermissionMode,
   type RunStatus,
 } from '@metaclaude/shared';
+import { CheckboxField } from '@/components/ui/controls';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { SystemTabs } from '@/components/layout/SystemTabs';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
@@ -60,7 +67,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { TOUCH_TARGET } from '@/components/ui/touch-target';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
-import { usePlural, useT } from '@/lib/i18n';
+import { usePlural, useT, type TranslateFn } from '@/lib/i18n';
 import { effortOptions, modelOptions } from '@/lib/claude-catalogue';
 import { routes, type EffortLevel, type ModelSelector } from '@metaclaude/shared';
 
@@ -116,6 +123,40 @@ const EVENT_LABELS: Record<(typeof EMITTED_AUTOMATION_EVENTS)[number], string> =
   run_failed: 'On a failed run',
   run_succeeded: 'On a succeeded run',
 };
+
+/**
+ * One picture per kind of trigger, and a `Record` so a new kind fails the
+ * build rather than inheriting a clock.
+ *
+ * It used to be "continuous or not", which put a schedule's clock on every
+ * manual runbook and, once watchers could name their sources, on a row whose
+ * own summary reads "after Tests de nuit succeeds" — the icon contradicting
+ * the sentence directly under it. Continuous still wins where it applies: it
+ * is the more distinctive fact, and it carries its own colour.
+ */
+const TRIGGER_ICONS: Record<AutomationTrigger['type'], ReactNode> = {
+  cron: <Clock className="size-4" />,
+  interval: <Timer className="size-4" />,
+  manual: <MousePointerClick className="size-4" />,
+  event: <Webhook className="size-4" />,
+};
+
+/**
+ * The segmented buttons inside the trigger editor — which event, and which
+ * population.
+ *
+ * `text-caption` on `py-2` paints 32px, which clears the probe's floor and is
+ * still a poor target for a thumb. The height is raised rather than an inset
+ * pseudo-element added, and that is the point worth recording: these sit in a
+ * grid with `gap-1.5`, so `TOUCH_TARGET_Y`'s 6px each side would have two
+ * stacked buttons overlap by exactly their gap — and the one later in the DOM
+ * quietly takes presses meant for the one above. Vertical hit areas are safe
+ * beside prose and unsafe between two controls stacked this close.
+ *
+ * `pointer-coarse` only, so the desktop dialog keeps its density.
+ */
+const PICKER_BUTTON =
+  'rounded-lg border px-3 py-2 text-caption font-medium transition-colors pointer-coarse:min-h-11';
 
 export function AutomationsPage() {
   const plural = usePlural();
@@ -216,6 +257,31 @@ export function AutomationsPage() {
   const workspaces = workspaceData?.workspaces ?? [];
   const workspaceName = (id: string): string =>
     workspaces.find((workspace) => workspace.id === id)?.name ?? t('Unknown workspace');
+
+  /** Every automation by id, so a watcher's summary can name what it watches. */
+  const namesById = useMemo(
+    () => new Map(automations.map((automation) => [automation.id, automation.name])),
+    [automations],
+  );
+  /**
+   * Who waits on whom, inverted once instead of scanned per row.
+   *
+   * Every row asks this — the tooltip on its Run now button — so scanning the
+   * list per row is the whole list squared on a screen whose job is to show
+   * the whole list. Paused watchers are in it: deleting a source silences a
+   * paused watcher exactly as thoroughly, and its operator finds out when they
+   * resume it, which is the worst moment to find out.
+   */
+  const dependentsById = useMemo(() => {
+    const index = new Map<string, Automation[]>();
+    for (const automation of automations) {
+      for (const sourceId of declaredSources(automation.trigger)) {
+        index.set(sourceId, [...(index.get(sourceId) ?? []), automation]);
+      }
+    }
+    return index;
+  }, [automations]);
+  const dependentsOf = (id: string): Automation[] => dependentsById.get(id) ?? [];
 
   const inScope =
     scope === 'all'
@@ -364,7 +430,7 @@ export function AutomationsPage() {
                     {automation.continuous ? (
                       <Repeat className="size-4" />
                     ) : (
-                      <Clock className="size-4" />
+                      TRIGGER_ICONS[automation.trigger.type]
                     )}
                   </span>
 
@@ -404,7 +470,7 @@ export function AutomationsPage() {
                     </div>
 
                     <p className="mt-1 text-caption text-muted">
-                      {describeTrigger(automation.trigger)}
+                      {describeTrigger(automation.trigger, t, namesById)}
                     </p>
 
                     {/*
@@ -456,7 +522,34 @@ export function AutomationsPage() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1">
-                    <Tooltip content={t('Run now')}>
+                    {/*
+                      "Run now" works on every kind, watchers included, and
+                      says what it will actually do rather than being taken
+                      away. Disabling it on a watcher would make one control
+                      mean two things on neighbouring rows — and it earns its
+                      place there: testing a prompt without waiting for the
+                      event, and re-running the downstream half of a chain.
+                      What it owes the operator is the two consequences that
+                      are not obvious: there is no triggering run to react to,
+                      and whatever waits on this automation will hear it
+                      finish, exactly as if the event had happened.
+                    */}
+                    <Tooltip
+                      content={[
+                        automation.trigger.type === 'event'
+                          ? t('Runs the prompt now, with no triggering run to react to.')
+                          : t('Run now'),
+                        dependentsOf(automation.id).length > 0
+                          ? t('Finishing will also trigger {names}.', {
+                              names: dependentsOf(automation.id)
+                                .map((dependent) => dependent.name)
+                                .join(', '),
+                            })
+                          : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -522,7 +615,28 @@ export function AutomationsPage() {
                         * unattended in a workspace it was not written for is the
                         * kind of surprise this whole screen exists to avoid.
                         */}
-                      {workspaces.filter((w) => w.id !== automation.workspaceId).length > 0 ? (
+                      {/*
+                        The reason once, not once per destination.
+                        A watcher of automations cannot be copied anywhere — a
+                        copy lands in another workspace and its sources are in
+                        this one — so the destinations are replaced by the
+                        explanation rather than listed and greyed with the same
+                        sentence repeated under each. Three identical lines was
+                        what it looked like on a phone; six workspaces would
+                        have been six.
+                      */}
+                      {watchesAutomations(automation.trigger) &&
+                      workspaces.filter((w) => w.id !== automation.workspaceId).length > 0 ? (
+                        <>
+                          <MenuSeparator />
+                          <MenuLabel>{t('Duplicate to')}</MenuLabel>
+                          <MenuItem disabled onSelect={() => undefined}>
+                            {t('Not while it watches this workspace’s automations.')}
+                          </MenuItem>
+                        </>
+                      ) : null}
+                      {!watchesAutomations(automation.trigger) &&
+                      workspaces.filter((w) => w.id !== automation.workspaceId).length > 0 ? (
                         <>
                           <MenuSeparator />
                           <MenuLabel>{t('Duplicate to')}</MenuLabel>
@@ -579,10 +693,44 @@ export function AutomationsPage() {
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => !open && setPendingDelete(null)}
-        title={`Delete "${pendingDelete?.name ?? ''}"?`}
-        description={t(
-          'The schedule is removed. Sessions and transcripts it already produced are kept.',
-        )}
+        /*
+          A template literal, so none of the three i18n measures ever saw it —
+          they look for a translated call, not for a template — and this was
+          English on a French screen for as long as the dialog has existed.
+          Found by looking at the rendered dialog rather than at the source;
+          the `templateCopyProps` ratchet now sees it.
+
+          The call form is not spelled out here on purpose: a ratchet that
+          greps cannot tell code from prose, and writing it would indict this
+          comment. It did, on the first run.
+        */
+        title={t('Delete “{name}”?', { name: pendingDelete?.name ?? '' })}
+        description={
+          <>
+            <p>
+              {t('The schedule is removed. Sessions and transcripts it already produced are kept.')}
+            </p>
+            {/*
+              What else stops working, before the press rather than after.
+              Deleting a source silences every automation that waits on it, and
+              nothing about the row being deleted says so — the operator's own
+              chain becomes a chain of one, in a workspace they may not be
+              looking at. The names are what makes it actionable.
+            */}
+            {pendingDelete && dependentsOf(pendingDelete.id).length > 0 ? (
+              <p className="mt-2 text-warning">
+                {plural(
+                  dependentsOf(pendingDelete.id).length,
+                  '{n} automation waits for this one and will watch nothing after this:',
+                  '{n} automations wait for this one and will watch nothing after this:',
+                )}{' '}
+                {dependentsOf(pendingDelete.id)
+                  .map((dependent) => dependent.name)
+                  .join(', ')}
+              </p>
+            ) : null}
+          </>
+        }
         confirmLabel={t('Delete')}
         danger
         onConfirm={() => {
@@ -631,6 +779,31 @@ function AutomationEditor({
   );
   const [eventFilter, setEventFilter] = useState(
     automation?.trigger.type === 'event' ? (automation.trigger.filter ?? '') : '',
+  );
+  /**
+   * Which automations this one watches, when it watches automations at all.
+   *
+   * Held whole rather than reconciled against the workspace picker: an
+   * operator who changes the workspace and changes back finds their ticks
+   * where they left them. What the form actually posts is derived below, from
+   * this and from what the chosen workspace contains — the same reason the
+   * effort picker derives from the catalogue rather than being reset by it.
+   */
+  const [eventSources, setEventSources] = useState<string[]>(
+    automation ? [...declaredSources(automation.trigger)] : [],
+  );
+  /**
+   * Which population this event trigger watches, held as its own state.
+   *
+   * Not derived from "are any ticked", and that is the whole point: a watcher
+   * whose last source was deleted is stored with an empty list, which means
+   * "watches nothing" and is a broken chain the operator must repair. Deriving
+   * the mode from the ticks would have opening that automation and pressing
+   * Save quietly turn it into a watcher of everybody's runs — a different
+   * automation, from a press that meant "I changed nothing".
+   */
+  const [watchMode, setWatchMode] = useState<'people' | 'automations'>(
+    automation && watchesAutomations(automation.trigger) ? 'automations' : 'people',
   );
   const [continuous, setContinuous] = useState(automation?.continuous ?? false);
 
@@ -727,6 +900,8 @@ function AutomationEditor({
         setEventName(from.trigger.event as (typeof EMITTED_AUTOMATION_EVENTS)[number]);
       }
       setEventFilter(from.trigger.filter ?? '');
+      setEventSources([...declaredSources(from.trigger)]);
+      setWatchMode(watchesAutomations(from.trigger) ? 'automations' : 'people');
     }
     setContinuous(from.continuous);
     setPermissionMode(from.policy.permissionMode);
@@ -736,10 +911,59 @@ function AutomationEditor({
     setMaxFailures(from.maxConsecutiveFailures);
   };
 
+  /*
+   * What this workspace offers as a source, and what may be ticked.
+   *
+   * Three exclusions, each of them something the server would refuse: an
+   * automation of another workspace (sources are resolved in one), this
+   * automation itself, and anything that already leads back here — offering a
+   * tick whose only outcome is an error teaches the rule in the worst possible
+   * place. The graph walk is the same one `validateTrigger` does, over the
+   * list this screen already holds.
+   */
+  const inWorkspace = useMemo(
+    () => (live?.automations ?? []).filter((entry) => entry.workspaceId === workspaceId),
+    [live, workspaceId],
+  );
+  const candidates = useMemo(() => {
+    const self = automation?.id;
+    if (!self) return inWorkspace;
+    const sourcesOf = new Map(
+      inWorkspace.map((entry) => [entry.id, declaredSources(entry.trigger)]),
+    );
+    // The same walk the scheduler refuses with, from `packages/shared`: what
+    // this hides is exactly what that would reject, and one definition is what
+    // keeps the two from answering differently.
+    return inWorkspace.filter(
+      (entry) =>
+        entry.id !== self && !watchPath((id) => sourcesOf.get(id) ?? [], [entry.id], self),
+    );
+  }, [inWorkspace, automation?.id]);
+
+  /*
+   * The ticks that survive the chosen workspace — what the form posts.
+   *
+   * Derived rather than reset by an effect: moving an automation elsewhere
+   * cannot carry its sources, and the operator is told that below rather than
+   * having their ticks disappear from under them.
+   */
+  const validSources = useMemo(
+    () => eventSources.filter((id) => candidates.some((entry) => entry.id === id)),
+    [eventSources, candidates],
+  );
+  const sourcesDropped = eventSources.length > 0 && validSources.length !== eventSources.length;
+
   const buildTrigger = (): AutomationTrigger => {
     if (triggerType === 'interval') return { type: 'interval', everyMs: everyMinutes * 60_000 };
     if (triggerType === 'manual') return { type: 'manual' };
     if (triggerType === 'event') {
+      // Exclusive by construction, because the server refuses the pair: a
+      // firing's prompt is the automation's own, so a filter over it would
+      // either always match or silently never — a watcher that looks
+      // configured and is dead.
+      if (watchMode === 'automations') {
+        return { type: 'event', event: eventName, automations: validSources };
+      }
       const filter = eventFilter.trim();
       return { type: 'event', event: eventName, ...(filter ? { filter } : {}) };
     }
@@ -833,7 +1057,14 @@ function AutomationEditor({
       toast.error(error instanceof ApiError ? error.message : t('Could not save the automation.')),
   });
 
-  const valid = name.trim() && prompt.trim() && workspaceId;
+  /*
+   * A watcher of automations with nothing ticked is refused by the server, and
+   * saying so here is the difference between a repair and a dead end: it is
+   * exactly the state a pruned watcher opens in, so the operator arriving to
+   * fix one must be told what is missing rather than handed a 400.
+   */
+  const needsSource = triggerType === 'event' && watchMode === 'automations' && validSources.length === 0;
+  const valid = name.trim() && prompt.trim() && workspaceId && !needsSource;
 
   return (
     <Modal
@@ -1034,7 +1265,16 @@ function AutomationEditor({
               </p>
             </div>
           ) : triggerType === 'event' ? (
-            <div className="mt-2.5 space-y-2">
+            /*
+              Subordinate, and shown to be.
+              An event trigger asks two more questions — which outcome, and
+              whose runs — and rendered flush left they read as three
+              independent rows of identical buttons, six choices at one level
+              where there are two levels. A rule down the left says these
+              refine the row above without adding a box the dialog does not
+              have room for.
+            */
+            <div className="mt-2.5 space-y-2 border-l border-line pl-3">
               <div className="grid grid-cols-2 gap-1.5" role="group" aria-label={t('Event')}>
                 {EMITTED_AUTOMATION_EVENTS.map((event) => (
                   <button
@@ -1042,8 +1282,7 @@ function AutomationEditor({
                     type="button"
                     onClick={() => setEventName(event)}
                     aria-pressed={eventName === event}
-                    className={cn(
-                      'rounded-lg border px-3 py-2 text-caption font-medium transition-colors',
+                    className={cn(PICKER_BUTTON,
                       eventName === event
                         ? 'border-accent bg-accent-soft text-accent'
                         : 'border-line text-muted hover:bg-raised',
@@ -1053,17 +1292,125 @@ function AutomationEditor({
                   </button>
                 ))}
               </div>
-              <Input
-                value={eventFilter}
-                onChange={(event) => setEventFilter(event.target.value)}
-                placeholder={t('Filter (optional)')}
-                aria-label={t('Filter (optional)')}
-              />
-              <p className="text-caption text-subtle">
-                {t(
-                  'Fires when a run you, a token or a delegation started in this workspace ends that way — never one another automation produced, which would chain. The filter is a word that must appear in the run’s category or prompt.',
-                )}
-              </p>
+              {/*
+                Which population, as a choice rather than a side effect of
+                ticking something. Two exclusive modes: the runs people start,
+                narrowed by a word, or the end of named automations — a chain.
+                A grid, never a bare flex row: `Les runs des personnes` next to
+                `D'autres automatisations` overflows a 360px screen, and a flex
+                child squeezes into three-line pills before it overflows.
+              */}
+              <div
+                className="grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+                role="group"
+                aria-label={t('What it watches')}
+              >
+                {(['people', 'automations'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setWatchMode(mode)}
+                    aria-pressed={watchMode === mode}
+                    className={cn(PICKER_BUTTON,
+                      watchMode === mode
+                        ? 'border-accent bg-accent-soft text-accent'
+                        : 'border-line text-muted hover:bg-raised',
+                    )}
+                  >
+                    {mode === 'people'
+                      ? t('Runs people start')
+                      : t('Other automations finishing')}
+                  </button>
+                ))}
+              </div>
+
+              {watchMode === 'people' ? (
+                <>
+                  <Input
+                    value={eventFilter}
+                    onChange={(event) => setEventFilter(event.target.value)}
+                    placeholder={t('Filter (optional)')}
+                    aria-label={t('Filter (optional)')}
+                  />
+                  <p className="text-caption text-subtle">
+                    {t(
+                      'Fires when a run you, a token or a delegation started in this workspace ends that way. The filter is optional: one word that must appear in the run’s category or prompt, matched anywhere in it and ignoring case.',
+                    )}
+                  </p>
+                  {/*
+                    The categories, named rather than left to be guessed.
+                    They are identifiers the classifier assigns, never
+                    translated, and asking a French screen to guess an English
+                    one is asking for a filter that matches nothing.
+                  */}
+                  <p className="text-caption text-subtle">
+                    {t('Categories a run can have:')}{' '}
+                    <span className="font-mono">{TASK_CATEGORIES.join(' · ')}</span>
+                  </p>
+                </>
+              ) : (
+                <>
+                  {candidates.length > 0 ? (
+                    <div
+                      className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-line p-2"
+                      role="group"
+                      aria-label={t('Automations to watch')}
+                    >
+                      {candidates.map((candidate) => (
+                        <CheckboxField
+                          key={candidate.id}
+                          checked={eventSources.includes(candidate.id)}
+                          onChange={(checked) =>
+                            setEventSources((sources) =>
+                              checked
+                                ? [...sources, candidate.id]
+                                : sources.filter((id) => id !== candidate.id),
+                            )
+                          }
+                          label={
+                            candidate.enabled
+                              ? candidate.name
+                              : t('{name} (paused)', { name: candidate.name })
+                          }
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-caption text-warning">
+                      {t(
+                        'This workspace has no other automation to watch — one that already waits on this one is not offered, because that would loop.',
+                      )}
+                    </p>
+                  )}
+                  <p className="text-caption text-subtle">
+                    {t(
+                      'Fires when one of these finishes that way, however it was started — its schedule, "Run now", or a message in its session. It hears nothing else: the runs you start yourself go to the other mode.',
+                    )}
+                  </p>
+                  {needsSource ? (
+                    <p className="text-caption text-warning">
+                      {t('Tick at least one, or switch to the runs people start.')}
+                    </p>
+                  ) : null}
+                  {/*
+                    Two causes, two sentences. Ticks vanish because the
+                    workspace changed under them, or because somebody deleted
+                    the automation they named while this form was open — and a
+                    message that names the wrong one of those sends the
+                    operator looking in the wrong place. `moving` already
+                    distinguishes them.
+                  */}
+                  {sourcesDropped ? (
+                    <p className="text-caption text-warning">
+                      {moving
+                        ? t(
+                            'Automations are watched inside one workspace, so the ones chosen in the other are not carried over.',
+                          )
+                        : t('An automation this one watched is no longer there.')}
+                    </p>
+                  ) : null}
+                </>
+              )}
             </div>
           ) : triggerType === 'interval' ? (
             <div className="mt-2.5">
@@ -1267,19 +1614,50 @@ function AutomationEditor({
   );
 }
 
-function describeTrigger(trigger: AutomationTrigger): string {
+/**
+ * The one-line summary under an automation's name.
+ *
+ * Translated through `t` rather than returning English: the strings are
+ * lowercase, which is what let them escape all three i18n measures for as long
+ * as they did — a lowercase sentence is still copy.
+ *
+ * `names` maps an automation id to its name, so a watcher can say what it
+ * watches. An id that is not in the map is one the caller could not see; it is
+ * shown as an id rather than dropped, because a summary that silently lists
+ * fewer sources than the trigger holds is worse than an ugly one.
+ */
+function describeTrigger(
+  trigger: AutomationTrigger,
+  t: TranslateFn,
+  names: ReadonlyMap<string, string> = new Map(),
+): string {
   switch (trigger.type) {
     case 'cron':
-      return `cron: ${trigger.expression}`;
+      return t('cron: {expression}', { expression: trigger.expression });
     case 'interval': {
       const minutes = Math.round(trigger.everyMs / 60_000);
       return minutes % 60 === 0
-        ? `every ${minutes / 60}h`
-        : `every ${minutes}m`;
+        ? t('every {count}h', { count: String(minutes / 60) })
+        : t('every {count}m', { count: String(minutes) });
     }
-    case 'event':
-      return `on ${trigger.event}`;
+    case 'event': {
+      if (!watchesAutomations(trigger)) {
+        return trigger.event === 'run_failed' ? t('on a failed run') : t('on a succeeded run');
+      }
+      const sources = declaredSources(trigger);
+      // Pruned to nothing when its last source was deleted or moved. Named as
+      // its own state: an empty list watches nothing, where no list at all
+      // would watch the runs people start — two very different automations.
+      if (sources.length === 0) return t('watches nothing since its source went away');
+      // Whole sentences rather than an event fragment plus a list: "on a
+      // failed run of X" composes in English and not in French, where the
+      // event and the subject cannot be glued in that order.
+      const list = sources.map((id) => names.get(id) ?? id).join(', ');
+      return trigger.event === 'run_failed'
+        ? t('after {sources} fails', { sources: list })
+        : t('after {sources} succeeds', { sources: list });
+    }
     default:
-      return 'manual only';
+      return t('manual only');
   }
 }

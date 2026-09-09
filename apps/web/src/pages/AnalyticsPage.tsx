@@ -671,7 +671,15 @@ function PolicyCard({
                         width={80}
                         height={24}
                         tone={mean >= 0.7 ? 'success' : mean >= 0.4 ? 'warning' : 'danger'}
-                        label={`Posterior: ${formatPercent(mean)} expected over ${arm.trials} trials`}
+                        // A template literal, which no i18n measure could see:
+                        // this accessible name was English on a French screen,
+                        // and it is the *only* description a screen reader gets
+                        // of the curve. Found by the `templateCopyProps`
+                        // ratchet on its first run.
+                        label={t('Posterior: {mean} expected over {trials} trials', {
+                          mean: formatPercent(mean),
+                          trials: String(arm.trials),
+                        })}
                       />
                       <span className="tabular-nums text-caption text-muted">
                         {formatPercent(mean)}

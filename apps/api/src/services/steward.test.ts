@@ -547,6 +547,37 @@ describe('writing, under its own name', () => {
   });
 
   /**
+   * A chain the steward builds reaches the scheduler whole.
+   *
+   * The tool's schema takes the shared `AutomationTrigger`, so `automations`
+   * is declared — and a field a schema declares but a handler forwards a
+   * hand-picked subset of is a silent no-op, which is how `system_memory_write`
+   * lost `pinned` and `confidence`. The trigger is passed by reference here
+   * rather than rebuilt, and this is what holds it to that: one test that
+   * follows the field from the tool to the row.
+   */
+  it('carries an event trigger’s sources through, on create and on update', () => {
+    asked.created.length = 0;
+    asked.updated.length = 0;
+    const trigger = {
+      type: 'event' as const,
+      event: 'run_succeeded' as const,
+      automations: ['auto_a', 'auto_b'],
+    };
+
+    steward.automationCreate(ACTOR, {
+      workspace: 'project',
+      name: 'Deploy',
+      prompt: 'ship',
+      trigger,
+    });
+    expect((asked.created[0] as { trigger: unknown }).trigger).toEqual(trigger);
+
+    steward.automationUpdate(ACTOR, { id: 'auto_a', trigger });
+    expect(asked.updated[0]).toEqual({ trigger });
+  });
+
+  /**
    * The patch the scheduler receives names what the steward named and
    * nothing else — the `.partial()` trap: a change of prompt that arrived
    * with `description: ''` beside it would wipe the description.

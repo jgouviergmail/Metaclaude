@@ -25,9 +25,13 @@ import {
 } from './api-contracts.js';
 import {
   Automation,
+  AutomationTrigger,
+  declaredSources,
   MarketplaceInput,
   normaliseTags,
   RunPolicy,
+  watchesAutomations,
+  watchPath,
   WorkspaceSettings,
 } from './domain.js';
 
@@ -563,5 +567,143 @@ describe('patchSchema', () => {
     expect(Object.keys(patchSchema(Automation.shape.policy.removeDefault()).parse({
       permissionMode: 'dontAsk',
     }))).toEqual(['permissionMode']);
+  });
+});
+
+/**
+ * An event trigger's two modes, where the schema decides which one is stored.
+ *
+ * The distinction the schema has to carry is between an *absent* list and an
+ * *empty* one: absent means "watch the runs people start", empty means "watch
+ * nothing, my source went away". Zod keeps them apart only because the field
+ * is `.optional()` without a default — a `.default([])` here would collapse
+ * every sourceless watcher into the broken state, silently, on the first read.
+ *
+ * The bounds are a contract too: the scheduler walks the graph they describe,
+ * and a list nobody bounded is a graph walk nobody bounded.
+ */
+describe('AutomationTrigger — watching people, or watching automations', () => {
+  const event = (over: Record<string, unknown> = {}): unknown => ({
+    type: 'event',
+    event: 'run_failed',
+    ...over,
+  });
+
+  it('keeps an absent list absent and an empty list empty', () => {
+    const bare = AutomationTrigger.parse(event());
+    expect(bare).toEqual({ type: 'event', event: 'run_failed' });
+    expect('automations' in bare).toBe(false);
+
+    const pruned = AutomationTrigger.parse(event({ automations: [] }));
+    expect(pruned).toEqual({ type: 'event', event: 'run_failed', automations: [] });
+  });
+
+  it('bounds the list and the ids it holds', () => {
+    const ids = (count: number, length = 8): string[] =>
+      Array.from({ length: count }, (_, index) => `aut_${String(index).padStart(length - 4, '0')}`);
+
+    expect(AutomationTrigger.safeParse(event({ automations: ids(32) })).success).toBe(true);
+    expect(AutomationTrigger.safeParse(event({ automations: ids(33) })).success).toBe(false);
+    expect(AutomationTrigger.safeParse(event({ automations: [''] })).success).toBe(false);
+    expect(AutomationTrigger.safeParse(event({ automations: ['a'.repeat(65)] })).success).toBe(
+      false,
+    );
+  });
+
+  /**
+   * The graph walk both sides do, in one place.
+   *
+   * The server refuses a trigger that would close a loop; the form declines to
+   * offer the tick that would. Written twice, those two answer differently the
+   * first time either is touched — and the one that drifts is the form, which
+   * would then offer a tick whose only outcome is an error, or hide a legal
+   * one. Same reasoning as `SectionTabs`: one definition, two callers.
+   */
+  describe('watchPath — what already leads back here', () => {
+    // A ← B ← C, plus an unrelated D.
+    const sources: Record<string, string[]> = {
+      B: ['A'],
+      C: ['B'],
+      D: [],
+    };
+    const of = (id: string): readonly string[] => sources[id] ?? [];
+
+    it('finds the path that reaches the target, and names every step', () => {
+      expect(watchPath(of, ['C'], 'A')).toEqual(['C', 'B', 'A']);
+      expect(watchPath(of, ['B'], 'A')).toEqual(['B', 'A']);
+    });
+
+    it('answers null when nothing leads back', () => {
+      expect(watchPath(of, ['D'], 'A')).toBeNull();
+      // The other direction is a fan-in, not a loop: A watching C is fine.
+      expect(watchPath(of, ['A'], 'C')).toBeNull();
+      expect(watchPath(of, [], 'A')).toBeNull();
+    });
+
+    it('reports a source that is the target itself', () => {
+      expect(watchPath(of, ['A'], 'A')).toEqual(['A']);
+    });
+
+    /**
+     * A graph that already holds a cycle must not hang the walk. It cannot be
+     * stored — that is the point of the check — but the form runs this over
+     * whatever the server currently returns, and a defensive walk costs one
+     * `Set`.
+     */
+    it('terminates on a graph that already contains a cycle', () => {
+      const looped = (id: string): readonly string[] =>
+        ({ X: ['Y'], Y: ['X'] })[id] ?? [];
+      expect(watchPath(looped, ['X'], 'Z')).toBeNull();
+      expect(watchPath(looped, ['X'], 'Y')).toEqual(['X', 'Y']);
+    });
+
+    it('reads the declared sources of a trigger, and only of an event one', () => {
+      expect(declaredSources({ type: 'manual' })).toEqual([]);
+      expect(declaredSources({ type: 'event', event: 'run_failed' })).toEqual([]);
+      expect(
+        declaredSources({ type: 'event', event: 'run_failed', automations: ['A'] }),
+      ).toEqual(['A']);
+    });
+
+    /**
+     * The predicate that keeps the empty list from collapsing into the absent
+     * one.
+     *
+     * Seven call sites ask "does this trigger name sources", and every one of
+     * them must answer *yes* for an empty list: that is a watcher whose source
+     * was deleted, which watches nothing and is waiting to be repaired — not a
+     * watcher of the runs people start. Written inline, one of the seven
+     * eventually becomes `automations?.length > 0`, which is the same
+     * expression for six of them and silently repurposes the seventh.
+     */
+    it('says a pruned trigger still watches automations, though it watches none', () => {
+      expect(watchesAutomations({ type: 'event', event: 'run_failed', automations: [] })).toBe(
+        true,
+      );
+      expect(watchesAutomations({ type: 'event', event: 'run_failed', automations: ['A'] })).toBe(
+        true,
+      );
+      expect(watchesAutomations({ type: 'event', event: 'run_failed' })).toBe(false);
+      expect(watchesAutomations({ type: 'event', event: 'run_failed', filter: 'x' })).toBe(false);
+      expect(watchesAutomations({ type: 'manual' })).toBe(false);
+    });
+  });
+
+  /**
+   * The form compares the trigger it built against the stored one with
+   * `JSON.stringify`, and sends a patch only when they differ. That is only
+   * sound if a parsed trigger's keys come out in schema order whatever order
+   * they went in — otherwise opening an automation and pressing Save would
+   * post a "changed" trigger that is byte-identical in meaning.
+   */
+  it('emits its keys in schema order, so an untouched trigger compares equal', () => {
+    const parsed = AutomationTrigger.parse({
+      automations: ['aut_1'],
+      event: 'run_failed',
+      type: 'event',
+    });
+    expect(JSON.stringify(parsed)).toBe(
+      JSON.stringify({ type: 'event', event: 'run_failed', automations: ['aut_1'] }),
+    );
   });
 });

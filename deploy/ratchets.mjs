@@ -807,6 +807,67 @@ function countDefaultingPartials() {
   return found;
 }
 
+/**
+ * A JSX prop whose value is a template literal carrying prose.
+ *
+ * The fourth shape that escapes every i18n measure, and it shipped twice:
+ * ``title={`Delete "${name}"?`}`` on the automations dialog and on the
+ * workspaces one. The three existing measures know `t('…')`, a string literal
+ * in a copy table, and `plural(…)`; none of them looks at a template, so an
+ * English sentence sat in a French confirmation for as long as either dialog
+ * has existed. Found by *looking at the rendered dialog*, which is the
+ * argument for this measure existing: the source read as if it were fine.
+ *
+ * Narrow on purpose. Only props that name copy, only templates whose literal
+ * chunks contain a word of two letters or more starting with a capital — so
+ * `` `${base} ${extra}` `` (class lists, ids, paths, cron expressions) is not
+ * indicted, and neither is a template of pure interpolation.
+ */
+function countTemplateCopyProps() {
+  const ts = typescript();
+  if (!ts) return null;
+
+  const COPY_PROPS = new Set([
+    'title',
+    'label',
+    'description',
+    'hint',
+    'placeholder',
+    'confirmLabel',
+    'summary',
+    'content',
+  ]);
+  // A capitalised word of two letters or more, followed by a space or the end
+  // of the chunk: prose. `Delete "` matches; `flex items-center` does not, nor
+  // does a bare `${…}` template.
+  const PROSE = /(^|[\s"“'(])[A-Z][a-z]{1,}(\s|[.,?!:;"”')]|$)/;
+
+  let found = 0;
+  for (const { file, sf } of webComponents(ts)) {
+    const walk = (node) => {
+      if (
+        ts.isJsxAttribute(node) &&
+        ts.isIdentifier(node.name) &&
+        COPY_PROPS.has(node.name.text) &&
+        node.initializer &&
+        ts.isJsxExpression(node.initializer) &&
+        node.initializer.expression &&
+        ts.isTemplateExpression(node.initializer.expression)
+      ) {
+        const template = node.initializer.expression;
+        const chunks = [template.head.text, ...template.templateSpans.map((s) => s.literal.text)];
+        if (chunks.some((chunk) => PROSE.test(chunk))) {
+          found += 1;
+          note('tmpl', file, `${node.name.text}={\`${chunks.join('…')}\`}`);
+        }
+      }
+      ts.forEachChild(node, walk);
+    };
+    ts.forEachChild(sf, walk);
+  }
+  return found;
+}
+
 function countUntranslatedTableReads() {
   const ts = typescript();
   if (!ts) return null;
@@ -1806,6 +1867,13 @@ const METRICS = [
     direction: 'down',
     label: 'copy tables the French catalogue carries only part of',
     measure: countHalfTranslatedTables,
+    optional: true,
+  },
+  {
+    key: 'templateCopyProps',
+    direction: 'down',
+    label: 'copy props written as a template literal, invisible to t()',
+    measure: countTemplateCopyProps,
     optional: true,
   },
   {

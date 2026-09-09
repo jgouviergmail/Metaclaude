@@ -413,7 +413,10 @@ function DeleteWorkspaceDialog({
     <ConfirmDialog
       open={Boolean(workspace)}
       onOpenChange={(open) => !open && onClose()}
-      title={`Delete "${workspace?.name ?? ''}"?`}
+      // Same defect as the automations dialog, found in the same sweep: a
+      // template literal is invisible to every i18n measure, so this title
+      // stayed English on a French screen.
+      title={t('Delete “{name}”?', { name: workspace?.name ?? '' })}
       confirmLabel={purge ? t('Delete workspace and files') : t('Delete workspace')}
       danger
       onConfirm={() => onConfirm(purge)}

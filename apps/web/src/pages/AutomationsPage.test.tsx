@@ -727,3 +727,233 @@ describe('filtering and switching many at once', () => {
     expect(screen.queryByRole('button', { name: /delete all/i })).toBeNull();
   });
 });
+
+/**
+ * Watching another automation rather than the runs people start.
+ *
+ * The two modes are exclusive, and the form has to make that visible: ticking
+ * a source is a different automation from typing a filter, not a refinement of
+ * it. What each case pins is the half a unit test can actually see — what
+ * reaches the wire, and what the operator is told before pressing something
+ * irreversible.
+ */
+describe('an event trigger that watches automations', () => {
+  const sources = () => ({
+    automations: [
+      automation({ id: 'aut_src', name: 'Tests', workspaceId: 'ws_a' }),
+      automation({
+        id: 'aut_watch',
+        name: 'Deploy',
+        workspaceId: 'ws_a',
+        trigger: { type: 'event', event: 'run_succeeded', automations: ['aut_src'] },
+      }),
+    ],
+  });
+
+  const openEditor = async (name: string): Promise<void> => {
+    const menu = screen.getByRole('button', { name: `More actions for ${name}` });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    await screen.findByRole('dialog');
+  };
+
+  it('offers the workspace’s automations and posts the ones ticked', async () => {
+    apiMock.automations.mockResolvedValue({
+      automations: [automation({ id: 'aut_src', name: 'Tests', workspaceId: 'ws_a' })],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Tests');
+    const open = screen.getByRole('button', { name: 'New automation' }) as HTMLButtonElement;
+    await waitFor(() => expect(open.disabled).toBe(false));
+    fireEvent.click(open);
+    await screen.findByRole('dialog');
+
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Deploy' } });
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Ship it.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Event' }));
+
+    // The filter belongs to the other mode and must not be on screen here.
+    fireEvent.click(await screen.findByRole('button', { name: 'Other automations finishing' }));
+    expect(screen.queryByLabelText('Filter (optional)')).toBeNull();
+
+    fireEvent.click(await screen.findByLabelText('Tests'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(apiMock.createAutomation).toHaveBeenCalledTimes(1));
+    expect(apiMock.createAutomation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: { type: 'event', event: 'run_failed', automations: ['aut_src'] },
+      }),
+    );
+  });
+
+  /**
+   * A watcher cannot be offered itself, nor anything that already waits on it:
+   * both are refusals the server would issue, and a tick whose only outcome is
+   * an error teaches the rule in the worst possible place.
+   */
+  it('offers neither itself nor an automation that already waits on it', async () => {
+    apiMock.automations.mockResolvedValue(sources());
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Deploy');
+    await openEditor('Tests');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Event' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Other automations finishing' }));
+
+    // Deploy watches Tests, so offering it to Tests would close a loop.
+    expect(screen.queryByLabelText('Deploy')).toBeNull();
+    expect(screen.queryByLabelText('Tests')).toBeNull();
+    expect(await screen.findByText(/no other automation to watch/)).toBeTruthy();
+  });
+
+  /**
+   * The state a pruned watcher opens in.
+   *
+   * Its source was deleted, so the stored trigger holds an empty list — which
+   * means "watches nothing", not "watches everybody". Saving must not turn one
+   * into the other by accident, so the button is refused until a source is
+   * ticked or the operator switches mode deliberately.
+   */
+  it('refuses to save a watcher of automations with none ticked', async () => {
+    apiMock.automations.mockResolvedValue({
+      automations: [
+        automation({
+          id: 'aut_orphan',
+          name: 'Orphan',
+          workspaceId: 'ws_a',
+          trigger: { type: 'event', event: 'run_failed', automations: [] },
+        }),
+      ],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Orphan');
+    // The list distinguishes the two empty states.
+    expect(screen.getByText(/watches nothing since its source went away/)).toBeTruthy();
+
+    await openEditor('Orphan');
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Tick at least one/)).toBeTruthy();
+
+    // Switching population is a decision, and it unblocks the save.
+    fireEvent.click(screen.getByRole('button', { name: 'Runs people start' }));
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+  });
+
+  it('names what a deletion will silence, before the press', async () => {
+    apiMock.automations.mockResolvedValue(sources());
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Tests');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Tests' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/1 automation waits for this one/)).toBeTruthy();
+    expect(within(dialog).getByText(/Deploy/)).toBeTruthy();
+  });
+
+  it('does not offer to duplicate one, and says why', async () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [
+        { id: 'ws_a', name: 'Alpha', slug: 'alpha', color: '#6366f1' },
+        { id: 'ws_b', name: 'Beta', slug: 'beta', color: '#f59e0b' },
+      ],
+    });
+    apiMock.automations.mockResolvedValue(sources());
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Deploy');
+
+    const menu = screen.getByRole('button', { name: 'More actions for Deploy' });
+    fireEvent.pointerDown(menu, { button: 0 });
+    fireEvent.click(menu);
+
+    // The destinations are replaced by the reason, said once: greying three
+    // rows under three copies of the same sentence is what it looked like
+    // before, and six workspaces would have been six.
+    expect(screen.queryByRole('menuitem', { name: /Beta/ })).toBeNull();
+    const reason = await screen.findByRole('menuitem', { name: /watches this workspace/ });
+    expect(reason.getAttribute('data-disabled')).not.toBeNull();
+  });
+
+  /**
+   * The icon has to agree with the sentence under it.
+   *
+   * It was a clock for everything that is not continuous, which read as a
+   * schedule on a row whose own summary says "after Tests de nuit succeeds" —
+   * the picture contradicting the words. A ternary cannot notice that a fourth
+   * trigger kind exists; an exhaustive `Record` fails the build instead, which
+   * is the same lesson `INSIGHT_TONE` carries on the Memory page.
+   */
+  it('marks a watcher with its own icon rather than a schedule’s clock', async () => {
+    apiMock.automations.mockResolvedValue({
+      automations: [
+        automation({ id: 'aut_cron', name: 'Nightly', trigger: { type: 'cron', expression: '0 3 * * *' } }),
+        automation({
+          id: 'aut_evt',
+          name: 'Deploy',
+          trigger: { type: 'event', event: 'run_succeeded', automations: ['aut_cron'] },
+        }),
+      ],
+    });
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Deploy');
+
+    const iconOf = (name: string): string | null => {
+      const heading = screen.getByRole('heading', { name, level: 2 });
+      const card = heading.closest('li, div[class*="rounded"]') as HTMLElement;
+      return card.querySelector('svg')?.getAttribute('class') ?? null;
+    };
+    // Whatever the two are, they are not the same picture.
+    expect(iconOf('Deploy')).not.toBe(null);
+    expect(iconOf('Deploy')).not.toBe(iconOf('Nightly'));
+  });
+
+  /**
+   * The trigger editor's segmented buttons, under a thumb.
+   *
+   * `text-caption` on `py-2` paints 32px, and happy-dom returns 0×0 for every
+   * geometry, so what a unit test can hold is the class contract — the same
+   * reasoning the safe-area and filter-row invariants are pinned with. Two
+   * halves matter: the height is raised on a coarse pointer, and it is raised
+   * by the *box* rather than by an inset pseudo-element, because these sit a
+   * `gap-1.5` apart and opposing vertical hit areas would overlap by exactly
+   * that gap — the lower button then quietly taking presses meant for the one
+   * above it.
+   */
+  it('gives the trigger buttons a thumb-sized height without overlapping hit areas', async () => {
+    apiMock.automations.mockResolvedValue(sources());
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Deploy');
+    await openEditor('Tests');
+    fireEvent.click(screen.getByRole('button', { name: 'Event' }));
+
+    for (const name of ['On a failed run', 'Runs people start', 'Other automations finishing']) {
+      const button = await screen.findByRole('button', { name });
+      expect(button.className).toContain('pointer-coarse:min-h-11');
+      expect(button.className).not.toContain('before:-inset-y');
+    }
+  });
+
+  /**
+   * "Run now" stays on every row: one control, one meaning. What it owes the
+   * operator is the truth about its consequences, not a refusal.
+   */
+  it('keeps Run now on a source that others wait on', async () => {
+    apiMock.automations.mockResolvedValue(sources());
+    renderWithProviders(<AutomationsPage />);
+    await screen.findByText('Tests');
+
+    const run = screen.getByRole('button', { name: 'Run Tests now' }) as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
+    fireEvent.click(run);
+    await waitFor(() => expect(apiMock.fireAutomation).toHaveBeenCalledWith('aut_src'));
+  });
+});

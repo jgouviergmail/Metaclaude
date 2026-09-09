@@ -342,6 +342,33 @@ export const RunStatus = z.enum([
 export type RunStatus = z.infer<typeof RunStatus>;
 
 /**
+ * The coarse task categories the classifier assigns to a run, and the values
+ * `Run.category` can hold.
+ *
+ * Here rather than beside the classifier because both sides read them: the API
+ * writes the column, and the web app has to *name* them — an event trigger's
+ * filter is matched against this string, so a form that cannot list them asks
+ * the operator to guess an English identifier from a French screen. They are
+ * identifiers, never translated.
+ */
+export const TASK_CATEGORIES = [
+  'code_write',
+  'code_edit',
+  'debug',
+  'review',
+  'test',
+  'refactor',
+  'research',
+  'explain',
+  'plan',
+  'ops',
+  'data',
+  'write',
+  'chat',
+] as const;
+export type TaskCategory = (typeof TASK_CATEGORIES)[number];
+
+/**
  * The composer's Tools picker, as a contract. A name may not be both cut and
  * preferred — the refinement rejects the contradiction where it is typed
  * rather than letting the run resolve it arbitrarily.
@@ -763,24 +790,93 @@ export const AutomationTrigger = z.discriminatedUnion('type', [
   z.object({ type: z.literal('interval'), everyMs: z.number().int().min(60_000) }),
   z.object({ type: z.literal('manual') }),
   /**
-   * Fired by the outcome of another run in the same workspace — one a person,
-   * a token or a delegation started, never another automation, which would
-   * chain. `run_failed` and `run_succeeded` have an emitter; `session_idle`
-   * and `file_changed` are named here since the first schema and have none,
-   * so the scheduler refuses them at creation rather than accept a trigger
-   * that never fires. `filter` is a word that must appear in the run's
-   * category or prompt.
+   * Fired by the outcome of another run in the same workspace.
+   *
+   * `run_failed` and `run_succeeded` have an emitter; `session_idle` and
+   * `file_changed` are named here since the first schema and have none, so the
+   * scheduler refuses them at creation rather than accept a trigger that never
+   * fires. `filter` is a word that must appear in the run's category or prompt.
+   *
+   * `automations` names which automations of the same workspace this one
+   * watches, and the two modes are exclusive: absent, it watches the runs a
+   * person, a token or a delegation started — never one an automation
+   * produced, which is what the field replaces as a loop guard; present, it
+   * watches the end of exactly those automations and nothing else. The guard
+   * moves from "no automation may ever be heard" to "only the one that named
+   * it", so what forbids the loop is now the acyclicity of the declared graph,
+   * refused at create and at update.
+   *
+   * An empty array is not a mode. It is what pruning leaves behind when the
+   * last source is deleted — a watcher that hears nothing, and says so —
+   * because falling back to the human population would silently repurpose an
+   * automation the operator wrote for a chain. The scheduler refuses an empty
+   * list at the edge; only pruning may produce one.
    */
   z.object({
     type: z.literal('event'),
     event: z.enum(['run_failed', 'run_succeeded', 'session_idle', 'file_changed']),
     filter: z.string().max(300).optional(),
+    automations: z.array(z.string().min(1).max(64)).max(32).optional(),
   }),
 ]);
 
 /** The event triggers something actually emits. The other two are declared and refused. */
 export const EMITTED_AUTOMATION_EVENTS = ['run_failed', 'run_succeeded'] as const;
 export type AutomationTrigger = z.infer<typeof AutomationTrigger>;
+
+/** The automations a trigger declares as its sources — empty for every other kind. */
+export function declaredSources(trigger: AutomationTrigger): readonly string[] {
+  return trigger.type === 'event' ? (trigger.automations ?? []) : [];
+}
+
+/**
+ * Whether this trigger watches automations rather than the runs people start.
+ *
+ * True for an **empty** list, which is the whole reason this is a function: an
+ * empty list is a watcher whose last source was deleted — it watches nothing
+ * and is waiting to be repaired — where an absent one watches everything a
+ * person, a token or a delegation runs. Seven call sites ask this, and written
+ * inline one of them eventually becomes `automations?.length > 0`: the same
+ * expression for six of them, and a silent change of population for the
+ * seventh.
+ */
+export function watchesAutomations(trigger: AutomationTrigger): boolean {
+  return trigger.type === 'event' && trigger.automations !== undefined;
+}
+
+/**
+ * Follow declared sources from `from` and return the first path that reaches
+ * `target`, or null when none does.
+ *
+ * Shared because both sides ask it and must not answer differently: the
+ * scheduler refuses a trigger that would close a loop, and the editor declines
+ * to *offer* the tick that would. Two walks would drift the first time either
+ * was touched, and the one that drifts is the form — which then offers a tick
+ * whose only outcome is a refusal, or hides one that was legal.
+ *
+ * The path is returned rather than a boolean because the refusal has to name
+ * the loop it found: "Deploy → Report → Deploy" is actionable where "that
+ * would loop" is not. `seen` is what keeps it terminating over a graph that
+ * already holds a cycle — impossible to store, but the form runs this over
+ * whatever the server currently says.
+ */
+export function watchPath(
+  sourcesOf: (id: string) => readonly string[],
+  from: readonly string[],
+  target: string,
+): string[] | null {
+  const seen = new Set<string>();
+  const stack: string[][] = from.map((id) => [id]);
+  while (stack.length > 0) {
+    const path = stack.pop() as string[];
+    const node = path[path.length - 1] as string;
+    if (node === target) return path;
+    if (seen.has(node)) continue;
+    seen.add(node);
+    for (const next of sourcesOf(node)) stack.push([...path, next]);
+  }
+  return null;
+}
 
 /**
  * How a firing runs, and what it does when it ends.

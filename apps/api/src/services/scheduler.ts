@@ -18,7 +18,15 @@
  */
 
 import type { Automation, AutomationTrigger, Run, RunStatus } from '@metaclaude/shared';
-import { AutomationPolicy, EMITTED_AUTOMATION_EVENTS, newId, workspaceTopic } from '@metaclaude/shared';
+import {
+  AutomationPolicy,
+  declaredSources,
+  EMITTED_AUTOMATION_EVENTS,
+  newId,
+  watchesAutomations,
+  watchPath,
+  workspaceTopic,
+} from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { parseJson, toBool, toInt, tx } from '../db/index.js';
 import type { EventBus } from '../kernel/bus.js';
@@ -162,10 +170,13 @@ export class Scheduler {
     maxConsecutiveFailures?: number;
     enabled?: boolean;
   }): Automation {
-    this.validateTrigger(input.trigger);
     if (!this.deps.workspaces.get(input.workspaceId)) {
       throw new SchedulerError('Unknown workspace.', 404);
     }
+    // After the workspace check, not before: a trigger naming automations is
+    // validated *against* that workspace, so an unknown one has to be the
+    // error the caller hears rather than "no automation named …".
+    this.validateTrigger(input.trigger, { workspaceId: input.workspaceId });
 
     const id = newId('automation');
     const now = Date.now();
@@ -259,7 +270,6 @@ export class Scheduler {
   ): Automation | null {
     const current = this.get(id);
     if (!current) return null;
-    if (patch.trigger) this.validateTrigger(patch.trigger);
 
     /*
      * Moving an automation to another workspace.
@@ -291,34 +301,72 @@ export class Scheduler {
     const trigger = patch.trigger ?? current.trigger;
     const enabled = patch.enabled ?? current.enabled;
 
-    this.deps.db
-      .prepare(
-        `UPDATE automations SET
+    /*
+     * The trigger is validated against the workspace it will *land* in, and it
+     * is validated whenever either half moves.
+     *
+     * `if (patch.trigger)` was enough while a trigger meant only a cron
+     * expression, which means the same thing everywhere. A trigger that names
+     * automations does not: they are looked up in one workspace, and a move
+     * that leaves the trigger untouched would carry names `onRunFinished` —
+     * which lists watchers by workspace — can never resolve again. The watcher
+     * would sit there enabled and permanently mute, which is the failure this
+     * whole feature exists to stop being invisible.
+     */
+    if (patch.trigger !== undefined || movedTo !== null) {
+      this.validateTrigger(trigger, {
+        workspaceId: movedTo ?? current.workspaceId,
+        selfId: id,
+      });
+    }
+
+    const write = (): void => {
+      this.deps.db
+        .prepare(
+          `UPDATE automations SET
            workspace_id = ?, session_id = ?,
            name = ?, description = ?, prompt = ?, trigger = ?, policy = ?, continuous = ?,
            max_consecutive_failures = ?, enabled = ?, next_run_at = ?,
            consecutive_failures = ?, updated_at = ?
          WHERE id = ?`,
-      )
-      .run(
-        movedTo ?? current.workspaceId,
-        // The continuous thread does not travel. Kept when it stays put.
-        movedTo !== null ? null : current.sessionId,
-        patch.name ?? current.name,
-        patch.description ?? current.description,
-        patch.prompt ?? current.prompt,
-        JSON.stringify(trigger),
-        JSON.stringify({ ...current.policy, ...(patch.policy ?? {}) }),
-        toInt(patch.continuous ?? current.continuous),
-        patch.maxConsecutiveFailures ?? current.maxConsecutiveFailures,
-        toInt(enabled),
-        enabled ? this.computeNextRun(trigger, Date.now()) : null,
-        // Re-enabling clears the failure counter: the operator has presumably
-        // fixed whatever was wrong.
-        enabled && !current.enabled ? 0 : (patch.consecutiveFailures ?? current.consecutiveFailures),
-        Date.now(),
-        id,
-      );
+        )
+        .run(
+          movedTo ?? current.workspaceId,
+          // The continuous thread does not travel. Kept when it stays put.
+          movedTo !== null ? null : current.sessionId,
+          patch.name ?? current.name,
+          patch.description ?? current.description,
+          patch.prompt ?? current.prompt,
+          JSON.stringify(trigger),
+          JSON.stringify({ ...current.policy, ...(patch.policy ?? {}) }),
+          toInt(patch.continuous ?? current.continuous),
+          patch.maxConsecutiveFailures ?? current.maxConsecutiveFailures,
+          toInt(enabled),
+          enabled ? this.computeNextRun(trigger, Date.now()) : null,
+          // Re-enabling clears the failure counter: the operator has presumably
+          // fixed whatever was wrong.
+          enabled && !current.enabled
+            ? 0
+            : (patch.consecutiveFailures ?? current.consecutiveFailures),
+          Date.now(),
+          id,
+        );
+
+      /*
+       * A move takes this automation out of reach of everything that watched
+       * it, so the same write that moves it drops it from their triggers.
+       *
+       * In the transaction rather than after it: a list of ids in JSON is a
+       * foreign key nothing enforces, and the way those go wrong is that the
+       * prune is a *second* operation which does not always happen. The
+       * watchers left behind become sourceless — visibly, on the list — which
+       * is the honest answer; silently reverting them to watching people's
+       * runs would repurpose an automation written for a chain.
+       */
+      if (movedTo !== null) this.forgetSource(id);
+    };
+    if (movedTo !== null) tx(this.deps.db, write);
+    else write();
 
     const updated = this.get(id) as Automation;
     this.publish(updated);
@@ -349,6 +397,19 @@ export class Scheduler {
     }
     if (source.workspaceId === workspaceId) {
       throw new SchedulerError('That automation already lives in this workspace.', 409);
+    }
+    /*
+     * A copy is always in another workspace, and an event trigger's sources
+     * are always in its own — so the copy could only ever name automations it
+     * cannot reach. `create` would refuse it anyway, with a message about an
+     * unknown automation that describes the symptom rather than the reason.
+     * Said here, where the operator is choosing the destination.
+     */
+    if (watchesAutomations(source.trigger)) {
+      throw new SchedulerError(
+        `"${source.name}" watches automations of its own workspace, and a copy would land in another where those do not exist. Create it there and choose its sources from that workspace.`,
+        409,
+      );
     }
 
     return tx(this.deps.db, () => {
@@ -404,24 +465,165 @@ export class Scheduler {
   }
 
   delete(id: string): boolean {
-    return this.deps.db.prepare('DELETE FROM automations WHERE id = ?').run(id).changes > 0;
+    // One transaction, because the row and every reference to it go together.
+    // See `forgetSource`: what makes a JSON list of ids survivable is that
+    // removing the referent removes the references, on every path that can
+    // remove it. This route and a move are the only two.
+    return tx(this.deps.db, () => {
+      this.forgetSource(id);
+      return this.deps.db.prepare('DELETE FROM automations WHERE id = ?').run(id).changes > 0;
+    });
   }
 
-  private validateTrigger(trigger: AutomationTrigger): void {
+  /**
+   * Drop `id` from the sources of every automation that watches it.
+   *
+   * Called where the automation stops being reachable — deleted, or moved to
+   * another workspace. A watcher left with no source at all keeps an empty
+   * list rather than losing the field: `automations: []` is a state the list
+   * and the editor both name ("no source"), where an absent field would mean
+   * "watches the runs people start" and quietly turn a chain link into
+   * something else entirely.
+   */
+  private forgetSource(id: string): void {
+    for (const automation of this.list()) {
+      const trigger = automation.trigger;
+      // The narrowing is what the spread below needs; the membership question
+      // goes through the shared reader, like every other site.
+      if (trigger.type !== 'event' || !declaredSources(trigger).includes(id)) continue;
+      const next: AutomationTrigger = {
+        ...trigger,
+        automations: declaredSources(trigger).filter((source) => source !== id),
+      };
+      this.deps.db
+        .prepare('UPDATE automations SET trigger = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(next), Date.now(), automation.id);
+      this.publish(this.get(automation.id) as Automation);
+    }
+  }
+
+  /**
+   * The automation whose *current* session this is, if any.
+   *
+   * The one definition of "this run belongs to that automation", shared by
+   * `recordOutcome` and `onRunFinished` — they used to answer differently, one
+   * by session and one by `triggeredBy`, so pressing "Run now" updated an
+   * automation's status while counting, for the watchers, as a run a person
+   * started. A session belongs to at most one automation: `create` and
+   * `duplicate` start at null, `fire` claims one, and a move releases it —
+   * which is also what keeps an automation's current session inside its own
+   * workspace, so a run found this way is always a run of `run.workspaceId`.
+   *
+   * *Current* is the limit worth stating. A one-shot automation mints a fresh
+   * session per firing, so if two firings overlap — possible, since the
+   * in-flight guard checks the previous session and that one is new — the
+   * older run finishes in a session the row no longer names, and is claimed by
+   * nobody. It is then ignored rather than misattributed: a link of a chain is
+   * missed, never a wrong one fired. `recordOutcome` has always lost that run
+   * the same way, and the fix for both would be a column on `runs`, which is
+   * not worth a migration for a race nothing has been seen to hit.
+   */
+  automationBySession(sessionId: string): Automation | null {
+    const row = this.deps.db
+      .prepare<[string], AutomationRow>('SELECT * FROM automations WHERE session_id = ?')
+      .get(sessionId);
+    return row ? toAutomation(row) : null;
+  }
+
+  private validateTrigger(
+    trigger: AutomationTrigger,
+    scope: { workspaceId: string; selfId?: string },
+  ): void {
     if (trigger.type === 'cron' && !isValidCron(trigger.expression)) {
       throw new SchedulerError(`"${trigger.expression}" is not a valid cron expression.`);
     }
     if (trigger.type === 'interval' && trigger.everyMs < 60_000) {
       throw new SchedulerError('The shortest interval is one minute.');
     }
+    if (trigger.type !== 'event') return;
+
     // The schema has named four events since the first release and only two
     // have an emitter. An automation on the other two showed as enabled and
     // stayed silent forever — indistinguishable from a deployment where
     // nothing happened, which the steward pointed out. Refused here, where
     // the person creating it is still listening.
-    if (trigger.type === 'event' && !(EMITTED_AUTOMATION_EVENTS as readonly string[]).includes(trigger.event)) {
+    if (!(EMITTED_AUTOMATION_EVENTS as readonly string[]).includes(trigger.event)) {
       throw new SchedulerError(
         `Nothing emits "${trigger.event}" yet; an event trigger can watch ${EMITTED_AUTOMATION_EVENTS.join(' or ')}.`,
+      );
+    }
+
+    if (!watchesAutomations(trigger)) return;
+    const sources = declaredSources(trigger);
+
+    if (sources.length === 0) {
+      throw new SchedulerError(
+        'Name at least one automation to watch, or remove the list to watch the runs people start.',
+      );
+    }
+    /*
+     * The two modes are exclusive, and this is where that is enforced rather
+     * than in the schema, because the reason is behavioural. A firing's prompt
+     * is the automation's own prompt, so a filter over it is very nearly a
+     * constant: kept alongside sources it would either match always or never,
+     * and the "never" is a watcher that looks configured and is dead. A field
+     * that cannot help but can silently kill is refused, not ignored.
+     */
+    if (trigger.filter !== undefined) {
+      throw new SchedulerError(
+        'An event trigger either watches automations or filters the runs people start — not both.',
+      );
+    }
+    if (new Set(sources).size !== sources.length) {
+      throw new SchedulerError('The same automation is named twice.');
+    }
+    if (scope.selfId && sources.includes(scope.selfId)) {
+      throw new SchedulerError('An automation cannot watch itself.');
+    }
+
+    const here = new Map(this.list(scope.workspaceId).map((entry) => [entry.id, entry]));
+    for (const sourceId of sources) {
+      if (!here.has(sourceId)) {
+        // Deliberately one message for "does not exist" and for "lives
+        // somewhere else": both mean the same thing to the caller — this
+        // workspace has no such automation — and the second must not become a
+        // way to probe another workspace's ids.
+        //
+        // 400 rather than 404: the automation named in the URL is there, and
+        // it is the body that names something that is not. A 404 here would
+        // have the client report the row it is editing as gone.
+        throw new SchedulerError(`This workspace has no automation "${sourceId}".`, 400);
+      }
+    }
+
+    /*
+     * The loop guard, and the reason the old blanket refusal could be lifted.
+     *
+     * Every edge is declared, so a cycle is a property of the graph rather
+     * than something to detect at firing time: follow each proposed source's
+     * own sources and refuse if the automation being edited is reachable.
+     * `enabled` is deliberately not consulted — a paused link is still an
+     * edge, and re-enabling it goes through `setEnabled`, which revalidates
+     * nothing. Structurally acyclic beats conditionally acyclic.
+     *
+     * Nothing to check at creation: an automation that does not exist yet
+     * cannot be reached from anywhere, which is why `selfId` is optional.
+     */
+    if (!scope.selfId) return;
+    const graph = new Map(
+      [...here.values()].map((entry) => [entry.id, declaredSources(entry.trigger)]),
+    );
+    // `watchPath` is shared with the editor, which uses the same walk to
+    // decide what to *offer*: two implementations would drift, and the one
+    // that drifts offers a tick whose only outcome is this refusal.
+    const path = watchPath((id) => graph.get(id) ?? [], sources, scope.selfId);
+    if (path) {
+      // Named rather than merely refused: "Deploy → Report → Deploy" is
+      // actionable where "that would loop" is not.
+      const named = path.map((id) => here.get(id)?.name ?? id).join(' → ');
+      throw new SchedulerError(
+        `That would loop: ${named} already leads back to this automation.`,
+        409,
       );
     }
   }
@@ -446,7 +648,23 @@ export class Scheduler {
   /* Execution                                                               */
   /* ---------------------------------------------------------------------- */
 
-  /** Fire an automation now, regardless of its schedule. */
+  /**
+   * Fire an automation now, regardless of its schedule.
+   *
+   * "Run now" works on every kind, event triggers included, and that is a
+   * decision rather than an oversight. The button does one thing everywhere —
+   * run this prompt at once — and disabling it on watchers would make the
+   * control mean different things on neighbouring rows while leaving the case
+   * it was meant to protect (a watcher of people's runs) untouched. It earns
+   * its place: testing a prompt without waiting for the event, and re-running
+   * the downstream half of a chain without redoing the upstream half.
+   *
+   * What was missing is not a guard, it is the truth. A watcher's prompt
+   * generally opens by referring to "the run that just failed", and by hand
+   * there is none — so a hand-fired watcher is told so, in the same slot the
+   * event context would have used. Silence there had the model invent a
+   * subject.
+   */
   async fire(
     id: string,
     triggeredBy: 'automation' | 'loop' | 'user' = 'automation',
@@ -476,9 +694,15 @@ export class Scheduler {
 
     const sessionId = this.resolveSession(automation, workspace.id);
 
+    const context =
+      options.context ??
+      (automation.trigger.type === 'event'
+        ? 'Run by hand, not by the event this automation watches — there is no triggering run to look at.'
+        : null);
+
     const run = await this.deps.kernel.submit({
       sessionId,
-      prompt: options.context ? `${options.context}\n\n${automation.prompt}` : automation.prompt,
+      prompt: context ? `${context}\n\n${automation.prompt}` : automation.prompt,
       triggeredBy: automation.continuous ? 'loop' : triggeredBy,
       // Only what the operator actually pinned.
       //
@@ -553,35 +777,71 @@ export class Scheduler {
    * finished run; fires the enabled event automations of that run's workspace
    * whose event matches its outcome.
    *
-   * Only runs a person, a token or a delegation started. A run another
-   * automation produced is excluded whole — not merely the watcher's own —
-   * because two watchers of failures whose firings can fail would otherwise
-   * feed each other forever, and the guard against that is not worth the
-   * case it would allow. A watcher whose previous firing is still in flight
-   * is skipped with a log line, as a due schedule would be.
+   * Two populations of runs, and a watcher belongs to exactly one of them.
+   *
+   * A run made *inside an automation's current session* is that automation
+   * finishing, whoever started it — the schedule, "Run now", or a message
+   * typed into its session. That is already how `recordOutcome` reads the same
+   * run, and one definition of "whose run is this" is the point:
+   * `automationBySession`. Such a run is heard only by the watchers that named
+   * that automation. Every other finished run — a person's, a token's, a
+   * delegation's — is heard only by the watchers that named *nothing*, filter
+   * applied, which is the behaviour every event automation had before sources
+   * existed.
+   *
+   * What used to be here was a blanket refusal of anything an automation
+   * produced, because two watchers of failures whose firings can fail feed
+   * each other forever. The refusal is now the acyclicity of the declared
+   * graph, checked in `validateTrigger` where the operator is still listening:
+   * a loop cannot be built, so it need not be forbidden here. What survives
+   * from that guard is the pair of cases it also covered by accident and which
+   * nothing else covers: a run belonging to no automation but produced by one
+   * anyway (its automation was deleted or moved mid-flight) and the advisor's
+   * own `system` analyses, neither of which anybody can have named.
+   *
+   * A watcher whose previous firing is still in flight is skipped with a log
+   * line, as a due schedule would be.
    */
   async onRunFinished(run: Pick<Run, 'id' | 'workspaceId' | 'sessionId' | 'status' | 'triggeredBy' | 'category' | 'prompt' | 'error'>): Promise<number> {
-    // Nor a `system` run — the advisor's own analyses — which the steward's
-    // first production review noticed slipping past this guard while the
-    // documentation promised "a person, a token or a delegation".
-    if (run.triggeredBy === 'automation' || run.triggeredBy === 'loop' || run.triggeredBy === 'system') return 0;
     const event = run.status === 'failed' ? 'run_failed' : run.status === 'succeeded' ? 'run_succeeded' : null;
     if (!event) return 0;
 
-    const watchers = this.list(run.workspaceId).filter(
-      (automation) =>
-        automation.enabled &&
-        automation.trigger.type === 'event' &&
-        automation.trigger.event === event &&
-        automation.sessionId !== run.sessionId &&
-        matchesFilter(automation.trigger.filter, run),
-    );
+    const source = this.automationBySession(run.sessionId);
+    if (
+      !source &&
+      (run.triggeredBy === 'automation' || run.triggeredBy === 'loop' || run.triggeredBy === 'system')
+    ) {
+      return 0;
+    }
+
+    const watchers = this.list(run.workspaceId).filter((automation) => {
+      if (!automation.enabled || automation.trigger.type !== 'event') return false;
+      if (automation.trigger.event !== event) return false;
+      /*
+       * Its own session, in either mode — and redundant in both, which is why
+       * it is worth a line rather than a shrug. A watcher whose session this
+       * is *is* `source`, so the sourced arm asks whether it names itself
+       * (refused at write) and the sourceless arm requires no source at all.
+       * It stands as the last guard against a self-reference that reached the
+       * row some other way, where the cost of being wrong is an endless loop
+       * and the cost of the check is one comparison.
+       */
+      if (automation.sessionId === run.sessionId) return false;
+      if (watchesAutomations(automation.trigger)) {
+        return source !== null && declaredSources(automation.trigger).includes(source.id);
+      }
+      return source === null && matchesFilter(automation.trigger.filter, run);
+    });
+
     let fired = 0;
     for (const watcher of watchers) {
-      const context =
-        `Triggered by run ${run.id} in this workspace, which ${run.status}` +
-        (run.error ? ` — ${run.error.slice(0, 300)}` : '') +
-        `. Its prompt began: "${run.prompt.slice(0, 200).replace(/\s+/g, ' ')}".`;
+      const context = source
+        ? `Triggered by the automation "${source.name}" (run ${run.id}), which ${run.status}` +
+          (run.error ? ` — ${run.error.slice(0, 300)}` : '') +
+          '.'
+        : `Triggered by run ${run.id} in this workspace, which ${run.status}` +
+          (run.error ? ` — ${run.error.slice(0, 300)}` : '') +
+          `. Its prompt began: "${run.prompt.slice(0, 200).replace(/\s+/g, ' ')}".`;
       try {
         await this.fire(watcher.id, 'automation', { context });
         fired += 1;
@@ -602,19 +862,14 @@ export class Scheduler {
    * make one exception to "only runs a human started".
    */
   notifying(sessionId: string): string | null {
-    const row = this.deps.db
-      .prepare<[string], AutomationRow>('SELECT * FROM automations WHERE session_id = ?')
-      .get(sessionId);
-    if (!row) return null;
-    const automation = toAutomation(row);
+    const automation = this.automationBySession(sessionId);
+    if (!automation) return null;
     return automation.policy.notify ? automation.name : null;
   }
 
   recordOutcome(sessionId: string, status: RunStatus, attended = false): void {
-    const row = this.deps.db
-      .prepare<[string], AutomationRow>('SELECT * FROM automations WHERE session_id = ?')
-      .get(sessionId);
-    if (!row) return;
+    const automation = this.automationBySession(sessionId);
+    if (!automation) return;
 
     /*
      * Three outcomes, three answers — and the middle one is the correction.
@@ -634,17 +889,17 @@ export class Scheduler {
     const failed = status === 'failed';
     const succeeded = status === 'succeeded';
     const consecutive = attended
-      ? row.consecutive_failures
+      ? automation.consecutiveFailures
       : failed
-        ? row.consecutive_failures + 1
+        ? automation.consecutiveFailures + 1
         : succeeded
           ? 0
-          : row.consecutive_failures;
+          : automation.consecutiveFailures;
     const shouldDisable =
       !attended &&
       failed &&
-      row.max_consecutive_failures > 0 &&
-      consecutive >= row.max_consecutive_failures;
+      automation.maxConsecutiveFailures > 0 &&
+      consecutive >= automation.maxConsecutiveFailures;
 
     this.deps.db
       .prepare(
@@ -654,24 +909,24 @@ export class Scheduler {
       .run(
         status,
         consecutive,
-        shouldDisable ? 0 : row.enabled,
-        shouldDisable ? null : row.next_run_at,
+        shouldDisable ? 0 : toInt(automation.enabled),
+        shouldDisable ? null : automation.nextRunAt,
         Date.now(),
-        row.id,
+        automation.id,
       );
 
     if (shouldDisable) {
-      this.deps.log('warn', `automation "${row.name}" disabled after ${consecutive} failures`);
+      this.deps.log('warn', `automation "${automation.name}" disabled after ${consecutive} failures`);
       this.deps.bus.publish('system', {
         type: 'notification',
         topic: 'system',
         level: 'error',
         title: 'Automation disabled',
-        message: `"${row.name}" failed ${consecutive} times in a row and was switched off.`,
+        message: `"${automation.name}" failed ${consecutive} times in a row and was switched off.`,
         href: routes.automations(),
       });
     }
-    this.publish(this.get(row.id) as Automation);
+    this.publish(this.get(automation.id) as Automation);
   }
 
   /* ---------------------------------------------------------------------- */

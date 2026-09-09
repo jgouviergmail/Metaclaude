@@ -12,6 +12,7 @@ import {
   McpTransport,
   ModelSelector,
   PermissionMode,
+  watchesAutomations,
 } from '@metaclaude/shared';
 import { z } from 'zod';
 import { InstallPluginRequest, MarketplaceInput, patchSchema } from '@metaclaude/shared';
@@ -659,9 +660,19 @@ export function registerRegistryRoutes(app: App, context: AppContext): void {
    * `enabled` would let saving the original wake a copy somebody had
    * deliberately stopped — the one field an operator sets per copy on purpose.
    * Everything else is the definition, which is what a family shares.
+   *
+   * A trigger naming automations is the one part of the definition that does
+   * *not* mean the same thing elsewhere: sources are resolved inside one
+   * workspace, so a copy would either name automations it cannot reach or, if
+   * ids happened to collide, watch something nobody chose. Dropping it here
+   * rather than refusing the whole patch keeps the operator's own save
+   * working: the trigger lands on the automation they were editing, and the
+   * copies keep theirs.
    */
   const sharedFields = (patch: Record<string, unknown>): Record<string, unknown> => {
     const { workspaceId: _workspace, enabled: _enabled, ...rest } = patch;
+    const trigger = rest.trigger as AutomationTrigger | undefined;
+    if (trigger && watchesAutomations(trigger)) delete rest.trigger;
     return rest;
   };
 

@@ -341,9 +341,13 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
     ring: 2,
     description:
       'Create an automation in a workspace. Disabled unless enabled is true — say so to the operator either way. ' +
-      'Triggers: cron (read in the server timezone, see system_overview), interval, manual, or event — ' +
-      'run_failed / run_succeeded fire on the outcome of a run a person, a token or a delegation started in ' +
-      'that workspace, never another automation; session_idle and file_changed have no emitter and are refused.',
+      'Triggers: cron (read in the server timezone, see system_overview), interval, manual, or event. ' +
+      'An event trigger watches run_failed / run_succeeded and picks one of two populations: with no ' +
+      '"automations" list it watches the runs a person, a token or a delegation started, narrowed by the ' +
+      'optional "filter" (a word that must appear in the run\'s category or prompt); with a list of ' +
+      'automation ids from the same workspace (system_automations gives them) it watches only those ' +
+      'finishing, which is how a chain is built — and then "filter" is refused, as is a list that would ' +
+      'close a loop. session_idle and file_changed have no emitter and are refused.',
     schema: {
       workspace: WORKSPACE,
       name: z.string().min(1).max(120),
@@ -363,7 +367,8 @@ export const SYSTEM_TOOLS: readonly SystemTool[] = [
     ring: 2,
     description:
       'Edit an automation in place — name, description, prompt, trigger, notify or permissionMode; only the fields named change, ' +
-      'and its history and streak stay with it. Pausing or enabling is system_automation_toggle.',
+      'and its history and streak stay with it. A trigger is replaced whole, so an event trigger keeps its ' +
+      'sources only if the new one names them again. Pausing or enabling is system_automation_toggle.',
     schema: {
       id: ID,
       name: z.string().min(1).max(120).optional(),

@@ -19,7 +19,7 @@
  */
 
 import { useState } from 'react';
-import type { Automation } from '@metaclaude/shared';
+import { watchesAutomations, type Automation, type AutomationTrigger } from '@metaclaude/shared';
 import { Button } from '@/components/ui/primitives';
 import { CheckboxField } from '@/components/ui/controls';
 import { Modal } from '@/components/ui/Modal';
@@ -51,9 +51,19 @@ const FIELD_LABELS: Record<string, string> = {
   maxConsecutiveFailures: 'the failure ceiling',
 };
 
-/** What of this patch means the same thing in another workspace. */
+/**
+ * What of this patch means the same thing in another workspace.
+ *
+ * A trigger that names automations does not: sources are resolved inside one
+ * workspace, so the server drops it from what it carries to the copies. Left
+ * in this list it would make the dialog ask about a field it is not going to
+ * send — and a question whose answer changes nothing is how a dialog teaches
+ * people to dismiss it.
+ */
 export function propagatableFields(patch: Record<string, unknown>): string[] {
-  return Object.keys(patch).filter((key) => key in FIELD_LABELS);
+  const trigger = patch.trigger as AutomationTrigger | undefined;
+  const local = trigger !== undefined && watchesAutomations(trigger);
+  return Object.keys(patch).filter((key) => key in FIELD_LABELS && !(local && key === 'trigger'));
 }
 
 export function PropagateDialog({

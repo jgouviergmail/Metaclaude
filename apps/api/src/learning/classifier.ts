@@ -15,28 +15,18 @@
  * cannot inspect is a policy they cannot trust.
  */
 
-import { newId } from '@metaclaude/shared';
+import { newId, TASK_CATEGORIES, type TaskCategory } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { packEmbedding, tx, unpackEmbedding } from '../db/index.js';
 import { cosineSimilarity, type EmbeddingProvider, PENDING_EMBEDDING_MODEL } from './embeddings.js';
 
-export const TASK_CATEGORIES = [
-  'code_write',
-  'code_edit',
-  'debug',
-  'review',
-  'test',
-  'refactor',
-  'research',
-  'explain',
-  'plan',
-  'ops',
-  'data',
-  'write',
-  'chat',
-] as const;
-
-export type TaskCategory = (typeof TASK_CATEGORIES)[number];
+/*
+ * The categories live in `packages/shared` — they are what `Run.category`
+ * holds, and an event trigger's filter is matched against that string, so the
+ * web app has to name them too. Re-exported here because this module is where
+ * they are assigned and every reader already imports it.
+ */
+export { TASK_CATEGORIES, type TaskCategory };
 
 export interface Classification {
   category: TaskCategory;
