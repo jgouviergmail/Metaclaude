@@ -155,6 +155,12 @@ export interface KnowledgeRetrievalOptions {
    * without starting a run there. Mutually exclusive with `workspaceId`.
    */
   workspaceIds?: string[];
+  /**
+   * Whether a `workspaceIds` scope also carries the global shelf. Off by
+   * default: the in-run caller already has it. The gateway asks for it, having
+   * nothing yet — see `RetrievalOptions.includeGlobal`.
+   */
+  includeGlobal?: boolean;
   limit?: number;
   candidatePool?: number;
   minSimilarity?: number;
@@ -273,13 +279,17 @@ const GLOBAL_ONLY = 'd.is_global = 1';
 function reachClause(
   workspaceId: string | null | undefined,
   workspaceIds?: readonly string[],
+  includeGlobal = false,
 ): { sql: string; params: string[] } {
   if (workspaceIds) {
-    if (workspaceIds.length === 0) return { sql: '0 = 1', params: [] };
+    if (workspaceIds.length === 0) {
+      return includeGlobal ? { sql: GLOBAL_ONLY, params: [] } : { sql: '0 = 1', params: [] };
+    }
+    const list = `d.id IN (SELECT document_id FROM document_workspaces WHERE workspace_id IN (${workspaceIds
+      .map(() => '?')
+      .join(',')}))`;
     return {
-      sql: `d.id IN (SELECT document_id FROM document_workspaces WHERE workspace_id IN (${workspaceIds
-        .map(() => '?')
-        .join(',')}))`,
+      sql: includeGlobal ? `(${GLOBAL_ONLY} OR ${list})` : list,
       params: [...workspaceIds],
     };
   }
@@ -1105,7 +1115,7 @@ export class KnowledgeStore {
   }
 
   private candidateChunks(options: KnowledgeRetrievalOptions): ChunkRow[] {
-    const scope = reachClause(options.workspaceId, options.workspaceIds);
+    const scope = reachClause(options.workspaceId, options.workspaceIds, options.includeGlobal);
     const clauses = ['d.enabled = 1', ...(scope.sql ? [scope.sql] : [])];
     return this.db
       .prepare<unknown[], ChunkRow>(
@@ -1125,7 +1135,7 @@ export class KnowledgeStore {
     const match = toFtsQuery(queryText);
     if (!match) return [];
 
-    const scope = reachClause(options.workspaceId, options.workspaceIds);
+    const scope = reachClause(options.workspaceId, options.workspaceIds, options.includeGlobal);
     const clauses: string[] = [
       'document_chunks_fts MATCH ?',
       'd.enabled = 1',

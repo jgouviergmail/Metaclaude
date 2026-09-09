@@ -604,6 +604,34 @@ describe('search', () => {
       expect(both.map((r) => r.memory.title).sort()).toEqual(['Alpha lease', 'Beta lease']);
     });
 
+    it('carries the global tier when the caller has not already got it', async () => {
+      // The in-run caller must not pay twice for the globals it already
+      // received; a caller from outside — the gateway — has nothing yet and
+      // wants exactly what a run in any of those workspaces would see.
+      const scoped = await store.search('lease', { workspaceIds: [wsA] });
+      expect(scoped.map((r) => r.memory.title)).toEqual(['Alpha lease']);
+
+      const withGlobal = await store.search('lease', {
+        workspaceIds: [wsA],
+        includeGlobal: true,
+      });
+      expect(withGlobal.map((r) => r.memory.title).sort()).toEqual([
+        'Alpha lease',
+        'Global lease note',
+      ]);
+    });
+
+    it('narrows an empty set to the global tier rather than refusing, when asked for it', async () => {
+      // A token that reaches no workspace still reaches what is filed
+      // globally; answering nothing there would be a second emptiness the
+      // caller cannot tell from the first.
+      expect(
+        (await store.search('lease', { workspaceIds: [], includeGlobal: true })).map(
+          (r) => r.memory.title,
+        ),
+      ).toEqual(['Global lease note']);
+    });
+
     it('answers nothing for an empty set rather than everything', async () => {
       // The difference between "no peers to ask" and "no filter" is the whole
       // corpus; a caller with no peers must get the first.

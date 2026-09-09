@@ -90,6 +90,15 @@ export interface RetrievalOptions {
    * let the reader guess which won.
    */
   workspaceIds?: string[];
+  /**
+   * Whether a `workspaceIds` scope also carries the global tier.
+   *
+   * Off by default, for the caller that reads *from* a run: it already has the
+   * globals and paying for them twice would spend the answer on what it just
+   * read. On for a caller from outside — the gateway — which has nothing yet
+   * and wants exactly what a run in any of those workspaces would see.
+   */
+  includeGlobal?: boolean;
   kinds?: MemoryKind[];
   /**
    * Leave the standing shelf out. The kernel does: standing memories reach a
@@ -136,14 +145,22 @@ export interface RetrievalOptions {
  * unifying them would restructure three queries this release does not touch.
  */
 function scopeClause(
-  options: Pick<RetrievalOptions, 'workspaceId' | 'workspaceIds'>,
+  options: Pick<RetrievalOptions, 'workspaceId' | 'workspaceIds' | 'includeGlobal'>,
   alias = '',
 ): { sql: string; params: string[] } {
   const column = `${alias}workspace_id`;
   if (options.workspaceIds) {
-    if (options.workspaceIds.length === 0) return { sql: '0 = 1', params: [] };
+    if (options.workspaceIds.length === 0) {
+      // "No workspaces to search" must not read as "no filter". With the
+      // global tier asked for it is still a real scope, so the clause narrows
+      // to it rather than refusing outright.
+      return options.includeGlobal
+        ? { sql: `${column} IS NULL`, params: [] }
+        : { sql: '0 = 1', params: [] };
+    }
+    const list = `${column} IN (${options.workspaceIds.map(() => '?').join(',')})`;
     return {
-      sql: `${column} IN (${options.workspaceIds.map(() => '?').join(',')})`,
+      sql: options.includeGlobal ? `(${list} OR ${column} IS NULL)` : list,
       params: [...options.workspaceIds],
     };
   }

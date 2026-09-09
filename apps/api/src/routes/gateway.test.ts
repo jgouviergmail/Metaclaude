@@ -299,6 +299,59 @@ describe('the tools', () => {
     await client.close();
   });
 
+  /**
+   * The whole release, through the real protocol.
+   *
+   * Measured in production before it: an application asked this deployment a
+   * question whose answer was a pinned memory of another workspace, and was
+   * told it did not know. The memory is written here through the real store,
+   * the search goes over the wire with no workspace named, and the answer has
+   * to carry it — kind, workspace and text, so the caller can weigh it and say
+   * where it came from.
+   */
+  it('finds a memory of a granted workspace without being told where to look', async () => {
+    await context.memory.remember({
+      workspaceId: mineId,
+      kind: 'semantic',
+      title: 'Le bail commercial',
+      content: 'Le préavis de résiliation du bail commercial est de six mois.',
+    });
+    // Two more rows, because bm25's IDF is zero for a term present in one row
+    // of two and clamped to nothing on a one-row corpus.
+    await context.memory.remember({
+      workspaceId: mineId,
+      kind: 'semantic',
+      title: 'Les horaires',
+      content: 'La boutique ouvre à neuf heures du matin.',
+    });
+    await context.memory.remember({
+      workspaceId: null,
+      kind: 'procedural',
+      title: 'Convention de citation',
+      content: 'Citer la source de toute affirmation chiffrée.',
+    });
+
+    const client = await connect(secret);
+    const result = (await client.callTool({
+      name: 'search_notes',
+      arguments: { query: 'préavis de résiliation du bail' },
+    })) as { content: Array<{ text: string }>; isError?: boolean };
+
+    expect(result.isError).toBeFalsy();
+    const hits = JSON.parse(result.content[0]!.text) as Array<{
+      kind: string;
+      workspace: string;
+      title: string;
+      text: string;
+    }>;
+    const found = hits.find((hit) => hit.title === 'Le bail commercial');
+    expect(found).toBeDefined();
+    expect(found).toMatchObject({ kind: 'memory', workspace: 'mine' });
+    expect(found!.text).toContain('six mois');
+
+    await client.close();
+  });
+
   it('refuses a capability the token does not carry', async () => {
     const minted = await post('/api/tokens', {
       name: 'read only',

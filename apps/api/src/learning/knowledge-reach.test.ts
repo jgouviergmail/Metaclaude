@@ -301,6 +301,18 @@ Ce document traite de ${subject} et de rien d’autre.`,
       expect(await hits('le dépôt de garantie', ['alpha', 'beta'])).toEqual(['Shared']);
     });
 
+    it('carries the global shelf when the caller has not already got it', async () => {
+      const withGlobal = async (query: string, workspaceIds: string[]) =>
+        (
+          await store.search(query, { workspaceIds, includeGlobal: true, limit: 20 })
+        ).map((hit) => hit.documentTitle);
+
+      expect(await withGlobal('la chaudière', ['alpha'])).toEqual(['Everywhere']);
+      expect(await withGlobal('le préavis', ['alpha'])).toEqual(['Alpha only']);
+      // And an empty set still reaches what is filed against no project.
+      expect(await withGlobal('la chaudière', [])).toEqual(['Everywhere']);
+    });
+
     it('answers nothing for an empty set rather than the whole library', async () => {
       expect(await store.search('le préavis', { workspaceIds: [] })).toEqual([]);
     });

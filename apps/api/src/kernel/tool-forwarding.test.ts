@@ -441,6 +441,7 @@ describe('every field a tool accepts reaches its facade', () => {
         awaitRun: rec('kernel.awaitRun', async () => ({ run, finalText: 'done' })),
       },
       knowledge: { search: rec('knowledge.search', async () => []) },
+      memory: { search: rec('memory.search', async () => []) },
       board: { list: rec('board.list', () => []) },
       runs: { get: rec('runs.get', () => run) },
       transcript: { byRun: rec('transcript.byRun', () => []) },

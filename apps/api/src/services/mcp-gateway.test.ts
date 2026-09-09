@@ -56,6 +56,7 @@ function deps(overrides: Partial<GatewayDeps> = {}): GatewayDeps {
       })),
     },
     knowledge: { search: vi.fn(async () => []) },
+    memory: { search: vi.fn(async () => []) },
     board: { list: vi.fn(() => []) },
     audit: { record: vi.fn() },
     ...overrides,
@@ -396,6 +397,56 @@ describe('search_notes', () => {
       'deployment',
       expect.objectContaining({ workspaceId: 'ws_mine' }),
     );
+    expect(wired.memory.search).toHaveBeenCalledWith(
+      'deployment',
+      expect.objectContaining({ workspaceId: 'ws_mine' }),
+    );
+  });
+
+  /**
+   * Naming a workspace is a convenience, not a requirement.
+   *
+   * A program on the other end of this gateway is not supposed to know how
+   * this deployment files things — that is the whole argument for the release
+   * this belongs to. Asked without a workspace it searches everything the
+   * token reaches, the global shelf included, which is the union of what a run
+   * in any of those workspaces would read.
+   */
+  it('searches every workspace the token reaches when none is named', async () => {
+    const wired = deps();
+    const handlers = createGatewayHandlers(
+      wired,
+      { ...TOKEN, workspaceIds: ['ws_mine', 'ws_theirs'] },
+    );
+
+    await handlers.searchNotes({ query: 'deployment' });
+
+    for (const store of [wired.knowledge, wired.memory]) {
+      expect(store.search).toHaveBeenCalledWith(
+        'deployment',
+        expect.objectContaining({ workspaceIds: ['ws_mine', 'ws_theirs'], includeGlobal: true }),
+      );
+    }
+  });
+
+  it('still refuses a workspace outside the token when one is named', async () => {
+    const handlers = createGatewayHandlers(deps(), TOKEN);
+
+    await expect(handlers.searchNotes({ workspace: 'theirs', query: 'x' })).rejects.toThrow(
+      /no workspace/i,
+    );
+  });
+
+  /**
+   * The empty answer that is not an emptiness. A token whose grants were
+   * pruned by a workspace deletion reaches nothing, and answering `[]` tells
+   * the program on the other side that this deployment knows nothing — which
+   * is what `list_workspaces` was fixed for, and this path could reproduce.
+   */
+  it('says a token reaches nothing rather than searching nothing', async () => {
+    const handlers = createGatewayHandlers(deps(), { ...TOKEN, workspaceIds: [] });
+
+    await expect(handlers.searchNotes({ query: 'x' })).rejects.toThrow(/reaches none of the/i);
   });
 
   it('hands back where each passage came from, so the caller can cite it', async () => {
@@ -415,6 +466,7 @@ describe('search_notes', () => {
             pageEnd: 2,
             lineStart: 40,
             lineEnd: 52,
+            workspaceId: 'ws_mine',
           }),
         ]),
       },
@@ -423,6 +475,8 @@ describe('search_notes', () => {
 
     expect(await handlers.searchNotes({ workspace: 'ws_mine', query: 'préavis' })).toEqual([
       {
+        kind: 'passage',
+        workspace: 'mine',
         title: 'Bail',
         heading: 'Résiliation',
         location: 'page 2, lines 40–52',
@@ -430,6 +484,68 @@ describe('search_notes', () => {
         text: 'Le préavis est de trois mois.',
       },
     ]);
+  });
+
+  /**
+   * Memories too, and labelled as such.
+   *
+   * Measured in production: an application asked this deployment a question
+   * whose answer was a pinned memory of another workspace, and was told the
+   * deployment did not know. `search_notes` read the document shelf alone, so
+   * no grant however wide could have found it. The `kind` is what lets the
+   * caller weigh them differently — a passage is a quotation, a memory is
+   * fallible recollection — which it cannot do if both arrive as "a note".
+   */
+  it('returns memories beside passages, each saying which it is', async () => {
+    const wired = deps({
+      memory: {
+        search: vi.fn(async () => [
+          {
+            memory: {
+              id: 'mem_1',
+              workspaceId: 'ws_mine',
+              kind: 'semantic',
+              title: 'Foyer de Jérôme',
+              content: 'Son épouse s’appelle Hua Ni.',
+            },
+            score: 1,
+          },
+        ]),
+      },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    expect(await handlers.searchNotes({ workspace: 'ws_mine', query: 'épouse' })).toEqual([
+      {
+        kind: 'memory',
+        workspace: 'mine',
+        title: 'Foyer de Jérôme',
+        heading: 'semantic',
+        text: 'Son épouse s’appelle Hua Ni.',
+      },
+    ]);
+  });
+
+  it('names the workspace a global note is not filed under, rather than inventing one', async () => {
+    // A global memory belongs to no workspace, and saying it came from the one
+    // that happened to be asked would be a provenance the caller could not
+    // check. `global` is the honest answer and the one the operator's own
+    // screens use.
+    const wired = deps({
+      memory: {
+        search: vi.fn(async () => [
+          {
+            memory: { id: 'mem_g', workspaceId: null, kind: 'procedural', title: 'Convention', content: 'Toujours citer.' },
+            score: 1,
+          },
+        ]),
+      },
+    } as unknown as Partial<GatewayDeps>);
+    const handlers = createGatewayHandlers(wired, TOKEN);
+
+    expect((await handlers.searchNotes({ workspace: 'ws_mine', query: 'citer' }))[0]).toMatchObject({
+      workspace: 'global',
+    });
   });
 
   it('omits a location and a file the passage does not have', async () => {
@@ -443,7 +559,7 @@ describe('search_notes', () => {
     const handlers = createGatewayHandlers(wired, TOKEN);
 
     expect(await handlers.searchNotes({ workspace: 'ws_mine', query: 'x' })).toEqual([
-      { title: 'Note', heading: '', text: 'Du texte.' },
+      { kind: 'passage', workspace: 'global', title: 'Note', heading: '', text: 'Du texte.' },
     ]);
   });
 });

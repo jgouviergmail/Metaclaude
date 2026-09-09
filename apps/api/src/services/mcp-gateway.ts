@@ -29,6 +29,7 @@ import type {
   ApiTokenRecord,
   ApiTokenScope,
   BoardTask,
+  MemorySearchResult,
   Run,
   TranscriptEvent,
   Workspace,
@@ -68,8 +69,32 @@ export interface GatewayDeps {
   knowledge: {
     search(
       query: string,
-      options: { workspaceId?: string | null; limit?: number },
+      options: {
+        workspaceId?: string | null;
+        workspaceIds?: string[];
+        includeGlobal?: boolean;
+        limit?: number;
+      },
     ): Promise<KnowledgeSearchResult[]>;
+  };
+  /**
+   * The agent's own notes, searched the same way.
+   *
+   * Added because the shelf alone could not answer: measured in production, an
+   * application asked a question whose answer was a pinned memory of another
+   * workspace and was told this deployment did not know. No grant, however
+   * wide, would have found it — `search_notes` read documents only.
+   */
+  memory: {
+    search(
+      query: string,
+      options: {
+        workspaceId?: string | null;
+        workspaceIds?: string[];
+        includeGlobal?: boolean;
+        limit?: number;
+      },
+    ): Promise<MemorySearchResult[]>;
   };
   board: { list(workspaceId: string): BoardTask[] };
   runs: { get(id: string): Run | null };
@@ -108,6 +133,33 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
    * back will hold an id. One message for "unknown" and "not yours": see the
    * note at the top of this file.
    */
+  /**
+   * The workspaces this token reaches, as records.
+   *
+   * Two callers now — the listing and the search that takes no workspace —
+   * and both have to answer the same way when a token reaches nothing, or one
+   * of them reintroduces the empty list that told a program this deployment
+   * had no workspaces.
+   */
+  const reachable = (): Workspace[] =>
+    deps.workspaces.list().filter((workspace) => token.workspaceIds.includes(workspace.id));
+
+  /**
+   * An empty answer is a conclusion the caller cannot check: a program asking
+   * reads "nothing" as "this deployment is empty" and says so to its operator.
+   * It happened — a token granted a workspace that was later deleted — so the
+   * emptiness explains which of the two it is, and the deployment's own count
+   * is the proof it is about permission rather than about emptiness.
+   */
+  const refuseEmptyReach = (): never => {
+    const total = deps.workspaces.list().length;
+    throw new Error(
+      total === 0
+        ? 'This Metaclaude has no workspaces yet. Ask its operator to create one.'
+        : `This token reaches none of the ${total} workspace(s) of this Metaclaude: the ones it was granted no longer exist. Ask its operator to grant it a workspace again — Settings → MCP gateway.`,
+    );
+  };
+
   const within = (name: string): Workspace => {
     const found = deps.workspaces
       .list()
@@ -154,32 +206,15 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
       // workspace is called and never what it is for. The operator writes that
       // sentence already, and until now it reached nothing outside the
       // interface.
-      const reachable = deps.workspaces
-        .list()
-        .filter((workspace) => token.workspaceIds.includes(workspace.id))
-        .map((workspace) => ({
-          id: workspace.id,
-          slug: workspace.slug,
-          name: workspace.name,
-          description: workspace.description,
-        }));
+      const mine = reachable().map((workspace) => ({
+        id: workspace.id,
+        slug: workspace.slug,
+        name: workspace.name,
+        description: workspace.description,
+      }));
 
-      // An empty answer is a conclusion the caller cannot check: a program
-      // asking this reads "no workspaces" as "this deployment is empty" and
-      // says so to its operator. It happened — a token granted a workspace
-      // that was later deleted, and every gateway call failed with a sentence
-      // about the workspace it named rather than about the grant. So an empty
-      // result explains itself, and the deployment's own count is the proof
-      // it is about permission rather than emptiness.
-      if (reachable.length === 0) {
-        const total = deps.workspaces.list().length;
-        throw new Error(
-          total === 0
-            ? 'This Metaclaude has no workspaces yet. Ask its operator to create one.'
-            : `This token reaches none of the ${total} workspace(s) of this Metaclaude: the ones it was granted no longer exist. Ask its operator to grant it a workspace again — Settings → MCP gateway.`,
-        );
-      }
-      return reachable;
+      if (mine.length === 0) refuseEmptyReach();
+      return mine;
     },
 
     start,
@@ -276,12 +311,32 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
       };
     },
 
+    /**
+     * Everything this token can read, searched at once.
+     *
+     * Two changes from the version that shipped, and both come from the same
+     * measurement: an application asked this deployment a question whose answer
+     * was a pinned memory of another workspace, and was told it did not know.
+     *
+     * **Memories as well as documents.** The shelf alone could not answer, so
+     * no grant however wide would have helped. Each hit says which it is: a
+     * passage is a quotation from the operator's own reference material, a
+     * memory is what an agent noted and may be out of date, and a caller that
+     * cannot tell them apart cannot weigh them.
+     *
+     * **The workspace is optional.** A program on the other end is not
+     * supposed to know how this deployment files things; asked without one it
+     * searches every workspace the token reaches, plus the global shelf, which
+     * is the union of what a run in any of them would read.
+     */
     searchNotes: async (input: {
-      workspace: string;
+      workspace?: string;
       query: string;
       limit?: number;
     }): Promise<
       Array<{
+        kind: 'memory' | 'passage';
+        workspace: string;
         title: string;
         heading: string;
         location?: string;
@@ -290,26 +345,61 @@ export function createGatewayHandlers(deps: GatewayDeps, token: ApiTokenRecord) 
       }>
     > => {
       requires('read', 'read this workspace');
-      const workspace = within(input.workspace);
 
-      const found = await deps.knowledge.search(input.query, {
-        workspaceId: workspace.id,
-        limit: Math.min(input.limit ?? 6, 20),
-      });
-      // Where each passage came from travels with it: a program on the other
-      // end of this gateway quotes what it is given, and a passage it cannot
-      // attribute is a claim it cannot check. Both fields are omitted rather
-      // than sent empty, so a caller can tell "no page" from "page nothing".
-      return found.map((hit) => {
-        const location = describeLocation(hit);
-        return {
-          title: hit.documentTitle,
-          heading: hit.heading,
-          ...(location ? { location } : {}),
-          ...(hit.sourceName ? { source: hit.sourceName } : {}),
-          text: hit.text,
-        };
-      });
+      // One workspace named, or every one this token holds. The second is
+      // refused rather than answered empty when the grant reaches nothing —
+      // the same sentence `list_workspaces` gives, for the same reason.
+      const scope = input.workspace
+        ? { workspaceId: within(input.workspace).id }
+        : (() => {
+            const mine = reachable();
+            if (mine.length === 0) refuseEmptyReach();
+            return { workspaceIds: mine.map((workspace) => workspace.id), includeGlobal: true };
+          })();
+
+      const limit = Math.min(input.limit ?? 6, 20);
+      // Both stores at once: they touch different tables and neither waits on
+      // the other, so the call costs the slower rather than their sum.
+      const [passages, memories] = await Promise.all([
+        deps.knowledge.search(input.query, { ...scope, limit }),
+        deps.memory.search(input.query, { ...scope, limit }),
+      ]);
+
+      // Where each hit came from travels with it: a program on the other end
+      // of this gateway quotes what it is given, and a note it cannot
+      // attribute is a claim it cannot check. `location` and `source` are
+      // omitted rather than sent empty, so a caller can tell "no page" from
+      // "page nothing" — and `workspace` says `global` for what is filed
+      // against no project at all, rather than borrowing the name of the one
+      // that happened to be asked.
+      const named = (workspaceId: string | null): string =>
+        workspaceId === null
+          ? 'global'
+          : (deps.workspaces.get(workspaceId)?.slug ?? workspaceId);
+
+      return [
+        ...passages.map((hit) => {
+          const location = describeLocation(hit);
+          return {
+            kind: 'passage' as const,
+            workspace: named(hit.workspaceId),
+            title: hit.documentTitle,
+            heading: hit.heading,
+            ...(location ? { location } : {}),
+            ...(hit.sourceName ? { source: hit.sourceName } : {}),
+            text: hit.text,
+          };
+        }),
+        ...memories.map((hit) => ({
+          kind: 'memory' as const,
+          workspace: named(hit.memory.workspaceId),
+          title: hit.memory.title,
+          // What kind of note it is, in the field a passage uses for its
+          // section: a caller reading a flat list needs one shape.
+          heading: hit.memory.kind,
+          text: hit.memory.content,
+        })),
+      ];
     },
 
     listTasks: async (input: { workspace: string }) => {
@@ -399,14 +489,20 @@ export function buildGatewayServer(
       ),
       sdkTool(
         'search_notes',
-        "Search a workspace's knowledge base, plus anything filed globally — the " +
-          'same shelf a run there would read. Cheap, and nothing executes: prefer ' +
-          'it over a run when the answer is something already written down. Each ' +
-          'result carries where it came from — the document, its section, and the ' +
-          'page and lines when the document has them — so a quotation can be ' +
-          'attributed rather than merely repeated.',
+        'Search what this Metaclaude has written down: the reference documents in ' +
+          'its knowledge base and the notes its agents keep. Cheap, and nothing ' +
+          'executes: prefer it over a run when the answer is something already ' +
+          'recorded. Omit the workspace to search everything this token reaches, ' +
+          'which is the usual case — you are not expected to know where a fact is ' +
+          'filed. Every result says which workspace it came from and what kind it ' +
+          'is: a `passage` is a quotation from a reference document, and carries ' +
+          'the document, its section and the page and lines where it has them, so ' +
+          'it can be attributed; a `memory` is something an agent noted and may be ' +
+          'out of date, so weigh it as recollection rather than as a source.',
         {
-          workspace: WORKSPACE,
+          workspace: WORKSPACE.optional().describe(
+            'Restrict the search to this workspace. Omit it to search all of them.',
+          ),
           query: z.string().min(1).max(500),
           limit: z.number().int().min(1).max(20).optional(),
         },

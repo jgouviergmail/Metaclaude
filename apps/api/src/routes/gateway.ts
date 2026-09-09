@@ -55,6 +55,7 @@ export function registerGatewayRoutes(app: App, context: AppContext): void {
     workspaces: context.workspaceRepo,
     kernel: context.kernel,
     knowledge: context.knowledge,
+    memory: context.memory,
     board: context.board,
     runs: context.runRepo,
     transcript: context.transcriptRepo,
