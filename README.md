@@ -134,8 +134,8 @@ default, so your browser will ask once. Sign in with the bootstrap credentials
 and turn on two-factor authentication under Settings → Security.
 
 The token in `.env` is a bootstrap, and the shell above is the only place one
-is needed. From **Settings → Server**, on the Claude credentials card, the whole thing
-is done from
+is needed. From **Settings → Connections**, on the Claude credentials card, the whole
+thing is done from
 the browser: pairing a token, and signing in to — or renewing — the Claude
 account itself, which is the credential that reports plan quota and carries
 claude.ai session sync.

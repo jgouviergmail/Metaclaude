@@ -11,6 +11,38 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.89.0] — 2026-09-09
+
+### Changed
+
+- **Analytics moved from System to Settings, second, behind the machine.** The
+  System strip is what the deployment *does* — automations, agents, plugins —
+  and consumption is not a capability. It belongs beside the box that ran the
+  work and the bill it ran up, both of which are read deliberately rather than
+  passed through. The URL is untouched, so every bookmark and link still lands;
+  what follows the move is which rail entry lights up when they do, and a test
+  derives that from the shared list rather than restating today's answer.
+
+- **The Claude CLI reading and its credential moved to Settings → Connections,
+  above Google.** They sat three sections apart on the Server screen, under a
+  heading about the machine — and neither describes the machine. They describe
+  the connection without which nothing else on that screen matters, so they
+  lead the group that holds everything this deployment authenticates against:
+  the reading first, the control that changes it under it, then the rest.
+
+  Everything that pointed at them followed, which is the part that fails
+  silently: the onboarding checklist's first step, the dashboard's
+  unauthenticated banner, the quota panel's explanation, the boot warning, the
+  guide and the README. The checklist and the banner now derive their
+  destination from one place and are pinned by tests, because that banner has
+  named the wrong screen twice already.
+
+  One consequence worth stating plainly: the Connections group is owner-only,
+  so an operator no longer sees the CLI version or which credential is in
+  force. They could not change either — every route behind those cards already
+  required an owner — but they could read them, and now they cannot.
+
+
 ## [0.88.2] — 2026-09-09
 
 ### Fixed

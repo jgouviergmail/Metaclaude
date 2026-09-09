@@ -14,7 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
-import { routes, SETTINGS_SECTION_PATHS } from '@metaclaude/shared';
+import { isSettingsPath } from '@/lib/sections';
+import { onboardingSteps } from '@/lib/onboarding';
 
 import { DashboardPage } from './DashboardPage';
 
@@ -370,26 +371,54 @@ describe('the recently-learned digest', () => {
 /**
  * The one line on this screen that navigates by name.
  *
- * Its `to` is built from `routes.server()`, so it always *resolves* — and it
- * went on saying "System → Server" for three releases after that screen moved
- * into Settings, which is the failure an operator reads as a list that lies.
- * Exactly the trap CLAUDE.md records: moving a screen breaks everything that
- * pointed at it and nothing tells you.
+ * Its `to` is built from a route builder, so it always *resolves* — and it went
+ * on saying "System → Server" for three releases after that screen moved into
+ * Settings, then pointed at the Server screen for a card that had moved to
+ * Connections. Twice, in the same place. That is the failure an operator reads
+ * as a list that lies, and exactly the trap CLAUDE.md records: moving a screen
+ * breaks everything that pointed at it and nothing tells you.
  *
- * Asserting the words alone would just re-record today's answer, so the claim
- * is derived: whichever section actually owns `/server` is the one the
- * sentence must name. Move the screen back and this goes red on the same day.
+ * Asserting the words alone would just re-record today's answer, so both
+ * halves are derived: the destination is where pairing actually lives — the
+ * onboarding checklist's own first step — and the section named is whichever
+ * one owns it, asked of the same predicate that lights the rail.
  */
 describe('the unauthenticated banner points somewhere real', () => {
-  it('names the section that actually owns the server screen', async () => {
+  it('sends the owner where pairing actually lives, and names its section', async () => {
     // The default fixture is already an unauthenticated deployment, which is
     // what puts this banner on screen.
     renderWithProviders(<DashboardPage />);
 
-    const link = await screen.findByRole('link', { name: /Server/i });
-    expect(link.getAttribute('href')).toBe(routes.server());
+    await screen.findByText(/not authenticated/i);
 
-    const inSettings = (SETTINGS_SECTION_PATHS as readonly string[]).includes(routes.server());
-    expect(link.textContent).toMatch(inSettings ? /^Settings/ : /^System/);
+    // Where pairing actually lives, asked of the checklist rather than typed
+    // here: two places naming one destination is how they came to disagree.
+    const pairing = onboardingSteps({
+      authenticated: false,
+      workspaces: 0,
+      hasRuns: false,
+      totpEnabled: false,
+      pushDevices: 0,
+      updaterAvailable: false,
+    }).find((step) => step.key === 'pair');
+    expect(pairing?.href).toBeDefined();
+
+    // Found by address, not by name: the rail rendered behind this banner has
+    // its own "Settings" entry, so a query by accessible name matches two
+    // things and times out looking like a missing banner.
+    const link = screen
+      .getAllByRole('link')
+      .find((el) => el.getAttribute('href') === pairing?.href);
+    expect(link, 'the banner links to where pairing lives').toBeDefined();
+
+    // And it names the section that owns that address. Asserting the words
+    // would re-record today's answer; this asks the predicate that lights the
+    // rail, so naming the other section fails whichever way the screen moves.
+    const text = link?.textContent ?? '';
+    if (isSettingsPath(pairing?.href ?? '')) {
+      expect(text).toMatch(/^(Settings|Réglages)/);
+    } else {
+      expect(text).toMatch(/^(System|Système)/);
+    }
   });
 });

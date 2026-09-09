@@ -25,8 +25,10 @@ machine.
 ## Claude credentials
 
 The agent runs on your Claude subscription, and both ways of attaching one
-happen entirely from this screen — no shell anywhere. They are two different
-credentials, and the screen offers the fuller one first.
+happen entirely from **Settings → Connections** — no shell anywhere. They are
+two different credentials, and the screen offers the fuller one first. They sit
+with the other things this deployment authenticates against rather than with
+the machine, which is where they used to be.
 
 ### The account sign-in
 

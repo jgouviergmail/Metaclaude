@@ -86,12 +86,21 @@ describe('where each step sends you', () => {
   });
   const href = (key: string) => steps.find((step) => step.key === key)?.href;
 
-  it('sends the three machine steps to the server screen', () => {
-    // The credential card, the notifications card and the updater all live
-    // there — none of them is a preference.
-    expect(href('pair')).toBe(routes.server());
+  it('sends the two machine steps to the server screen', () => {
+    // The notifications card and the updater live there — neither is a
+    // preference, and both are about the box rather than about what it talks
+    // to.
     expect(href('push')).toBe(routes.server());
     expect(href('updater')).toBe(routes.server());
+  });
+
+  it('sends pairing to the connections group, where the credential card is', () => {
+    // It was on the Server screen and moved in with the other things this
+    // deployment authenticates against. A step that lands where the control is
+    // not is worse than no step: the operator arrives, finds nothing to do,
+    // and stops trusting the list.
+    expect(href('pair')).toBe(routes.settingsSection('connections'));
+    expect(href('pair')).not.toBe(routes.server());
   });
 
   it('sends two-factor auth to the security group, not to Settings’ landing', () => {

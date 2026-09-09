@@ -447,7 +447,7 @@ export const fr: Record<string, string> = {
   'Could not create the workspace.': 'Impossible de créer le workspace.',
   'Claude is not authenticated.': "Claude n'est pas authentifié.",
   'Pair it from': 'Appairez-le depuis',
-  'Settings → Server': 'Réglages → Serveur',
+  'Settings → Connections': 'Réglages → Connexions',
   ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from':
     " : connectez-vous avec votre offre Pro ou Max, collez un code en retour, terminé — sans shell, sans redémarrage. Un jeton issu de",
   'can be pasted there too.': 'peut aussi y être collé.',
@@ -1214,7 +1214,7 @@ export const fr: Record<string, string> = {
   'Plan quota windows do not apply here — this credential is an API key or a third-party provider, billed per token instead.':
     'Les fenêtres de quota du forfait ne s’appliquent pas ici — cet identifiant est une clé d’API ou un fournisseur tiers, facturé au jeton.',
   'No plan quota windows here: this is an API key, billed per token rather than against a plan.': 'Pas de fenêtres de quota ici : c’est une clé d’API, facturée au jeton et non sur un forfait.',
-  'No plan quota windows here: a paired token can run work but not read your consumption. Your subscription is billed as usual. Sign in to the Claude account from Settings → Server to see the windows again.': 'Pas de fenêtres de quota ici : un jeton appairé peut lancer des runs mais pas lire votre consommation. Votre abonnement est facturé normalement. Connectez le compte Claude depuis Réglages → Serveur pour revoir les fenêtres.',
+  'No plan quota windows here: a paired token can run work but not read your consumption. Your subscription is billed as usual. Sign in to the Claude account from Settings → Connections to see the windows again.': 'Pas de fenêtres de quota ici : un jeton appairé peut lancer des runs mais pas lire votre consommation. Votre abonnement est facturé normalement. Connectez le compte Claude depuis Réglages → Connexions pour revoir les fenêtres.',
   'No plan quota windows were reported for this credential — an API key, a third-party provider and a paired token all answer this way.': 'Aucune fenêtre de quota n’a été rapportée pour cet identifiant — une clé d’API, un fournisseur tiers et un jeton appairé répondent tous ainsi.',
   'This paired token expires {when} — pair again before then.': 'Ce jeton appairé expire {when} — refaites un appairage avant.',
   'This paired token has expired. Pair again to let runs authenticate.': 'Ce jeton appairé a expiré. Refaites un appairage pour que les runs s’authentifient.',

@@ -163,7 +163,7 @@ inference only, server-side, on purpose. A paired token is therefore enough
 for everything Metaclaude does by itself, and never enough for claude.ai
 sync. The CLI states it in as many words when asked.
 
-A full sign-in is obtained from **Settings → Server**, on the Claude
+A full sign-in is obtained from **Settings → Connections**, on the Claude
 credentials card, with
 **Sign in to a Claude account**: Metaclaude runs the same OAuth flow the CLI
 runs, asking for the same permissions, and installs the result where the CLI

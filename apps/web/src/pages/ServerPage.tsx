@@ -1,14 +1,18 @@
 /**
  * The machine.
  *
- * Version, uptime, timezone, CPU/RAM/disk, the Claude CLI and its credentials,
- * notifications, the doctor and the updater. It was a tab inside Settings,
- * which was wrong twice: nothing here is a preference — it is what the
- * deployment *is* — and "System" then named both that tab and the rail section
- * beside it. It is the first screen of the System section now, ahead of the
- * automations, because "is the box healthy" comes before "what is it doing".
+ * Version, uptime, timezone, CPU/RAM/disk, notifications, the doctor and the
+ * updater. It was a tab inside Settings, which was wrong twice: nothing here
+ * is a preference — it is what the deployment *is* — and "System" then named
+ * both that tab and the rail section beside it. It leads the Settings section
+ * now, because what an operator opens Settings *for* is "how is this
+ * deployment set up".
  *
- * The cards are unchanged; only their address is.
+ * What is deliberately *not* here any more is the Claude CLI reading and the
+ * credential that feeds it. They sat three sections apart on a screen about
+ * the box, and neither describes the box: they describe a connection, and they
+ * live with the deployment's other connections. Everything left answers "is
+ * this machine healthy, current, and telling me when it is not".
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -18,10 +22,9 @@ import { Page, Section } from '@/components/ui/layout';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
 import { RetrievalStatus } from '@/components/system/RetrievalStatus';
-import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { UpdateCard } from '@/components/settings/UpdateCard';
-import { Badge, Button, Spinner, StatList } from '@/components/ui/primitives';
+import { Button, Spinner, StatList } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuthStore } from '@/lib/store';
@@ -137,46 +140,10 @@ function SystemCard() {
           disagree, and the one nobody is looking at would be the wrong one. */}
       <ResourceMeters resources={data.resources} />
 
-      <Section
-        title={t('Claude CLI')}
-        description={t('Every agent run goes through this binary.')}
-      >
-        <dl className="divide-y divide-line">
-          <DefinitionRow label={t('Available')}>
-            {data.claudeCli.available ? (
-              <Badge tone="success">{t('yes')}</Badge>
-            ) : (
-              <Badge tone="danger">{t('not found')}</Badge>
-            )}
-          </DefinitionRow>
-          <DefinitionRow label={t('Version')}>{data.claudeCli.version ?? '—'}</DefinitionRow>
-          <DefinitionRow label={t('Authentication')}>
-            <div className="flex flex-wrap items-center gap-2">
-              {data.claudeCli.authMode === 'subscription' ? (
-                <Badge tone="success">{t('subscription (Pro / Max)')}</Badge>
-              ) : data.claudeCli.authMode === 'api_key' ? (
-                <Badge tone="warning">{t('API key (pay as you go)')}</Badge>
-              ) : (
-                <Badge tone="danger">{t('none configured')}</Badge>
-              )}
-              {data.claudeCli.authHint ? (
-                <code className="font-mono text-caption text-muted">{data.claudeCli.authHint}</code>
-              ) : null}
-              {data.claudeCli.authSource ? (
-                <span className="text-caption text-subtle">
-                  {data.claudeCli.authSource === 'stored'
-                    ? t('paired here')
-                    : data.claudeCli.authSource === 'cli-login'
-                      ? t('CLI account sign-in')
-                      : t('from the environment')}
-                </span>
-              ) : null}
-            </div>
-          </DefinitionRow>
-        </dl>
-      </Section>
-
-      <ClaudeCredentialCard />
+      {/* The Claude CLI reading and the credential that feeds it both moved to
+          Settings → Connections, where the other things this deployment
+          authenticates against live. They were three sections apart here, on a
+          screen about the machine; what they describe is a connection. */}
 
       <NotificationsCard />
 

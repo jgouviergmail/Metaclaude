@@ -46,7 +46,6 @@ describe('SystemTabs', () => {
       '/automations',
       '/agents',
       '/plugins',
-      '/analytics',
     ]);
     // And the same list the predicate reads, in the same order: the strip
     // pairs these paths with icons, `lib/sections` answers "which section owns
@@ -126,7 +125,7 @@ describe('the current section is brought into view', () => {
       calls.push(this);
     };
     try {
-      render(<SystemTabs />, { route: '/analytics' });
+      render(<SystemTabs />, { route: '/plugins' });
       const current = screen
         .getAllByRole('link')
         .find((link) => link.getAttribute('aria-current') === 'page');

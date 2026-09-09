@@ -14,7 +14,15 @@ import { AppShell, ContentHeader } from './AppShell';
 
 /** The System screens the rail no longer carries: its strip does. */
 /** The System strip's own screens. `Server` left it for Settings. */
+/**
+ * The screens the rail deliberately does not carry.
+ *
+ * Analytics is here too, on the Settings side of the split: it left the System
+ * strip for Settings, and either way the rail must not grow an entry for it.
+ */
 const SECONDARY = ['Automations', 'Agents & skills', 'Plugins', 'Analytics'];
+/** The System section's own, which its strip has to reach. */
+const SYSTEM_SCREENS = ['Automations', 'Agents & skills', 'Plugins'];
 
 describe('AppShell navigation', () => {
   it('offers the same six sections in the rail and in the phone tab bar', () => {
@@ -38,14 +46,18 @@ describe('AppShell navigation', () => {
     }
   });
 
-  it('reaches the four System screens from the section itself, not from the rail', () => {
+  it('reaches the three System screens from the section itself, not from the rail', () => {
     // The rail no longer carries them, so the section's own strip has to — and
     // it is the thing that makes them one section rather than five entries.
     renderWithProviders(<SystemTabs />, { route: '/automations' });
     const strip = within(screen.getByRole('navigation', { name: 'System sections' }));
-    for (const label of SECONDARY) {
+    for (const label of SYSTEM_SCREENS) {
       expect(strip.getByRole('link', { name: new RegExp(label) })).toBeDefined();
     }
+    // And not the one that left: a strip still offering it would be a second
+    // door to a screen that now belongs to another section, with the rail
+    // lighting Settings while you stand in System.
+    expect(strip.queryByRole('link', { name: /Analytics/ })).toBeNull();
   });
 
   it('holds platform tap-target metrics in the tab bar, safe area included', () => {
@@ -177,8 +189,8 @@ describe('the six sections', () => {
     expect(screen.queryByLabelText('More sections')).toBeNull();
   });
 
-  it('marks System as current on each of its four screens', () => {
-    for (const route of ['/automations', '/agents', '/plugins', '/analytics']) {
+  it('marks System as current on each of its three screens', () => {
+    for (const route of ['/automations', '/agents', '/plugins']) {
       const { unmount } = renderWithProviders(<AppShell>content</AppShell>, { route });
       const entries = screen.getAllByLabelText('System');
       expect(
@@ -266,6 +278,26 @@ describe('the six sections', () => {
    */
   it('marks Settings as current on the help screen', () => {
     renderWithProviders(<AppShell>content</AppShell>, { route: '/help' });
+
+    const settings = screen.getAllByLabelText('Settings');
+    expect(settings.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+
+    const system = screen.getAllByLabelText('System');
+    expect(system.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
+  });
+
+  /*
+   * Analytics moved the other way — out of System, into Settings — and it kept
+   * its own path, exactly like the machine and the manual. So the rail cannot
+   * decide by prefix here either: the whole point of the shared list is that a
+   * screen at `/analytics` can belong to a section named `/settings`.
+   *
+   * This is the assertion the move is worth: the URL is untouched, so every
+   * bookmark and every link still lands, and what has to follow is which
+   * entry lights up when it does.
+   */
+  it('marks Settings, not System, as current on the analytics screen', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/analytics' });
 
     const settings = screen.getAllByLabelText('Settings');
     expect(settings.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);

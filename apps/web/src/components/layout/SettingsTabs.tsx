@@ -19,7 +19,16 @@
  * the deployment *does*.
  */
 
-import { LifeBuoy, Palette, Plug2, ScrollText, Server, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import {
+  Activity,
+  LifeBuoy,
+  Palette,
+  Plug2,
+  ScrollText,
+  Server,
+  ShieldCheck,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { SectionTabs, type SectionPath } from './SectionTabs';
 import { useT } from '@/lib/i18n';
 import { useAuthStore } from '@/lib/store';
@@ -31,13 +40,18 @@ export interface SettingsPath extends SectionPath {
 }
 
 /**
- * The seven, in the order they are shown.
+ * The eight, in the order they are shown.
  *
  * Server leads: what an operator opens Settings *for* is "how is this
  * deployment set up", and the machine it runs on is the first thing that
- * answers — version, resources, the CLI, the doctor, the updater. It kept its
- * own path when it moved here from the System strip, which is why this is the
- * one entry not built from `settingsSection`.
+ * answers — version, resources, the CLI, the doctor, the updater.
+ *
+ * Analytics second, and it came here from the System strip for the same reason
+ * Server did: that strip is what the deployment *does*, and consumption is not
+ * a capability. It belongs next to the machine — what it ran on, and what that
+ * cost — and both are read deliberately rather than passed through. Like
+ * Server, it kept its own path, which is why neither is built from
+ * `settingsSection`.
  *
  * Appearance next because it is the one changed on a whim; connections and
  * security after; configuration and the audit log then, as the things you go
@@ -49,6 +63,7 @@ export interface SettingsPath extends SectionPath {
  */
 export const SETTINGS_PATHS: readonly SettingsPath[] = [
   { to: routes.server(), label: 'Server', icon: <Server /> },
+  { to: routes.analytics(), label: 'Analytics', icon: <Activity /> },
   { to: routes.settingsSection('appearance'), label: 'Appearance', icon: <Palette /> },
   {
     to: routes.settingsSection('connections'),

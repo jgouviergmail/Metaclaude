@@ -178,13 +178,8 @@ describe('which groups an operator may not reach', () => {
 });
 
 describe('the system screens', () => {
-  it('names the four: what the deployment can do', () => {
-    expect([...SYSTEM_SECTION_PATHS]).toEqual([
-      '/automations',
-      '/agents',
-      '/plugins',
-      '/analytics',
-    ]);
+  it('names the three: what the deployment can do', () => {
+    expect([...SYSTEM_SECTION_PATHS]).toEqual(['/automations', '/agents', '/plugins']);
   });
 
   it('matches what the route builders produce', () => {
@@ -193,11 +188,18 @@ describe('the system screens', () => {
     expect(SYSTEM_SECTION_PATHS[0]).toBe(routes.automations());
     expect(SYSTEM_SECTION_PATHS[1]).toBe(routes.agents());
     expect(SYSTEM_SECTION_PATHS[2]).toBe(routes.plugins());
-    expect(SYSTEM_SECTION_PATHS[3]).toBe(routes.analytics());
   });
 
   it('does not list what belongs to the other section', () => {
-    for (const path of [routes.settings(), routes.help(), routes.server()]) {
+    // Analytics is on this list because it left: what the deployment *does*
+    // is one question, and how much it has spent doing it is another — the
+    // second is read deliberately, beside the machine it ran on.
+    for (const path of [
+      routes.settings(),
+      routes.help(),
+      routes.server(),
+      routes.analytics(),
+    ]) {
       expect(SYSTEM_SECTION_PATHS).not.toContain(path);
     }
   });
@@ -212,14 +214,15 @@ describe('the system screens', () => {
  * on either, and the rail would light nothing.
  */
 describe('the settings screens', () => {
-  it('names the machine first, then the groups, then the manual', () => {
-    expect([...SETTINGS_SECTION_PATHS]).toEqual(['/server', '/settings', '/help']);
+  it('names the machine first, then what it spent, then the groups and the manual', () => {
+    expect([...SETTINGS_SECTION_PATHS]).toEqual(['/server', '/analytics', '/settings', '/help']);
   });
 
   it('matches what the route builders produce', () => {
     expect(SETTINGS_SECTION_PATHS[0]).toBe(routes.server());
-    expect(SETTINGS_SECTION_PATHS[1]).toBe(routes.settings());
-    expect(SETTINGS_SECTION_PATHS[2]).toBe(routes.help());
+    expect(SETTINGS_SECTION_PATHS[1]).toBe(routes.analytics());
+    expect(SETTINGS_SECTION_PATHS[2]).toBe(routes.settings());
+    expect(SETTINGS_SECTION_PATHS[3]).toBe(routes.help());
   });
 
   /**

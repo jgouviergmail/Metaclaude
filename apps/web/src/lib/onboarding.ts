@@ -37,11 +37,13 @@ export function onboardingSteps(input: OnboardingInput): OnboardingStep[] {
       label: 'Pair Claude',
       detail: 'Sign in with your Pro or Max account — nothing runs without it.',
       done: input.authenticated,
-      // The credential card lives on the server screen, not in Settings: it is
-      // part of what the deployment *is*, not a preference. A step that lands
-      // on the wrong screen is worse than no step — the operator arrives, sees
-      // nothing to do, and stops trusting the list.
-      href: routes.server(),
+      // The credential card lives under Connections, with the other things
+      // this deployment authenticates against — it is not a preference, and it
+      // is not the machine either. A step that lands on the wrong screen is
+      // worse than no step: the operator arrives, sees nothing to do, and
+      // stops trusting the list. It has landed on the wrong one twice now,
+      // which is why `onboarding.test.ts` pins each destination.
+      href: routes.settingsSection('connections'),
     },
     {
       key: 'workspace',

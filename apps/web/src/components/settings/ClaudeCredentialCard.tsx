@@ -1,6 +1,11 @@
 /**
  * Pairing the deployment with a Claude subscription, without a shell.
  *
+ * Rendered under Settings → Connections, beneath the CLI reading it explains:
+ * that one says what is in force, this one changes it. Both moved there from
+ * the Server screen, where they sat three sections apart under a heading about
+ * the machine — a credential is not the box, it is what the box talks to.
+ *
  * The guided flow is the point: the server builds the same OAuth link
  * `claude setup-token` would, the owner approves it in their own browser —
  * this device or any other — and pastes back the code Claude displays. The

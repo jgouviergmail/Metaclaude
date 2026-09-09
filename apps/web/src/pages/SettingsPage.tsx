@@ -23,6 +23,8 @@ import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { SettingsTabs, landingSection } from '@/components/layout/SettingsTabs';
 import { TotpQr } from '@/components/auth/TotpQr';
+import { ClaudeCliCard } from '@/components/settings/ClaudeCliCard';
+import { ClaudeCredentialCard } from '@/components/settings/ClaudeCredentialCard';
 import { GoogleConnectionCard } from '@/components/settings/GoogleConnectionCard';
 import { ConfigurationCard } from '@/components/settings/ConfigurationCard';
 import { McpGatewayCard } from '@/components/settings/McpGatewayCard';
@@ -122,9 +124,18 @@ export function SettingsPage() {
             live mailbox, which is a wider blast radius than any other registry
             write. The other direction — what *reaches in* — is owner-only for
             the same reason: a token that may start runs is a credential for
-            executing things here. */}
+            executing things here.
+
+            Claude leads the group, and did not always live here: the CLI
+            reading and the credential that feeds it sat on the Server screen,
+            three sections apart, under a heading about the machine. This is
+            the connection without which nothing else on this screen matters,
+            so it comes first — the reading, then the control that changes it,
+            then everything else this deployment talks to. */}
         {section === 'connections' ? (
           <>
+            <ClaudeCliCard />
+            <ClaudeCredentialCard />
             <GoogleConnectionCard />
             <McpGatewayCard />
           </>

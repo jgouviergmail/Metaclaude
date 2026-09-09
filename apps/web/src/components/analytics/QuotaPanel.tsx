@@ -56,7 +56,7 @@ function noWindowsReason(
   }
   if (credential?.mode === 'subscription' && credential.source !== 'cli-login') {
     return t(
-      'No plan quota windows here: a paired token can run work but not read your consumption. Your subscription is billed as usual. Sign in to the Claude account from Settings → Server to see the windows again.',
+      'No plan quota windows here: a paired token can run work but not read your consumption. Your subscription is billed as usual. Sign in to the Claude account from Settings → Connections to see the windows again.',
     );
   }
   // Unknown, or a sign-in that reported none anyway — say what was observed

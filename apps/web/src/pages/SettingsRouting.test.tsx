@@ -36,6 +36,12 @@ const { apiMock } = vi.hoisted(() => ({
     sessions: vi.fn(),
     passkeys: vi.fn(),
     push: { status: vi.fn() },
+    // The Claude cards moved into the Connections group and fetch on mount;
+    // declared here rather than assigned per case, because a property added
+    // to the object afterwards is invisible to vitest and a type error to tsc.
+    claudeCredential: { get: vi.fn(), save: vi.fn(), clear: vi.fn() },
+    claudeCliVersion: vi.fn(),
+    claudePairing: { begin: vi.fn(), complete: vi.fn(), cancel: vi.fn() },
   },
 }));
 
@@ -165,5 +171,53 @@ describe('an owner-only group, typed by an operator', () => {
       .getAllByRole('link')
       .find((link) => link.getAttribute('aria-current') === 'page');
     expect(current?.getAttribute('href')).toBe('/settings/audit');
+  });
+});
+
+/**
+ * The order of the Connections group, which is a claim about what to read first.
+ *
+ * The Claude CLI reading and the credential that feeds it moved here from the
+ * Server screen, where they sat three sections apart under a heading about the
+ * machine. Order carries the meaning: the reading says what is in force, the
+ * card under it changes that, and only then come the other things this
+ * deployment talks to. A later card inserted above them would put a mailbox
+ * ahead of the credential without which nothing runs at all.
+ */
+describe('the connections group reads top down', () => {
+  it('puts Claude first, then everything else this deployment talks to', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue({ mode: 'none', source: null, hint: null });
+    apiMock.claudeCliVersion.mockResolvedValue({
+      installed: null,
+      latest: null,
+      behind: null,
+      error: null,
+      checkedAt: 0,
+    });
+    apiMock.googleStatus.mockResolvedValue({ connected: false, grants: [] });
+    apiMock.system.mockResolvedValue({
+      claudeCli: { available: true, version: '2.1.263', authMode: 'subscription', authSource: 'stored', authHint: '…DDDD' },
+    });
+
+    renderAt(routes.settingsSection('connections'));
+
+    await screen.findByText(/Claude CLI/);
+
+    /*
+     * Compared by position in the document, not by a list of headings: the
+     * Google card is collapsible and its title is a button rather than a
+     * heading, so a heading query silently drops the very card this order is
+     * about. `compareDocumentPosition` is also the literal claim — one thing
+     * is above another.
+     */
+    const above = (first: Element, second: Element) =>
+      Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    const cli = screen.getByText(/Claude CLI/);
+    const credentials = screen.getByText(/Claude credentials/i);
+    const google = screen.getByText('Google');
+
+    expect(above(cli, credentials), 'the reading comes before the control').toBe(true);
+    expect(above(credentials, google), 'Claude comes before the mailbox').toBe(true);
   });
 });

@@ -70,8 +70,8 @@ async function main(): Promise<void> {
   if (credential.mode === 'none') {
     log.warn(
       'No Claude credential resolved — not in the vault, the environment, or the CLI’s own ' +
-        'store. Sign in or pair a token from Settings → Server, or run `claude setup-token` on ' +
-        'a machine where you are signed in. Agent runs will fail to authenticate until one ' +
+        'store. Sign in or pair a token from Settings → Connections, or run `claude setup-token` ' +
+        'on a machine where you are signed in. Agent runs will fail to authenticate until one ' +
         'exists.',
     );
   }

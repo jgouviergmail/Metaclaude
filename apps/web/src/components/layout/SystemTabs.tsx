@@ -23,20 +23,25 @@
  * for why these are links and chips rather than tabs and an underline.
  */
 
-import { Activity, Bot, Plug, Timer } from 'lucide-react';
+import { Bot, Plug, Timer } from 'lucide-react';
 import { SectionTabs, type SectionPath } from './SectionTabs';
 import { useT } from '@/lib/i18n';
 import { routes } from '@metaclaude/shared';
 
 export type SystemPath = SectionPath;
 
-/** The four, in the order they are shown. Exported so the rail can own them. */
+/**
+ * The three, in the order they are shown. Exported so the rail can own them.
+ *
+ * Analytics was the fourth and left for Settings. It never described something
+ * the deployment *does*, which is what this strip is: it answers what the
+ * deployment has already spent, which is read deliberately and beside the
+ * machine that ran it.
+ */
 export const SYSTEM_PATHS: readonly SystemPath[] = [
-  // First, because "is the box healthy" comes before "what is it doing".
   { to: routes.automations(), label: 'Automations', icon: <Timer /> },
   { to: routes.agents(), label: 'Agents & skills', icon: <Bot /> },
   { to: routes.plugins(), label: 'Plugins', icon: <Plug /> },
-  { to: routes.analytics(), label: 'Analytics', icon: <Activity /> },
 ];
 
 /**

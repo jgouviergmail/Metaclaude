@@ -26,11 +26,12 @@ const signIn = (role: 'owner' | 'operator') => {
 beforeEach(() => signIn('owner'));
 
 describe('SettingsTabs', () => {
-  it('lists the seven groups in the order they were asked for', () => {
+  it('lists the eight groups in the order they were asked for', () => {
     // Written out rather than derived: a table generated from the same source
     // as the component would agree with any reordering.
     expect(SETTINGS_PATHS.map((entry) => entry.label)).toEqual([
       'Server',
+      'Analytics',
       'Appearance',
       'Connections',
       'Security',
@@ -104,13 +105,19 @@ describe('what an operator is offered', () => {
     // `/server` is not owner-only: an operator may read what the deployment
     // runs on, exactly as they could when the screen sat in the System strip.
     // Moving a screen between sections must not quietly change who may see it.
-    expect(names).toEqual(['/server', '/settings/appearance', '/settings/security', '/help']);
+    expect(names).toEqual([
+      '/server',
+      '/analytics',
+      '/settings/appearance',
+      '/settings/security',
+      '/help',
+    ]);
   });
 
-  it('offers an owner all seven', () => {
+  it('offers an owner all eight', () => {
     signIn('owner');
     render(<SettingsTabs />, { route: '/settings/appearance' });
-    expect(screen.getAllByRole('link')).toHaveLength(7);
+    expect(screen.getAllByRole('link')).toHaveLength(8);
   });
 });
 
@@ -119,6 +126,9 @@ describe('which paths the section owns', () => {
     expect(isSettingsPath('/settings')).toBe(true);
     expect(isSettingsPath('/settings/security')).toBe(true);
     expect(isSettingsPath('/help')).toBe(true);
+    // Analytics kept its own path when it moved here, so a prefix test would
+    // answer no while the operator stands on it and the rail lights nothing.
+    expect(isSettingsPath('/analytics')).toBe(true);
   });
 
   it('claims nothing that belongs to another section', () => {

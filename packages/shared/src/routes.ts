@@ -118,9 +118,10 @@ export const WORKSPACE_PREFIX = '/w/';
  * not a setting at all — it is the manual, and it lives here so the whole "how
  * is this thing set up and explained" question has one place.
  *
- * The Server screen leads the section and is not in this list, because this
- * list is what `/settings/:section` accepts and that screen kept its own path.
- * `SETTINGS_SECTION_PATHS` is what says who belongs to the section.
+ * The Server and Analytics screens lead the section and are not in this list,
+ * because this list is what `/settings/:section` accepts and both kept their
+ * own path when they moved here. `SETTINGS_SECTION_PATHS` is what says who
+ * belongs to the section.
  */
 export const SETTINGS_SECTIONS = [
   'appearance',
@@ -141,11 +142,11 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
  * chunk the day it was tried.
  *
  * Not all of them are `/settings/*`, and that is the point of having the list
- * at all: the Server screen kept its own path when it moved here, and `/help`
- * has always been separate. A predicate that tested the prefix would answer no
- * to both.
+ * at all: the Server screen kept its own path when it moved here, Analytics
+ * kept the one it had in the System strip, and `/help` has always been
+ * separate. A predicate that tested the prefix would answer no to all three.
  */
-export const SETTINGS_SECTION_PATHS = ['/server', '/settings', '/help'] as const;
+export const SETTINGS_SECTION_PATHS = ['/server', '/analytics', '/settings', '/help'] as const;
 
 /**
  * The groups an operator has no business in.
@@ -174,12 +175,7 @@ export function isOwnerOnlySection(section: string): boolean {
  * able to do so without importing a module full of icons — that pulled 1 kB
  * gzip into the entry chunk the day it was tried.
  */
-export const SYSTEM_SECTION_PATHS = [
-  '/automations',
-  '/agents',
-  '/plugins',
-  '/analytics',
-] as const;
+export const SYSTEM_SECTION_PATHS = ['/automations', '/agents', '/plugins'] as const;
 
 export const routePattern = {
   workspace: '/w/:workspaceId',

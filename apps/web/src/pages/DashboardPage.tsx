@@ -234,8 +234,11 @@ export function DashboardPage() {
               <p className="font-medium text-ink">{t('Claude is not authenticated.')}</p>
               <p className="text-muted">
                 {t('Pair it from')}{' '}
-                <Link to={routes.server()} className={cn('font-medium underline-offset-2', QUIET_LINK)}>
-                  {t('Settings → Server')}
+                <Link
+                  to={routes.settingsSection('connections')}
+                  className={cn('font-medium underline-offset-2', QUIET_LINK)}
+                >
+                  {t('Settings → Connections')}
                 </Link>
                 {t(
                   ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from',
