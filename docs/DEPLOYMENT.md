@@ -515,7 +515,7 @@ sudo /opt/metaclaude/bin/metaclaude-backup prune     # apply retention now
 Each run stops the app (seconds — the proxy stays up), archives the four
 named volumes into one timestamped `tar.gz` under `/var/backups/metaclaude`,
 restarts, writes a marker into the data volume, and keeps the newest 14
-archives. The marker is what **System → Server → Doctor** reads: a timer
+archives. The marker is what **Settings → Server → Doctor** reads: a timer
 that quietly stops firing becomes a visible warning in the app within a day.
 Destination and retention are `METACLAUDE_BACKUP_DIR` and
 `METACLAUDE_BACKUP_KEEP` in `/opt/metaclaude/deploy.conf`. Archives live

@@ -31,12 +31,13 @@ export function isSystemPath(pathname: string): boolean {
 }
 
 /**
- * The Settings section: the machine, its groups, and the manual.
+ * The Settings section: the machine, what it spent, its groups, and the manual.
  *
  * From the same shared list as its twin above, rather than from a prefix test.
- * Two of the three screens are not under `/settings` — the Server screen kept
- * its own path when it moved into this section, and `/help` never had one — so
- * a prefix would answer no while the operator stands on them.
+ * Three of the four screens are not under `/settings` — Server and Analytics
+ * each kept their own path when they moved into this section, and `/help`
+ * never had one — so a prefix would answer no while the operator stands on
+ * them.
  */
 export function isSettingsPath(pathname: string): boolean {
   return SETTINGS_SECTION_PATHS.some((prefix) => owns(pathname, prefix));

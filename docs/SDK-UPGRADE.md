@@ -132,7 +132,7 @@ window matters because the failures this catches are silent rather than loud.
 | run success rate | Analytics | a step change on the deploy, not a drift |
 | cache writes per run | Analytics tokens, or the runs table | a jump means the cached prefix is being rewritten again |
 | quota narrations | any transcript | switches that no longer happen, or that happen on a global window |
-| `unavailable` on the usage endpoint | Settings → System | `rate_limits` there means the shape moved again |
+| `unavailable` on the usage endpoint | Settings → Analytics | `rate_limits` there means the shape moved again |
 
 The rollback is the ordinary one: deposit the previous version through the
 update button, which is health-gated and reverts on failure. Because the bump

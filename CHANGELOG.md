@@ -11,6 +11,29 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.89.1] — 2026-09-09
+
+### Fixed
+
+- **Two module headers described the app of two releases ago.** The System
+  strip's own comment still announced five screens and claimed the machine led
+  it — the machine left for Settings three releases back, and Analytics has now
+  followed. Nobody sees these but the next person to read the code, which is
+  exactly who a wrong explanation costs the most: the prose was the only place
+  saying *why* a screen belongs to a section, and it was arguing for a layout
+  that no longer exists.
+
+- **Two stale screen references outside the guide.** The deployment notes sent
+  a reader to "System → Server → Doctor" and the SDK upgrade notes to
+  "Settings → System", both for screens that had moved. `check.sh` covers the
+  guide and the README and stops there, on purpose — four of the seven
+  citations in the wider docs are a *phone's* settings app, and a check that
+  indicts "Settings → General" is the grep-cannot-tell-code-from-prose trap.
+  Widening it was measured and rejected; the reasoning now sits beside the
+  check so the next person knows the scope is a decision rather than an
+  oversight.
+
+
 ## [0.89.0] — 2026-09-09
 
 ### Changed

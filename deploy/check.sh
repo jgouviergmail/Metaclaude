@@ -1753,6 +1753,16 @@ section "Every screen the guide sends the reader to still exists"
 # docs/DEPLOYMENT.md is deliberately excluded — its "Settings → General →
 # About" paths are iOS and Android, not Metaclaude.
 #
+# That exclusion has a cost, and it was paid: two stale references sat in
+# docs/ for releases — DEPLOYMENT.md saying "System → Server → Doctor" and
+# SDK-UPGRADE.md saying "Settings → System" — and neither was caught here.
+# Widening the scope was measured rather than assumed: seven citations live
+# outside the guide, and four of them are a phone's own settings app. A check
+# that indicts "Settings → General" is the grep-cannot-tell-code-from-prose
+# trap, and a check nobody trusts is worse than a narrow one. So the scope
+# stays, and anything outside it is caught by reading. If that stops being
+# enough, the fix is a marker in the prose, not a looser pattern.
+#
 # The claim asserted is narrow on purpose: the first segment after a section
 # name must appear somewhere in that section's own sources — a strip label or a
 # card title. That is enough to catch a screen that is not there at all,

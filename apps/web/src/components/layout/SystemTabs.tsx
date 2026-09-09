@@ -1,23 +1,24 @@
 /**
- * The System section: the machine, and what this deployment can do.
+ * The System section: what this deployment can do.
  *
- * Six screens were six top-level rail entries out of ten — automations, agents,
- * plugins, analytics, settings, help — and ten does not fit a phone's tab bar,
- * so four of them lived behind a "More" sheet chosen by the available space
- * rather than by meaning.
+ * Six screens were six top-level rail entries out of ten, and ten does not fit
+ * a phone's tab bar, so four lived behind a "More" sheet chosen by the
+ * available space rather than by meaning. Grouping them ended that.
  *
- * Five belong together: none is something an operator *works in*, all five are
- * what the deployment can do and how it is inspected. Two others left: Settings
- * is where an operator goes deliberately and by name, so it has its own rail
- * entry; Help is the manual, not a capability, and sits with the settings it
- * explains. The machine came the other way — version, resources, the CLI, the
- * doctor, the updater were a tab inside Settings and lead this strip now,
- * because none of it is a preference.
+ * What is left here is a capability each: an automation, an agent or a skill,
+ * a plugin. None is something an operator *works in*, and none is a setting.
+ * The screens that left did so on that test rather than on how full the strip
+ * was — Help is the manual, the machine is not a capability but the thing
+ * capabilities run on, and Analytics answers what has already been spent
+ * rather than what can be done. All three sit in Settings now.
  *
- * Their URLs deliberately do not change. `apps/api` builds links to `/settings`
- * for the Google OAuth return and to `/automations` for a scheduler
- * notification, push notifications carry their own paths, and an operator has
- * bookmarks. The grouping is navigational; nothing moves.
+ * Their URLs deliberately do not change, here or when one leaves. `apps/api`
+ * builds links to `/settings` for the Google OAuth return and to
+ * `/automations` for a scheduler notification, push notifications carry their
+ * own paths, and an operator has bookmarks. The grouping is navigational; what
+ * has to follow a move is which rail entry lights up, which is why
+ * `packages/shared/src/routes.ts` holds one list per section and the tests
+ * derive from it rather than restating it.
  *
  * The strip itself is `SectionTabs`, shared with Settings — see the note there
  * for why these are links and chips rather than tabs and an underline.
