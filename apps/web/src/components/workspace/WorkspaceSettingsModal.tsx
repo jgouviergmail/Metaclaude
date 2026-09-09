@@ -475,7 +475,7 @@ export function WorkspaceSettingsModal({
             onChange={(value) => update('delegable', value)}
             label={t('Let other workspaces consult this one')}
             hint={t(
-              'Another project’s agent can ask this workspace a question and get its answer — a full run here, under this workspace’s own memory, conventions and permission mode, and behind an approval like any other tool. The description above is what tells it when to ask: without one this workspace stays reachable but is not listed. Metaclaude’s own steward reaches every workspace whatever this says.',
+              'Two things at once. Another project’s agent can search what this workspace has written down — its notes and its documents — without running anything here; and it can ask this workspace a question, which is a full run under this workspace’s own memory, conventions and permission mode. Turning this off withdraws both. The description above is what tells another agent when to ask: without one this workspace stays reachable but is not listed. Metaclaude’s own steward reaches every workspace whatever this says.',
             )}
           />
         </fieldset>

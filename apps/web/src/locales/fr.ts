@@ -362,8 +362,7 @@ export const fr: Record<string, string> = {
   'Untick all': 'Tout décocher',
   'Other workspaces': 'Autres workspaces',
   'Let other workspaces consult this one': 'Laisser les autres workspaces consulter celui-ci',
-  'Another project’s agent can ask this workspace a question and get its answer — a full run here, under this workspace’s own memory, conventions and permission mode, and behind an approval like any other tool. The description above is what tells it when to ask: without one this workspace stays reachable but is not listed. Metaclaude’s own steward reaches every workspace whatever this says.':
-    'L’agent d’un autre projet peut poser une question à ce workspace et en recevoir la réponse — un run complet ici, sous la mémoire, les conventions et le mode de permission de ce workspace, et derrière une approbation comme tout autre outil. C’est la description ci-dessus qui lui dit quand demander : sans elle, ce workspace reste joignable mais n’est pas listé. L’intendant de Metaclaude atteint tous les workspaces quoi qu’il en soit.',
+  'Two things at once. Another project’s agent can search what this workspace has written down — its notes and its documents — without running anything here; and it can ask this workspace a question, which is a full run under this workspace’s own memory, conventions and permission mode. Turning this off withdraws both. The description above is what tells another agent when to ask: without one this workspace stays reachable but is not listed. Metaclaude’s own steward reaches every workspace whatever this says.': 'Deux choses à la fois. L’agent d’un autre projet peut chercher ce que cet espace a consigné — ses notes et ses documents — sans rien y exécuter ; et il peut lui poser une question, ce qui est un run complet sous la mémoire, les conventions et le mode d’autorisation propres à cet espace. Décocher retire les deux. La description ci-dessus est ce qui indique à un autre agent quand demander : sans elle, cet espace reste joignable mais n’est pas listé. Le steward de Metaclaude atteint tous les espaces quoi qu’il en soit.',
   'Read by other workspaces, so their agents know when to consult this one.':
     'Lue par les autres workspaces, pour que leurs agents sachent quand consulter celui-ci.',
   'Log level': 'Niveau de journalisation',
@@ -2238,7 +2237,7 @@ export const fr: Record<string, string> = {
   'Token revoked': 'Jeton révoqué',
   'Anything still using it is refused from now on.': 'Tout ce qui l’utilise encore est refusé désormais.',
   'MCP access for other applications': 'Accès MCP pour d’autres applications',
-  'Connect another application to this agent. A token can reach only the workspaces you name, and never more than the ceiling you set.': 'Connectez une autre application à cet agent. Un jeton n’atteint que les espaces que vous nommez, et jamais plus que le plafond que vous fixez.',
+  'Connect another application to this agent. A token can reach only the workspaces you name, and never more than the ceiling you set. Inside a workspace it names, the agent works exactly as it does for you — under that workspace’s own settings.': 'Connectez une autre application à cet agent. Un jeton n’atteint que les espaces que vous nommez, et jamais plus que le plafond que vous fixez. Dans un espace qu’il nomme, l’agent travaille exactement comme il le fait pour vous — sous les réglages propres à cet espace.',
   'New token': 'Nouveau jeton',
   'Endpoint to connect to': 'Adresse à laquelle se connecter',
   'Copy the endpoint': 'Copier l’adresse',
@@ -2262,7 +2261,8 @@ export const fr: Record<string, string> = {
   'Start runs': 'Lancer des runs',
   'The agent works in the workspace. This is what executes things.': 'L’agent travaille dans l’espace. C’est ce qui exécute des choses.',
   'Read notes and the board': 'Lire les notes et le tableau',
-  'Search the knowledge base and list cards. Nothing executes.': 'Chercher dans la base de connaissances et lister les cartes. Rien ne s’exécute.',
+  'Search the documents and the agent’s own notes, and list cards. Nothing executes.': 'Chercher dans les documents et dans les notes de l’agent, et lister les cartes. Rien ne s’exécute.',
+  'A run started here works under that workspace’s own settings, so it may consult the neighbours that workspace is allowed to consult.': 'Un run démarré ici travaille sous les réglages propres à cet espace, et peut donc consulter les voisins que cet espace est autorisé à consulter.',
   'Ceiling on what a run may do': 'Plafond de ce qu’un run peut faire',
   'Nobody is watching these runs, so they never stop to ask. This is the most they may do on their own — a workspace set to less stays at less.': 'Personne ne surveille ces runs : ils ne s’arrêtent jamais pour demander. Voici le maximum qu’ils peuvent faire seuls — un espace réglé plus bas reste plus bas.',
   'Plan only': 'Plan seulement',

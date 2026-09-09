@@ -133,7 +133,7 @@ export function McpGatewayCard() {
     <Section
       title={t('MCP access for other applications')}
       description={t(
-        'Connect another application to this agent. A token can reach only the workspaces you name, and never more than the ceiling you set.',
+        'Connect another application to this agent. A token can reach only the workspaces you name, and never more than the ceiling you set. Inside a workspace it names, the agent works exactly as it does for you — under that workspace’s own settings.',
       )}
       actions={
         <Button
@@ -314,6 +314,11 @@ export function McpGatewayCard() {
 
           <fieldset className="space-y-2">
             <legend className="text-caption font-medium text-ink">{t('Workspaces it can reach')}</legend>
+            <p className="text-caption text-muted">
+              {t(
+                'A run started here works under that workspace’s own settings, so it may consult the neighbours that workspace is allowed to consult.',
+              )}
+            </p>
             {/* No "all workspaces" option, deliberately: a token minted for one
                 integration would otherwise follow this deployment into every
                 workspace created afterwards. */}
@@ -344,7 +349,7 @@ export function McpGatewayCard() {
               checked={draft.scopes.includes('read')}
               onChange={() => setDraft({ ...draft, scopes: toggle(draft.scopes, 'read') })}
               label={t('Read notes and the board')}
-              hint={t('Search the knowledge base and list cards. Nothing executes.')}
+              hint={t('Search the documents and the agent’s own notes, and list cards. Nothing executes.')}
             />
           </fieldset>
 

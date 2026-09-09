@@ -152,6 +152,23 @@ describe('the listing', () => {
 });
 
 describe('minting', () => {
+  /**
+   * What granting a workspace actually means, where the grant is made.
+   *
+   * A token no longer buys a narrower agent: a run it starts works under that
+   * workspace's own settings, so it may reach the neighbours that workspace is
+   * allowed to reach. That is a consequence the person ticking the box has to
+   * see at the moment they tick it, not in a guide they may never open.
+   */
+  it('says what a grant means beside the workspaces it is choosing from', async () => {
+    renderWithProviders(<McpGatewayCard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'New token' }));
+
+    expect(
+      screen.getByText(/works under that workspace’s own settings/i),
+    ).toBeTruthy();
+  });
+
   it('will not create a token that reaches nothing', async () => {
     renderWithProviders(<McpGatewayCard />);
     fireEvent.click(await screen.findByRole('button', { name: 'New token' }));

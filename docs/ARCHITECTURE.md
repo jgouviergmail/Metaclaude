@@ -257,12 +257,17 @@ Three properties are specific to a caller nobody is watching:
   answer than a refusal.
 - **Scope is enforced on one path and answers identically for "not yours" and
   "does not exist".** Confirming the difference leaks the deployment's map.
-  Delegation is withheld from these runs outright: it reaches *other*
-  workspaces by design, which would put the whole scope one prompt away.
+  What the run may *do* inside a granted workspace is that workspace's own
+  settings, exactly as from the interface — the token chooses the door, not the
+  furniture. Delegation and the steward's own verbs were withheld from these
+  runs until 0.86; the measured result was an agent with no way to answer a
+  question the deployment held the answer to, calling no tool at all because it
+  had none. What still bounds a gateway run is the ceiling, which
+  `admitPeerRun` carries onto every run that run causes.
 - **The endpoint is stateless.** A fresh MCP server and transport per request,
   so there is no session table to grow and nothing carries between two tokens.
 - **The standing session is bounded.** One session per token per workspace, so
-  an integration's asks build on each other — but past `MCP_SESSION_MAX_EVENTS`
+  an integration's asks build on each other — but past `STANDING_SESSION_MAX_EVENTS`
   of transcript the next call opens a fresh one. A token used every minute for
   a year has no natural end, and nobody is watching the context grow.
 - **The rate budget is per token and measured.** The global limiter counts by

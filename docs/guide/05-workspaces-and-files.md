@@ -85,15 +85,18 @@ reachable if you name its slug yourself, but no agent will find it.
 
 The block is bounded, and it degrades in one direction only: every workspace
 stays listed, and the descriptions are what shrink when there are many. Around
-twenty workspaces all keep theirs; past that you see the names and the
+twenty-seven workspaces all keep theirs; past that you see the names and the
 descriptions go together. **Settings → Configuration → Peer directory budget**
-sets the size, and `0` there switches delegation between workspaces off across
-the whole server.
+sets the size, and `0` there switches everything between workspaces off across
+the whole server — the directory, the search and the delegation together.
 
 **Any workspace can decline.** In its settings, under *Other workspaces*, turn
-off *Let other workspaces consult this one* and it leaves every directory and
-refuses every delegation. Metaclaude's own steward still reaches it — that
-switch is about other projects, not about you.
+off *Let other workspaces consult this one* and it leaves every directory,
+refuses every delegation, and stops answering the cheap search too: its notes
+and documents are no longer readable from another project. Metaclaude's own
+steward still reaches it — that switch is about other projects, not about you.
+Each workspace's own *Learning* switches still apply on top: one that recalls
+nothing offers no notes, and one with its library off offers no documents.
 
 Every delegation goes through a permission prompt naming the target and the
 exact ask, costs a full run there (visible in that workspace's history and
@@ -102,12 +105,22 @@ across asks. Depth is one by construction: a delegated run cannot delegate
 further, so chains cannot loop and every delegation traces back to a run a
 human started.
 
-Two runs never see the directory at all: one started through the MCP gateway,
-because a token names the workspaces it may reach and the directory is a map
-of the rest; and one that is itself a delegation, which has no tool to use it
-with. A run in `dontAsk` does not either — nothing unapproved executes in that
-mode, so the tool would be refused rather than asked about, and being told
-about it would only waste the turn.
+**Searching costs nothing, so try it first.** Beside *Delegate* sits
+*Search workspaces*, which reads what the other workspaces have already written
+down — their notes and the documents filed with them — without starting a run
+anywhere. It needs no tick: it reads and never writes, so it is available
+wherever there is somebody to consult, and it is what an agent should reach for
+before spending a full run on a question that was already answered somewhere.
+Results say which workspace each one came from.
+
+One run never sees any of this: one that is itself a delegation, which cannot
+delegate onwards and must not carry another workspace's notes home. A run
+started through the MCP gateway *does* see it, and that is the rule for the
+gateway rather than an exception — a token says which workspace an application
+may knock at, and behind that door the agent works as it does for you. And in
+`dontAsk`, where nothing unapproved executes, the directory offers the search
+and stays silent about *Delegate* unless you have ticked it: being told about a
+tool that would only be refused wastes the turn.
 
 ## Reading its other sessions
 

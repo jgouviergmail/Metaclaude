@@ -11,6 +11,72 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+### Changed
+
+- **A call arriving by MCP is now answered the way the interface answers.** A
+  token says which workspace an application may knock at; behind that door the
+  agent works under that workspace's own settings, with the same tools a run
+  you started there would get. Two rules withheld those tools from gateway
+  runs, each on the reasoning that a token's scope must not be one prompt away
+  from being bypassed — and what that produced, measured in production, was an
+  agent unable to answer a question this deployment held the answer to. Asked
+  for a fact recorded as a pinned note in the next workspace, it called **no
+  tool at all**, because it had none to call, and reported that Metaclaude did
+  not know. It also claimed to have consulted `system_overview`, which was
+  never mounted for it: a briefing naming tools that are not there does not
+  produce a refusal, it produces a fluent account of a search that never
+  happened.
+
+  What still bounds such a run is its **ceiling**, and it bounded only the
+  first hop. A token capped at *Run what is already allowed* could have reached
+  a workspace set to *Run and edit files* by asking one agent to consult
+  another. The ceiling is now recorded on the run and re-applied against the
+  target's own mode every time a run starts another — which is also what stops
+  a target left on *Ask* opening an approval card with nobody in the room.
+
+### Added
+
+- **Searching a neighbour, before making it work.** Delegation was the only way
+  to reach another workspace and it costs a full run there — measured at $0.34
+  and several minutes — while the question was usually a fact that workspace
+  had already written down. `search_workspaces` reads the notes and reference
+  documents of the workspaces this one may consult, executes nothing, calls no
+  model, and answers at once. It needs no tick: like the workspace's own memory
+  search it is pre-approved with its own mount, because under *Don't ask*
+  anything unticked is refused without ever reaching a person — which is how an
+  automation ends up carrying a lookup tool it can never use while still
+  landing as a success. *Delegate* stays a tick: it spends another workspace's
+  quota.
+
+- **`search_notes` reads the agent's notes too, and no longer asks where to
+  look.** The gateway's read tool covered the document library alone, so the
+  fact behind the whole release was unreachable through it whatever the grant.
+  It now returns both, each result saying which it is — a passage is a
+  quotation you can attribute to a page, a note is something an agent concluded
+  and may be out of date — and naming a workspace became optional: omit it and
+  the search covers everything the token reaches. A calling program has no way
+  of knowing where you filed a fact, and should not need one.
+
+- **The steward can search the knowledge library** (`system_knowledge_search`).
+  It could read every memory in the deployment and no document at all, while
+  the interface has offered a library search since the library shipped.
+
+### Fixed
+
+- **The peer directory kept the operator's budget by three characters per
+  entry.** The separator between a slug and its description was counted
+  nowhere: 3063 characters against a budget of 3000 at twenty-seven
+  workspaces. The test that watched the budget used a case where descriptions
+  are dropped, so the separator was never written and the bound it proved was
+  one that did not hold.
+
+- **The `Delegations` session never rotated.** The gateway's standing session
+  and the steward's both open a fresh one past an event ceiling, because a
+  session nobody closes grows its context every day; delegation had a third
+  copy of that rule which only checked whether a run was in flight — so the one
+  session that accumulates a *second* workspace's context on every question was
+  the only one that never rotated. The three are one rule now.
+
 ## [0.85.0] — 2026-09-09
 
 ### Added

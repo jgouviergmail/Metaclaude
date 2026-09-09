@@ -267,11 +267,35 @@ bounded — past roughly a dozen runs' worth of transcript the next call starts 
 fresh one, under the same name. Context that grows without end is a bill that
 grows without end.
 
-One detail worth knowing before granting the reading capability:
-`search_notes` returns that workspace's knowledge **and anything filed
-globally** — exactly the shelf a run there would read, which is the point, but
-it means a token scoped to one project can reach the notes you keep for all of
-them.
+**What `search_notes` returns.** Both kinds of thing this deployment has
+written down: the reference documents in the knowledge base, and the notes its
+agents keep. Each result says which it is, because they are not the same sort
+of evidence — a `passage` is a quotation you can attribute to a document, page
+and lines; a `memory` is something an agent concluded and may be out of date.
+Name a workspace to search it alone, or omit it and the search covers every
+workspace the token reaches plus anything filed globally, which is what a
+calling program usually wants: it has no way of knowing where you filed a fact,
+and should not need one.
+
+Two consequences of that, both worth deciding on rather than discovering. A
+token scoped to one project reaches the notes and documents you keep for all of
+them, because the global shelf is part of what a run there reads. And granting
+`read` now exposes the agent's own notes about a project, not only the
+reference material filed with it.
+
+**Behind the door, it works as it does for you.** A token chooses which
+workspace an application may knock at; it does not choose a narrower agent.
+Runs it starts get the same tools a run you start there would get, under the
+same workspace settings — so a workspace whose settings let its agent consult
+its neighbours will do so for the application too, and one whose *Delegate*
+tick is off will not. The one thing that stays specific to a token is its
+ceiling, because nobody is watching: it caps the run it starts *and* every run
+that run goes on to cause elsewhere.
+
+Grant the **Metaclaude** workspace only to software you would let read the
+whole deployment. Its steward reads every workspace's notes, runs, settings and
+audit trail, and can start runs anywhere — all under the token's ceiling, and
+none of it able to change a permission mode, a tool list or a directory.
 
 **Treat a token as a password with a blast radius.** Anything holding one can
 ask this agent to work in the workspaces you named, and the agent runs shell

@@ -186,9 +186,41 @@ widens a workspace that is already narrower. The ceiling itself is one of
 **Scope is not a suggestion.** Every tool resolves its workspace through one
 check, and a workspace that exists but is not this token's answers exactly as
 one that does not exist — confirming the difference would leak the deployment's
-map. Delegation is withheld from gateway runs entirely: it reaches *other*
-workspaces by design, which would put the whole scope one prompt away from
-being bypassed.
+map.
+
+**Behind the door, it behaves as it does from the interface.** The token says
+which workspace an application may knock at; what the agent may do there is the
+workspace's own settings, not a narrower set reserved for machines. That is a
+deliberate reversal, and it is the operator's rule rather than a convenience.
+Delegation used to be withheld from gateway runs on the reasoning that it
+reaches *other* workspaces and would put the scope one prompt away; what it
+produced, measured in production, was an agent unable to answer a question this
+deployment held the answer to, reporting that Metaclaude did not know while a
+pinned note in the next workspace said otherwise.
+
+Three consequences an operator issuing a token has to know:
+
+- **Granting the system workspace grants what its steward can do.** That agent
+  reads every workspace's memories, its runs, its settings and its audit trail,
+  and can start runs anywhere — all of it under the token's ceiling, none of it
+  able to change a permission mode, a tool list or a directory. Grant that
+  workspace only to software you would let read the whole deployment.
+- **Granting an ordinary workspace grants what its own settings allow.** Its
+  runs can search the notes and documents of the workspaces that have not opted
+  out of being consulted, and can delegate to them if the workspace's
+  pre-approved tool list says so. Whoever holds the token cannot widen either:
+  both are the operator's ticks, on the workspace's own settings screen.
+- **`search_notes` reads memories as well as documents**, across every
+  workspace the token names plus anything filed globally. A token granted
+  `read` therefore sees what the agents have written down about those projects,
+  not only the reference material filed with them.
+
+**A run's ceiling bounds what that run causes.** Applying it once would have
+bounded the first hop only: a token capped at `dontAsk` could reach a workspace
+set to `acceptEdits` by asking an agent to consult one. The ceiling is stamped
+on the run (`runs.ceiling`) and re-applied against the target's own mode
+whenever a run starts another — which is also what stops a target left on an
+interactive mode opening a card with nobody in the room.
 
 **The gateway is stateless.** A fresh MCP server and transport per request, so
 there is no session table to grow or to confuse one token's request with
