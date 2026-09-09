@@ -1149,6 +1149,8 @@ export const fr: Record<string, string> = {
   'Top matches': 'Meilleures correspondances',
   'Memory could not be loaded': 'La mémoire n’a pas pu être chargée',
   'Insights awaiting review': 'Enseignements en attente de revue',
+  'All of them': 'Tous',
+  'Could not apply that consolidation.': 'Impossible d’appliquer cette consolidation.',
   'Distil a skill': 'Distiller une skill',
   Reject: 'Rejeter',
   'Install skill': 'Installer la skill',

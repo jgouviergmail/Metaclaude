@@ -10,6 +10,7 @@
  */
 
 import type { Insight } from '@metaclaude/shared';
+import { ReflexionInsightPayload } from '@metaclaude/shared';
 
 export type InsightTone = 'info' | 'accent' | 'danger' | 'success' | 'thinking';
 
@@ -37,4 +38,22 @@ export const INSIGHT_TONE: Record<Insight['kind'], InsightTone> = {
  */
 export function isLearned(insight: Pick<Insight, 'kind'>): boolean {
   return insight.kind !== 'consolidation';
+}
+
+/**
+ * The gate's decisions carried by a reflexion insight, or null when the
+ * payload is not that.
+ *
+ * Here rather than on the Memory page because two screens read it now, and a
+ * page importing a helper from another page is how a screen ends up unable to
+ * move without dragging its neighbour along.
+ */
+export function readDecisions(payload: string | null): ReflexionInsightPayload | null {
+  if (!payload) return null;
+  try {
+    const parsed = ReflexionInsightPayload.safeParse(JSON.parse(payload));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }

@@ -20,7 +20,6 @@ import {
   Brain,
   Layers,
   RotateCcw,
-  Check,
   ChevronRight,
   Filter,
   Folder,
@@ -34,15 +33,12 @@ import {
   Sparkles,
   Trash2,
   Wrench,
-  X,
 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   normaliseTags,
-  ReflexionInsightPayload,
-  type GateOutcome,
   type Insight,
   type Memory,
   type MemoryKind,
@@ -56,6 +52,7 @@ import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
 import { MemoryConstellation } from '@/components/memory/MemoryConstellation';
 import { KnowledgeSection } from '@/components/memory/KnowledgeSection';
 import { ConsolidationCard, readProposal } from '@/components/memory/ConsolidationCard';
+import { InsightCard } from '@/components/memory/InsightCard';
 import { ScopeBadge, scopeName } from '@/components/memory/ScopeBadge';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -76,7 +73,7 @@ import {
   Select,
 } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { INSIGHT_TONE } from '@/lib/insights';
+import { readDecisions } from '@/lib/insights';
 import { cn, formatPercent, formatRelative } from '@/lib/utils';
 import { usePlural, useT } from '@/lib/i18n';
 import { describeRetrieval } from '@/lib/retrieval';
@@ -112,41 +109,6 @@ const SHELF_TONE: Record<MemoryShelf, 'accent' | 'neutral' | 'thinking'> = {
   durable: 'neutral',
   volatile: 'thinking',
 };
-const OUTCOME_TONE: Record<GateOutcome, 'success' | 'info' | 'neutral' | 'warning'> = {
-  kept: 'success',
-  superseded: 'info',
-  skipped: 'neutral',
-  'over-budget': 'warning',
-  unjudged: 'warning',
-  forgotten: 'neutral',
-};
-/**
- * A note the operator may still keep — because it is not in the corpus.
- *
- * `forgotten` belongs here and is the reason the set exists in both
- * directions: a kept note whose memory was deleted or reaped is no longer a
- * memory, so the row has to offer `Keep` again. Without it the row showed
- * `Forget` on a memory that was already gone, and pressing it did nothing an
- * operator could see.
- */
-const REFUSED: ReadonlySet<GateOutcome> = new Set([
-  'skipped',
-  'over-budget',
-  'unjudged',
-  'forgotten',
-]);
-
-/** The gate's decisions carried by a reflexion insight, or null when the payload is not that. */
-export function readDecisions(payload: string | null): ReflexionInsightPayload | null {
-  if (!payload) return null;
-  try {
-    const parsed = ReflexionInsightPayload.safeParse(JSON.parse(payload));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
 const KIND_TONE: Record<MemoryKind, 'info' | 'accent' | 'thinking'> = {
   episodic: 'info',
   semantic: 'accent',
@@ -1221,167 +1183,28 @@ export function MemoryPage() {
                     );
                   }
                   return (
-                  <Card key={insight.id} className="space-y-3 p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone={INSIGHT_TONE[insight.kind]}>
-                        {insight.kind.replace('_', ' ')}
-                      </Badge>
-                      {/* Which project it was learned in. The list unions the
-                          tiers exactly as the memory list does — and a lesson
-                          is a proposal about somewhere, so deciding on one
-                          without knowing where it came from is guesswork. The
-                          consolidation card has carried this from the start;
-                          this one did not. */}
-                      <ScopeBadge workspaceId={insight.workspaceId} workspaces={workspaces} />
-                      <span className="text-caption text-muted">
-                        {t('confidence')} {formatPercent(insight.confidence)}
-                      </span>
-                      <span className="text-caption text-subtle">
-                        {formatRelative(insight.createdAt)}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <h3 className="break-words text-heading font-medium text-ink">
-                        {insight.title}
-                      </h3>
-                      {(() => {
-                        const gate = readDecisions(insight.payload);
-                        if (!gate) {
-                          return (
-                            <p className="whitespace-pre-wrap text-body leading-relaxed text-muted">
-                              {insight.body}
-                            </p>
-                          );
-                        }
-                        return (
-                          <div className="space-y-2">
-                            <p className="text-caption text-subtle">
-                              {t('What the memory gate made of each note this run proposed. A refused note can still be kept, and a kept one forgotten.')}
-                            </p>
-                            <ul className="space-y-2">
-                              {gate.decisions.map((decision, index) => (
-                                <li key={index} className="flex flex-wrap items-start gap-2 text-body">
-                                  <Badge tone={OUTCOME_TONE[decision.outcome]}>{t(decision.outcome)}</Badge>
-                                  <span className="text-caption text-subtle">{t(decision.level)}</span>
-                                  <span className="min-w-0 flex-1 text-muted">
-                                    <span className="font-medium text-ink">{decision.title}</span>
-                                    {decision.reason ? <span className="text-subtle"> — {decision.reason}</span> : null}
-                                  </span>
-                                  {/*
-                                    * Both directions, because the gate is a
-                                    * judgement and not a verdict.
-                                    *
-                                    * A refused note could be kept and a kept
-                                    * one could not be undone — so disagreeing
-                                    * with the gate was possible in exactly one
-                                    * direction, and the note that mattered
-                                    * most (a wrong keep, which is now in the
-                                    * corpus and will be recalled) was the one
-                                    * with no way back. `Forget` deletes the
-                                    * memory the keep created; the row then
-                                    * offers `Keep` again, so the decision
-                                    * stays reversible either way.
-                                    */}
-                                  {REFUSED.has(decision.outcome) && !decision.memoryId ? (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => keepNote.mutate({ id: insight.id, index })}
-                                      loading={
-                                        keepNote.isPending &&
-                                        keepNote.variables?.id === insight.id &&
-                                        keepNote.variables.index === index
-                                      }
-                                      aria-label={t('Keep {title}', { title: decision.title })}
-                                    >
-                                      {t('Keep')}
-                                    </Button>
-                                  ) : decision.memoryId ? (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => deleteMemory.mutate(decision.memoryId as string)}
-                                      loading={
-                                        deleteMemory.isPending &&
-                                        deleteMemory.variables === decision.memoryId
-                                      }
-                                      aria-label={t('Forget {title}', { title: decision.title })}
-                                    >
-                                      {t('Forget')}
-                                    </Button>
-                                  ) : null}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* An applied proposal has nothing left to decide, and
-                          offering `Install skill` again would only hit the
-                          registry's unique-name conflict. What it owes the
-                          operator is the way to what it produced — which lives
-                          on another screen, and is the whole reason installing
-                          one felt like losing it. */}
-                      {insight.status === 'applied' ? (
-                        insight.kind === 'skill_proposal' ? (
-                          <Link
-                            to={routes.agents()}
-                            className={cn('inline-flex items-center gap-1.5 text-caption font-medium', QUIET_LINK)}
-                          >
-                            <Sparkles className="size-3.5" aria-hidden />
-                            {t('Installed — open it in Skills')}
-                          </Link>
-                        ) : (
-                          <p className="text-caption text-subtle">
-                            {t('Applied — its effect is in the memory list above.')}
-                          </p>
-                        )
-                      ) : (
-                      <>
-                      <Button
-                        size="sm"
-                        variant="success"
-                        onClick={() =>
-                          setInsightStatus.mutate({ id: insight.id, status: 'accepted' })
-                        }
-                        loading={
-                          setInsightStatus.isPending &&
-                          setInsightStatus.variables?.id === insight.id &&
-                          setInsightStatus.variables.status === 'accepted'
-                        }
-                      >
-                        <Check className="size-4" />
-                        {t('Accept')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setInsightStatus.mutate({ id: insight.id, status: 'rejected' })
-                        }
-                      >
-                        <X className="size-4" />
-                        {t('Reject')}
-                      </Button>
-                      {insight.kind === 'skill_proposal' ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => installSkill.mutate(insight.id)}
-                          loading={installSkill.isPending && installSkill.variables === insight.id}
-                        >
-                          <Sparkles className="size-4" />
-                          {t('Install skill')}
-                        </Button>
-                      ) : null}
-                      </>
-                      )}
-                    </div>
-                  </Card>
+                    <InsightCard
+                      key={insight.id}
+                      insight={insight}
+                      workspaces={workspaces}
+                      gate={readDecisions(insight.payload)}
+                      busy={{
+                        deciding:
+                          setInsightStatus.isPending && setInsightStatus.variables?.id === insight.id
+                            ? (setInsightStatus.variables.status as 'accepted' | 'rejected')
+                            : null,
+                        installing: installSkill.isPending && installSkill.variables === insight.id,
+                        keepingNote:
+                          keepNote.isPending && keepNote.variables?.id === insight.id
+                            ? keepNote.variables.index
+                            : null,
+                        forgetting: deleteMemory.isPending ? (deleteMemory.variables ?? null) : null,
+                      }}
+                      onDecide={(status) => setInsightStatus.mutate({ id: insight.id, status })}
+                      onInstallSkill={() => installSkill.mutate(insight.id)}
+                      onKeepNote={(index) => keepNote.mutate({ id: insight.id, index })}
+                      onForgetMemory={(memoryId) => deleteMemory.mutate(memoryId)}
+                    />
                   );
                 })}
               </div>

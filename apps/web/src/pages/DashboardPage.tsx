@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Brain,
   FolderGit2,
+  Lightbulb,
   Plus,
   ShieldQuestion,
   Timer,
@@ -20,9 +21,11 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { Run } from '@metaclaude/shared';
+import type { Insight, Run } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { BriefView } from '@/components/analytics/BriefView';
+import { ConsolidationCard, readProposal } from '@/components/memory/ConsolidationCard';
+import { InsightCard } from '@/components/memory/InsightCard';
 import { AdvisorCard } from '@/components/dashboard/AdvisorCard';
 import { MetaclaudeCard } from '@/components/dashboard/MetaclaudeCard';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
@@ -30,7 +33,7 @@ import { SystemPulse } from '@/components/dashboard/SystemPulse';
 import { GettingStartedCard } from '@/components/dashboard/GettingStartedCard';
 import { Badge, Button, Card, EmptyState, QUIET_LINK, Spinner, StatList, Tooltip } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
-import { INSIGHT_TONE, isLearned } from '@/lib/insights';
+import { INSIGHT_TONE, isLearned, readDecisions } from '@/lib/insights';
 import { describeRetrieval } from '@/lib/retrieval';
 import { usePlural, useT } from '@/lib/i18n';
 import { decideApproval } from '@/lib/approvals';
@@ -95,6 +98,42 @@ export function DashboardPage() {
     staleTime: 5 * 60_000,
   });
 
+  /*
+   * Deciding an insight from here, with the Memory page's own verbs.
+   *
+   * The two screens invalidate the same key, so a decision taken on either is
+   * reflected on the other the next time it is opened — and the toast is the
+   * same sentence, because a decision that reads differently depending on
+   * where it was taken is two features wearing one name.
+   */
+  const setInsightStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: Insight['status'] }) =>
+      api.setInsightStatus(id, status),
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['insights'] });
+      toast.success(variables.status === 'accepted' ? t('Insight accepted') : t('Insight rejected'));
+    },
+    onError: () => toast.error(t('Could not update that insight.')),
+  });
+
+  const applyConsolidation = useMutation({
+    mutationFn: ({ id, promote }: { id: string; promote: boolean }) =>
+      api.applyConsolidation(id, promote),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['insights'] });
+      void queryClient.invalidateQueries({ queryKey: ['memory'] });
+      toast.success(
+        plural(result.absorbed.length, '{n} memory folded in', '{n} memories folded in'),
+        {
+          description: result.moved
+            ? t('The survivor is now global — every workspace recalls it.')
+            : t('The survivor keeps the history of all of them.'),
+        },
+      );
+    },
+    onError: () => toast.error(t('Could not apply that consolidation.')),
+  });
+
   const createWorkspace = useMutation({
     mutationFn: () => api.createWorkspace({ name: t('New workspace') }),
     onSuccess: (data) => {
@@ -122,6 +161,22 @@ export function DashboardPage() {
   // is filed in the same queue and is a request to delete rows, which is not
   // that — and the Review link below already leads to where it is answered.
   const learned = (insightsQuery.data?.insights ?? []).filter(isLearned).slice(0, 5);
+
+  /*
+   * The same queue, with its verbs attached.
+   *
+   * The digest above says what was learned and offers no way to answer it, so
+   * every decision cost a trip to the Memory page — and a queue nobody answers
+   * is how a proposal to delete rows sits for weeks. Unlike the digest this
+   * keeps consolidations: they wait for review like everything else here, and
+   * they are exactly what the digest filters out, so leaving them out of both
+   * would mean the Dashboard never shows one at all.
+   *
+   * Three, not five: each card carries its own text and verbs, and a Dashboard
+   * that pushes the run list below three screens of them has stopped being a
+   * digest. The rest are a link away.
+   */
+  const pending = (insightsQuery.data?.insights ?? []).slice(0, 3);
 
   return (
     <AppShell>
@@ -322,6 +377,74 @@ export function DashboardPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+            </Section>
+
+            {/* Below the digest rather than instead of it: what was learned
+                reads as a fact, what is waiting reads as a question, and an
+                operator wants the first at a glance and the second only when
+                they mean to answer it. */}
+            <Section
+              title={t('Insights awaiting review')}
+              icon={<Lightbulb className="text-warning" />}
+              actions={
+                <Link to={routes.memory()} className={cn('text-caption', QUIET_LINK)}>
+                  {t('All of them')}
+                </Link>
+              }
+            >
+              {pending.length === 0 ? (
+                <EmptyState
+                  title={t('Nothing waiting')}
+                  description={t('New lessons appear here as runs complete.')}
+                  className="py-6"
+                />
+              ) : (
+                <div className="space-y-3">
+                  {pending.map((insight) => {
+                    // A consolidation is a decision about rows that already
+                    // exist rather than an observation to accept or reject, so
+                    // it gets its own card with its own verbs — the same branch
+                    // the Memory page makes, from the same helper.
+                    const proposal =
+                      insight.kind === 'consolidation' ? readProposal(insight.payload) : null;
+                    if (proposal) {
+                      return (
+                        <ConsolidationCard
+                          key={insight.id}
+                          proposal={proposal}
+                          workspaces={workspaces}
+                          busy={
+                            applyConsolidation.isPending &&
+                            applyConsolidation.variables?.id === insight.id
+                          }
+                          onApply={(promote) =>
+                            applyConsolidation.mutate({ id: insight.id, promote })
+                          }
+                          onDismiss={() =>
+                            setInsightStatus.mutate({ id: insight.id, status: 'rejected' })
+                          }
+                        />
+                      );
+                    }
+                    return (
+                      <InsightCard
+                        key={insight.id}
+                        insight={insight}
+                        workspaces={workspaces}
+                        gate={readDecisions(insight.payload)}
+                        busy={{
+                          deciding:
+                            setInsightStatus.isPending &&
+                            setInsightStatus.variables?.id === insight.id
+                              ? (setInsightStatus.variables.status as 'accepted' | 'rejected')
+                              : null,
+                        }}
+                        onDecide={(status) => setInsightStatus.mutate({ id: insight.id, status })}
+                      />
+                    );
+                  })}
+                </div>
               )}
             </Section>
 

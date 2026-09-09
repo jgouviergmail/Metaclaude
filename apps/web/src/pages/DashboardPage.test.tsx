@@ -9,7 +9,7 @@
  * looking.
  */
 
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -28,6 +28,8 @@ const { apiMock, auth } = vi.hoisted(() => ({
     metaclaude: vi.fn(),
     askMetaclaude: vi.fn(),
     createWorkspace: vi.fn(),
+    setInsightStatus: vi.fn(),
+    applyConsolidation: vi.fn(),
   },
   auth: { user: { displayName: 'Jules', username: 'jules', role: 'owner' } as Record<string, unknown> | null },
 }));
@@ -186,6 +188,107 @@ describe('what is happening now', () => {
 });
 
 /**
+ * The review queue, on the screen the operator opens first.
+ *
+ * The digest above it says what was learned and offers no way to answer it —
+ * every decision cost a trip to the Memory page. This section is the same
+ * queue with its verbs attached, capped so the Dashboard stays a Dashboard,
+ * and it shares one card with the Memory page rather than growing a second
+ * copy of two hundred lines of JSX.
+ */
+describe('the review queue', () => {
+  const pending = (id: string, kind: string, title: string) => ({
+    id,
+    workspaceId: null,
+    runId: null,
+    kind,
+    title,
+    body: `body of ${title}`,
+    confidence: 0.7,
+    status: 'new',
+    payload: null,
+    createdAt: 1_700_000_000_000,
+  });
+
+  it('offers the verbs the digest never had, and decides one', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [pending('ins_1', 'lesson', 'Une leçon à trancher')],
+    });
+    apiMock.setInsightStatus.mockResolvedValue({ insight: {} });
+
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('Insights awaiting review');
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+
+    await waitFor(() => expect(apiMock.setInsightStatus).toHaveBeenCalledWith('ins_1', 'accepted'));
+  });
+
+  /**
+   * A consolidation waits for review like anything else in this queue, and it
+   * is precisely what the digest above filters out — so leaving it out here
+   * too would mean the Dashboard never shows it at all, which is how a
+   * proposal to delete rows goes unanswered for weeks.
+   */
+  it('shows a consolidation proposal, which the digest deliberately hides', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [
+        {
+          ...pending('ins_c', 'consolidation', 'Trois notes disent la même chose'),
+          payload: JSON.stringify({
+            key: 'mem_1|mem_2',
+            verdict: 'duplicate',
+            reason: 'Les deux disent la même chose.',
+            members: [
+              { id: 'mem_1', title: 'A', fingerprint: 'aaaa', workspaceId: null },
+              { id: 'mem_2', title: 'B', fingerprint: 'bbbb', workspaceId: null },
+            ],
+            winnerId: 'mem_1',
+            merged: { title: 'Fusion', content: 'Texte', tags: [] },
+          }),
+        },
+      ],
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    // The digest's own empty state stands beside it: nothing was *learned*,
+    // and something is nonetheless waiting.
+    expect(await screen.findByText('Nothing new')).toBeDefined();
+    expect(await screen.findByText('Insights awaiting review')).toBeDefined();
+  });
+
+  /**
+   * The two sections show the same rows, and that is a consequence rather than
+   * a defect to hunt: both read the queue of insights awaiting review, one as
+   * a fact to glance at and one as a question to answer. Pinned so it is a
+   * decision somebody took rather than something nobody noticed — the moment
+   * the digest is repointed at what was *kept*, this case is what says so.
+   */
+  it('shows the same lesson in both sections, digest and queue', async () => {
+    apiMock.insights.mockResolvedValue({
+      insights: [pending('ins_1', 'lesson', 'Une leçon en double')],
+    });
+
+    renderWithProviders(<DashboardPage />);
+
+    await waitFor(() => expect(screen.getAllByText('Une leçon en double')).toHaveLength(2));
+    const digest = screen.getByRole('region', { name: 'Recently learned' });
+    const queue = screen.getByRole('region', { name: 'Insights awaiting review' });
+    expect(within(digest).getByText('Une leçon en double')).toBeDefined();
+    expect(within(queue).getByText('Une leçon en double')).toBeDefined();
+  });
+
+  it('says nothing is waiting rather than showing an empty panel', async () => {
+    apiMock.insights.mockResolvedValue({ insights: [] });
+
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByText('Nothing waiting')).toBeDefined();
+  });
+});
+
+/**
  * "Recently learned" is a five-row digest of the review queue, and a
  * consolidation proposal shares that queue without being anything the system
  * learned: it is a request to delete rows. Left in, a single sweep's worth of
@@ -212,11 +315,22 @@ describe('the recently-learned digest', () => {
         insight('ins_2', 'lesson', 'Les tests tournent avec pnpm test:run'),
       ],
     });
+    // Scoped to the digest, because the review queue below it now shows the
+    // proposal on purpose: what this case is about is the digest's own filter,
+    // and asserting over the whole page would have it pass or fail on its
+    // neighbour's behaviour.
 
     renderWithProviders(<DashboardPage />);
 
-    expect(await screen.findByText('Les tests tournent avec pnpm test:run')).toBeDefined();
-    expect(screen.queryByText('2 memories say the same thing')).toBeNull();
+    // Scoped, and waited for inside the scope. An unscoped `findByText` for
+    // the lesson now matches twice — the digest and the review queue below it
+    // show the same row — and a `findBy*` with two matches retries until it
+    // times out, which reads as a page that never rendered.
+    const digest = await screen.findByRole('region', { name: 'Recently learned' });
+    await waitFor(() =>
+      expect(within(digest).getByText('Les tests tournent avec pnpm test:run')).toBeDefined(),
+    );
+    expect(within(digest).queryByText('2 memories say the same thing')).toBeNull();
   });
 
   it('reads the panel as empty when only proposals are waiting', async () => {

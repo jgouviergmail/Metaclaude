@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+### Added
+
+- **The review queue is on the Dashboard, under the digest.** "Recently
+  learned" said what the reflexion pass had proposed and offered no way to
+  answer it: every decision cost a trip to the Memory page, which is how a
+  proposal to fold three memories together sits unanswered for weeks. The
+  queue now sits below it with its verbs attached — accept, reject, and a
+  consolidation's own merge — capped at three so the Dashboard stays a
+  digest, with a link to the rest.
+
+  It shares one card with the Memory page rather than growing a second copy:
+  the insight card was two hundred lines of JSX inside that page, and this
+  repository has watched two copies of a component diverge by the one class
+  that mattered. `InsightCard` is now the single one, and `readDecisions`
+  moved to the shared library so neither page imports from the other.
+
+  The two sections deliberately overlap: both read what is awaiting review,
+  one as a fact to glance at and one as a question to answer — so a pending
+  lesson appears twice, while a consolidation appears only in the queue,
+  which the digest filters out. A test pins that so it stays a decision rather
+  than something nobody noticed.
+
+  It costs 3 kB gzipped on the first load — the Dashboard is the entry chunk,
+  so the two cards move into it. Measured: 1 kB of that is the consolidation
+  card, which is not enough to be worth a lazy boundary and its flicker on the
+  screen the operator opens first.
+
 ## [0.86.0] — 2026-09-09
 
 ### Changed
