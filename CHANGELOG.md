@@ -11,6 +11,8 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.87.0] — 2026-09-09
+
 ### Changed
 
 - **The Server screen leads Settings.** It has been in three places: a tab
