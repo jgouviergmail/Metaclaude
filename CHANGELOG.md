@@ -11,6 +11,99 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.85.0] — 2026-09-09
+
+### Added
+
+- **A run can read the other sessions of its own workspace.** Three read-only
+  tools — `session_list`, `session_read`, `run_result` — so "use the data from
+  the session about the API" or "what did we conclude last week" is something
+  you can simply ask for, and an automation can be written to work from a
+  session you point it at. `session_list` matches titles ignoring case and
+  accents, because *Évaluation* has to be findable typed `evaluation`;
+  `session_read` takes a window, so "the last seven days" is one argument
+  rather than everything.
+
+  Measured end to end on a live server: a run in one session was asked for a
+  figure that existed only in another, called `session_list` then
+  `session_read`, and answered with it — under `dontAsk`, which is what proves
+  the pre-approval. Without it the CLI refuses anything not pre-approved
+  without ever reaching the broker, and these would have been mounted and
+  unusable in exactly the runs they are for.
+
+  Pull, not push, deliberately. Injecting other sessions into every run would
+  cost tens of thousands of tokens a turn for content that mostly does not
+  concern the question — one session here holds 36 kB of dialogue and one busy
+  day 120 kB of events — and anything per-message in the system prompt rewrites
+  the cached prefix, measured at a factor of seventy on tokens written to
+  cache. What should cross sessions unasked already does: memory distils it
+  after each run. These carry the verbatim record, for what the caller names.
+
+- **A chained automation is told what the one before it answered.** The
+  preamble carried the outcome and not a word of the content, so "deploy what
+  the tests approved" was a chain in name only. It now opens with the upstream's
+  final answer, bounded to 2 000 characters — ten of the twelve most recent runs
+  here answered in under 1.5 kB — with the run and session ids beside it, so a
+  longer answer stays one `run_result` away rather than being silently reduced
+  to the part that fit. Verified on a live server: the downstream quoted the
+  upstream's figure without calling a tool, because the answer was already
+  there.
+
+### Security
+
+- **The sessions tools are fenced to the workspace.** Every id resolves inside
+  the run's own workspace, and a session belonging to another answers exactly
+  as one that does not exist — a distinct refusal would let one workspace's
+  agent enumerate another's ids one guess at a time.
+
+  **A token that names a workspace now grants reading what was said in it.**
+  That follows the standing rule for the gateway — the token says which door an
+  application may knock at, and behind that door Metaclaude behaves as it does
+  from the interface — so an application granted a workspace can read its
+  sessions within the token's ceiling. Issue a token for the workspace whose
+  conversations the application may see.
+
+  A **delegated** run is the exclusion: it is another workspace's agent and its
+  answer travels back there, so a question phrased to extract would come home
+  with the verbatim record attached. Being consultable is not being readable.
+  See docs/SECURITY.md, *Reading other sessions*.
+
+### Changed
+
+- **`TranscriptRepo.bySession` takes a time window, applied in SQL.** Filtering
+  after the 2 000-event cap would answer "the last seven days" with whatever
+  survived a cap that knew nothing about days — on a long session, silently the
+  wrong answer rather than a slow one. Same family as capping a directory
+  before sorting it.
+
+- **The MCP prefix is stripped by the shared parser, in all seven places that
+  were still doing it by hand.** `splitToolName` was written against exactly
+  this — its own comment says the predecessor `/^mcp__[^_]+__/` stops at the
+  first underscore — and was then applied nowhere: seven copies of that regex
+  remained, in the approval card's risk assessment, its one-line summary, the
+  grant key and the transcript card. Every in-process server Metaclaude mounts
+  is named with an underscore (`metaclaude_memory`, `metaclaude_board`, and now
+  `metaclaude_sessions`), so all of them fell through: the transcript showed
+  the raw `mcp__metaclaude_memory__memory_search` where it meant a sentence,
+  and a read-only tool from a server an operator called `my_server` was rated
+  *medium* instead of *low*. Measured before fixing, not assumed. A primitive
+  written against a defect and not applied leaves the defect *and* the
+  impression of having fixed it.
+
+- **A run with nothing watching it no longer has its transcript read.** Every
+  finished run reaches the scheduler's event hook and most have no watcher, so
+  composing the answer before checking loaded and parsed a whole run's events
+  for a sentence nobody received.
+
+- **Reading a transcript back as prose is one definition, not three.**
+  `kernel/transcript-view.ts` holds what the steward's `system_run` had inline:
+  the final answer (the last *completed* block — a streaming one is half a
+  sentence that reads as finished), the tools called, and the dialogue with a
+  character budget that keeps the end and *says* it truncated. The sessions
+  tools and the chained preamble ask the same questions of the same events;
+  written a second time they would have diverged, and an agent handed a
+  silently cut conversation reasons about a conversation that did not happen.
+
 ## [0.84.0] — 2026-09-09
 
 ### Added

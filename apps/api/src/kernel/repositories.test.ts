@@ -739,6 +739,37 @@ describe('TranscriptRepo', () => {
     expect(windowed.map((e) => e.at)).toEqual([3000, 4000, 5000]);
   });
 
+  /**
+   * A time window has to be applied in SQL, not by the caller.
+   *
+   * The cap keeps the newest N and *then* the caller would filter — so a
+   * session with three thousand events answers "the last seven days" with
+   * whatever survived a cap that knew nothing about days. On a busy session
+   * that is silently the wrong answer rather than a slow one, which is the
+   * shape of defect this repository exists to keep out of the callers.
+   */
+  it('windows by time in SQL, before the cap rather than after it', () => {
+    for (let i = 0; i < 5; i += 1) {
+      append(session.id, systemEvent(run.id, 1000 + i * 1000, `message ${i}`));
+    }
+
+    const recent = transcript.bySession(session.id, { since: 3000 });
+    expect(recent.map((e) => (e as { message: string }).message)).toEqual([
+      'message 2',
+      'message 3',
+      'message 4',
+    ]);
+
+    // The cap still applies inside the window, and still keeps the newest.
+    const capped = transcript.bySession(session.id, { since: 3000, limit: 2 });
+    expect(capped.map((e) => (e as { message: string }).message)).toEqual(['message 3', 'message 4']);
+
+    // A window that excludes everything is empty, not "the cap's worth".
+    expect(transcript.bySession(session.id, { since: 99_000 })).toEqual([]);
+    // And the old positional form still means what it meant.
+    expect(transcript.bySession(session.id, 2).map((e) => e.at)).toEqual([4000, 5000]);
+  });
+
   it('spans every run of the session and counts them', () => {
     const otherRun = makeRun(session, 'second run');
     append(session.id, systemEvent(run.id, 1000, 'from run one'));

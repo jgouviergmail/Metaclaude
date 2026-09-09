@@ -324,11 +324,16 @@ encodes a datum the system genuinely holds; everything holds still under
 `prefers-reduced-motion`.
 
 ### Automations
-Cron, interval, manual or **event** triggers — a watcher fires on a failed or
-succeeded run in its workspace, never on another automation's — with a
-**continuous** mode that keeps one session alive across every firing so
-context accumulates, and an opt-in push when a firing ends for the ones whose
-point is to be read. Cron is read in the server's timezone, named beside the
+Cron, interval, manual or **event** triggers. A watcher picks one of two
+populations: the runs a person, a token or a delegation started — narrowed by a
+word — or the end of **other automations you name**, which is how a chain is
+built: tests, then deploy, then the report. It fires when one of them finishes
+that way however it was started, and its prompt opens with what that automation
+*answered*, not merely that it succeeded. Loops are refused where you build
+them, with the path named, rather than by forbidding chains. Add a
+**continuous** mode that keeps one session alive across every firing so context
+accumulates, and an opt-in push when a firing ends for the ones whose point is
+to be read. Cron is read in the server's timezone, named beside the
 field. Guard rails included: consecutive-failure limits that disable a runaway
 loop, skipped rather than queued firings when the previous run is still going,
 and no burst of catch-up runs after downtime.
@@ -337,6 +342,15 @@ and no burst of catch-up runs after downtime.
 A directory, plus the agent policy that applies inside it. Optional git clone on
 creation, a file browser with a real editor, and a source-control panel with
 staging, diffs and commits.
+
+A run can also read the workspace's **other sessions** — find one by title,
+read what was said in it, optionally windowed to the last N hours, or pull one
+run in full with its final answer. So *"use the data from the session about the
+API"* is something you can simply ask for. Pull rather than push: what should
+reach every run unasked is memory's job, distilled after each run; this is the
+verbatim record, for what you name. It stays inside the workspace, and a
+delegated run — another workspace's agent, whose answer leaves with it — does
+not get it.
 
 ### Rewind
 Any finished run can be undone. With file checkpointing on, every run records

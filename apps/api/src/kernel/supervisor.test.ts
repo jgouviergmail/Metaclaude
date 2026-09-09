@@ -359,6 +359,7 @@ function makeSupervisor(
     board?: unknown;
     advisor?: unknown;
     memory?: unknown;
+    sessions?: unknown;
     steward?: unknown;
     runTimeoutMs?: number;
     idleTimeoutMs?: number;
@@ -378,6 +379,7 @@ function makeSupervisor(
     ...(extra.board ? { board: extra.board as never } : {}),
     ...(extra.advisor ? { advisor: extra.advisor as never } : {}),
     ...(extra.memory ? { memory: extra.memory as never } : {}),
+    ...(extra.sessions ? { sessions: extra.sessions as never } : {}),
     ...(extra.steward ? { steward: extra.steward as never } : {}),
   });
 }
@@ -2914,6 +2916,146 @@ describe('the memory tools', () => {
       steward: { workspaceId: () => makeRequest().workspace.id, facade: () => ({}) },
     });
     expect(serversOf(opened)).not.toContain('metaclaude_memory');
+  });
+});
+
+/**
+ * The workspace's other sessions: mounted, said out loud, and fenced.
+ *
+ * Same three-way shape as memory, for the same reason — a briefing without a
+ * mount tells the agent to call a tool that will answer "no such tool", and a
+ * mount without a briefing is a tool nobody knows exists. The third reader is
+ * the pre-approval: these are what an automation calls, and an automation runs
+ * under `dontAsk`, where the CLI refuses anything not pre-approved without ever
+ * reaching the broker. Un-approved, they would be dead exactly where they
+ * matter most.
+ *
+ * The exclusions are the interesting half. A run started by a gateway token or
+ * by another workspace's delegation is not the operator working in their own
+ * project: it is an outside program, or another workspace's agent, and neither
+ * should be able to read back the conversations held here.
+ */
+describe('the sessions tools', () => {
+  const sessions = {
+    listSessions: () => [],
+    getSession: () => null,
+    getRun: () => null,
+    sessionEvents: () => [],
+    runEvents: () => [],
+  };
+  const serversOf = (opened: Record<string, unknown>) =>
+    Object.keys((opened.mcpServers ?? {}) as Record<string, unknown>);
+  const appended = (opened: Record<string, unknown>) =>
+    String((opened.systemPrompt as { append?: string } | undefined)?.append ?? '');
+
+  const optionsFor = async (
+    request: RunRequest,
+    extra: Parameters<typeof makeSupervisor>[2] = {},
+  ): Promise<Record<string, unknown>> => {
+    const { query, control } = fakeQuery();
+    const run = makeSupervisor(query, undefined, extra).execute(request, makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+    await run;
+    return control.opened[0] as Record<string, unknown>;
+  };
+
+  it('mounts them for an ordinary run, and tells the agent they are there', async () => {
+    const opened = await optionsFor(makeRequest(), { sessions });
+    expect(serversOf(opened)).toContain('metaclaude_sessions');
+    expect(appended(opened)).toContain('session_read');
+  });
+
+  it('says nothing about tools it did not mount', async () => {
+    const opened = await optionsFor(makeRequest());
+    expect(serversOf(opened)).not.toContain('metaclaude_sessions');
+    expect(appended(opened)).not.toContain('session_read');
+  });
+
+  /**
+   * A gateway run gets them, because a token is a door rather than a leash.
+   *
+   * The operator's rule for the MCP gateway: the token says which workspace an
+   * application may knock at, and behind that door Metaclaude behaves exactly
+   * as it does from the interface. An application granted a workspace and then
+   * unable to read what was said in it would be answering from less than the
+   * screen shows — which is the gap this was measured against: a question
+   * whose answer sat in a session the run could not open.
+   */
+  it('gives them to a gateway run, which stands in for the interface', async () => {
+    const opened = await optionsFor(makeRequest({ triggeredBy: 'api' }), { sessions });
+    expect(serversOf(opened)).toContain('metaclaude_sessions');
+    expect(appended(opened)).toContain('session_read');
+  });
+
+  /**
+   * A delegated run does not, and this is the one exclusion that stays.
+   *
+   * It is the only case where the party asking is not this workspace's
+   * operator but another workspace's agent — and its answer travels back
+   * there. A question phrased to extract would come home with the verbatim
+   * record attached. Delegation is meant to consult a project through its own
+   * agent, memory and conventions included; it is not meant to read its mail.
+   */
+  it('keeps them out of a delegated run, whose answer leaves the workspace', async () => {
+    const opened = await optionsFor(makeRequest({ triggeredBy: 'delegation' }), { sessions });
+    expect(serversOf(opened)).not.toContain('metaclaude_sessions');
+    expect(appended(opened)).not.toContain('session_read');
+  });
+
+  it('gives them to a run an automation started, which is the point', async () => {
+    for (const triggeredBy of ['automation', 'loop'] as const) {
+      const opened = await optionsFor(makeRequest({ triggeredBy }), { sessions });
+      expect(serversOf(opened)).toContain('metaclaude_sessions');
+    }
+  });
+
+  it('does not mount them in the system workspace, whose steward reads more', async () => {
+    const opened = await optionsFor(makeRequest(), {
+      sessions,
+      steward: { workspaceId: () => makeRequest().workspace.id, facade: () => ({}) },
+    });
+    expect(serversOf(opened)).not.toContain('metaclaude_sessions');
+  });
+
+  /**
+   * All three pre-approved, because all three read.
+   *
+   * In `default` mode the decision is made at the broker seam, so what is
+   * asserted is whether the broker was reached at all — reaching it is what
+   * raises the card.
+   */
+  it('pre-approves all three, so an unattended firing can actually call them', async () => {
+    const decisions: Array<{ tool: string; asked: boolean }> = [];
+    for (const tool of [
+      'mcp__metaclaude_sessions__session_list',
+      'mcp__metaclaude_sessions__session_read',
+      'mcp__metaclaude_sessions__run_result',
+    ]) {
+      let reachedBroker = false;
+      const { query, control } = fakeQuery();
+      const supervisor = makeSupervisor(
+        query,
+        {
+          request: async () => {
+            reachedBroker = true;
+            return { behavior: 'allow' };
+          },
+        },
+        { sessions },
+      );
+      const run = supervisor.execute(makeRequest(), makeCallbacks());
+      await vi.waitFor(() => expect(control.received.length).toBe(1));
+      const opts = control.opened[0] as {
+        canUseTool: (name: string, input: unknown, extra: { toolUseID: string }) => Promise<unknown>;
+      };
+      await opts.canUseTool(tool, {}, { toolUseID: 'tu_1' });
+      control.finish();
+      await run;
+      decisions.push({ tool, asked: reachedBroker });
+    }
+
+    expect(decisions.every((entry) => entry.asked === false)).toBe(true);
   });
 });
 

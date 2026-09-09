@@ -34,6 +34,33 @@ const call = (over: Partial<ToolCall> = {}): ToolCall =>
   }) as ToolCall;
 
 describe('ToolCallCard', () => {
+  /**
+   * A tool is labelled by its own name, whatever server offers it.
+   *
+   * `splitToolName` lives in `packages/shared` with a note explaining that its
+   * predecessor `/^mcp__[^_]+__/` stops at the first underscore — and four
+   * copies of that predecessor stayed here. Every in-process server Metaclaude
+   * mounts is named with one (`metaclaude_memory`, `metaclaude_board`,
+   * `metaclaude_sessions`), so the transcript showed the raw
+   * `mcp__metaclaude_memory__memory_search` where it meant to show a sentence,
+   * and no icon matched. An operator named server (`my_server`) breaks it the
+   * same way.
+   */
+  it('reads a tool through its MCP prefix, even when the server name has an underscore', () => {
+    render(<ToolCallCard call={call({ name: 'mcp__my_server__Bash', status: 'ok' })} />);
+    expect(screen.getByText(/pnpm test:run/)).toBeTruthy();
+    expect(screen.queryByText(/mcp__my_server__/)).toBeNull();
+  });
+
+  it('names the server for a tool it has no summary for', () => {
+    render(
+      <ToolCallCard
+        call={call({ name: 'mcp__metaclaude_sessions__session_read', input: {}, status: 'ok' })}
+      />,
+    );
+    expect(screen.getByText('metaclaude_sessions: session_read')).toBeTruthy();
+  });
+
   it('stays collapsed for a call that is merely running', () => {
     // The command itself appears in the collapsed header summary too, so the
     // "Input" section heading is what distinguishes open from closed.

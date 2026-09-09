@@ -510,6 +510,32 @@ code, and is enforced at propose time and again at accept. A workspace can
 opt into one automatic analysis per day (`advisorAuto`, default off); an
 hourly sweep applies the 24-hour gate per workspace.
 
+## Reading other sessions
+
+`kernel/sessions-tools.ts` is an in-process MCP server mounted into every
+ordinary run, giving it `session_list`, `session_read` and `run_result` over
+**its own workspace's** transcripts. All three read, so all three are
+pre-approved — a run under `dontAsk` cannot raise a card, and an automation is
+exactly that run.
+
+The projection is not theirs: `kernel/transcript-view.ts` turns an event list
+into prose — the final answer (the last *completed* assistant block), the tools
+called, and the dialogue under a character budget that keeps the most recent
+turns and reports that it cut. Three callers share it, and it was extracted
+from the first of them: the steward's `system_run` composed it inline, and the
+sessions tools plus the scheduler's chained-firing preamble would each have
+grown a copy.
+
+The window is applied in SQL (`TranscriptRepo.bySession`), before the
+event cap, because filtering after it would answer "the last seven days" with
+whatever survived a cap that knows nothing about days.
+
+Excluded: the system workspace, whose steward reads runs and sessions across
+the deployment already; and a delegated run, which is another workspace's agent
+and whose answer travels back there. A gateway run is *not* excluded — the
+token names the door, and behind it Metaclaude answers as it does from the
+interface — which docs/SECURITY.md states as a consequence of issuing one.
+
 ## The steward
 
 Metaclaude's own workspace, and the tools that let a run there act on the

@@ -49,6 +49,7 @@ import type {
 } from '@metaclaude/shared';
 import type { Kernel } from '../kernel/kernel.js';
 import type { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from '../kernel/repositories.js';
+import { excerpt, finalAnswer, toolsCalled } from '../kernel/transcript-view.js';
 import { MemoryReconcileError, type MemoryStore } from '../learning/memory.js';
 import type { AuditLog } from '../security/audit.js';
 import type { AdvisorService } from './advisor.js';
@@ -147,8 +148,9 @@ const NOT_YET =
   'actions ships in the next version. Tell the operator exactly what you would do and why, ' +
   'and let them do it from the interface.';
 
-const excerpt = (text: string, max: number): string =>
-  text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+// `excerpt` comes from `transcript-view` — the same cut, marked the same way,
+// so a truncated prompt here and a truncated answer there read alike. It was
+// defined twice for one release, which is one release too many.
 
 /* -------------------------------------------------------------------------- */
 /* Projections — compact, and never a secret                                   */
@@ -411,17 +413,16 @@ export class Steward {
     const run = this.deps.runs.get(runId);
     if (!run) throw new StewardError(`No run is called "${runId}".`, 'not-found');
     const events = this.deps.transcript.byRun(run.id);
-    const toolCalls = events.flatMap((event) =>
-      event.kind === 'tool_call' ? [{ name: event.name, status: event.status }] : [],
-    );
-    const texts = events.flatMap((event) => (event.kind === 'assistant_text' ? [event.text] : []));
+    // Through `transcript-view` rather than inline: the sessions tools and a
+    // chained firing's preamble ask the same two questions of the same events,
+    // and this was the copy the other two would have been written from.
     return {
       ...compactRun(run),
       prompt: run.prompt,
       usage: run.usage,
       eventCount: events.length,
-      toolCalls: toolCalls.slice(-60),
-      finalText: texts.length > 0 ? excerpt(texts[texts.length - 1]!, 4000) : null,
+      toolCalls: toolsCalled(events),
+      finalText: finalAnswer(events),
     };
   }
 

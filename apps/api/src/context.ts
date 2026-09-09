@@ -27,6 +27,7 @@ import {
   TranscriptRepo,
   WorkspaceRepo,
 } from './kernel/repositories.js';
+import { finalAnswer } from './kernel/transcript-view.js';
 import { AgentSupervisor } from './kernel/supervisor.js';
 import { ADVISOR_SERVER_NAME, ADVISOR_TOOL_CATALOGUE, advisorToolNames } from './kernel/advisor-tools.js';
 import { BOARD_SERVER_NAME, BOARD_TOOL_CATALOGUE, boardToolNames } from './kernel/board-tools.js';
@@ -726,6 +727,22 @@ export async function createAppContext(
     // The store itself: `MemoryStore` satisfies the facade as it stands, and
     // the server pins every call to the run's own workspace.
     memory,
+    /*
+     * The workspace's own sessions, read straight from the repositories.
+     *
+     * No service in between because there is no policy to hold: the scope
+     * check belongs to the tool server, which knows the run's workspace, and
+     * the window belongs to the repository, which can apply it in SQL. A
+     * service here would only forward, and a layer that only forwards is where
+     * the next filter gets applied to the wrong end of the cap.
+     */
+    sessions: {
+      listSessions: (workspaceId, options) => sessionRepo.list(workspaceId, options),
+      getSession: (id) => sessionRepo.get(id),
+      getRun: (id) => runRepo.get(id),
+      sessionEvents: (sessionId, options) => transcriptRepo.bySession(sessionId, options),
+      runEvents: (runId) => transcriptRepo.byRun(runId),
+    },
     // Same lazy shape as the broker: the advisor needs the kernel's submit,
     // so it is built after both — but its propose surface must be mountable
     // into every run from the start.
@@ -884,6 +901,10 @@ export async function createAppContext(
     kernel,
     sessions: sessionRepo,
     workspaces: workspaceRepo,
+    // The same reading of "the answer" the steward's `system_run` and the
+    // sessions tools use — one definition, so a chained firing is told exactly
+    // what an operator reading that run on screen would see.
+    finalAnswer: (runId) => finalAnswer(transcriptRepo.byRun(runId)),
     log: kernelLog,
   });
 

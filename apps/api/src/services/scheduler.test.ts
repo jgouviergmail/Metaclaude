@@ -31,6 +31,8 @@ let workspaces: WorkspaceRepo;
 let scheduler: Scheduler;
 let workspace: Workspace;
 let logged: Array<{ level: string; message: string }>;
+/** What each run "answered", by run id — the transcript stands in as a map. */
+let answers: Map<string, string | null>;
 
 function sessionCount(): number {
   return db.prepare<[], { n: number }>('SELECT COUNT(*) AS n FROM sessions').get()!.n;
@@ -74,12 +76,18 @@ beforeEach(() => {
     settings: defaultWorkspaceSettings(),
   });
 
+  answers = new Map();
   scheduler = new Scheduler({
     db,
     bus,
     kernel: kernel as unknown as Kernel,
     sessions,
     workspaces,
+    // What the finished run said, looked up by id. A function rather than the
+    // transcript repository: the scheduler needs one sentence, and handing it
+    // the whole event store would have it decide what "the answer" is — a
+    // decision `transcript-view` already owns.
+    finalAnswer: (runId) => answers.get(runId) ?? null,
     log: (level, message) => {
       logged.push({ level, message });
     },
@@ -1170,6 +1178,126 @@ describe('an event trigger that watches automations', () => {
     return scheduler.get(source.id)!.sessionId as string;
   };
 
+  /**
+   * The answer travels, not just the outcome.
+   *
+   * A chain whose downstream is told only *that* the upstream succeeded is a
+   * chain in name: "deploy what the tests approved" needs to know what they
+   * said. The text rides in the preamble because it is what the firing is
+   * reacting to — and the ids ride with it because the preamble is bounded and
+   * `run_result` is not, so a long answer stays reachable rather than being
+   * silently the only part that fit.
+   */
+  it('opens the downstream prompt with what the upstream actually answered', async () => {
+    const source = make({ name: 'Tests', trigger: { type: 'manual' }, continuous: true });
+    make({
+      name: 'Deploy',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+    answers.set('run_src', 'Suite verte : 412 tests, 0 échec.');
+    const session = await fireAndGetSession(source);
+
+    expect(await scheduler.onRunFinished(finished({ sessionId: session, triggeredBy: 'loop' }))).toBe(1);
+
+    const prompt = (kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt;
+    expect(prompt).toContain('which succeeded');
+    expect(prompt).toContain('It answered: Suite verte : 412 tests, 0 échec.');
+    // The handles for everything the preamble could not carry.
+    expect(prompt).toContain('run_src');
+    expect(prompt).toContain(session);
+  });
+
+  /**
+   * A long answer is cut, and the cut is survivable because the ids are there.
+   *
+   * Measured on this deployment: most runs answer in under 1.5 kB and some in
+   * about 12 kB. Letting the second kind through whole would put the upstream's
+   * essay in front of the automation's own prompt — the preamble displacing the
+   * instruction it introduces — so it is bounded here and reachable in full
+   * through `run_result`.
+   */
+  it('bounds a long answer rather than letting it displace the prompt', async () => {
+    const source = make({ name: 'Tests', trigger: { type: 'manual' }, continuous: true });
+    make({
+      name: 'Deploy',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+    answers.set('run_src', 'A'.repeat(5000));
+    const session = await fireAndGetSession(source);
+
+    await scheduler.onRunFinished(finished({ sessionId: session, triggeredBy: 'loop' }));
+    const prompt = (kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt;
+
+    expect(prompt).not.toContain('A'.repeat(2100));
+    expect(prompt).toContain('A'.repeat(1900));
+    expect(prompt).toContain('…');
+    // And the whole thing is still one read away.
+    expect(prompt).toContain('run_result');
+  });
+
+  /**
+   * No watcher, no transcript read.
+   *
+   * Every finished run of the deployment reaches `onRunFinished`, and most have
+   * nothing waiting on them — reading the answer before knowing that would
+   * load and parse a whole run's events to compose a sentence nobody receives.
+   * Cheap per run and paid on every one of them.
+   */
+  it('does not read the answer when nothing is watching', async () => {
+    let reads = 0;
+    const counting = new Scheduler({
+      db,
+      bus,
+      kernel: kernel as unknown as Kernel,
+      sessions,
+      workspaces,
+      finalAnswer: (runId) => {
+        reads += 1;
+        return answers.get(runId) ?? null;
+      },
+      log: () => {},
+    });
+
+    expect(await counting.onRunFinished(finished())).toBe(0);
+    expect(reads).toBe(0);
+
+    // With a watcher it is read — once, however many watchers there are.
+    make({ trigger: { type: 'event', event: 'run_succeeded' } });
+    make({ name: 'Second', trigger: { type: 'event', event: 'run_succeeded' } });
+    expect(await counting.onRunFinished(finished())).toBe(2);
+    expect(reads).toBe(1);
+  });
+
+  it('says plainly when the upstream finished without answering', async () => {
+    const source = make({ name: 'Tests', trigger: { type: 'manual' }, continuous: true });
+    make({
+      name: 'Deploy',
+      trigger: { type: 'event', event: 'run_succeeded', automations: [source.id] },
+    });
+    answers.set('run_src', null);
+    const session = await fireAndGetSession(source);
+
+    await scheduler.onRunFinished(finished({ sessionId: session, triggeredBy: 'loop' }));
+    const prompt = (kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt;
+    expect(prompt).toContain('It finished without a final message');
+    expect(prompt).not.toContain('It answered:');
+  });
+
+  /**
+   * A watcher of people's runs gets the answer too. The asymmetry would have
+   * been an accident of where the code was written, not a decision: "look at
+   * what just failed" is the same need whoever produced the run.
+   */
+  it('carries the answer for a watcher of people’s runs as well', async () => {
+    make({ trigger: { type: 'event', event: 'run_succeeded' } });
+    answers.set('run_src', 'Déployé en 4 minutes.');
+
+    await scheduler.onRunFinished(finished());
+    expect((kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt).toContain(
+      'It answered: Déployé en 4 minutes.',
+    );
+  });
+
   it('hears the end of a named automation, and ignores the runs people start', async () => {
     const source = make({ name: 'Tests', trigger: { type: 'manual' }, continuous: true });
     const watcher = make({
@@ -1194,7 +1322,10 @@ describe('an event trigger that watches automations', () => {
     expect(scheduler.get(humanWatcher.id)!.runCount).toBe(1);
 
     const prompt = (kernel.submit.mock.calls[0]![0] as { prompt: string }).prompt;
-    expect(prompt).toContain('Triggered by the automation "Tests" (run run_src), which succeeded.');
+    // The run id moved out of this sentence and into the handles at the end,
+    // where it sits beside the session id and the tools that read them.
+    expect(prompt).toContain('Triggered by the automation "Tests", which succeeded.');
+    expect(prompt).toContain('run run_src');
   });
 
   /**

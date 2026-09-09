@@ -18,12 +18,13 @@
  */
 
 import type { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import type { ApiTokenRecord, BoardTask, Memory } from '@metaclaude/shared';
+import type { ApiTokenRecord, BoardTask, Memory, Run, Session } from '@metaclaude/shared';
 import { describe, expect, it } from 'vitest';
 import { buildGatewayServer, type GatewayDeps } from '../services/mcp-gateway.js';
 import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
 import { buildMemoryServer, type WorkspaceMemoryFacade } from './memory-tools.js';
+import { buildSessionsServer, type SessionsFacade } from './sessions-tools.js';
 import { buildSystemServer, type SystemFacade } from './system-tools.js';
 
 /* -------------------------------------------------------------------------- */
@@ -163,6 +164,31 @@ const ACCEPTED_DROPS: Record<string, Record<string, string>> = {
     // being edited: `system_memory_scope` does that, audited as a move.
     workspace: 'an edit keeps the memory where it is; moving is system_memory_scope',
   },
+  session_list: {
+    // Applied in the handler, not by the facade, and deliberately: the match
+    // folds accents so `Évaluation` is findable typed `evaluation`, which
+    // SQLite's LIKE does not do. What the check would otherwise be protecting
+    // — that the filter is not applied to an already-capped page — has its own
+    // case in `sessions-tools.test.ts`.
+    query: 'folded and matched in the handler; the facade is asked for the whole set',
+    // With a query, `limit` bounds the *answer* rather than the search: the
+    // facade is asked for the searchable set and the cap is applied to what
+    // matched. Without a query it is forwarded untouched, which the "without
+    // query" variant exercises.
+    limit: 'with a query it caps the matches, not the rows the facade returns',
+  },
+  /*
+   * `session_read` composes rather than forwards: the facade hands back
+   * events, and the three narrowing arguments shape what is made of them.
+   * Each is covered where the guarantee actually lives — this check would
+   * only be re-asking whether a number was passed along unchanged, and for
+   * `sinceHours` it is not: it becomes an absolute instant first.
+   */
+  session_read: {
+    sinceHours: 'converted to an absolute `since` before the facade; asserted in sessions-tools.test.ts',
+    tools: 'consumed by the transcript view, not the facade; asserted in sessions-tools.test.ts',
+    maxChars: 'consumed by the transcript view, not the facade; asserted in sessions-tools.test.ts',
+  },
   ask_workspace: { workspace: RESOLVED_SLUG },
   start_run: { workspace: RESOLVED_SLUG },
   search_notes: { workspace: RESOLVED_SLUG },
@@ -293,6 +319,36 @@ describe('every field a tool accepts reaches its facade', () => {
       retire: (id) => mem(id),
     });
     const tools = registered(buildMemoryServer(rec.facade, { workspaceId: 'ws_1', runId: 'run_1' }));
+    expect(Object.keys(tools).length).toBe(3);
+    for (const [name, tool] of Object.entries(tools)) await assertForwards(name, tool, rec);
+  });
+
+  /**
+   * The sessions tools, whose every argument narrows a read.
+   *
+   * `sinceHours`, `tools` and `maxChars` each change what comes back, and each
+   * is exactly the kind of field that gets declared on a schema and dropped by
+   * a handler that forwards a hand-picked subset — which is how
+   * `system_memory_write` lost `pinned` and `confidence`, silently, for a
+   * release. Every id resolves inside `ws_1` because the scope guard runs
+   * before the facade is reached at all.
+   */
+  it('holds for the sessions tools', async () => {
+    const session = (id: unknown): Session =>
+      ({ id: String(id), workspaceId: 'ws_1', title: 't', archived: false, runCount: 1,
+         totalCostUsd: 0, lastActivityAt: 0, status: 'idle' }) as unknown as Session;
+    const rec = recorder<SessionsFacade>({
+      listSessions: () => [],
+      getSession: (id) => session(id),
+      getRun: (id) =>
+        ({ id: String(id), workspaceId: 'ws_1', sessionId: 'ses_1', prompt: 'p', status: 'succeeded',
+           triggeredBy: 'user', error: null, startedAt: 0, finishedAt: 1 }) as unknown as Run,
+      sessionEvents: () => [],
+      runEvents: () => [],
+    });
+    const tools = registered(
+      buildSessionsServer(rec.facade, { workspaceId: 'ws_1', sessionId: 'ses_1' }),
+    );
     expect(Object.keys(tools).length).toBe(3);
     for (const [name, tool] of Object.entries(tools)) await assertForwards(name, tool, rec);
   });

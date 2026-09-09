@@ -70,6 +70,12 @@ import {
   buildMemoryServer,
   type WorkspaceMemoryFacade,
 } from './memory-tools.js';
+import {
+  SESSIONS_SERVER_NAME,
+  buildSessionsServer,
+  sessionsToolNames,
+  type SessionsFacade,
+} from './sessions-tools.js';
 import { buildSystemServer, type SystemFacade } from './system-tools.js';
 import type { PermissionBroker } from './permissions.js';
 import { resolvePermissionMode } from './permissions.js';
@@ -260,6 +266,23 @@ export interface SupervisorDeps {
    * no business writing into a store it never reads.
    */
   memory?: WorkspaceMemoryFacade;
+  /**
+   * The workspace's other sessions, readable by its own runs.
+   *
+   * What memory is to *distilled* cross-session knowledge, this is to the
+   * verbatim kind: memory carries what should reach every run whether or not
+   * it was asked for, these carry what the caller names — "use the data from
+   * session X", or the answer the automation upstream of this one produced.
+   * Pull rather than push on purpose: injecting other sessions into every run
+   * would cost tens of thousands of tokens a turn and rewrite the cached
+   * prefix, measured at a factor of seventy on tokens written to cache.
+   *
+   * Withheld from the system workspace, whose steward reads runs and sessions
+   * across the whole deployment already, and from `api` and `delegation` runs:
+   * an outside program holding a token, or another workspace's agent, must not
+   * be able to read back the conversations held here.
+   */
+  sessions?: SessionsFacade;
   /**
    * The steward's tools, mounted for runs of the system workspace only — and
    * only for runs a person or the schedule started there. Withheld from `api`
@@ -614,6 +637,41 @@ export class AgentSupervisor {
   }
 
   /**
+   * Whether this run may read the workspace's other sessions.
+   *
+   * One predicate for the same three readers as memory — the mount, the
+   * briefing, the pre-approval — because a briefing without a mount is an
+   * instruction to call a tool that is not there, and a mount without a
+   * pre-approval is a tool an unattended firing is refused.
+   *
+   * One exclusion beyond the system workspace, and it is about *who is asking*
+   * rather than about the workspace. A **delegated** run is another
+   * workspace's agent, and its answer travels back there: a question phrased
+   * to extract would come home with the verbatim record attached. Delegation
+   * consults a project through its own agent, memory and conventions included;
+   * that is not the same as reading its mail.
+   *
+   * A **gateway** run is deliberately *not* excluded, and that is the
+   * operator's rule for the gateway rather than an oversight: the token says
+   * which workspace an application may knock at, and behind that door
+   * Metaclaude behaves as it does from the interface. Granting a workspace to
+   * a token therefore grants reading what was said in it — written down in
+   * docs/SECURITY.md, because it is a consequence of the grant that the person
+   * issuing the token has to know.
+   *
+   * Not a settings switch: `memoryEnabled` governs a *store this writes into*,
+   * where this only reads what the workspace already holds and its operator
+   * can already open on screen.
+   */
+  private mountsSessions(request: Pick<RunRequest, 'workspace' | 'triggeredBy'>): boolean {
+    return (
+      this.deps.sessions !== undefined &&
+      this.deps.steward?.workspaceId() !== request.workspace.id &&
+      request.triggeredBy !== 'delegation'
+    );
+  }
+
+  /**
    * The run's permission mode and the tools this workspace pre-approves.
    *
    * Shared by `buildOptions` and `execute` rather than computed twice: the two
@@ -678,6 +736,17 @@ export class AgentSupervisor {
         mcpToolName(MEMORY_SERVER_NAME, 'memory_write'),
       );
     }
+    /*
+     * The sessions tools, in the same tier, and all three of them.
+     *
+     * They only read — a transcript the operator can already open on screen —
+     * so there is nothing for a card to protect, and the run that needs them
+     * most is the one that cannot raise a card at all: under `dontAsk` the CLI
+     * answers "denied, nothing is pre-approved" itself, which is how a
+     * scheduled automation would have found them mounted and unusable, every
+     * night, with the run still landing as a success.
+     */
+    if (this.mountsSessions(request)) preapproved.push(...sessionsToolNames());
     /*
      * The board and the proposal tools, in memory's tier and for its reason.
      *
@@ -839,6 +908,29 @@ export class AgentSupervisor {
           'that succeeded — rather than keeping notes in files, which nothing else can read. ' +
           'Correct a memory by its id rather than adding a second one that nearly repeats it, and retire ' +
           'with memory_forget what has stopped being true.',
+      );
+    }
+
+    /*
+     * The other sessions: mounted, and *said*.
+     *
+     * The memory lesson, applied on the day the tools ship rather than a
+     * release later. Nothing else tells an agent that the workspace's other
+     * conversations are reachable — recall arrives unattributed and the
+     * transcript it is in is its own — so without this the operator writing
+     * "use the data from session X" gets an agent that answers from nothing
+     * and says it cannot see other sessions, which is what it would have
+     * believed.
+     */
+    if (this.mountsSessions(request)) {
+      steering.push(
+        'The other sessions of this workspace are readable. session_list finds one by title — that is how ' +
+          'a name the operator used ("the session about the API") becomes an id — and session_read returns ' +
+          'what was said in it, oldest first, narrowed with sinceHours when you only need the recent part. ' +
+          'run_result gives one run in full, including its final answer: when the line opening this prompt ' +
+          'names the run of another automation, that is how you read what it produced. Prefer reading what ' +
+          'you were pointed at over asking the operator to paste it, and say plainly when a read came back ' +
+          'truncated rather than treating the part you got as the whole conversation.',
       );
     }
 
@@ -1057,6 +1149,20 @@ export class AgentSupervisor {
             }),
           }
         : {};
+    /*
+     * The workspace's other sessions. Memory's sibling, and its complement:
+     * memory holds what was distilled to be recalled without asking, this
+     * holds what was actually said, for a caller who names it.
+     */
+    const sessionsServer: NonNullable<Options['mcpServers']> =
+      this.mountsSessions(request) && this.deps.sessions
+        ? {
+            [SESSIONS_SERVER_NAME]: buildSessionsServer(this.deps.sessions, {
+              workspaceId: workspace.id,
+              sessionId: request.sessionId,
+            }),
+          }
+        : {};
     // Metaclaude's own tools, for its own workspace, for runs started there
     // by a person or the schedule. See `SupervisorDeps.steward`.
     const systemServer: NonNullable<Options['mcpServers']> =
@@ -1086,6 +1192,7 @@ export class AgentSupervisor {
       Object.keys(boardServer).length > 0 ||
       Object.keys(advisorServer).length > 0 ||
       Object.keys(memoryServer).length > 0 ||
+      Object.keys(sessionsServer).length > 0 ||
       Object.keys(systemServer).length > 0
     ) {
       options.mcpServers = {
@@ -1094,6 +1201,7 @@ export class AgentSupervisor {
         ...boardServer,
         ...advisorServer,
         ...memoryServer,
+        ...sessionsServer,
         ...systemServer,
       };
     }

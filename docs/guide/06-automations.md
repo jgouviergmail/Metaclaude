@@ -59,6 +59,16 @@ and a trigger.
   will hear it finish, just as if the event had happened. To try one in
   isolation, pause what waits on it.
 
+  **The downstream is told what the upstream answered.** A firing's prompt
+  opens with the triggering run's outcome *and its final answer*, so "deploy
+  what the tests approved" is expressible: the automation reads the figure, the
+  verdict or the list its predecessor produced instead of only learning that it
+  succeeded. The answer is bounded — a long one is cut — and the run and
+  session ids sit beside it, so `run_result` returns the rest and
+  `session_read` the whole conversation. Those tools are described in
+  *Workspaces and files*; an automation has them like any other run of its
+  workspace.
+
 Each automation carries its own policy — model, effort, permission mode, a
 turn ceiling — independent of the workspace defaults. Leave the model unset
 and the learner picks per firing, which makes automations exactly the

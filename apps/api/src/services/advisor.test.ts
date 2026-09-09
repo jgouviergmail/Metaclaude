@@ -44,6 +44,8 @@ beforeEach(() => {
     kernel: { submit: async () => ({}) } as unknown as Kernel,
     sessions,
     workspaces,
+    // Nothing here fires an automation, so no preamble is ever composed.
+    finalAnswer: () => null,
     log: noop,
   });
 

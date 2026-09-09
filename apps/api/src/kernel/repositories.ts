@@ -771,15 +771,30 @@ export class TranscriptRepo {
    * Whole-session transcript, oldest first, capped so opening a very long
    * session cannot blow up the response. The UI paginates backwards from here.
    */
-  bySession(sessionId: string, limit = 2000): TranscriptEvent[] {
+  bySession(
+    sessionId: string,
+    options: number | { limit?: number; since?: number } = {},
+  ): TranscriptEvent[] {
+    // The positional form is what every existing caller passes; the object
+    // form is what a time window needs. Both, rather than a second method:
+    // one query with one ordering, or the two drift about which end they keep.
+    const { limit = 2000, since } = typeof options === 'number' ? { limit: options } : options;
+    /*
+     * The window is applied in SQL, before the cap.
+     *
+     * Filtering after the cap would answer "the last seven days" with whatever
+     * survived a cap that knew nothing about days — on a session with three
+     * thousand events, silently the wrong answer rather than a slow one. The
+     * cap still applies inside the window, and still keeps the newest.
+     */
     return this.db
-      .prepare<[string, number], { payload: string }>(
+      .prepare<[string, number, number], { payload: string }>(
         `SELECT payload FROM (
            SELECT payload, at, seq FROM transcript_events
-           WHERE session_id = ? ORDER BY at DESC, seq DESC LIMIT ?
+           WHERE session_id = ? AND at >= ? ORDER BY at DESC, seq DESC LIMIT ?
          ) ORDER BY at ASC, seq ASC`,
       )
-      .all(sessionId, limit)
+      .all(sessionId, since ?? 0, limit)
       .map((row) => JSON.parse(row.payload) as TranscriptEvent);
   }
 

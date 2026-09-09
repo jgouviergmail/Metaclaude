@@ -368,6 +368,47 @@ consult them unattended. That mode is refused unless the container opts in, is
 documented as being for disposable sandboxes, and `delegable` is the control
 for a workspace that should stay out of reach of one.
 
+### Reading other sessions
+
+A run may read the transcripts of **its own workspace's** other sessions
+(`session_list`, `session_read`, `run_result`). The tools only read, and what
+they read is what the operator can already open on screen for that workspace,
+so the widening is one of *reach within a boundary that already existed* rather
+than of privilege: the boundary is the workspace, and every id resolves inside
+the run's own.
+
+**A token that names a workspace grants reading what was said in it.** This is
+the operator's rule for the gateway, applied here rather than an exception
+carved out of it: the token says which door an application may knock at, and
+behind that door Metaclaude behaves as it does from the interface. An
+application granted a workspace can therefore call `session_read` on its
+sessions, within the token's permission ceiling like everything else it does.
+Issue a token for the workspace whose conversations the application may see —
+that is the whole of the control, and it is the same decision as granting it
+the right to act there.
+
+**A delegated run does not get them**, and this is the exclusion that stays. It
+is the one case where the party asking is not this workspace's operator but
+another workspace's agent, and its answer travels back there — a question
+phrased to extract would come home with the verbatim record attached. The peer
+directory's reasoning applies unchanged: being consultable is not being
+readable, and delegation consults a project through its own agent, memory and
+conventions included, which is not the same as reading its mail. The steward is
+excluded for the opposite reason: it already reads runs and sessions across the
+deployment, and a second, narrower way to do it would be two paths to one
+thing.
+
+A session belonging to another workspace answers exactly as one that does not
+exist, and deliberately: these tools are mounted in every ordinary workspace,
+so a refusal that distinguished "not yours" from "no such id" would let one
+workspace's agent enumerate another's sessions one guess at a time.
+
+There is no per-workspace switch. `memoryEnabled` governs a store the agent
+*writes into*; this only reads what the workspace already holds, and a switch
+implying the transcripts were otherwise unreachable from inside their own
+workspace would describe a boundary that is not there — the agent producing
+those transcripts is the same agent.
+
 ### Standing grants
 
 A prompt needs somebody to answer it, and an unattended run has nobody. A

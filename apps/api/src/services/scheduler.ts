@@ -29,6 +29,7 @@ import {
 } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { parseJson, toBool, toInt, tx } from '../db/index.js';
+import { excerpt } from '../kernel/transcript-view.js';
 import type { EventBus } from '../kernel/bus.js';
 import type { Kernel } from '../kernel/kernel.js';
 import type { SessionRepo, WorkspaceRepo } from '../kernel/repositories.js';
@@ -123,8 +124,28 @@ export interface SchedulerDeps {
   kernel: Kernel;
   sessions: SessionRepo;
   workspaces: WorkspaceRepo;
+  /**
+   * What a finished run answered, for the preamble of whatever it triggers.
+   *
+   * A function of the run id rather than the transcript repository: the
+   * scheduler needs one sentence, and being handed the event store would have
+   * it decide what "the answer" is — which `transcript-view` already decides,
+   * for the steward and the sessions tools too. Null when the run never spoke.
+   */
+  finalAnswer: (runId: string) => string | null;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }
+
+/**
+ * How much of the upstream's answer rides in the downstream's prompt.
+ *
+ * Measured on this deployment: ten of the twelve most recent runs answered in
+ * under 1.5 kB and two in about 12 kB. 2 000 characters therefore carries most
+ * answers whole while keeping a long one from displacing the automation's own
+ * prompt — and what does not fit stays reachable, because the preamble names
+ * the run id and `run_result` returns the rest.
+ */
+const ANSWER_IN_PREAMBLE = 2000;
 
 /** How often the scheduler wakes to look for due automations. */
 const TICK_INTERVAL_MS = 30_000;
@@ -833,15 +854,40 @@ export class Scheduler {
       return source === null && matchesFilter(automation.trigger.filter, run);
     });
 
+    if (watchers.length === 0) return 0;
+
+    /*
+     * What the run said — once, and only when somebody is listening.
+     *
+     * After the watchers rather than before: every finished run of the
+     * deployment reaches this method and most have nothing waiting on them, so
+     * reading first would load and parse a whole run's events to compose a
+     * sentence nobody receives. Once rather than per watcher, because the
+     * answer is a property of the run.
+     *
+     * The answer travels with the outcome because a chain told only *that* the
+     * upstream succeeded is a chain in name — "deploy what the tests approved"
+     * needs to know what they said. It is bounded, and the ids ride with it so
+     * a long answer stays reachable through `run_result` rather than being
+     * silently reduced to the part that fit.
+     */
+    const answer = this.deps.finalAnswer(run.id);
+    const said = answer
+      ? ` It answered: ${excerpt(answer, ANSWER_IN_PREAMBLE)}`
+      : ' It finished without a final message.';
+    const handles =
+      ` (run ${run.id}, session ${run.sessionId} — run_result and session_read have the rest` +
+      ` if you need more than this.)`;
+
     let fired = 0;
     for (const watcher of watchers) {
       const context = source
-        ? `Triggered by the automation "${source.name}" (run ${run.id}), which ${run.status}` +
+        ? `Triggered by the automation "${source.name}", which ${run.status}` +
           (run.error ? ` — ${run.error.slice(0, 300)}` : '') +
-          '.'
+          `.${said}${handles}`
         : `Triggered by run ${run.id} in this workspace, which ${run.status}` +
           (run.error ? ` — ${run.error.slice(0, 300)}` : '') +
-          `. Its prompt began: "${run.prompt.slice(0, 200).replace(/\s+/g, ' ')}".`;
+          `. Its prompt began: "${run.prompt.slice(0, 200).replace(/\s+/g, ' ')}".${said}${handles}`;
       try {
         await this.fire(watcher.id, 'automation', { context });
         fired += 1;

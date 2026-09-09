@@ -11,6 +11,20 @@ import {
 } from './permissions.js';
 
 describe('assessRisk', () => {
+  /**
+   * The same prefix trap as `summarise`, where it costs an operator more: a
+   * read-only tool offered by a server named with an underscore was rated
+   * `medium` because the name never matched `READ_ONLY_TOOLS`, so the card
+   * warned about a call that reads a file.
+   */
+  it('rates a tool by its own name, whatever server offers it', () => {
+    expect(assessRisk('mcp__my_server__Read', { file_path: '/ws/a.ts' })).toBe('low');
+    expect(assessRisk('mcp__github__Read', { file_path: '/ws/a.ts' })).toBe('low');
+    expect(assessRisk('mcp__my_server__Bash', { command: 'rm -rf /' })).toBe('high');
+    // A tool the tables do not know still reads as an outside system.
+    expect(assessRisk('mcp__my_server__whatever', {})).toBe('medium');
+  });
+
   it('escalates a destructive Bash command to high', () => {
     for (const command of [
       'rm -rf /',
@@ -84,6 +98,23 @@ describe('summarise', () => {
     expect(summarise('Task', { description: 'audit the auth code' })).toBe(
       'Delegate to a subagent: audit the auth code',
     );
+  });
+
+  /**
+   * A server whose name carries an underscore is stripped like any other.
+   *
+   * `splitToolName` exists in `packages/shared` precisely for this, with a
+   * note saying its predecessor `/^mcp__[^_]+__/` stopped at the first
+   * underscore — and then seven copies of that predecessor stayed. Every
+   * in-process server Metaclaude mounts is named that way
+   * (`metaclaude_memory`, `metaclaude_board`, `metaclaude_sessions`), so the
+   * approval card fell through to its generic branch for all of them, and so
+   * would any MCP server an operator named `my_server`.
+   */
+  it('reads through an MCP prefix whatever the server is called', () => {
+    expect(summarise('mcp__github__Read', { file_path: '/ws/a.ts' })).toBe('Read /ws/a.ts');
+    expect(summarise('mcp__my_server__Read', { file_path: '/ws/a.ts' })).toBe('Read /ws/a.ts');
+    expect(summarise('mcp__metaclaude_sessions__Bash', { command: 'ls' })).toBe('Run: ls');
   });
 
   it('falls back gracefully when the expected argument is missing', () => {

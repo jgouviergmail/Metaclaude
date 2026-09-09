@@ -14,6 +14,7 @@
 import type { ApprovalRequest, PermissionMode } from '@metaclaude/shared';
 import {
   APPROVAL_TIMEOUT_MS,
+  bareToolName,
   DANGEROUS_COMMAND_PATTERNS,
   HIGH_RISK_TOOLS,
   NETWORK_TOOLS,
@@ -59,7 +60,7 @@ export function grantKey(
   risk: 'low' | 'medium' | 'high',
   input: Record<string, unknown>,
 ): string {
-  const bare = toolName.replace(/^mcp__[^_]+__/, '');
+  const bare = bareToolName(toolName);
   if ((bare === 'Bash' || bare === 'BashOutput') && typeof input.command === 'string') {
     // First bare word of the command — `git`, `pnpm`, `rm`. Anything with a
     // shell metacharacter before it is not a simple invocation and gets a key
@@ -271,7 +272,7 @@ export function assessRisk(
   toolName: string,
   input: Record<string, unknown>,
 ): 'low' | 'medium' | 'high' {
-  const bare = toolName.replace(/^mcp__[^_]+__/, '');
+  const bare = bareToolName(toolName);
 
   if (bare === 'Bash' || bare === 'BashOutput') {
     const command = typeof input.command === 'string' ? input.command : '';
@@ -293,7 +294,7 @@ export function summarise(toolName: string, input: Record<string, unknown>): str
   const str = (key: string): string | null =>
     typeof input[key] === 'string' ? (input[key] as string) : null;
 
-  switch (toolName.replace(/^mcp__[^_]+__/, '')) {
+  switch (bareToolName(toolName)) {
     case 'Bash':
       return `Run: ${truncate(str('command') ?? '', 160)}`;
     case 'Read':

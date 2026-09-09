@@ -222,6 +222,14 @@ and a **ceiling**: the most a run it starts may do on its own. The value is
 shown once, at creation; only its fingerprint is kept, so a lost token is
 replaced rather than recovered.
 
+**Naming a workspace on a token grants reading what was said in it.** Behind
+the door the token opens, Metaclaude answers as it does from the interface — so
+a run the application starts can list that workspace's sessions and read their
+transcripts, within the ceiling like everything else it does. That is the
+control: issue a token for the workspace whose conversations the application
+may see, and no more. It reaches no other workspace's sessions, whatever it
+asks.
+
 The ceiling exists because nobody is watching these runs. A permission prompt
 with no one to answer it expires after ten minutes and fails, which is a worse
 answer than a refusal. *Plan only* executes nothing at all; *Run what is

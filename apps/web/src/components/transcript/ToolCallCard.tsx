@@ -23,16 +23,23 @@ import {
   X,
 } from 'lucide-react';
 import { memo, useState, type ReactNode } from 'react';
-import type { TranscriptEvent } from '@metaclaude/shared';
+import { bareToolName, splitToolName, type TranscriptEvent } from '@metaclaude/shared';
 import { Badge, Tooltip } from '@/components/ui/primitives';
 import { cn, copyToClipboard, formatDuration, truncate } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 
 type ToolCall = Extract<TranscriptEvent, { kind: 'tool_call' }>;
 
-/** Icon per tool. Unknown tools fall back to the generic MCP sparkle. */
+/**
+ * Icon per tool. Unknown tools fall back to the generic MCP sparkle.
+ *
+ * Through `bareToolName` rather than a local regex: the one it replaced
+ * stopped at the first underscore, so every tool of `metaclaude_memory`,
+ * `metaclaude_board` and `metaclaude_sessions` — and of any server an operator
+ * named `my_server` — fell through to the sparkle and showed its raw name.
+ */
 function iconFor(name: string): ReactNode {
-  switch (name.replace(/^mcp__[^_]+__/, '')) {
+  switch (bareToolName(name)) {
     case 'Bash':
       return <Terminal />;
     case 'Read':
@@ -84,10 +91,11 @@ function summarise(call: ToolCall): { label: string; detail: string | null } {
   const str = (key: string): string | null =>
     typeof input[key] === 'string' ? (input[key] as string) : null;
 
-  const tool = TOOLS[call.name.replace(/^mcp__[^_]+__/, '')];
-  // An MCP tool has no entry: its own name, with the server prefix made
-  // readable, is the only honest label available.
-  if (!tool) return { label: call.name.replace(/^mcp__([^_]+)__/, '$1: '), detail: null };
+  const { server, bare } = splitToolName(call.name);
+  const tool = TOOLS[bare];
+  // An MCP tool has no entry: its own name, with the server named beside it,
+  // is the only honest label available.
+  if (!tool) return { label: server ? `${server}: ${bare}` : bare, detail: null };
 
   const raw = tool.field === null ? null : str(tool.field);
   return { label: tool.label, detail: tool.path ? shortPath(raw) : raw };
@@ -149,7 +157,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   // hook can run.
   const { label: labelKey, detail } = summarise(call);
   const label = t(labelKey);
-  const isCommand = call.name.replace(/^mcp__[^_]+__/, '') === 'Bash';
+  const isCommand = bareToolName(call.name) === 'Bash';
 
   const copyPayload = async (): Promise<void> => {
     const text = JSON.stringify(call.input, null, 2);

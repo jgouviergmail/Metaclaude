@@ -109,6 +109,55 @@ with. A run in `dontAsk` does not either — nothing unapproved executes in that
 mode, so the tool would be refused rather than asked about, and being told
 about it would only waste the turn.
 
+## Reading its other sessions
+
+Sessions are separate conversations, not separate agents. A run of a workspace
+can read the **other sessions of that same workspace** — so "use the data from
+the session about the API", or "what did we conclude last week", is something
+you can simply ask for, and an automation can be written to work from a session
+you point it at.
+
+Three tools do it, and they only read:
+
+- **`session_list`** turns a name into a session — it matches titles ignoring
+  case and accents, so *Évaluation* is found typed `evaluation`. The session the
+  run is in is marked, so the agent does not read back the conversation it is
+  having.
+- **`session_read`** returns what was said, oldest first. Narrow it with a
+  window — "the last seven days" — rather than reading everything; if the reply
+  was cut to fit, it says so, and the agent is told to pass that on rather than
+  treat the part it got as the whole conversation.
+- **`run_result`** returns one run in full, including its final answer.
+
+**A chained automation gets the answer without asking.** When an automation
+fires because another one finished, the prompt opens with what that automation
+answered — bounded, with the run and session ids beside it, so a long answer
+stays one `run_result` away. That is what makes "deploy what the tests
+approved" expressible: the downstream is told what the upstream *said*, not
+only that it succeeded.
+
+**The fence is the workspace, and it is not a setting.** These tools reach the
+workspace's own sessions and nothing else; a session belonging to another
+workspace answers exactly as one that does not exist.
+
+An application connected through the **MCP gateway** gets them too, for the
+workspace its token names — the token says which door it may knock at, and
+behind that door Metaclaude answers as it does on screen. So **granting a
+workspace to a token grants reading the conversations held there**: issue one
+for the workspace an application may see. A **delegated** run is the exclusion:
+it is another workspace's agent and its answer goes home with it, so it
+consults yours through its own reasoning rather than reading your sessions.
+Metaclaude's own steward does not get them either — it already reads runs and
+sessions across the whole deployment.
+
+**This is not the same thing as memory.** Memory is what gets distilled after a
+run and reaches later runs whether or not anyone asks — a convention, a
+preference, a fact about the project. This is the verbatim record, for what you
+name. Keeping the second out of every prompt is deliberate: injecting other
+sessions into every run would cost tens of thousands of tokens a turn for
+content that mostly does not concern the question, and would rewrite the cached
+prefix on every message.
+
 ## Its settings
 
 Every workspace carries the agent policy that applies inside it. Open the
