@@ -1136,41 +1136,14 @@ export function MemoryPage() {
           </Section>
 
           {/* ----------------------------- Insights -------------------------- */}
-          <section className="space-y-3" aria-labelledby="insights-heading">
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div className="space-y-1">
-                <h2
-                  id="insights-heading"
-                  className="flex items-center gap-2 text-body font-semibold text-ink"
-                >
-                  <Lightbulb className="size-4 text-warning" aria-hidden />
-                  {t(INSIGHT_STATUS_FILTERS.find((f) => f.value === insightStatus)!.heading)}
-                </h2>
-                <div className={cn(FILTER_ROW, 'gap-1.5 pt-1')} role="group" aria-label={t('Insight status')}>
-                  {INSIGHT_STATUS_FILTERS.map((filter) => (
-                    <button
-                      key={filter.value}
-                      type="button"
-                      aria-pressed={insightStatus === filter.value}
-                      onClick={() => setInsightStatusFilter(filter.value)}
-                      className={cn(
-                        CHIP,
-                        insightStatus === filter.value
-                          ? 'bg-accent-soft font-medium text-accent'
-                          : 'border border-line text-muted hover:text-ink',
-                      )}
-                    >
-                      {t(filter.label)}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-caption leading-relaxed text-muted">
-                  {t(
-                    "Distilled by the reflexion pass after a run. Proposals are never installed automatically — nothing here changes the agent's behaviour until you accept it.",
-                  )}
-                </p>
-              </div>
-              {workspaceId ? (
+          <Section
+            title={t(INSIGHT_STATUS_FILTERS.find((f) => f.value === insightStatus)!.heading)}
+            icon={<Lightbulb className="text-warning" />}
+            description={t(
+              "Distilled by the reflexion pass after a run. Proposals are never installed automatically — nothing here changes the agent's behaviour until you accept it.",
+            )}
+            actions={
+              workspaceId ? (
                 <Tooltip content={t(
                   "Read this workspace's accumulated procedures and, if they cohere, draft one skill — as a proposal below, never installed directly.",
                 )}>
@@ -1184,7 +1157,29 @@ export function MemoryPage() {
                     {t('Distil a skill')}
                   </Button>
                 </Tooltip>
-              ) : null}
+              ) : null
+            }
+          >
+            {/* Under the heading rather than beside it: the chips choose which
+                list is shown, so they belong with the list, and the heading
+                names whichever one they landed on. */}
+            <div className={cn(FILTER_ROW, 'gap-1.5 pb-3')} role="group" aria-label={t('Insight status')}>
+              {INSIGHT_STATUS_FILTERS.map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  aria-pressed={insightStatus === filter.value}
+                  onClick={() => setInsightStatusFilter(filter.value)}
+                  className={cn(
+                    CHIP,
+                    insightStatus === filter.value
+                      ? 'bg-accent-soft font-medium text-accent'
+                      : 'border border-line text-muted hover:text-ink',
+                  )}
+                >
+                  {t(filter.label)}
+                </button>
+              ))}
             </div>
 
             {insightsQuery.isLoading ? (
@@ -1391,7 +1386,7 @@ export function MemoryPage() {
                 })}
               </div>
             )}
-          </section>
+          </Section>
 
           <KnowledgeSection
             embedder={systemQuery.data?.retrieval.embedder}

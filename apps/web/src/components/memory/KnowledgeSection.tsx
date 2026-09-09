@@ -55,7 +55,7 @@ import {
   Textarea,
   Tooltip,
 } from '@/components/ui/primitives';
-import { FILTER_ROW } from '@/components/ui/layout';
+import { FILTER_ROW, Section } from '@/components/ui/layout';
 import { api, ApiError } from '@/lib/api';
 import { usePlural, useT } from '@/lib/i18n';
 import { formatLabel, formatLocation, matchesTitle } from '@/lib/knowledge';
@@ -289,23 +289,14 @@ export function KnowledgeSection({
   const hidden = documents.length - visible.length;
 
   return (
-    <section className="space-y-4" aria-labelledby="knowledge-heading">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="space-y-1">
-          <h2
-            id="knowledge-heading"
-            className="flex items-center gap-2 text-title font-semibold text-ink"
-          >
-            <BookOpenCheck className="size-4 text-accent" aria-hidden />
-            {t('Knowledge library')}
-          </h2>
-          <p className="max-w-2xl text-body leading-relaxed text-muted">
-            {t(
-              'Reference documents the agent can quote — a lease, a spec, a runbook. Drop a file or paste text, then choose which workspaces it reaches. Runs retrieve the relevant passages automatically and cite them by page and line.',
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <Section
+      title={t('Knowledge library')}
+      icon={<BookOpenCheck className="text-accent" />}
+      description={t(
+        'Reference documents the agent can quote — a lease, a spec, a runbook. Drop a file or paste text, then choose which workspaces it reaches. Runs retrieve the relevant passages automatically and cite them by page and line.',
+      )}
+      actions={
+        <>
           {documents.length > 0 ? (
             // The app's Tooltip, not a `title` attribute: the native one is
             // unstyled, sits outside the charter, and never appears on touch —
@@ -342,236 +333,241 @@ export function KnowledgeSection({
             <Plus className="size-4" />
             {t('Paste a document')}
           </Button>
-        </div>
-      </div>
-
-      {/* The row scrolls rather than wraps: it sits above the list, so every
-          row it grows steals one from the library on a phone. The workspace
-          filter is the page's, at the top — one question, one control. */}
-      <div className={cn(FILTER_ROW, 'gap-2')}>
-        {/* "Find a document", not "Search": the rehearsal card below is also a
-            search box, and it answers a different question — what a *run*
-            would be shown. Two boxes labelled the same way on one screen is
-            two ways to be surprised. */}
-        <Input
-          value={titleQuery}
-          onChange={(event) => setTitleQuery(event.target.value)}
-          placeholder={t('Filter by name')}
-          aria-label={t('Find a document')}
-          className="w-44 sm:w-56"
-        />
-        {/* Kept visible when the list is empty: hiding the controls with the
-            list is how an operator gets stuck inside an empty scope. */}
-        <span className="text-caption text-subtle">
-          {plural(visible.length, '{n} document', '{n} documents')}
-          {hidden > 0 ? ` · ${t('{n} hidden', { n: String(hidden) })}` : ''}
-        </span>
-      </div>
-
-      <KnowledgeUploadZone reach={reachForScope(scope)} onUploaded={refresh} />
-
-      {query.isLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
-        </div>
-      ) : visible.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={<FileText />}
-            title={documents.length === 0 ? t('Nothing on the shelf yet') : t('No document matches')}
-            description={
-              documents.length === 0
-                ? t(
-                    'Drop the documents your runs keep needing — the contract, the conventions, the runbook — and the agent will cite them instead of guessing.',
-                  )
-                : t('Try another word, or widen the workspace filter.')
-            }
+        </>
+      }
+    >
+      {/* The rhythm belongs to the body: `Section` already spaces its header
+          from its content, so `space-y` on the enclosure itself would set the
+          same margin twice on the same child. */}
+      <div className="space-y-4">
+        {/* The row scrolls rather than wraps: it sits above the list, so every
+            row it grows steals one from the library on a phone. The workspace
+            filter is the page's, at the top — one question, one control. */}
+        <div className={cn(FILTER_ROW, 'gap-2')}>
+          {/* "Find a document", not "Search": the rehearsal card below is also a
+              search box, and it answers a different question — what a *run*
+              would be shown. Two boxes labelled the same way on one screen is
+              two ways to be surprised. */}
+          <Input
+            value={titleQuery}
+            onChange={(event) => setTitleQuery(event.target.value)}
+            placeholder={t('Filter by name')}
+            aria-label={t('Find a document')}
+            className="w-44 sm:w-56"
           />
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {visible.map((doc) => (
-            <Card key={doc.id} className="p-3.5">
-              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        doc.source ? setViewing({ id: doc.id, line: null }) : void openFor(doc)
-                      }
-                      className="truncate text-left text-body font-medium text-ink transition-colors hover:text-accent"
-                    >
-                      {doc.title}
-                    </button>
-                    {formatLabel(doc.source) ? (
-                      <Badge tone="neutral">{formatLabel(doc.source)}</Badge>
-                    ) : null}
-                    <ReachBadge
-                      global={doc.isGlobal}
-                      workspaceIds={doc.workspaceIds}
-                      workspaces={workspaces}
-                    />
-                    {!doc.enabled ? <Badge tone="warning">{t('Paused')}</Badge> : null}
-                    {pendingVectors(doc) ? (
-                      <Tooltip
-                        content={t(
-                          'Findable by its words already; its vectors are being computed in the background.',
-                        )}
-                      >
-                        <span className="inline-flex">
-                          <Badge tone="thinking">{t('Vectors pending')}</Badge>
-                        </span>
-                      </Tooltip>
-                    ) : null}
-                  </div>
-                  <p className="text-caption text-subtle">
-                    {plural(doc.chunkCount, '{n} passage', '{n} passages')} ·{' '}
-                    {formatBytes(doc.contentLength)}
-                    {doc.pageCount !== null
-                      ? ` · ${plural(doc.pageCount, '{n} page', '{n} pages')}`
-                      : ''}{' '}
-                    · {formatRelative(doc.updatedAt)}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 sm:shrink-0">
-                  <Switch
-                    checked={doc.enabled}
-                    onChange={() => toggle.mutate(doc)}
-                    label={t('Retrieve from “{name}”', { name: doc.title })}
-                    tooltip={
-                      doc.enabled
-                        ? t('On: runs can retrieve these passages. Switch off to pause without deleting.')
-                        : t('Paused: kept and editable, but never retrieved.')
-                    }
-                  />
-                  <Menu
-                    side="bottom"
-                    align="end"
-                    trigger={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t('More actions for “{name}”', { name: doc.title })}
-                      >
-                        <MoreVertical className="size-4" />
-                      </Button>
-                    }
-                  >
-                    {doc.source ? (
-                      <MenuItem
-                        icon={<Eye className="size-4" />}
-                        onSelect={() => setViewing({ id: doc.id, line: null })}
-                      >
-                        {t('View')}
-                      </MenuItem>
-                    ) : null}
-                    <MenuItem icon={<Pencil className="size-4" />} onSelect={() => void openFor(doc)}>
-                      {doc.source ? t('Rename and re-aim') : t('Edit')}
-                    </MenuItem>
-                    {doc.source ? (
-                      <MenuItem
-                        icon={<Download className="size-4" />}
-                        onSelect={() => {
-                          window.location.assign(api.knowledge.sourceUrl(doc.id));
-                        }}
-                      >
-                        {t('Download the original')}
-                      </MenuItem>
-                    ) : null}
-                    {doc.source ? (
-                      <MenuItem
-                        icon={<RefreshCw className="size-4" />}
-                        onSelect={() => extract.mutate(doc.id)}
-                      >
-                        {t('Read the file again')}
-                      </MenuItem>
-                    ) : null}
-                    <MenuItem
-                      icon={<Trash2 className="size-4" />}
-                      tone="danger"
-                      onSelect={() => setDeleting(doc)}
-                    >
-                      {t('Delete')}
-                    </MenuItem>
-                  </Menu>
-                </div>
-              </div>
-            </Card>
-          ))}
+          {/* Kept visible when the list is empty: hiding the controls with the
+              list is how an operator gets stuck inside an empty scope. */}
+          <span className="text-caption text-subtle">
+            {plural(visible.length, '{n} document', '{n} documents')}
+            {hidden > 0 ? ` · ${t('{n} hidden', { n: String(hidden) })}` : ''}
+          </span>
         </div>
-      )}
 
-      {documents.length > 0 ? (
-        <Card className="space-y-3 p-4">
-          <div className="space-y-1">
-            <h3 className="flex items-center gap-2 text-body font-semibold text-ink">
-              <Search className="size-3.5 text-accent" aria-hidden />
-              {t('Rehearse a retrieval')}
-            </h3>
-            <p className="text-caption leading-relaxed text-muted">
-              {t(
-                'Ask what a run would ask, and see exactly the passages it would be shown — same search, same gates, scores included.',
-              )}
-            </p>
+        <KnowledgeUploadZone reach={reachForScope(scope)} onUploaded={refresh} />
+
+        {query.isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
           </div>
-          <form
-            className="flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setProbeQuery(probe);
-            }}
-          >
-            <Input
-              value={probe}
-              onChange={(event) => setProbe(event.target.value)}
-              placeholder={t('e.g. what is the notice period?')}
-              aria-label={t('Rehearse a retrieval')}
+        ) : visible.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon={<FileText />}
+              title={documents.length === 0 ? t('Nothing on the shelf yet') : t('No document matches')}
+              description={
+                documents.length === 0
+                  ? t(
+                      'Drop the documents your runs keep needing — the contract, the conventions, the runbook — and the agent will cite them instead of guessing.',
+                    )
+                  : t('Try another word, or widen the workspace filter.')
+              }
             />
-            <Button type="submit" variant="secondary" size="sm" disabled={!probe.trim()}>
-              {t('Preview')}
-            </Button>
-          </form>
-
-          {probeQuery ? (
-            preview.isLoading ? (
-              <Skeleton className="h-12" />
-            ) : (preview.data?.results.length ?? 0) === 0 ? (
-              <p className="text-caption text-subtle">
-                {t('Nothing relevant enough — a run would receive no passages for this.')}
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {preview.data!.results.map((hit) => {
-                  const where = formatLocation(hit, t);
-                  return (
-                    <li key={hit.chunkId} className="rounded-lg border border-line bg-sunken/40 p-3">
-                      <p className="flex flex-wrap items-baseline gap-x-2 text-caption font-medium text-accent">
-                        <button
-                          type="button"
-                          className="text-left hover:underline"
-                          onClick={() => setViewing({ id: hit.documentId, line: hit.lineStart })}
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {visible.map((doc) => (
+              <Card key={doc.id} className="p-3.5">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          doc.source ? setViewing({ id: doc.id, line: null }) : void openFor(doc)
+                        }
+                        className="truncate text-left text-body font-medium text-ink transition-colors hover:text-accent"
+                      >
+                        {doc.title}
+                      </button>
+                      {formatLabel(doc.source) ? (
+                        <Badge tone="neutral">{formatLabel(doc.source)}</Badge>
+                      ) : null}
+                      <ReachBadge
+                        global={doc.isGlobal}
+                        workspaceIds={doc.workspaceIds}
+                        workspaces={workspaces}
+                      />
+                      {!doc.enabled ? <Badge tone="warning">{t('Paused')}</Badge> : null}
+                      {pendingVectors(doc) ? (
+                        <Tooltip
+                          content={t(
+                            'Findable by its words already; its vectors are being computed in the background.',
+                          )}
                         >
-                          {[hit.documentTitle, hit.heading].filter(Boolean).join(' › ')}
-                        </button>
-                        {where ? <span className="text-subtle">{where}</span> : null}
-                        <span className="font-mono text-caption text-subtle">
-                          {hit.score.toFixed(3)}
-                        </span>
-                      </p>
-                      <p className="mt-1 line-clamp-3 text-caption leading-relaxed text-muted">
-                        {hit.text}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            )
-          ) : null}
-        </Card>
-      ) : null}
+                          <span className="inline-flex">
+                            <Badge tone="thinking">{t('Vectors pending')}</Badge>
+                          </span>
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                    <p className="text-caption text-subtle">
+                      {plural(doc.chunkCount, '{n} passage', '{n} passages')} ·{' '}
+                      {formatBytes(doc.contentLength)}
+                      {doc.pageCount !== null
+                        ? ` · ${plural(doc.pageCount, '{n} page', '{n} pages')}`
+                        : ''}{' '}
+                      · {formatRelative(doc.updatedAt)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 sm:shrink-0">
+                    <Switch
+                      checked={doc.enabled}
+                      onChange={() => toggle.mutate(doc)}
+                      label={t('Retrieve from “{name}”', { name: doc.title })}
+                      tooltip={
+                        doc.enabled
+                          ? t('On: runs can retrieve these passages. Switch off to pause without deleting.')
+                          : t('Paused: kept and editable, but never retrieved.')
+                      }
+                    />
+                    <Menu
+                      side="bottom"
+                      align="end"
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t('More actions for “{name}”', { name: doc.title })}
+                        >
+                          <MoreVertical className="size-4" />
+                        </Button>
+                      }
+                    >
+                      {doc.source ? (
+                        <MenuItem
+                          icon={<Eye className="size-4" />}
+                          onSelect={() => setViewing({ id: doc.id, line: null })}
+                        >
+                          {t('View')}
+                        </MenuItem>
+                      ) : null}
+                      <MenuItem icon={<Pencil className="size-4" />} onSelect={() => void openFor(doc)}>
+                        {doc.source ? t('Rename and re-aim') : t('Edit')}
+                      </MenuItem>
+                      {doc.source ? (
+                        <MenuItem
+                          icon={<Download className="size-4" />}
+                          onSelect={() => {
+                            window.location.assign(api.knowledge.sourceUrl(doc.id));
+                          }}
+                        >
+                          {t('Download the original')}
+                        </MenuItem>
+                      ) : null}
+                      {doc.source ? (
+                        <MenuItem
+                          icon={<RefreshCw className="size-4" />}
+                          onSelect={() => extract.mutate(doc.id)}
+                        >
+                          {t('Read the file again')}
+                        </MenuItem>
+                      ) : null}
+                      <MenuItem
+                        icon={<Trash2 className="size-4" />}
+                        tone="danger"
+                        onSelect={() => setDeleting(doc)}
+                      >
+                        {t('Delete')}
+                      </MenuItem>
+                    </Menu>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {documents.length > 0 ? (
+          <Card className="space-y-3 p-4">
+            <div className="space-y-1">
+              <h3 className="flex items-center gap-2 text-body font-semibold text-ink">
+                <Search className="size-3.5 text-accent" aria-hidden />
+                {t('Rehearse a retrieval')}
+              </h3>
+              <p className="text-caption leading-relaxed text-muted">
+                {t(
+                  'Ask what a run would ask, and see exactly the passages it would be shown — same search, same gates, scores included.',
+                )}
+              </p>
+            </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setProbeQuery(probe);
+              }}
+            >
+              <Input
+                value={probe}
+                onChange={(event) => setProbe(event.target.value)}
+                placeholder={t('e.g. what is the notice period?')}
+                aria-label={t('Rehearse a retrieval')}
+              />
+              <Button type="submit" variant="secondary" size="sm" disabled={!probe.trim()}>
+                {t('Preview')}
+              </Button>
+            </form>
+
+            {probeQuery ? (
+              preview.isLoading ? (
+                <Skeleton className="h-12" />
+              ) : (preview.data?.results.length ?? 0) === 0 ? (
+                <p className="text-caption text-subtle">
+                  {t('Nothing relevant enough — a run would receive no passages for this.')}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {preview.data!.results.map((hit) => {
+                    const where = formatLocation(hit, t);
+                    return (
+                      <li key={hit.chunkId} className="rounded-lg border border-line bg-sunken/40 p-3">
+                        <p className="flex flex-wrap items-baseline gap-x-2 text-caption font-medium text-accent">
+                          <button
+                            type="button"
+                            className="text-left hover:underline"
+                            onClick={() => setViewing({ id: hit.documentId, line: hit.lineStart })}
+                          >
+                            {[hit.documentTitle, hit.heading].filter(Boolean).join(' › ')}
+                          </button>
+                          {where ? <span className="text-subtle">{where}</span> : null}
+                          <span className="font-mono text-caption text-subtle">
+                            {hit.score.toFixed(3)}
+                          </span>
+                        </p>
+                        <p className="mt-1 line-clamp-3 text-caption leading-relaxed text-muted">
+                          {hit.text}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )
+            ) : null}
+          </Card>
+        ) : null}
+      </div>
 
       <KnowledgeViewer
         documentId={viewing?.id ?? null}
@@ -688,6 +684,6 @@ export function KnowledgeSection({
           setDeleting(null);
         }}
       />
-    </section>
+    </Section>
   );
 }

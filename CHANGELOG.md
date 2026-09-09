@@ -11,6 +11,20 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.83.3] — 2026-09-08
+
+### Fixed
+
+- **Four titled blocks were still drawn by hand, so they alone had no
+  frame.** `Section` encloses every titled block since the aesthetic pass —
+  the tinted band, the border, the radius — and *Insights awaiting review*,
+  *Knowledge library* and both groups on Plugins were written as a bare
+  `<section>` with an `<h2>` above it, from before the primitive existed. On
+  the Memory screen the difference sits one block below *Stored memories*,
+  which is enclosed: the eye reads the unframed pair as unfinished, and an
+  operator reported exactly that. The `boxedSections` ratchet could not see
+  it — it counts a titled group boxed in a `Card`, and these were in neither.
+
 ## [0.83.2] — 2026-09-08
 
 ### Fixed

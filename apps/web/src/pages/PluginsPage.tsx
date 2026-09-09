@@ -14,7 +14,7 @@
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Page } from '@/components/ui/layout';
+import { Page, Section } from '@/components/ui/layout';
 import { AlertTriangle, Plug, Plus, Server, Sparkles, Store, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -158,22 +158,19 @@ export function PluginsPage() {
       />
 
       <Page width="list">
-          <section className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-body font-semibold text-ink">
-                <Store className="size-4 text-muted" aria-hidden />
-                {t('Marketplaces')}
-              </h2>
+          <Section
+            title={t('Marketplaces')}
+            icon={<Store className="text-muted" />}
+            description={t(
+              'The CLI fetches these sources itself and installs from them at the start of a run. Which plugins actually run is chosen per workspace, under Workspace settings.',
+            )}
+            actions={
               <Button variant="secondary" size="sm" onClick={() => setAddingMarketplace(true)}>
                 <Plus className="size-4" aria-hidden />
                 {t('Add marketplace')}
               </Button>
-        </div>
-        <p className="text-caption leading-relaxed text-muted">
-          {t(
-            'The CLI fetches these sources itself and installs from them at the start of a run. Which plugins actually run is chosen per workspace, under Workspace settings.',
-          )}
-        </p>
+            }
+          >
         {marketplacesQuery.isLoading ? (
           <div className="flex justify-center py-6">
             <Spinner />
@@ -186,13 +183,9 @@ export function PluginsPage() {
             onRemove={setRemovingMarketplace}
           />
         )}
-      </section>
+      </Section>
 
-      <h2 className="flex items-center gap-2 pt-2 text-body font-semibold text-ink">
-        <Plug className="size-4 text-muted" aria-hidden />
-        {t('Installed by path')}
-      </h2>
-
+      <Section title={t('Installed by path')} icon={<Plug className="text-muted" />}>
       {query.isLoading ? (
         <div className="flex justify-center py-10">
           <Spinner />
@@ -302,6 +295,7 @@ export function PluginsPage() {
           ))}
         </div>
       )}
+      </Section>
 
       </Page>
 
