@@ -11,6 +11,8 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.86.0] — 2026-09-09
+
 ### Changed
 
 - **A call arriving by MCP is now answered the way the interface answers.** A
