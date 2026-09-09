@@ -53,6 +53,7 @@ let steward: Steward;
 let asked: {
   submits: unknown[];
   delegations: unknown[];
+  peerStarts: unknown[];
   interrupted: string[];
   settings: unknown[];
   automations: Map<string, Automation>;
@@ -225,6 +226,17 @@ function makeSteward(overrides: Partial<StewardDeps> = {}): Steward {
         asked.delegations.push(input);
         return { runId: 'run_delegated', sessionId: 'ses_delegated', status: 'succeeded', finalText: '42', error: null };
       },
+      // The kernel's admission, faked here on purpose: the standing session's
+      // reuse and rotation are the kernel's rule now — `kernel.test.ts` owns
+      // them, against real rows — and what is left for the steward to get
+      // right is which title, which ceiling and which workspace it asks for.
+      startInWorkspace: async (input) => {
+        asked.peerStarts.push(input);
+        return {
+          run: { id: 'run_started', status: 'queued', sessionId: 'ses_peer' } as Run,
+          sessionId: 'ses_peer',
+        };
+      },
       activeCount: 1,
       queuedCount: 2,
       hasActiveRunForSession: (id) => asked.busySessions.has(id),
@@ -277,7 +289,7 @@ beforeEach(async () => {
   }).id;
 
   asked = {
-    submits: [], delegations: [], interrupted: [], settings: [],
+    submits: [], delegations: [], peerStarts: [], interrupted: [], settings: [],
     automations: new Map([['auto_a', automation('auto_a')], ['auto_b', automation('auto_b', { enabled: false, workspaceId: systemId })]]),
     created: [], updated: [], fired: [],
     proposals: new Map([['prop_a', proposal('prop_a')]]),
@@ -716,8 +728,12 @@ describe('running other workspaces', () => {
     const answer = await steward.runAsk(ACTOR, 'project', 'What is the state of the build?');
 
     expect(answer).toMatchObject({ runId: 'run_delegated', status: 'succeeded', answer: '42' });
+    // Its own run id, not a description of it: the kernel reads the workspace,
+    // the trigger and the ceiling off that row. `runAsk` used to declare every
+    // one of its calls `user`, which was true only by luck once a token could
+    // reach the steward at all.
     expect(asked.delegations).toEqual([
-      { fromWorkspaceId: systemId, fromTriggeredBy: 'user', target: 'project', prompt: 'What is the state of the build?' },
+      { fromRunId: ACTOR.runId, target: 'project', prompt: 'What is the state of the build?' },
     ]);
     expect(audit.list({ action: 'steward.run.ask' })).toHaveLength(1);
   });
@@ -732,32 +748,25 @@ describe('running other workspaces', () => {
    * One standing session per workspace, rotated like the gateway's: reused
    * while idle and under the event ceiling, a new one beside it otherwise.
    */
-  it('starts a run in a standing session it reuses, rotates and never awaits', async () => {
-    const first = await steward.runStart(ACTOR, 'project', 'tidy the backlog');
-    const second = await steward.runStart(ACTOR, 'project', 'and again');
-    expect(second.sessionId).toBe(first.sessionId);
-    expect(sessions.get(first.sessionId)?.title).toBe(STEWARD_SESSION_TITLE);
+  it('asks the kernel to admit the run, naming its own session and ceiling', async () => {
+    const started = await steward.runStart(ACTOR, 'project', 'tidy the backlog');
 
-    asked.busySessions.add(first.sessionId);
-    const third = await steward.runStart(ACTOR, 'project', 'while busy');
-    expect(third.sessionId).not.toBe(first.sessionId);
-
-    asked.busySessions.clear();
-    const filler = seedRun({ workspaceId: projectId, sessionId: first.sessionId, status: 'succeeded' });
-    for (let index = 0; index < 3; index += 1) {
-      transcript.append(first.sessionId, { kind: 'assistant_text', id: `ev_${index}`, runId: filler.id, at: NOW, text: 'x', streaming: false });
-    }
-    // Both standing sessions unavailable — one busy, one full — so a fifth
-    // session is the only correct answer; reusing the full one is the bug.
-    asked.busySessions.add(third.sessionId);
-    const fourth = await steward.runStart(ACTOR, 'project', 'when full');
-    expect(fourth.sessionId).not.toBe(first.sessionId);
-    expect(fourth.sessionId).not.toBe(third.sessionId);
-
-    for (const submit of asked.submits as Array<{ awaited: boolean; triggeredBy: string }>) {
-      expect(submit.awaited).toBe(false);
-      expect(submit.triggeredBy).toBe('delegation');
-    }
+    expect(started).toMatchObject({ runId: 'run_started', sessionId: 'ses_peer' });
+    expect(asked.peerStarts).toEqual([
+      {
+        // Its own run, so the kernel reads the trigger and the ceiling off the
+        // row rather than being told: the steward may itself have been started
+        // by a token, and a run it causes is bounded by that token's ceiling.
+        fromRunId: ACTOR.runId,
+        targetWorkspaceId: projectId,
+        prompt: 'tidy the backlog',
+        sessionTitle: STEWARD_SESSION_TITLE,
+        maxEvents: 3,
+      },
+    ]);
+    // Nothing goes through `submit` any more: a second admission path is what
+    // let this one drift out of step with the gateway's for three releases.
+    expect(asked.submits).toHaveLength(0);
   });
 
   it('interrupts another run by its session, never itself', () => {

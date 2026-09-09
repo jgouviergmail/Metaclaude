@@ -76,6 +76,7 @@ interface RunRow {
   rating: number | null;
   reward: number | null;
   triggered_by: string;
+  ceiling: string | null;
   rewind_point: string | null;
   served_model: string | null;
   started_at: number;
@@ -517,6 +518,7 @@ function toRun(row: RunRow): Run {
     rating: row.rating,
     reward: row.reward,
     triggeredBy: row.triggered_by as Run['triggeredBy'],
+    ceiling: row.ceiling as Run['ceiling'],
     rewindPoint: row.rewind_point,
     servedModel: row.served_model,
     startedAt: row.started_at,
@@ -534,12 +536,18 @@ export class RunRepo {
     policy: RunPolicy;
     triggeredBy: Run['triggeredBy'];
     category?: string | null;
+    /**
+     * The ceiling this run is admitted under. Absent for everything a person,
+     * an automation or the schedule started; set by the gateway path and
+     * carried onto whatever that run causes. See `Run.ceiling`.
+     */
+    ceiling?: Run['ceiling'];
   }): Run {
     const id = newId('run');
     this.db
       .prepare(
-        `INSERT INTO runs (id, session_id, workspace_id, prompt, status, policy, usage, category, triggered_by, started_at)
-         VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, session_id, workspace_id, prompt, status, policy, usage, category, triggered_by, ceiling, started_at)
+         VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -550,6 +558,7 @@ export class RunRepo {
         JSON.stringify(EMPTY_USAGE),
         input.category ?? null,
         input.triggeredBy,
+        input.ceiling ?? null,
         Date.now(),
       );
     return this.get(id) as Run;

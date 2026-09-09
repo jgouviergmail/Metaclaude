@@ -41,6 +41,7 @@ const run: Run = {
   rating: null,
   reward: null,
   triggeredBy: 'user',
+  ceiling: null,
   rewindPoint: '11111111-1111-4111-8111-111111111111',
   servedModel: null,
   startedAt: 0,

@@ -118,6 +118,16 @@ export interface SubmitOptions {
   overrides?: Partial<
     Pick<RunPolicy, 'model' | 'effort' | 'permissionMode' | 'agentName' | 'ultracode' | 'toolControls'>
   >;
+  /**
+   * The ceiling this run is admitted under, stamped on the row.
+   *
+   * Not a permission by itself — `overrides.permissionMode` is what actually
+   * bounds this run, and the caller sets both together. This is what lets the
+   * bound survive the hop: a run that causes another hands its ceiling on, so
+   * the cap is re-applied against the *next* workspace's own mode rather than
+   * being a fact about the first call only.
+   */
+  ceiling?: Run['ceiling'];
 }
 
 export interface KernelDeps {
@@ -156,7 +166,7 @@ export interface KernelDeps {
    */
   runTimeoutMs: () => number;
   /** Overridable so a test can reach the boundary without writing 400 events. */
-  mcpSessionMaxEvents?: number;
+  standingSessionMaxEvents?: number;
   /**
    * Called once per run, after it reaches a terminal state and its usage has
    * been recorded. A direct hook rather than an event-bus subscription: run
@@ -214,16 +224,20 @@ export function delegationTimeoutFor(runTimeoutMs: number): number {
 }
 
 /**
- * How much transcript one gateway session may accumulate before the next call
- * starts a fresh one.
+ * How much transcript one standing session may accumulate before the next call
+ * opens a fresh one beside it.
  *
  * Counted in events rather than runs because events are what the context
  * window actually carries. A standing session is the point — an integration's
  * asks build on each other, exactly as a delegation's do — but a token used
  * every minute for a year has no natural end, and nobody is watching the bill.
  * Roughly a dozen ordinary runs.
+ *
+ * It governed the gateway's session alone while delegation kept its own copy
+ * of the rule and applied no ceiling at all, which made the one session that
+ * accumulates a *second* workspace's context the only one that never rotated.
  */
-const MCP_SESSION_MAX_EVENTS = 400;
+const STANDING_SESSION_MAX_EVENTS = 400;
 
 
 
@@ -349,6 +363,7 @@ export class Kernel {
         policy,
         triggeredBy: options.triggeredBy ?? 'user',
         category: classification.category,
+        ceiling: options.ceiling ?? null,
       });
 
       // Before anything can schedule, and synchronously: from here the run can
@@ -394,60 +409,143 @@ export class Kernel {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * Run a prompt in *another* workspace on behalf of a running agent, and
-   * wait for the answer.
+   * The standing session of a workspace under one title.
    *
-   * The delegated run is a real run: recorded in the target workspace's
-   * history, counted in its usage, learned from like any other — and it runs
-   * with the *target's* context: its memory, skills, conventions and
-   * permission mode. That asymmetry is the point; a workspace consulted
-   * through its own agent answers better than its files read cold.
+   * Reused while it is idle and under the event ceiling, a fresh one beside it
+   * otherwise: a standing session is the point — an integration's or a
+   * delegation's asks build on each other — and an unbounded one is the bill,
+   * because a session nobody closes grows its context every day.
    *
-   * Depth is one, structurally: a run triggered by delegation cannot
-   * delegate again, so every delegation chain is exactly two runs long and
-   * attributable to the human-started run at its root. A→B→A loops cannot
-   * form, and quota cannot burn in a circle with nobody watching.
+   * One rule, three callers: the gateway's `MCP: <token>`, delegation's
+   * `Delegations`, the steward's own. It was written three times, and the
+   * copies had already diverged — delegation's checked only whether a run was
+   * in flight, so the one session that accumulates *another* workspace's
+   * context on every ask was the only one that never rotated.
    */
-  async delegate(input: {
-    fromWorkspaceId: string;
-    fromTriggeredBy: Run['triggeredBy'];
-    /** The target workspace's slug (exact) — never an id, agents speak names. */
-    target: string;
+  standingSession(input: { workspaceId: string; title: string; maxEvents: number }): Session {
+    const workspace = this.deps.workspaces.get(input.workspaceId);
+    if (!workspace) throw new Error(`Unknown workspace: ${input.workspaceId}`);
+
+    const existing = this.deps.sessions
+      .list(workspace.id, { includeArchived: false })
+      .find(
+        (candidate) =>
+          candidate.title === input.title &&
+          !this.hasActiveRunForSession(candidate.id) &&
+          this.deps.transcript.countBySession(candidate.id) < input.maxEvents,
+      );
+
+    return (
+      existing ??
+      this.deps.sessions.create({
+        workspaceId: workspace.id,
+        title: input.title,
+        model: String(workspace.settings.defaultModel),
+        effort: workspace.settings.defaultEffort,
+        permissionMode: workspace.settings.defaultPermissionMode,
+      })
+    );
+  }
+
+  /**
+   * Admit a run in another workspace on behalf of a running agent.
+   *
+   * Shared by the two ways that happens — `delegate`, which waits, and
+   * `startInWorkspace`, which does not — so the depth rule, the self-check and
+   * the ceiling cannot hold in one and be forgotten in the other.
+   *
+   * The run is a real run: recorded in the target workspace's history, counted
+   * in its usage, learned from like any other — and it runs with the *target's*
+   * context: its memory, skills, conventions and permission mode. That
+   * asymmetry is the point; a workspace consulted through its own agent answers
+   * better than its files read cold.
+   *
+   * Two bounds, and both are read off the asking run rather than passed in:
+   *
+   *  - **Depth is one.** A run triggered by delegation cannot cause another, so
+   *    every chain is exactly two runs long and attributable to the run a human
+   *    or the schedule started at its root. A→B→A cannot form, and quota cannot
+   *    burn in a circle with nobody watching.
+   *  - **The ceiling travels.** A run admitted under one (the gateway path)
+   *    hands the target its own mode capped by it. Without this the ceiling
+   *    would bound the first hop only, and a token capped at `dontAsk` could
+   *    reach a workspace set to `acceptEdits` by asking an agent to ask another
+   *    — or leave a target on an interactive mode opening a card nobody
+   *    answers, ten minutes before failing.
+   */
+  private async admitPeerRun(input: {
+    /** The run doing the asking. Its row carries the workspace, the trigger and the ceiling. */
+    fromRunId: string;
+    targetWorkspaceId: string;
     prompt: string;
-  }): Promise<{ runId: string; sessionId: string; status: Run['status']; finalText: string; error: string | null }> {
-    if (input.fromTriggeredBy === 'delegation') {
+    sessionTitle: string;
+    maxEvents: number;
+    awaited: boolean;
+  }): Promise<{ run: Run; sessionId: string }> {
+    const origin = this.deps.runs.get(input.fromRunId);
+    if (!origin) throw new Error(`There is no run called "${input.fromRunId}".`);
+    if (origin.triggeredBy === 'delegation') {
       throw new Error(
         'A delegated run cannot delegate further — take the answer back and continue yourself.',
       );
     }
 
-    const target = this.deps.workspaces.list().find((workspace) => workspace.slug === input.target);
-    if (!target) {
-      throw new Error(`There is no workspace with the slug "${input.target}".`);
-    }
-    if (target.id === input.fromWorkspaceId) {
+    const target = this.deps.workspaces.get(input.targetWorkspaceId);
+    if (!target) throw new Error(`Unknown workspace: ${input.targetWorkspaceId}`);
+    if (target.id === origin.workspaceId) {
       throw new Error('Delegation is for consulting a different workspace — this is your own.');
     }
 
-    // One standing session per workspace accumulates delegation context, the
-    // same way a continuous automation does. Busy (a delegation already in
-    // flight there) means a parallel session rather than a refusal.
-    const sessions = this.deps.sessions.list(target.id, { includeArchived: false });
-    let session = sessions.find(
-      (candidate) => candidate.title === 'Delegations' && !this.hasActiveRunForSession(candidate.id),
-    );
-    session ??= this.deps.sessions.create({
+    const session = this.standingSession({
       workspaceId: target.id,
-      title: 'Delegations',
-      model: String(target.settings.defaultModel),
-      effort: target.settings.defaultEffort,
-      permissionMode: target.settings.defaultPermissionMode,
+      title: input.sessionTitle,
+      maxEvents: input.maxEvents,
     });
 
     const run = await this.submit({
       sessionId: session.id,
       prompt: input.prompt,
       triggeredBy: 'delegation',
+      awaited: input.awaited,
+      ...(origin.ceiling !== null
+        ? {
+            ceiling: origin.ceiling,
+            overrides: {
+              permissionMode: capPermissionMode(
+                target.settings.defaultPermissionMode,
+                origin.ceiling,
+              ),
+            },
+          }
+        : {}),
+    });
+
+    return { run, sessionId: session.id };
+  }
+
+  /**
+   * Ask another workspace's agent to work, and wait for its answer.
+   *
+   * The target's slug rather than its id: agents speak names, and the directory
+   * they are shown lists slugs.
+   */
+  async delegate(input: {
+    fromRunId: string;
+    /** The target workspace's slug (exact) — never an id, agents speak names. */
+    target: string;
+    prompt: string;
+  }): Promise<{ runId: string; sessionId: string; status: Run['status']; finalText: string; error: string | null }> {
+    const target = this.deps.workspaces.list().find((workspace) => workspace.slug === input.target);
+    if (!target) {
+      throw new Error(`There is no workspace with the slug "${input.target}".`);
+    }
+
+    const { run, sessionId } = await this.admitPeerRun({
+      fromRunId: input.fromRunId,
+      targetWorkspaceId: target.id,
+      prompt: input.prompt,
+      sessionTitle: 'Delegations',
+      maxEvents: this.deps.standingSessionMaxEvents ?? STANDING_SESSION_MAX_EVENTS,
       awaited: true,
     });
 
@@ -457,11 +555,29 @@ export class Kernel {
     );
     return {
       runId: settled.run.id,
-      sessionId: session.id,
+      sessionId,
       status: settled.run.status,
       finalText: settled.finalText,
       error: settled.run.error,
     };
+  }
+
+  /**
+   * Start a run in another workspace and come back at once.
+   *
+   * `delegate` without the wait, for a caller that will collect the answer
+   * later — the steward's `system_run_start`. The session title is the
+   * caller's, because an operator reading that workspace's history should see
+   * who has been working there.
+   */
+  async startInWorkspace(input: {
+    fromRunId: string;
+    targetWorkspaceId: string;
+    prompt: string;
+    sessionTitle: string;
+    maxEvents: number;
+  }): Promise<{ run: Run; sessionId: string }> {
+    return this.admitPeerRun({ ...input, awaited: false });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -507,25 +623,14 @@ export class Kernel {
     const workspace = this.deps.workspaces.get(input.workspaceId);
     if (!workspace) throw new Error(`Unknown workspace: ${input.workspaceId}`);
 
-    const title = `MCP: ${input.label}`;
-    const ceiling = this.deps.mcpSessionMaxEvents ?? MCP_SESSION_MAX_EVENTS;
-    const sessions = this.deps.sessions.list(workspace.id, { includeArchived: false });
     // Busy *or* full opens a parallel session rather than refusing or piling
     // on. One standing session per token is what makes an integration's
     // history readable; an unbounded one is what makes its context — and its
     // cost — grow every day it is used, with nobody watching either.
-    let session = sessions.find(
-      (candidate) =>
-        candidate.title === title &&
-        !this.hasActiveRunForSession(candidate.id) &&
-        this.deps.transcript.countBySession(candidate.id) < ceiling,
-    );
-    session ??= this.deps.sessions.create({
+    const session = this.standingSession({
       workspaceId: workspace.id,
-      title,
-      model: String(workspace.settings.defaultModel),
-      effort: workspace.settings.defaultEffort,
-      permissionMode: workspace.settings.defaultPermissionMode,
+      title: `MCP: ${input.label}`,
+      maxEvents: this.deps.standingSessionMaxEvents ?? STANDING_SESSION_MAX_EVENTS,
     });
 
     const run = await this.submit({
@@ -533,6 +638,9 @@ export class Kernel {
       prompt: input.prompt,
       triggeredBy: 'api',
       awaited: input.awaited,
+      // Stamped as well as applied: this run may go on to consult another
+      // workspace, and the cap has to be re-applied there against *its* mode.
+      ceiling: input.ceiling,
       overrides: {
         permissionMode: capPermissionMode(
           workspace.settings.defaultPermissionMode,

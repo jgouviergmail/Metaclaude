@@ -97,6 +97,26 @@ export const PermissionMode = z.enum([
 ]);
 export type PermissionMode = z.infer<typeof PermissionMode>;
 
+/**
+ * The modes a run may hold when nobody is watching, ordered by capability.
+ *
+ * Deliberately not the full `PermissionMode` set. `default` and `auto` can open
+ * a permission prompt and nobody is there to answer one: the request would sit
+ * for ten minutes and then fail, which is a worse answer than a refusal.
+ * `bypassPermissions` is absent because an unattended caller is exactly the one
+ * that must never have it.
+ *
+ * `plan` executes nothing at all, `dontAsk` runs what the workspace has already
+ * allowed and refuses the rest, `acceptEdits` adds file edits. A run takes the
+ * *lesser* of this and the workspace's own mode — `capPermissionMode`.
+ *
+ * One definition, two readers: a token's ceiling (`ApiTokenCeiling`) and the
+ * ceiling a run was admitted under (`Run.ceiling`). They were the same three
+ * values written twice, and the second copy is what would have drifted.
+ */
+export const UnattendedCeiling = z.enum(['plan', 'dontAsk', 'acceptEdits']);
+export type UnattendedCeiling = z.infer<typeof UnattendedCeiling>;
+
 /** Operator-facing copy for each mode, surfaced in the UI's mode picker. */
 export const PERMISSION_MODE_INFO: Readonly<
   Record<PermissionMode, { label: string; description: string; risk: 'low' | 'medium' | 'high' }>
@@ -453,6 +473,20 @@ export const Run = z.object({
    * watching must not read there as a run somebody typed.
    */
   triggeredBy: z.enum(['user', 'automation', 'loop', 'system', 'delegation', 'api']),
+  /**
+   * The ceiling this run was admitted under, or null when nothing bounded it.
+   *
+   * Set for a run an outside token asked for, and carried onto every run *that*
+   * run causes — a delegation to another workspace takes the target's own mode
+   * capped by this. Without it the ceiling would bound the first hop only, and
+   * a token limited to `dontAsk` could reach a workspace set to `acceptEdits`
+   * by asking its agent to consult one, which is the promise "the most a run it
+   * starts may do" read as applying to the first run alone.
+   *
+   * Frozen at admission like the run's own permission mode, and for the same
+   * reason: a run already in flight is not re-judged when the token changes.
+   */
+  ceiling: UnattendedCeiling.nullable(),
   /**
    * The CLI's uuid for the user message that started this run.
    *

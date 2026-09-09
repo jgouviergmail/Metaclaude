@@ -119,7 +119,13 @@ export interface StewardDeps {
   retrieval: () => RetrievalStatus;
   kernel: Pick<
     Kernel,
-    'submit' | 'delegate' | 'activeCount' | 'queuedCount' | 'hasActiveRunForSession' | 'interrupt'
+    | 'submit'
+    | 'delegate'
+    | 'startInWorkspace'
+    | 'activeCount'
+    | 'queuedCount'
+    | 'hasActiveRunForSession'
+    | 'interrupt'
   >;
   /** Events a standing session may hold before a new one is opened beside it. */
   sessionMaxEvents?: number;
@@ -858,8 +864,7 @@ export class Steward {
     }
     this.record(actor, 'steward.run.ask', workspace.id, excerpt(prompt, PROMPT_EXCERPT));
     const result = await this.deps.kernel.delegate({
-      fromWorkspaceId: own,
-      fromTriggeredBy: 'user',
+      fromRunId: actor.runId,
       target: workspace.slug,
       prompt,
     });
@@ -884,30 +889,19 @@ export class Steward {
     if (workspace.id === this.deps.systemWorkspaceId()) {
       throw new StewardError('That is your own workspace — do the work in this run.', 'refused');
     }
-    const ceiling = this.deps.sessionMaxEvents ?? DEFAULT_SESSION_MAX_EVENTS;
-    let session = this.deps.sessions
-      .list(workspace.id, { includeArchived: false })
-      .find(
-        (candidate) =>
-          candidate.title === STEWARD_SESSION_TITLE &&
-          !this.deps.kernel.hasActiveRunForSession(candidate.id) &&
-          this.deps.transcript.countBySession(candidate.id) < ceiling,
-      );
-    session ??= this.deps.sessions.create({
-      workspaceId: workspace.id,
-      title: STEWARD_SESSION_TITLE,
-      model: String(workspace.settings.defaultModel),
-      effort: workspace.settings.defaultEffort,
-      permissionMode: workspace.settings.defaultPermissionMode,
-    });
-    const run = await this.deps.kernel.submit({
-      sessionId: session.id,
+    // The kernel's own admission, session rotation included: `runStart` had a
+    // second copy of that rule and `delegate` a third, and the three had
+    // already drifted apart. What only the steward decides is the title an
+    // operator reads in that workspace's history, and how much it may hold.
+    const { run, sessionId } = await this.deps.kernel.startInWorkspace({
+      fromRunId: actor.runId,
+      targetWorkspaceId: workspace.id,
       prompt,
-      triggeredBy: 'delegation',
-      awaited: false,
+      sessionTitle: STEWARD_SESSION_TITLE,
+      maxEvents: this.deps.sessionMaxEvents ?? DEFAULT_SESSION_MAX_EVENTS,
     });
     this.record(actor, 'steward.run.start', run.id, `${workspace.slug}: ${excerpt(prompt, PROMPT_EXCERPT)}`);
-    return { runId: run.id, sessionId: session.id, status: run.status };
+    return { runId: run.id, sessionId, status: run.status };
   }
 
   runInterrupt(actor: StewardActor, runId: string) {

@@ -1237,4 +1237,28 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_document_usages_document ON document_usages(document_id);
     `,
   },
+  {
+    version: 30,
+    name: 'run_ceiling',
+    sql: /* sql */ `
+      -- The ceiling a run was admitted under, so it can bound what that run
+      -- goes on to cause.
+      --
+      -- A token's ceiling used to be applied once, to the run the gateway
+      -- started, and nothing carried it further. That was enough only while a
+      -- gateway run had no way to reach another workspace; now that it is
+      -- treated like a run started from the interface, the run it delegates
+      -- would have taken the target workspace's own mode -- so a token capped
+      -- at dontAsk could reach a workspace set to acceptEdits simply by asking
+      -- its agent to consult one, and a target left on an interactive mode
+      -- would open an approval card with nobody in the room.
+      --
+      -- Null for every run a person, an automation or the schedule started:
+      -- nothing bounds those beyond the workspace's own mode, which is the
+      -- operator's to set. Null is also what every existing row gets, which is
+      -- correct for all of them -- the column is only ever written by the
+      -- gateway path and by the runs that path causes.
+      ALTER TABLE runs ADD COLUMN ceiling TEXT;
+    `,
+  },
 ];

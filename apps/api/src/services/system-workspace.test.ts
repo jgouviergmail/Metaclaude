@@ -200,6 +200,12 @@ describe('what it writes into the workspace', () => {
     // What it may remember, and that a changed fact is replaced rather than annotated.
     expect(claude).toContain('## What you remember');
     expect(claude).toContain('supersedes');
+    // That a program can reach it, and what is different when one does. The
+    // briefing told it only how the operator arrives, and a gateway run now
+    // gets the very tools this document describes: an agent that believes a
+    // person is reading will ask a question nobody will answer.
+    expect(claude).toContain('## How an application reaches you');
+    expect(claude).toContain('MCP: <token name>');
     expect(existsSync(join(workspace.path, 'SYSTEM-MAP.md'))).toBe(true);
     expect(readFileSync(join(workspace.path, 'docs', 'ARCHITECTURE.md'), 'utf8')).toContain('Architecture');
     expect(existsSync(join(workspace.path, 'docs', 'guide', '01-getting-started.md'))).toBe(true);

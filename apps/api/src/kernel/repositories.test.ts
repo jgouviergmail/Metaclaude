@@ -456,6 +456,30 @@ describe('RunRepo', () => {
     session = makeSession(workspace.id);
   });
 
+  /**
+   * The ceiling has to reach the row and come back, because that round trip is
+   * the whole mechanism: the kernel reads it off the *stored* run to bound
+   * what that run goes on to cause, so a field the writer accepts and the
+   * reader drops would silently un-cap every delegated run a token starts.
+   * Same family as the tool schemas that declared a field their handler never
+   * forwarded.
+   */
+  it('carries a run’s ceiling to the row and back, and defaults it to none', () => {
+    expect(makeRun(session).ceiling).toBeNull();
+
+    const capped = runs.create({
+      sessionId: session.id,
+      workspaceId: session.workspaceId,
+      prompt: 'asked for by a token',
+      policy: POLICY,
+      triggeredBy: 'api',
+      ceiling: 'dontAsk',
+    });
+
+    expect(capped.ceiling).toBe('dontAsk');
+    expect(runs.get(capped.id)?.ceiling).toBe('dontAsk');
+  });
+
   it('creates a queued run with an empty usage record', () => {
     const run = makeRun(session, 'fix the bug');
     expect(run.id.startsWith('run_')).toBe(true);

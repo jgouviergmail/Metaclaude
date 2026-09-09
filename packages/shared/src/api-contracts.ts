@@ -32,6 +32,7 @@ import {
   Millis,
   ModelSelector,
   PluginSkill,
+  UnattendedCeiling,
   WorkspaceSettings,
 } from './domain.js';
 import type { KnowledgePageUnit } from './domain.js';
@@ -1175,17 +1176,13 @@ export type ApiTokenScope = z.infer<typeof ApiTokenScope>;
 /**
  * The most a run started by this token may do without asking a human.
  *
- * Deliberately not the full `PermissionMode` set. `default` and `auto` can
- * open a permission prompt, and nobody is watching one: the request would sit
- * for ten minutes and then fail, which is a worse answer than a refusal.
- * `bypassPermissions` is absent because a token is exactly the caller that
- * must never have it.
- *
- * Ordered by capability — `plan` executes nothing at all, `dontAsk` runs what
- * the workspace has already allowed and refuses the rest, `acceptEdits` adds
- * file edits. A run takes the *lesser* of this and the workspace's own mode.
+ * `UnattendedCeiling` itself, under the name the token screens use. The three
+ * values and the whole argument for them live in `domain.ts`, because the same
+ * ceiling is now stamped on the run (`Run.ceiling`) so it can bound the runs
+ * that run causes; two spellings of one enum is what would have drifted the day
+ * a fourth value was considered.
  */
-export const ApiTokenCeiling = z.enum(['plan', 'dontAsk', 'acceptEdits']);
+export const ApiTokenCeiling = UnattendedCeiling;
 export type ApiTokenCeiling = z.infer<typeof ApiTokenCeiling>;
 
 /** A token as the interface sees it. The secret itself appears nowhere. */

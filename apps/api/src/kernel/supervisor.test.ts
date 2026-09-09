@@ -2121,19 +2121,50 @@ describe('buildOptions — the delegation tool and its directory', () => {
   });
 
   /**
-   * Not an affordance question like the one above — a scope question.
+   * A gateway run gets both, exactly as a run started from the interface does.
    *
-   * A token names the workspaces it may reach. Delegation reaches *other*
-   * workspaces by design, so a run started through the gateway holding that
-   * tool would be one prompt away from consulting a workspace nobody granted
-   * it, through an agent that would answer helpfully. The directory is
-   * withheld for a second reason of its own: it is a map of the deployment,
-   * and handing it to a token scoped to one workspace leaks the rest by name.
+   * This used to be withheld, and the reason read well: a token names the
+   * workspaces it may reach, so a tool that reaches *other* workspaces would
+   * put that scope one prompt away. What it produced was an agent with no way
+   * to answer a question whose answer this deployment holds — measured in
+   * production, an application asked one and was told the deployment did not
+   * know, while a pinned memory in the next workspace said otherwise, and the
+   * run called no tool at all because it had none to call.
+   *
+   * The operator's rule, already written for the session tools one release
+   * earlier: the token says which door an application may knock at, and behind
+   * that door Metaclaude behaves as it does from the interface. Where the
+   * information lives is Metaclaude's business, not the caller's. What still
+   * bounds a gateway run is its *ceiling*, which the kernel now carries onto
+   * the run it delegates — that one is about nobody being in the room, which
+   * stays true whatever the capability.
    */
-  it('withholds both from a run an outside token started — scope is not a suggestion', () => {
+  it('gives a gateway run both, like any run started from the interface', () => {
     const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
 
     const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'api' }));
+
+    expect(serversOf(options)).toContain('metaclaude');
+    expect(appendOf(options)).toContain('billing');
+  });
+
+  /**
+   * The workspace's own settings decide, for a gateway run as for any other.
+   *
+   * `dontAsk` never reaches the broker, so an unticked `delegate` is refused
+   * by the CLI rather than asked about — and being told about a tool that
+   * cannot run is the defect this pair exists to prevent. The gateway does not
+   * get an exemption from that: it gets the same answer the interface would.
+   */
+  it('withholds both from a gateway run whose workspace has not ticked delegate', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
+    const options = supervisor.buildOptions(
+      makeRequest({
+        triggeredBy: 'api',
+        policy: { ...makeRequest().policy, permissionMode: 'dontAsk' },
+      }),
+    );
 
     expect(serversOf(options)).not.toContain('metaclaude');
     expect(appendOf(options)).not.toContain('billing');
@@ -2202,6 +2233,30 @@ describe('buildOptions — the delegation tool and its directory', () => {
 
     expect(serversOf(options)).toContain('metaclaude');
     expect(appendOf(options)).toContain('2 other workspaces');
+  });
+
+  /**
+   * Plan mode keeps both, and that is a decision rather than an oversight.
+   *
+   * Nothing executes under plan, so `delegate` is a tool the CLI will refuse,
+   * and withholding it looked right — this repository calls a briefing for a
+   * tool that cannot run a defect, and `plan` became a *token ceiling* in this
+   * release, so it stopped being only a person's choice in the composer.
+   *
+   * What plan produces is a proposal, and a proposal written by an agent that
+   * does not know the billing workspace exists is a worse proposal. The
+   * directory is context for planning, not a promise about this turn. Pinned
+   * here so the next reader changes it on purpose, in either direction.
+   */
+  it('keeps both under plan: a proposal is better for knowing who exists', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { delegation: wired() });
+
+    const options = supervisor.buildOptions(
+      makeRequest({ policy: { ...makeRequest().policy, permissionMode: 'plan' } }),
+    );
+
+    expect(serversOf(options)).toContain('metaclaude');
+    expect(appendOf(options)).toContain('billing');
   });
 
   /**
@@ -2318,16 +2373,41 @@ describe('buildOptions — the steward’s tools', () => {
   });
 
   /**
-   * Even in the system workspace: a token's scope is not a suggestion, and a
-   * project's agent asking the steward a question must not thereby steer it.
+   * Still withheld from a delegated run: a project's agent asking the steward a
+   * question must not thereby steer the deployment. Its answer travels back to
+   * another workspace, and these verbs change settings, decide approvals and
+   * start runs anywhere.
    */
-  it('withholds it from api and delegated runs, even there', () => {
+  it('withholds it from a delegated run, even there', () => {
     const supervisor = makeSupervisor(fakeQuery().query, undefined, { steward });
 
-    for (const triggeredBy of ['api', 'delegation'] as const) {
-      const options = supervisor.buildOptions(makeRequest({ triggeredBy }));
-      expect(Object.keys(options.mcpServers ?? {}), triggeredBy).not.toContain('metaclaude_system');
-    }
+    const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'delegation' }));
+
+    expect(Object.keys(options.mcpServers ?? {})).not.toContain('metaclaude_system');
+  });
+
+  /**
+   * A gateway run gets them, and this is the one that mattered in production.
+   *
+   * The system workspace's instructions — generated at boot, on disk, read by
+   * every run there — tell the agent to start from `system_overview`. For a
+   * gateway run the server was not mounted, so the tools the briefing named
+   * did not exist. Measured: asked a question whose answer sat in another
+   * workspace's memory, the run answered that it had found nothing "in
+   * CLAUDE.md, NOTES.md, memories, `system_overview`" while calling no tool at
+   * all. A briefing for tools that are not there does not produce a refusal,
+   * it produces a fluent account of a search that never happened.
+   *
+   * Granting the system workspace to a token therefore grants what the steward
+   * can do, under the token's ceiling — written down in docs/SECURITY.md,
+   * because it is a consequence of the grant the person issuing it must know.
+   */
+  it('gives a gateway run the steward’s tools, so its briefing is true', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, { steward });
+
+    const options = supervisor.buildOptions(makeRequest({ triggeredBy: 'api' }));
+
+    expect(Object.keys(options.mcpServers ?? {})).toContain('metaclaude_system');
   });
 
   it('offers nothing when no steward is wired', () => {

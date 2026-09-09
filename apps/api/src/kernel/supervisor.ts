@@ -238,8 +238,14 @@ export interface SupervisorDeps {
     /** How many characters of directory to inject. 0 switches delegation off. */
     budget: () => number;
     run: (input: {
-      fromWorkspaceId: string;
-      fromTriggeredBy: Run['triggeredBy'];
+      /**
+       * The run doing the asking. The kernel reads its workspace, what started
+       * it and the ceiling it was admitted under off the row, rather than
+       * taking any of the three on trust: a caller that described its own run
+       * could describe one that does not exist, and one of them did — every
+       * call from the steward declared itself `user`.
+       */
+      fromRunId: string;
       target: string;
       prompt: string;
     }) => Promise<{ status: Run['status']; finalText: string; error: string | null }>;
@@ -672,6 +678,30 @@ export class AgentSupervisor {
   }
 
   /**
+   * Whether this run gets Metaclaude's own verbs — the steward's table.
+   *
+   * Its own workspace only, and never a **delegated** run: those verbs change
+   * settings, decide approvals and start runs anywhere, and a delegated run's
+   * answer travels back to another workspace's agent. A project consulting the
+   * steward must not thereby steer the deployment.
+   *
+   * A **gateway** run does get them, and that is the release this predicate was
+   * extracted for. The system workspace's instructions are generated at boot
+   * and tell the agent to start from `system_overview`; withholding the server
+   * from a gateway run left a briefing naming tools that were not there, which
+   * does not produce a refusal — measured in production, it produced a fluent
+   * account of a search that never happened. Granting this workspace to a token
+   * therefore grants what the steward can do, under the token's ceiling, and
+   * docs/SECURITY.md says so where the person issuing one will read it.
+   */
+  private mountsSystem(request: Pick<RunRequest, 'workspace' | 'triggeredBy'>): boolean {
+    return (
+      this.deps.steward?.workspaceId() === request.workspace.id &&
+      request.triggeredBy !== 'delegation'
+    );
+  }
+
+  /**
    * The run's permission mode and the tools this workspace pre-approves.
    *
    * Shared by `buildOptions` and `execute` rather than computed twice: the two
@@ -778,20 +808,32 @@ export class AgentSupervisor {
    * Whether this run gets the delegation tool, and what it is told about who
    * it may consult. One answer, used for both, so they cannot disagree.
    *
-   * Four reasons to withhold it, each its own:
+   * Three reasons to withhold it, each its own:
    *
    *  - **A delegated run.** Depth is one, enforced in the kernel too; the
    *    affordance is withheld rather than dangled so the model never sees a
    *    tool it would only ever be refused.
-   *  - **An `api` run.** Its caller holds a token scoped to named workspaces,
-   *    and delegation reaches *other* workspaces by design. Leaving the tool in
-   *    reach would make that scope a suggestion, one prompt away from an agent
-   *    consulting a workspace the token was never given.
    *  - **Nobody to consult.** A single-workspace deployment, or one where every
    *    peer opted out, would otherwise carry a tool whose every call fails.
    *  - **A budget of zero.** The operator's off switch, and it has to skip the
    *    mount and not merely the text: a ceiling whose 0 means "off" that still
    *    creates the thing is the zero-delay-timer trap.
+   *
+   * A **gateway** run is deliberately not among them, and it used to be. The
+   * reason read well — a token names the workspaces it may reach, so a tool
+   * that reaches *others* puts that scope one prompt away — and what it
+   * produced was an agent unable to answer a question this deployment holds
+   * the answer to. Measured in production: an application asked one, the run
+   * called no tool at all because it had none, and reported that Metaclaude
+   * did not know while a pinned memory in the next workspace said otherwise.
+   *
+   * The operator's rule, written for the session tools one release earlier and
+   * applied here: the token says which door an application may knock at, and
+   * behind that door Metaclaude behaves as it does from the interface. How the
+   * information is organised is not the caller's business. What still bounds a
+   * gateway run is its ceiling, which `admitPeerRun` carries onto whatever it
+   * delegates — that bound is about nobody being in the room, which stays true
+   * whatever the capability.
    *
    * The directory itself is deliberately *not* a reason. A peer with no
    * description is unlisted and still reachable, so a person who names its
@@ -804,7 +846,17 @@ export class AgentSupervisor {
     const silent = { mounted: false, text: '' };
     const delegation = this.deps.delegation;
     if (!delegation) return silent;
-    if (request.triggeredBy === 'delegation' || request.triggeredBy === 'api') return silent;
+    if (request.triggeredBy === 'delegation') return silent;
+
+    // Plan mode is deliberately *not* a reason to withhold, and it was almost
+    // made one on the way to this release: nothing executes under plan, so a
+    // mounted `delegate` is a tool the CLI refuses. What plan produces is a
+    // *proposal*, and a proposal written by an agent that does not know the
+    // billing workspace exists is a worse proposal — the directory is context
+    // for planning, not a promise about this turn. Five other in-process
+    // servers are mounted under plan for the same reason, and silencing this
+    // one alone would have changed what the composer's Plan mode answers, for
+    // a token ceiling it was never about.
 
     // `dontAsk` never reaches the broker: the CLI answers "denied, nothing is
     // pre-approved" itself, so a mounted `delegate` is refused rather than
@@ -815,7 +867,8 @@ export class AgentSupervisor {
     // Pre-approving it here instead would let an unattended run start work in
     // another workspace with nobody watching, which is a widening of what the
     // mode promises and the operator's call — so `allowedTools` naming it is
-    // honoured, and nothing else is assumed.
+    // honoured, and nothing else is assumed. A gateway run is no exception:
+    // the workspace's own tick decides, exactly as it does from the interface.
     if (
       resolved.mode === 'dontAsk' &&
       !resolved.preapproved.includes(mcpToolName(DELEGATION_SERVER_NAME, 'delegate'))
@@ -1163,13 +1216,9 @@ export class AgentSupervisor {
             }),
           }
         : {};
-    // Metaclaude's own tools, for its own workspace, for runs started there
-    // by a person or the schedule. See `SupervisorDeps.steward`.
+    // Metaclaude's own tools, for its own workspace. See `mountsSystem`.
     const systemServer: NonNullable<Options['mcpServers']> =
-      this.deps.steward &&
-      this.deps.steward.workspaceId() === workspace.id &&
-      request.triggeredBy !== 'api' &&
-      request.triggeredBy !== 'delegation'
+      this.deps.steward && this.mountsSystem(request)
         ? {
             metaclaude_system: buildSystemServer(this.deps.steward.facade(), {
               runId: request.runId,
@@ -1925,8 +1974,7 @@ export class AgentSupervisor {
           async (args) => {
             try {
               const result = await this.deps.delegation!.run({
-                fromWorkspaceId: request.workspace.id,
-                fromTriggeredBy: request.triggeredBy,
+                fromRunId: request.runId,
                 target: args.workspace,
                 prompt: args.prompt,
               });

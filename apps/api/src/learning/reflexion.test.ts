@@ -61,6 +61,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     rating: null,
     reward: null,
     triggeredBy: 'user',
+    ceiling: null,
     rewindPoint: null,
     servedModel: null,
     startedAt: 1000,

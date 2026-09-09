@@ -28,6 +28,7 @@ import { KnowledgeStore } from '../learning/knowledge.js';
 import { EventBus } from './bus.js';
 import { delegationTimeoutFor, deriveTitle, Kernel, languageDirective } from './kernel.js';
 import { ModelAvailability } from './model-availability.js';
+import { capPermissionMode } from './permissions.js';
 import { AttachmentService } from '../services/attachments.js';
 import { RunRepo, SessionRepo, TranscriptRepo, WorkspaceRepo } from './repositories.js';
 import type { RunOutcome, RunRequest, SupervisorCallbacks } from './supervisor.js';
@@ -116,7 +117,19 @@ function fakeSupervisor() {
   return supervisor;
 }
 
-function setup(options: { maxConcurrentRuns?: number; settings?: Partial<WorkspaceSettings>; delegationTimeoutMs?: number; mcpSessionMaxEvents?: number } = {}) {
+/** The policy a hand-written run row carries; nothing under test reads it. */
+const DEFAULT_TEST_POLICY = {
+  model: 'default',
+  effort: null,
+  permissionMode: 'default',
+  thinking: 'adaptive',
+  thinkingBudgetTokens: null,
+  agentName: null,
+  ultracode: false,
+  source: 'workspace',
+} as const;
+
+function setup(options: { maxConcurrentRuns?: number; settings?: Partial<WorkspaceSettings>; delegationTimeoutMs?: number; standingSessionMaxEvents?: number } = {}) {
   const db = openDatabase({ path: ':memory:' });
   migrate(db);
 
@@ -200,8 +213,8 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     ...(options.delegationTimeoutMs !== undefined
       ? { delegationTimeoutMs: options.delegationTimeoutMs }
       : {}),
-    ...(options.mcpSessionMaxEvents !== undefined
-      ? { mcpSessionMaxEvents: options.mcpSessionMaxEvents }
+    ...(options.standingSessionMaxEvents !== undefined
+      ? { standingSessionMaxEvents: options.standingSessionMaxEvents }
       : {}),
     onRunFinished: (run) => finished.push(run),
     log: () => {},
@@ -817,8 +830,80 @@ describe('deriveTitle', () => {
 /* Delegation — the society of sessions                                        */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The rule three callers used to spell for themselves.
+ *
+ * The gateway's `MCP: <token>`, delegation's `Delegations` and the steward's
+ * own session all want the same thing — reuse the standing one while it is
+ * idle and has room, open a fresh one beside it otherwise — and all three had
+ * written it out. Owned here now, so the copies cannot drift again.
+ */
+describe('the standing session', () => {
+  const ask = (fx: Fixture, over: Partial<{ title: string; maxEvents: number }> = {}) =>
+    fx.kernel.standingSession({
+      workspaceId: fx.workspace.id,
+      title: 'Delegations',
+      maxEvents: 100,
+      ...over,
+    });
+
+  it('reuses the one it finds while it is idle and under the ceiling', () => {
+    expect(ask(fixture).id).toBe(ask(fixture).id);
+  });
+
+  it('opens a second one beside a busy one rather than refusing or queueing', async () => {
+    const first = ask(fixture);
+    fixture.supervisor.hold();
+    await fixture.kernel.submit({ sessionId: first.id, prompt: 'holding it open' });
+    // Wait for the run to actually be in the supervisor's hands: `submit`
+    // returns as soon as the row exists, and finishing before it arrives
+    // settles nothing and hangs the cleanup.
+    await vi.waitFor(() => expect(fixture.supervisor.holding).toBe(1));
+
+    expect(ask(fixture).id).not.toBe(first.id);
+
+    fixture.supervisor.finish();
+    await vi.waitFor(() => expect(fixture.finished).toHaveLength(1));
+  });
+
+  it('opens a second one beside a full one, under the same name', () => {
+    const first = ask(fixture, { maxEvents: 1 });
+    const run = fixture.runs.create({
+      sessionId: first.id,
+      workspaceId: fixture.workspace.id,
+      prompt: 'x',
+      policy: DEFAULT_TEST_POLICY,
+      triggeredBy: 'user',
+    });
+    fixture.transcript.append(first.id, {
+      kind: 'assistant_text', id: 'ev_1', runId: run.id, at: Date.now(), text: 'x', streaming: false,
+    });
+
+    const second = ask(fixture, { maxEvents: 1 });
+    expect(second.id).not.toBe(first.id);
+    expect(fixture.sessions.get(second.id)?.title).toBe('Delegations');
+  });
+
+  it('never crosses a title, so one caller’s session is not another’s', () => {
+    expect(ask(fixture, { title: 'Delegations' }).id).not.toBe(ask(fixture, { title: 'MCP: n8n' }).id);
+  });
+
+  it('opens it on the workspace’s own model, effort and mode', () => {
+    const session = fixture.sessions.get(ask(fixture).id);
+    expect(session?.model).toBe(String(fixture.workspace.settings.defaultModel));
+    expect(session?.effort).toBe(fixture.workspace.settings.defaultEffort);
+    expect(session?.permissionMode).toBe(fixture.workspace.settings.defaultPermissionMode);
+  });
+
+  it('refuses a workspace that does not exist', () => {
+    expect(() =>
+      fixture.kernel.standingSession({ workspaceId: 'ws_gone', title: 'x', maxEvents: 10 }),
+    ).toThrow(/unknown workspace/i);
+  });
+});
+
 describe('delegation', () => {
-  const makeTarget = (fx: Fixture, slug = 'docs') =>
+  const makeTarget = (fx: Fixture, slug = 'docs', settings: Partial<WorkspaceSettings> = {}) =>
     fx.workspaces.create({
       name: slug,
       slug,
@@ -826,15 +911,37 @@ describe('delegation', () => {
       path: `/tmp/metaclaude-${slug}`,
       color: '#6366f1',
       icon: 'folder',
-      settings: WorkspaceSettingsSchema.parse({}),
+      settings: WorkspaceSettingsSchema.parse(settings),
+    });
+
+  /**
+   * A run row to delegate *from*.
+   *
+   * Written straight to the repository rather than submitted, because what
+   * `delegate` reads is the row: which workspace the caller is in, what started
+   * it, and the ceiling it was admitted under. Passing those as arguments — the
+   * shape this had until the gateway could delegate — let a caller describe a
+   * run that does not exist, which is the test-double trap from the other side:
+   * `runAsk` declared every one of its calls `user`, and nothing checked.
+   */
+  const originRun = (
+    fx: Fixture,
+    over: { triggeredBy?: Run['triggeredBy']; ceiling?: Run['ceiling']; workspaceId?: string } = {},
+  ): Run =>
+    fx.runs.create({
+      sessionId: fx.newSession('origin').id,
+      workspaceId: over.workspaceId ?? fx.workspace.id,
+      prompt: 'the run that asks',
+      policy: DEFAULT_TEST_POLICY,
+      triggeredBy: over.triggeredBy ?? 'user',
+      ...(over.ceiling !== undefined ? { ceiling: over.ceiling } : {}),
     });
 
   it('runs the prompt in the target workspace and returns its final answer', async () => {
     const target = makeTarget(fixture);
 
     const result = await fixture.kernel.delegate({
-      fromWorkspaceId: fixture.workspace.id,
-      fromTriggeredBy: 'user',
+      fromRunId: originRun(fixture).id,
       target: 'docs',
       prompt: 'summarise the readme',
     });
@@ -852,14 +959,12 @@ describe('delegation', () => {
     makeTarget(fixture);
 
     const first = await fixture.kernel.delegate({
-      fromWorkspaceId: fixture.workspace.id,
-      fromTriggeredBy: 'user',
+      fromRunId: originRun(fixture).id,
       target: 'docs',
       prompt: 'first question',
     });
     const second = await fixture.kernel.delegate({
-      fromWorkspaceId: fixture.workspace.id,
-      fromTriggeredBy: 'user',
+      fromRunId: originRun(fixture).id,
       target: 'docs',
       prompt: 'second question',
     });
@@ -870,8 +975,7 @@ describe('delegation', () => {
   it('refuses delegation to the workspace the run is already in', async () => {
     await expect(
       fixture.kernel.delegate({
-        fromWorkspaceId: fixture.workspace.id,
-        fromTriggeredBy: 'user',
+        fromRunId: originRun(fixture).id,
         target: 'test',
         prompt: 'ask yourself',
       }),
@@ -881,8 +985,7 @@ describe('delegation', () => {
   it('refuses an unknown workspace by name', async () => {
     await expect(
       fixture.kernel.delegate({
-        fromWorkspaceId: fixture.workspace.id,
-        fromTriggeredBy: 'user',
+        fromRunId: originRun(fixture).id,
         target: 'nowhere',
         prompt: 'hello?',
       }),
@@ -903,8 +1006,7 @@ describe('delegation', () => {
       fx.supervisor.hold();
 
       const attempt = fx.kernel.delegate({
-        fromWorkspaceId: fx.workspace.id,
-        fromTriggeredBy: 'user',
+        fromRunId: originRun(fx).id,
         target: 'docs',
         prompt: 'slow question',
       });
@@ -987,8 +1089,7 @@ describe('delegation', () => {
       await fx.kernel.submit({ sessionId: blocker.id, prompt: 'the one running' });
 
       const attempt = fx.kernel.delegate({
-        fromWorkspaceId: fx.workspace.id,
-        fromTriggeredBy: 'user',
+        fromRunId: originRun(fx).id,
         target: 'docs',
         prompt: 'queued behind it',
       });
@@ -1015,13 +1116,50 @@ describe('delegation', () => {
   });
 
   /**
+   * The ceiling is applied *and* recorded, and both halves matter.
+   *
+   * Applied, it bounds this run — that half always worked. Recorded, it bounds
+   * what this run goes on to cause: a gateway run may now consult another
+   * workspace exactly as a run started from the interface can, and the row is
+   * where the cap is read from when it does. A ceiling written nowhere would
+   * have bounded the first hop only.
+   */
+  it('applies the token’s ceiling to the run and records it on the row', async () => {
+    const fx = setup({ settings: { defaultPermissionMode: 'acceptEdits' } });
+    try {
+      const { run } = await fx.kernel.startForToken({
+        workspaceId: fx.workspace.id,
+        prompt: 'what do you know about this?',
+        ceiling: 'dontAsk',
+        label: 'LIA',
+        awaited: false,
+      });
+
+      const stored = fx.runs.get(run.id);
+      expect(stored?.policy.permissionMode).toBe('dontAsk');
+      expect(stored?.ceiling).toBe('dontAsk');
+      expect(stored?.triggeredBy).toBe('api');
+
+      await vi.waitFor(() => expect(fx.finished).toHaveLength(1));
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('records no ceiling on a run a person started, so nothing caps what it asks for', async () => {
+    const run = await fixture.kernel.submit({ sessionId: fixture.newSession().id, prompt: 'hello' });
+
+    expect(fixture.runs.get(run.id)?.ceiling).toBeNull();
+  });
+
+  /**
    * A standing session is the point — an integration's asks build on each
    * other. An unbounded one is the bill: a token used every minute for a year
    * has no natural end, and nobody is watching. Past the ceiling the next call
    * starts a fresh session rather than piling on.
    */
   it('starts a new gateway session once the standing one is full', async () => {
-    const fx = setup({ mcpSessionMaxEvents: 1 });
+    const fx = setup({ standingSessionMaxEvents: 1 });
     try {
       const first = await fx.kernel.startForToken({
         workspaceId: fx.workspace.id,
@@ -1056,7 +1194,7 @@ describe('delegation', () => {
   });
 
   it('reuses the standing session while it still has room', async () => {
-    const fx = setup({ mcpSessionMaxEvents: 10_000 });
+    const fx = setup({ standingSessionMaxEvents: 10_000 });
     try {
       const first = await fx.kernel.startForToken({
         workspaceId: fx.workspace.id,
@@ -1091,12 +1229,106 @@ describe('delegation', () => {
 
     await expect(
       fixture.kernel.delegate({
-        fromWorkspaceId: fixture.workspace.id,
-        fromTriggeredBy: 'delegation',
+        fromRunId: originRun(fixture, { triggeredBy: 'delegation' }).id,
         target: 'docs',
         prompt: 'and now you ask someone else',
       }),
     ).rejects.toThrow(/cannot delegate/i);
+  });
+
+  it('refuses to delegate from a run that does not exist', async () => {
+    // The origin row is where the workspace, the trigger and the ceiling all
+    // come from. Answering "unknown run" beats defaulting any of the three.
+    makeTarget(fixture);
+
+    await expect(
+      fixture.kernel.delegate({ fromRunId: 'run_gone', target: 'docs', prompt: 'hello?' }),
+    ).rejects.toThrow(/no run/i);
+  });
+
+  /**
+   * The ceiling has to survive the hop, or it bounds the first run only.
+   *
+   * A token capped at `dontAsk` reaches a workspace whose own default is
+   * `acceptEdits`: without the cap the delegated run edits files on behalf of a
+   * caller that was explicitly denied that, by the simple expedient of asking
+   * an agent to ask another agent.
+   */
+  it('caps a delegated run by the ceiling the asking run was admitted under', async () => {
+    makeTarget(fixture, 'docs', { defaultPermissionMode: 'acceptEdits' });
+
+    const result = await fixture.kernel.delegate({
+      fromRunId: originRun(fixture, { triggeredBy: 'api', ceiling: 'dontAsk' }).id,
+      target: 'docs',
+      prompt: 'edit the readme',
+    });
+
+    const delegated = fixture.runs.get(result.runId);
+    expect(delegated?.policy.permissionMode).toBe('dontAsk');
+    // And it carries the ceiling onwards, so the bound is a property of the
+    // run rather than of the one call that applied it.
+    expect(delegated?.ceiling).toBe('dontAsk');
+  });
+
+  it('leaves the target’s own mode alone when nothing bounded the asking run', async () => {
+    // The interface path: a person asked, and the target's mode is the
+    // operator's to set. Capping here would be this release's own change
+    // applied where it was never meant to reach.
+    makeTarget(fixture, 'docs', { defaultPermissionMode: 'acceptEdits' });
+
+    const result = await fixture.kernel.delegate({
+      fromRunId: originRun(fixture).id,
+      target: 'docs',
+      prompt: 'edit the readme',
+    });
+
+    expect(fixture.runs.get(result.runId)?.policy.permissionMode).toBe('acceptEdits');
+    expect(fixture.runs.get(result.runId)?.ceiling).toBeNull();
+  });
+
+  it('never widens a target that is already narrower than the ceiling', () => {
+    // `capPermissionMode` takes the lesser of the two; a ceiling is a maximum
+    // and never a grant. Asserted here rather than only in permissions.test.ts
+    // because this is the call site that could hand the arguments over the
+    // wrong way round.
+    expect(capPermissionMode('plan', 'acceptEdits')).toBe('plan');
+    expect(capPermissionMode('acceptEdits', 'dontAsk')).toBe('dontAsk');
+  });
+
+  /**
+   * The standing session of a delegation target used to grow without end.
+   *
+   * `startForToken` and the steward's own `runStart` both rotate theirs past an
+   * event ceiling — "a session nobody closes grows its context every day" — and
+   * this one, written first, only checked whether a run was in flight. Three
+   * copies of one rule, and the copy that mattered most was the one that
+   * accumulates a *second* workspace's context on every ask.
+   */
+  it('starts a new Delegations session once the standing one is full', async () => {
+    const fx = setup({ standingSessionMaxEvents: 1 });
+    try {
+      fx.workspaces.create({
+        name: 'docs', slug: 'docs', description: '',
+        path: '/tmp/metaclaude-docs', color: '#6366f1', icon: 'folder',
+        settings: WorkspaceSettingsSchema.parse({}),
+      });
+
+      const first = await fx.kernel.delegate({
+        fromRunId: originRun(fx).id,
+        target: 'docs',
+        prompt: 'first question',
+      });
+      const second = await fx.kernel.delegate({
+        fromRunId: originRun(fx).id,
+        target: 'docs',
+        prompt: 'second question',
+      });
+
+      expect(second.sessionId).not.toBe(first.sessionId);
+      expect(fx.sessions.get(second.sessionId)?.title).toBe('Delegations');
+    } finally {
+      fx.db.close();
+    }
   });
 });
 
