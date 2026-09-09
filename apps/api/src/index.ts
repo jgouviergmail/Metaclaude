@@ -54,7 +54,12 @@ async function main(): Promise<void> {
     {
       mode: credential.mode,
       source: credential.source,
-      signInEndsAt: credential.cliLogin?.signInEndsAt ?? null,
+      // Two dates, because they answer two questions and reading one for the
+      // other is a mistake this area has made twice. `endsAt` belongs to the
+      // credential actually in force; `cliSignInEndsAt` is the CLI store's,
+      // which may be a sign-in a paired token is standing in front of.
+      endsAt: credential.expiresAt,
+      cliSignInEndsAt: credential.cliLogin?.signInEndsAt ?? null,
     },
     'Claude credential in force',
   );
@@ -65,8 +70,9 @@ async function main(): Promise<void> {
   if (credential.mode === 'none') {
     log.warn(
       'No Claude credential resolved — not in the vault, the environment, or the CLI’s own ' +
-        'store. Pair one from Settings → System, or run `claude setup-token` on a machine where ' +
-        'you are signed in. Agent runs will fail to authenticate until one exists.',
+        'store. Sign in or pair a token from Settings → Server, or run `claude setup-token` on ' +
+        'a machine where you are signed in. Agent runs will fail to authenticate until one ' +
+        'exists.',
     );
   }
 

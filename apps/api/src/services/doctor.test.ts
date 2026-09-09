@@ -31,7 +31,7 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     diskFree: async () => 50 * GB,
     cliVersion: async () => '2.1.246 (Claude Code)',
     reachOut: async () => ({ ok: true, detail: 'HTTP 405 in 12 ms' }),
-    credential: () => ({ mode: 'oauth', signInEndsAt: null }),
+    credential: () => ({ mode: 'oauth', endsAt: null }),
     embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512, state: 'ready', lastError: null, pending: { memories: 0, documents: 0, exemplars: 0 } }),
     knowledgeFileExists: () => true,
     pdfEngine: () => 'poppler-22.12.0',
@@ -311,7 +311,7 @@ describe('escalations', () => {
     const gone = await makeDoctor({ cliVersion: async () => null }).run();
     expect(gone.checks.find((entry) => entry.name === 'claude-cli')?.status).toBe('fail');
 
-    const unauth = await makeDoctor({ credential: () => ({ mode: 'none', signInEndsAt: null }) }).run();
+    const unauth = await makeDoctor({ credential: () => ({ mode: 'none', endsAt: null }) }).run();
     expect(unauth.checks.find((entry) => entry.name === 'claude-cli')?.status).toBe('warn');
   });
 
@@ -577,27 +577,33 @@ describe('the network check', () => {
 describe('the credential check counts the days', () => {
   const DAY = 86_400_000;
 
-  const withCredential = (over: Partial<{ mode: string; signInEndsAt: number | null }>) =>
-    makeDoctor({ credential: () => ({ mode: 'subscription', signInEndsAt: null, ...over }) });
+  const withCredential = (over: Partial<{ mode: string; endsAt: number | null }>) =>
+    makeDoctor({ credential: () => ({ mode: 'subscription', endsAt: null, ...over }) });
 
   const check = async (doctor: ReturnType<typeof makeDoctor>) =>
     (await doctor.run()).checks.find((entry) => entry.name === 'claude-cli')!;
 
   it('stays ok when the sign-in has months left', async () => {
-    const entry = await check(withCredential({ signInEndsAt: NOW + 60 * DAY }));
+    const entry = await check(withCredential({ endsAt: NOW + 60 * DAY }));
     expect(entry.status).toBe('ok');
     expect(entry.detail).toMatch(/subscription/);
   });
 
   it('warns once the end is close, and says how long is left', async () => {
-    const entry = await check(withCredential({ signInEndsAt: NOW + 9 * DAY }));
+    const entry = await check(withCredential({ endsAt: NOW + 9 * DAY }));
     expect(entry.status).toBe('warn');
     expect(entry.summary).toMatch(/9 days/);
-    expect(entry.summary).toMatch(/sign(-| )in/i);
+    // "The credential in use", not "the sign-in": the date handed in is the
+    // end of whatever actually applies, which may be a paired token. Naming
+    // the sign-in there was an alarm about a credential nobody was using —
+    // an owner on a token, with a lapsed sign-in behind it, was told every
+    // run would fail to authenticate while every run worked.
+    expect(entry.summary).toMatch(/credential in use/i);
+    expect(entry.summary).not.toMatch(/sign(-| )in/i);
   });
 
   it('fails once it has passed, because every run will', async () => {
-    const entry = await check(withCredential({ signInEndsAt: NOW - DAY }));
+    const entry = await check(withCredential({ endsAt: NOW - DAY }));
     expect(entry.status).toBe('fail');
   });
 
@@ -607,7 +613,7 @@ describe('the credential check counts the days', () => {
    * would be the boot warning's mistake — an alarm that is always on.
    */
   it('says nothing about a credential whose end it cannot know', async () => {
-    const entry = await check(withCredential({ signInEndsAt: null }));
+    const entry = await check(withCredential({ endsAt: null }));
     expect(entry.status).toBe('ok');
   });
 

@@ -11,6 +11,40 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.88.2] — 2026-09-09
+
+### Fixed
+
+- **The doctor raised the alarm about a credential nobody was using.** Its
+  credential check read the CLI store's sign-in date whatever was actually in
+  force, so an owner running on a paired token — with an old account sign-in
+  sitting expired behind it — was told "every run will fail to authenticate"
+  while every run worked. The same untruth as the countdown fixed two releases
+  ago, from the other side: one reassured about the wrong credential, this one
+  alarmed about it.
+
+  The check now takes the end of whatever applies, which is the field that
+  exists for exactly this and which the credential service already computes.
+  A shadowed sign-in still expires, and the credentials card says so on the
+  line that is about it; that is information, not a fault, and the doctor
+  reports faults.
+
+- **The boot log said "credential in force" over a date that was not.** Same
+  confusion, one layer down: the line logged the CLI store's sign-in end
+  whatever was actually resolved. It now logs both, each named for what it is.
+
+- **The quota panel told an owner to do something the app now does.** Its
+  explanation for a paired token ended "sign the container in to the account",
+  which was the only way when it was written and is a button today. Same sweep,
+  same shape: prose describing a world one release out of date.
+
+- **The boot warning sent an owner to a screen that had moved.** "Pair one from
+  Settings → System" — the machine left that section three releases ago, and
+  nothing checks the destinations inside log messages the way `check.sh` checks
+  the ones in the guide. It now names Settings → Server, and mentions signing
+  in as well as pairing, which is the point of this release.
+
+
 ## [0.88.1] — 2026-09-09
 
 ### Fixed

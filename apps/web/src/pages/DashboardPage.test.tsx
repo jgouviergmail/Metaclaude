@@ -14,6 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
+import { routes, SETTINGS_SECTION_PATHS } from '@metaclaude/shared';
+
 import { DashboardPage } from './DashboardPage';
 
 const { apiMock, auth } = vi.hoisted(() => ({
@@ -362,5 +364,32 @@ describe('the recently-learned digest', () => {
     await waitFor(() =>
       expect(apiMock.insights).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 })),
     );
+  });
+});
+
+/**
+ * The one line on this screen that navigates by name.
+ *
+ * Its `to` is built from `routes.server()`, so it always *resolves* — and it
+ * went on saying "System → Server" for three releases after that screen moved
+ * into Settings, which is the failure an operator reads as a list that lies.
+ * Exactly the trap CLAUDE.md records: moving a screen breaks everything that
+ * pointed at it and nothing tells you.
+ *
+ * Asserting the words alone would just re-record today's answer, so the claim
+ * is derived: whichever section actually owns `/server` is the one the
+ * sentence must name. Move the screen back and this goes red on the same day.
+ */
+describe('the unauthenticated banner points somewhere real', () => {
+  it('names the section that actually owns the server screen', async () => {
+    // The default fixture is already an unauthenticated deployment, which is
+    // what puts this banner on screen.
+    renderWithProviders(<DashboardPage />);
+
+    const link = await screen.findByRole('link', { name: /Server/i });
+    expect(link.getAttribute('href')).toBe(routes.server());
+
+    const inSettings = (SETTINGS_SECTION_PATHS as readonly string[]).includes(routes.server());
+    expect(link.textContent).toMatch(inSettings ? /^Settings/ : /^System/);
   });
 });

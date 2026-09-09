@@ -2,7 +2,7 @@
  * What the machine is doing, as three meters.
  *
  * The same component serves the dashboard, where it answers "is the box
- * coping?", and Settings → System, where it sits beside the version and the
+ * coping?", and Settings → Server, where it sits beside the version and the
  * uptime. One implementation because the two would otherwise drift, and the
  * question they answer is identical.
  *
@@ -24,7 +24,7 @@ import { cn, formatBytes } from '@/lib/utils';
  * Where a usage meter turns from information into a warning.
  *
  * The same figures the doctor uses for disk, so the colour on the dashboard
- * and the verdict in Settings → System cannot disagree.
+ * and the verdict in Settings → Server cannot disagree.
  */
 const WARN_AT = 0.7;
 const DANGER_AT = 0.9;

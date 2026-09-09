@@ -1087,7 +1087,10 @@ export async function createAppContext(
     },
     credential: () => {
       const status = claudeCredentials.status();
-      return { mode: status.mode, signInEndsAt: status.cliLogin?.signInEndsAt ?? null };
+      // The credential *in force*, never the CLI store: a paired token in
+      // front of a lapsed sign-in works perfectly, and reporting the store
+      // told an owner every run was about to fail while none were.
+      return { mode: status.mode, endsAt: status.expiresAt };
     },
     embeddings: () => {
       const status = describeEmbedder(embedder);

@@ -88,8 +88,14 @@ export interface DoctorDeps {
    * The mode alone was not enough. A server running on the CLI's own sign-in
    * reported `ok` and `auth: subscription` — both correct — while the sign-in
    * itself was twenty-four days from a fixed expiry that nothing counted down.
+   *
+   * `endsAt` is the end of whatever is **in force**, not of the CLI's store.
+   * Reading the store meant that an owner running on a paired token, with an
+   * old sign-in sitting expired behind it, was told every run would fail to
+   * authenticate — while every run worked. An alarm about a credential nobody
+   * is using is the same untruth as a countdown on one, from the other side.
    */
-  credential: () => { mode: string; signInEndsAt: number | null };
+  credential: () => { mode: string; endsAt: number | null };
   /**
    * Whether a document's original file is still on disk.
    *
@@ -534,7 +540,7 @@ export class Doctor {
         detail: null,
       };
     }
-    const { mode, signInEndsAt } = this.deps.credential();
+    const { mode, endsAt } = this.deps.credential();
     if (mode === 'none') {
       return {
         name: 'claude-cli',
@@ -553,13 +559,13 @@ export class Doctor {
      * a warning for "unknown" would repeat the boot warning's mistake — an
      * alarm that is always on is an alarm nobody reads.
      */
-    if (signInEndsAt !== null) {
-      const left = signInEndsAt - (this.deps.now?.() ?? Date.now());
+    if (endsAt !== null) {
+      const left = endsAt - (this.deps.now?.() ?? Date.now());
       if (left <= 0) {
         return {
           name: 'claude-cli',
           status: 'fail',
-          summary: 'The Claude sign-in has expired — every run will fail to authenticate.',
+          summary: 'The Claude credential in use has expired — every run will fail to authenticate.',
           detail: `${version} · auth: ${mode}`,
         };
       }
@@ -568,7 +574,7 @@ export class Doctor {
         return {
           name: 'claude-cli',
           status: 'warn',
-          summary: `The Claude sign-in ends in ${days} ${days === 1 ? 'day' : 'days'}; renew it before runs start failing.`,
+          summary: `The Claude credential in use ends in ${days} ${days === 1 ? 'day' : 'days'}; renew it before runs start failing.`,
           detail: `${version} · auth: ${mode}`,
         };
       }

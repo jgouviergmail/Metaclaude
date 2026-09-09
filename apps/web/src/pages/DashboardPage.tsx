@@ -235,7 +235,7 @@ export function DashboardPage() {
               <p className="text-muted">
                 {t('Pair it from')}{' '}
                 <Link to={routes.server()} className={cn('font-medium underline-offset-2', QUIET_LINK)}>
-                  {t('System → Server')}
+                  {t('Settings → Server')}
                 </Link>
                 {t(
                   ': sign in with your Pro or Max plan, paste back one code, done — no shell, no restart. A token from',
