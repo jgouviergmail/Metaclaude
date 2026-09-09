@@ -11,6 +11,8 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.87.1] — 2026-09-09
+
 ### Fixed
 
 - **The quota screen told an owner they were on an API key when they were
