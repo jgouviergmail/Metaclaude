@@ -13,7 +13,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
-import { SystemTabs } from '@/components/layout/SystemTabs';
+import { SettingsTabs } from '@/components/layout/SettingsTabs';
 import { Page, Section } from '@/components/ui/layout';
 import { DoctorReportView } from '@/components/system/DoctorReportView';
 import { ResourceMeters } from '@/components/system/ResourceMeters';
@@ -34,7 +34,7 @@ export function ServerPage() {
   return (
     <AppShell>
       <ContentHeader
-        tabs={<SystemTabs />}
+        tabs={<SettingsTabs />}
         title={t('Server')}
         subtitle={t('What this deployment is running on.')}
       />

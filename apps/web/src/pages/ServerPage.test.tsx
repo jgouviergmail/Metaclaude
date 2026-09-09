@@ -73,12 +73,14 @@ describe('the server screen', () => {
     expect(await screen.findByRole('heading', { name: 'Server', level: 1 })).toBeTruthy();
   });
 
-  it('carries the System strip, not the Settings one', async () => {
-    // The strip is what says which section you are in. Carrying the wrong one
-    // would put the screen in a group that does not list it.
+  it('carries the Settings strip, not the System one', async () => {
+    // The strip is what says which section you are in, and this screen leads
+    // Settings now: what an operator opens Settings for is "how is this
+    // deployment set up", and the machine is the first thing that answers.
+    // Carrying the old strip would put it in a group that no longer lists it.
     renderWithProviders(<ServerPage />, { route: '/server' });
-    expect(await screen.findByRole('navigation', { name: 'System sections' })).toBeTruthy();
-    expect(screen.queryByRole('navigation', { name: 'Settings sections' })).toBeNull();
+    expect(await screen.findByRole('navigation', { name: 'Settings sections' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'System sections' })).toBeNull();
   });
 
   it('shows the deployment’s own facts', async () => {

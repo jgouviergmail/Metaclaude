@@ -13,7 +13,7 @@
  * the saving is gone.
  */
 
-import { routes, SYSTEM_SECTION_PATHS } from '@metaclaude/shared';
+import { SETTINGS_SECTION_PATHS, SYSTEM_SECTION_PATHS } from '@metaclaude/shared';
 
 const owns = (pathname: string, prefix: string): boolean =>
   pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -30,7 +30,14 @@ export function isSystemPath(pathname: string): boolean {
   return SYSTEM_SECTION_PATHS.some((prefix) => owns(pathname, prefix));
 }
 
-/** The Settings section: its groups, and the manual that explains them. */
+/**
+ * The Settings section: the machine, its groups, and the manual.
+ *
+ * From the same shared list as its twin above, rather than from a prefix test.
+ * Two of the three screens are not under `/settings` — the Server screen kept
+ * its own path when it moved into this section, and `/help` never had one — so
+ * a prefix would answer no while the operator stands on them.
+ */
 export function isSettingsPath(pathname: string): boolean {
-  return owns(pathname, routes.settings()) || owns(pathname, routes.help());
+  return SETTINGS_SECTION_PATHS.some((prefix) => owns(pathname, prefix));
 }

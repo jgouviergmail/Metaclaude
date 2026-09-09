@@ -6,7 +6,7 @@ the repository's deployment guide; this page is the view from the interface.
 
 ## Start with the doctor
 
-Before hunting a specific symptom, **System → Server → Doctor → Run checks**
+Before hunting a specific symptom, **Settings → Server → Doctor → Run checks**
 (owner only). It runs every self-check the system knows — database integrity,
 the audit chain, the secrets vault, disk space on both volumes, the age of
 the last completed backup, whether anything can reach the internet from this

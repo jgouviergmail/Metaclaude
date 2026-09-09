@@ -7,7 +7,7 @@ and a trigger.
 
 - **Cron** — a standard five-field expression, for schedules. It is read in
   the **server's timezone**, which the form names beside the field and
-  **System → Server** shows. On a host left at UTC, `0 8 * * *` is ten
+  **Settings → Server** shows. On a host left at UTC, `0 8 * * *` is ten
   o'clock in Paris all summer. Set `TZ` in the server's `.env` (an IANA name such as
   `Europe/Paris`) and every schedule follows that clock, daylight saving
   included.

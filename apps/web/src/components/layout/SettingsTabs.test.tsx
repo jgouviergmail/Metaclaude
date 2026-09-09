@@ -26,10 +26,11 @@ const signIn = (role: 'owner' | 'operator') => {
 beforeEach(() => signIn('owner'));
 
 describe('SettingsTabs', () => {
-  it('lists the six groups in the order they were asked for', () => {
+  it('lists the seven groups in the order they were asked for', () => {
     // Written out rather than derived: a table generated from the same source
     // as the component would agree with any reordering.
     expect(SETTINGS_PATHS.map((entry) => entry.label)).toEqual([
+      'Server',
       'Appearance',
       'Connections',
       'Security',
@@ -100,13 +101,16 @@ describe('what an operator is offered', () => {
     signIn('operator');
     render(<SettingsTabs />, { route: '/settings/appearance' });
     const names = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
-    expect(names).toEqual(['/settings/appearance', '/settings/security', '/help']);
+    // `/server` is not owner-only: an operator may read what the deployment
+    // runs on, exactly as they could when the screen sat in the System strip.
+    // Moving a screen between sections must not quietly change who may see it.
+    expect(names).toEqual(['/server', '/settings/appearance', '/settings/security', '/help']);
   });
 
-  it('offers an owner all six', () => {
+  it('offers an owner all seven', () => {
     signIn('owner');
     render(<SettingsTabs />, { route: '/settings/appearance' });
-    expect(screen.getAllByRole('link')).toHaveLength(6);
+    expect(screen.getAllByRole('link')).toHaveLength(7);
   });
 });
 
@@ -120,7 +124,9 @@ describe('which paths the section owns', () => {
   it('claims nothing that belongs to another section', () => {
     // `/server` is the trap: it was a Settings tab until this change, and a
     // prefix test written carelessly would still answer yes.
-    expect(isSettingsPath('/server')).toBe(false);
+    // `/server` is a Settings screen now, and the predicate is what lights the
+    // rail: without this the operator stands on it with nothing highlighted.
+    expect(isSettingsPath('/server')).toBe(true);
     expect(isSettingsPath('/automations')).toBe(false);
     expect(isSettingsPath('/')).toBe(false);
   });

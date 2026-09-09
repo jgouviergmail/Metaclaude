@@ -48,8 +48,18 @@ export const routes = {
   board: () => '/board',
   /**
    * The machine: version, uptime, resources, the Claude CLI, the doctor, the
-   * updater. It was a tab inside Settings and is a screen of its own now —
-   * nothing there is a preference, and Settings is where preferences live.
+   * updater.
+   *
+   * It has been in three places. A tab inside Settings, then a screen of its
+   * own in System on the reasoning that nothing there is a preference — and
+   * back into Settings, first, on the operator's: what an operator goes to
+   * Settings *for* is "how is this deployment set up", and the machine it runs
+   * on is the first thing that answers. The System strip beside it lists what
+   * the deployment can *do*.
+   *
+   * The path did not change with any of it, and that is deliberate: push
+   * notifications, the onboarding cards and the guide all build this, and a
+   * rename would be a silent break in each.
    */
   server: () => '/server',
   /** The whole shelf, or one workspace's — `kernel.ts` links the second. */
@@ -102,11 +112,15 @@ export const WORKSPACE_PREFIX = '/w/';
 /**
  * The groups Settings is made of, in the order they are shown.
  *
- * Appearance first because it is the one an operator changes on a whim;
- * connections and security next; configuration and the audit log after, as the
- * things you go in for deliberately; help last, because it is not a setting at
- * all — it is the manual, and it lives here so the whole "how is this thing
- * set up and explained" question has one place.
+ * Appearance first among *these* because it is the one an operator changes on
+ * a whim; connections and security next; configuration and the audit log
+ * after, as the things you go in for deliberately; help last, because it is
+ * not a setting at all — it is the manual, and it lives here so the whole "how
+ * is this thing set up and explained" question has one place.
+ *
+ * The Server screen leads the section and is not in this list, because this
+ * list is what `/settings/:section` accepts and that screen kept its own path.
+ * `SETTINGS_SECTION_PATHS` is what says who belongs to the section.
  */
 export const SETTINGS_SECTIONS = [
   'appearance',
@@ -117,6 +131,21 @@ export const SETTINGS_SECTIONS = [
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+/**
+ * The paths the Settings section owns, in the order they are shown.
+ *
+ * The System section's twin, and for the same reason: `lib/sections.ts`
+ * answers "which section owns this path" from a list of paths, without
+ * importing a module full of icons — that pulled 1 kB gzip into the entry
+ * chunk the day it was tried.
+ *
+ * Not all of them are `/settings/*`, and that is the point of having the list
+ * at all: the Server screen kept its own path when it moved here, and `/help`
+ * has always been separate. A predicate that tested the prefix would answer no
+ * to both.
+ */
+export const SETTINGS_SECTION_PATHS = ['/server', '/settings', '/help'] as const;
 
 /**
  * The groups an operator has no business in.
@@ -146,7 +175,6 @@ export function isOwnerOnlySection(section: string): boolean {
  * gzip into the entry chunk the day it was tried.
  */
 export const SYSTEM_SECTION_PATHS = [
-  '/server',
   '/automations',
   '/agents',
   '/plugins',

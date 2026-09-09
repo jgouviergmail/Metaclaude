@@ -11,6 +11,28 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+### Changed
+
+- **The Server screen leads Settings.** It has been in three places: a tab
+  inside Settings, then a screen of its own in the System strip on the
+  reasoning that nothing there is a preference, and now back into Settings as
+  its first entry. What an operator opens Settings *for* is "how is this
+  deployment set up", and the machine it runs on is the first thing that
+  answers; the System strip beside it lists what the deployment can *do*.
+
+  **The path did not change**, and that is what keeps the move cheap: the
+  onboarding cards, the command palette, the Dashboard's pairing link and the
+  push notifications all build `/server` from the shared contract, so every
+  one of them still lands where it meant to. What moved is which strip the
+  screen carries, which rail entry lights up, and where each rail entry sends
+  you — System now opens on Automations, Settings on Server.
+
+  `SETTINGS_SECTION_PATHS` is new and is why the rail can still tell: two of
+  the section's three paths are not under `/settings`, so the prefix test that
+  used to answer this would have said no while the operator stood on the
+  screen. Its twin has existed for the System section since that strip was
+  built.
+
 ### Added
 
 - **The review queue is on the Dashboard, under the digest.** "Recently

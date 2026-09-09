@@ -108,7 +108,7 @@ const NAV: NavEntry[] = [
     // Points at the first screen of the group's own strip. The cog belongs to
     // Settings — it is what everyone means by it — so this takes the stacked
     // boxes: what the deployment is made of.
-    to: routes.server(),
+    to: routes.automations(),
     label: 'System',
     icon: <Boxes />,
     matches: isSystemPath,
@@ -117,7 +117,10 @@ const NAV: NavEntry[] = [
     // Its own screens are routes now, so the entry has to own them the way the
     // System entry owns its five — otherwise the rail highlights nothing on
     // `/settings/security`, and nothing at all on `/help`.
-    to: routes.settingsSection('appearance'),
+    // The first screen of *its* strip too, which is the machine since it moved
+    // here: an entry that lands somewhere the chips say you are not on is the
+    // rail disagreeing with itself.
+    to: routes.server(),
     label: 'Settings',
     icon: <Settings />,
     matches: isSettingsPath,

@@ -22,6 +22,7 @@ import {
   routePattern,
   routes,
   SETTINGS_SECTIONS,
+  SETTINGS_SECTION_PATHS,
   SYSTEM_SECTION_PATHS,
 } from './routes.js';
 
@@ -177,9 +178,8 @@ describe('which groups an operator may not reach', () => {
 });
 
 describe('the system screens', () => {
-  it('names the five, the machine first', () => {
+  it('names the four: what the deployment can do', () => {
     expect([...SYSTEM_SECTION_PATHS]).toEqual([
-      '/server',
       '/automations',
       '/agents',
       '/plugins',
@@ -190,15 +190,45 @@ describe('the system screens', () => {
   it('matches what the route builders produce', () => {
     // The paths are literals here so the list can be read without pulling the
     // builders in; this is the seam that keeps the two spellings equal.
-    expect(SYSTEM_SECTION_PATHS[0]).toBe(routes.server());
-    expect(SYSTEM_SECTION_PATHS[1]).toBe(routes.automations());
-    expect(SYSTEM_SECTION_PATHS[2]).toBe(routes.agents());
-    expect(SYSTEM_SECTION_PATHS[3]).toBe(routes.plugins());
-    expect(SYSTEM_SECTION_PATHS[4]).toBe(routes.analytics());
+    expect(SYSTEM_SECTION_PATHS[0]).toBe(routes.automations());
+    expect(SYSTEM_SECTION_PATHS[1]).toBe(routes.agents());
+    expect(SYSTEM_SECTION_PATHS[2]).toBe(routes.plugins());
+    expect(SYSTEM_SECTION_PATHS[3]).toBe(routes.analytics());
   });
 
-  it('does not list Settings or Help, which belong to the other section', () => {
-    expect(SYSTEM_SECTION_PATHS).not.toContain(routes.settings());
-    expect(SYSTEM_SECTION_PATHS).not.toContain(routes.help());
+  it('does not list what belongs to the other section', () => {
+    for (const path of [routes.settings(), routes.help(), routes.server()]) {
+      expect(SYSTEM_SECTION_PATHS).not.toContain(path);
+    }
+  });
+});
+
+/**
+ * The Settings section's own list, and the reason it is a list of paths.
+ *
+ * Two of its three entries are not under `/settings`: the machine kept its own
+ * path when it moved here from the System strip, and the manual never had one.
+ * A predicate that tested the prefix would answer no while the operator stands
+ * on either, and the rail would light nothing.
+ */
+describe('the settings screens', () => {
+  it('names the machine first, then the groups, then the manual', () => {
+    expect([...SETTINGS_SECTION_PATHS]).toEqual(['/server', '/settings', '/help']);
+  });
+
+  it('matches what the route builders produce', () => {
+    expect(SETTINGS_SECTION_PATHS[0]).toBe(routes.server());
+    expect(SETTINGS_SECTION_PATHS[1]).toBe(routes.settings());
+    expect(SETTINGS_SECTION_PATHS[2]).toBe(routes.help());
+  });
+
+  /**
+   * The two sections may not both claim a path, or the rail lights two entries
+   * at once and neither is wrong.
+   */
+  it('shares nothing with the system section', () => {
+    for (const path of SETTINGS_SECTION_PATHS) {
+      expect(SYSTEM_SECTION_PATHS).not.toContain(path);
+    }
   });
 });

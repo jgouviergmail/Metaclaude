@@ -13,7 +13,8 @@ import { SystemTabs } from './SystemTabs';
 import { AppShell, ContentHeader } from './AppShell';
 
 /** The System screens the rail no longer carries: its strip does. */
-const SECONDARY = ['Server', 'Automations', 'Agents & skills', 'Plugins', 'Analytics'];
+/** The System strip's own screens. `Server` left it for Settings. */
+const SECONDARY = ['Automations', 'Agents & skills', 'Plugins', 'Analytics'];
 
 describe('AppShell navigation', () => {
   it('offers the same six sections in the rail and in the phone tab bar', () => {
@@ -37,7 +38,7 @@ describe('AppShell navigation', () => {
     }
   });
 
-  it('reaches the five System screens from the section itself, not from the rail', () => {
+  it('reaches the four System screens from the section itself, not from the rail', () => {
     // The rail no longer carries them, so the section's own strip has to — and
     // it is the thing that makes them one section rather than five entries.
     renderWithProviders(<SystemTabs />, { route: '/automations' });
@@ -176,8 +177,8 @@ describe('the six sections', () => {
     expect(screen.queryByLabelText('More sections')).toBeNull();
   });
 
-  it('marks System as current on each of its five screens', () => {
-    for (const route of ['/server', '/automations', '/agents', '/plugins', '/analytics']) {
+  it('marks System as current on each of its four screens', () => {
+    for (const route of ['/automations', '/agents', '/plugins', '/analytics']) {
       const { unmount } = renderWithProviders(<AppShell>content</AppShell>, { route });
       const entries = screen.getAllByLabelText('System');
       expect(
@@ -273,18 +274,29 @@ describe('the six sections', () => {
     expect(system.some((el) => el.getAttribute('aria-current') === 'page')).toBe(false);
   });
 
-  it('sends the Settings entry to the first group of its own strip', () => {
+  it('sends each rail entry to the first screen of its own strip', () => {
+    // Not to a screen the strip does not list: the entry and the strip under
+    // it have to agree, or the first thing an operator sees is a page the
+    // chips say they are not on. `/server` moved from System to Settings, and
+    // both entries move with it — one loses its first screen, the other gains
+    // one.
     renderWithProviders(<AppShell>content</AppShell>);
-    const entry = screen.getAllByLabelText('Settings')[0] as HTMLElement;
-    expect(entry.getAttribute('href')).toBe('/settings/appearance');
+
+    const system = screen.getAllByLabelText('System')[0] as HTMLElement;
+    expect(system.getAttribute('href')).toBe('/automations');
+
+    const settings = screen.getAllByLabelText('Settings')[0] as HTMLElement;
+    expect(settings.getAttribute('href')).toBe('/server');
   });
 
-  it('sends the System entry to the first screen of its own strip', () => {
-    // Not to `/settings`, which is no longer in the group and would land the
-    // operator on a screen the strip does not list.
-    renderWithProviders(<AppShell>content</AppShell>);
-    const entry = screen.getAllByLabelText('System')[0] as HTMLElement;
-    expect(entry.getAttribute('href')).toBe('/server');
+  it('marks Settings as current on the screen that moved into it', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { route: '/server' });
+
+    const entries = screen.getAllByLabelText('Settings');
+    expect(entries.some((el) => el.getAttribute('aria-current') === 'page')).toBe(true);
+    expect(
+      screen.getAllByLabelText('System').some((el) => el.getAttribute('aria-current') === 'page'),
+    ).toBe(false);
   });
 });
 

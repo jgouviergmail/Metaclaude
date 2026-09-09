@@ -23,17 +23,16 @@
  * for why these are links and chips rather than tabs and an underline.
  */
 
-import { Activity, Bot, Plug, Server, Timer } from 'lucide-react';
+import { Activity, Bot, Plug, Timer } from 'lucide-react';
 import { SectionTabs, type SectionPath } from './SectionTabs';
 import { useT } from '@/lib/i18n';
 import { routes } from '@metaclaude/shared';
 
 export type SystemPath = SectionPath;
 
-/** The five, in the order they are shown. Exported so the rail can own them. */
+/** The four, in the order they are shown. Exported so the rail can own them. */
 export const SYSTEM_PATHS: readonly SystemPath[] = [
   // First, because "is the box healthy" comes before "what is it doing".
-  { to: routes.server(), label: 'Server', icon: <Server /> },
   { to: routes.automations(), label: 'Automations', icon: <Timer /> },
   { to: routes.agents(), label: 'Agents & skills', icon: <Bot /> },
   { to: routes.plugins(), label: 'Plugins', icon: <Plug /> },

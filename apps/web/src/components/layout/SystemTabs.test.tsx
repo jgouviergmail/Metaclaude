@@ -43,7 +43,6 @@ describe('SystemTabs', () => {
     // notification links to `/automations`, and push notifications carry their
     // own paths. A rename here is a silent break there.
     expect(SYSTEM_PATHS.map((entry) => entry.to)).toEqual([
-      '/server',
       '/automations',
       '/agents',
       '/plugins',
@@ -72,7 +71,9 @@ describe('SystemTabs', () => {
     expect(SYSTEM_PATHS.map((entry) => entry.to)).not.toContain('/help');
     expect(isSystemPath('/settings')).toBe(false);
     expect(isSystemPath('/help')).toBe(false);
-    expect(isSystemPath('/server')).toBe(true);
+    // `/server` left this section for Settings: the machine is something you
+    // go and set up, not one of the capabilities the deployment offers.
+    expect(isSystemPath('/server')).toBe(false);
     expect(isSystemPath('/automations')).toBe(true);
   });
 
