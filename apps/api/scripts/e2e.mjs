@@ -625,6 +625,189 @@ results.section('retrieval');
   }
 }
 
+results.section('the gateway reaches the deployment, not one drawer of it');
+{
+  /*
+   * The release this section exists for, replayed against a real server.
+   *
+   * Measured in production first: an application asked a question through the
+   * gateway whose answer was a pinned note of *another* workspace, and was told
+   * this Metaclaude did not know — the run called no tool at all, because a
+   * gateway run had none that reached outside its own workspace.
+   *
+   * Nothing below can be proved by a unit test. Whether the tools are mounted
+   * and pre-approved is decided by `buildOptions` against real settings; whether
+   * the model then *reaches for them* is decided by the model, and only a live
+   * run answers that.
+   */
+  const { Client: McpClient } = await import('@modelcontextprotocol/sdk/client/index.js');
+  const { StreamableHTTPClientTransport } = await import(
+    '@modelcontextprotocol/sdk/client/streamableHttp.js'
+  );
+
+  const peer = await api.call('/api/workspaces', {
+    method: 'POST',
+    body: { name: 'Voisin', description: 'Le projet voisin : il tient les repères de mesure.' },
+  });
+  const peerId = peer.body.workspace?.id;
+  results.check('a second workspace exists to be consulted', Boolean(peerId));
+
+  const workspaceSlug = (await api.call(`/api/workspaces/${workspaceId}`)).body.workspace?.slug;
+
+  // A note in the token's *own* workspace, for the direct read below.
+  await context.memory.remember({
+    workspaceId,
+    kind: 'semantic',
+    title: 'Le repère de la mesure locale',
+    content: 'Le repère de la mesure locale vaut MARQUEUR-LOCAL-4412.',
+  });
+
+  // The fact, and two neighbours so the lexical arm has a corpus: bm25's IDF is
+  // zero for a term present in one row of two, and clamped on a single row.
+  await context.memory.remember({
+    workspaceId: peerId,
+    kind: 'semantic',
+    title: 'Le repère de la mesure amont',
+    content: 'Le repère de la mesure amont vaut MARQUEUR-VOISIN-7391.',
+  });
+  await context.memory.remember({
+    workspaceId: peerId,
+    kind: 'semantic',
+    title: 'Les horaires du voisin',
+    content: 'Le projet voisin livre ses mesures le mardi matin.',
+  });
+  await context.memory.remember({
+    workspaceId: null,
+    kind: 'procedural',
+    title: 'Convention de citation',
+    content: 'Citer la source de toute affirmation chiffrée.',
+  });
+
+  const minted = await api.call('/api/tokens', {
+    method: 'POST',
+    body: {
+      name: 'e2e outside app',
+      scopes: ['run', 'read'],
+      // The first workspace only. Reaching the neighbour is the workspace's own
+      // business, not the token's — which is the whole point.
+      workspaceIds: [workspaceId],
+      ceiling: 'dontAsk',
+      expiresInDays: 1,
+    },
+  });
+  const secret = minted.body?.secret;
+  results.check('a token is minted for one workspace', typeof secret === 'string' && secret.length > 20);
+
+  const connect = async () => {
+    const client = new McpClient({ name: 'e2e-outside-app', version: '1.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${server.baseUrl}/api/gateway/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${secret}` } },
+      }),
+    );
+    return client;
+  };
+
+  {
+    const client = await connect();
+    const listed = (await client.listTools()).tools.map((tool) => tool.name).sort();
+    results.check(
+      'the gateway offers exactly its six tools',
+      JSON.stringify(listed) ===
+        JSON.stringify(['ask_workspace', 'list_tasks', 'list_workspaces', 'run_status', 'search_notes', 'start_run']),
+      listed.join(', '),
+    );
+
+    // No workspace named: a calling program does not know where a fact is filed
+    // and is not supposed to. This reads the stores directly, so it holds
+    // whether or not a live agent is available.
+    const found = await client.callTool({
+      name: 'search_notes',
+      arguments: { query: 'le repère de la mesure locale' },
+    });
+    const hits = JSON.parse(found.content[0].text);
+    const marker = Array.isArray(hits)
+      ? hits.find((hit) => hit.text?.includes('MARQUEUR-LOCAL-4412'))
+      : null;
+    results.check(
+      'search_notes finds a note without being told which workspace holds it',
+      Boolean(marker),
+      JSON.stringify(hits).slice(0, 300),
+    );
+    results.check(
+      'and says it is a note, from the workspace that holds it',
+      marker?.kind === 'memory' && marker?.workspace === workspaceSlug,
+      JSON.stringify(marker ?? null),
+    );
+
+    /*
+     * And it stops at the grant — the asymmetry worth stating out loud.
+     *
+     * `search_notes` is the *token's* own read, so the workspaces it names plus
+     * the global shelf is exactly its reach. `ask_workspace` is different in
+     * kind: it puts an agent to work inside a granted workspace, and that agent
+     * consults whom that workspace's settings let it consult. So the free path
+     * is narrower than the paid one, deliberately: a capability is bounded by
+     * what it was granted, a worker by where it works.
+     */
+    const beyond = await client.callTool({
+      name: 'search_notes',
+      arguments: { query: 'le repère de la mesure amont' },
+    });
+    const outside = JSON.parse(beyond.content[0].text);
+    results.check(
+      'and reads no further than the token was granted',
+      Array.isArray(outside) && !outside.some((hit) => hit.text?.includes('MARQUEUR-VOISIN-7391')),
+      JSON.stringify(outside).slice(0, 300),
+    );
+    await client.close();
+  }
+
+  if (AGENT_CHECKS_ENABLED) {
+    console.log('  …  asking a gateway run for a fact only another workspace holds');
+    const client = await connect();
+    const started = Date.now();
+    const answered = await client.callTool({
+      name: 'ask_workspace',
+      arguments: {
+        workspace: workspaceId,
+        prompt:
+          'Quel est le repère de la mesure amont ? Il n’est pas dans ton propre espace de travail. ' +
+          'Réponds uniquement avec le repère exact, sans rien inventer.',
+      },
+    });
+    const answer = JSON.parse(answered.content[0].text);
+    results.check(
+      `a gateway run answers from another workspace (${Math.round((Date.now() - started) / 1000)}s)`,
+      typeof answer.text === 'string' && answer.text.includes('MARQUEUR-VOISIN-7391'),
+      JSON.stringify(answer).slice(0, 400),
+    );
+
+    // What it *did*, not only what it said: the point of the release is that the
+    // run had a tool and used it. A right answer with no tool call would mean
+    // the model guessed, and the check would be passing on nothing.
+    const runs = context.runRepo.listRecent({ limit: 20 });
+    const gatewayRun = runs.find((run) => run.id === answer.runId);
+    const calls = gatewayRun
+      ? context.transcriptRepo
+          .byRun(gatewayRun.id)
+          .filter((event) => event.kind === 'tool_call')
+          .map((event) => event.name)
+      : [];
+    const reached = calls.filter(
+      (name) => String(name).includes('search_workspaces') || String(name).includes('delegate'),
+    );
+    results.check(
+      `and it got there by calling a tool rather than by guessing (${reached.join(', ') || 'none'})`,
+      reached.length > 0,
+      calls.join(', ') || 'no tool call',
+    );
+    await client.close();
+  } else {
+    results.skip('a gateway run reaching another workspace', 'no Claude credentials (METACLAUDE_E2E_NO_AGENT)');
+  }
+}
+
 const code = results.finish();
 await server.stop();
 process.exit(code);

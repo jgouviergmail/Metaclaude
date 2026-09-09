@@ -283,6 +283,16 @@ them, because the global shelf is part of what a run there reads. And granting
 `read` now exposes the agent's own notes about a project, not only the
 reference material filed with it.
 
+**`search_notes` stops at the grant; `ask_workspace` does not.** The two are
+different in kind and it is worth knowing which you are using. `search_notes`
+is the token reading for itself, so it reaches the workspaces you named and the
+global shelf, and nothing beyond. `ask_workspace` puts the agent to work inside
+one of those workspaces, and that agent consults whoever *that workspace* is
+allowed to consult — so it can come back with something `search_notes` would
+not have found. The free path is the narrower one, deliberately: a credential
+is bounded by what it was granted, a worker by where it works. If a program
+needs to read a project directly, name that project on the token.
+
 **Behind the door, it works as it does for you.** A token chooses which
 workspace an application may knock at; it does not choose a narrower agent.
 Runs it starts get the same tools a run you start there would get, under the

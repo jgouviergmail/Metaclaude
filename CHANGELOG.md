@@ -61,6 +61,13 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
   It could read every memory in the deployment and no document at all, while
   the interface has offered a library search since the library shipped.
 
+- **`check:e2e` asks a gateway run for a fact only another workspace holds.**
+  No unit test can answer the question that matters here — whether the model
+  *reaches for* the tool — so the check drives a real run through the Claude
+  CLI and then reads the transcript for the call. Measured on a live run: it
+  answered in nine seconds and got there through `search_workspaces`, the free
+  one, rather than by spending a delegation.
+
 ### Fixed
 
 - **The peer directory kept the operator's budget by three characters per

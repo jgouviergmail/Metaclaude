@@ -213,7 +213,10 @@ Three consequences an operator issuing a token has to know:
 - **`search_notes` reads memories as well as documents**, across every
   workspace the token names plus anything filed globally. A token granted
   `read` therefore sees what the agents have written down about those projects,
-  not only the reference material filed with them.
+  not only the reference material filed with them. It reaches no further than
+  the grant, unlike `ask_workspace`: a direct read is bounded by the capability,
+  while a run is bounded by the workspace it runs in. The cheap path is the
+  narrower one, which is the right way round.
 
 **A run's ceiling bounds what that run causes.** Applying it once would have
 bounded the first hop only: a token capped at `dontAsk` could reach a workspace
