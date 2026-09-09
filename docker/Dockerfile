@@ -128,13 +128,6 @@ RUN apt-get update \
       poppler-utils \
  && rm -rf /var/lib/apt/lists/*
 
-# The Claude CLI. Pinned so an upstream change cannot alter agent behaviour
-# without an explicit, reviewable image rebuild.
-ARG CLAUDE_CLI_VERSION=2.1.247
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION} \
- && npm cache clean --force \
- && claude --version
-
 # Run as an unprivileged user. The agent executes model-authored commands, so
 # root in the container would mean root over the mounted volumes.
 RUN groupadd --gid 10001 metaclaude \
@@ -151,6 +144,38 @@ COPY --from=build --chown=metaclaude:metaclaude /app/apps/api/dist ./apps/api/di
 COPY --from=build --chown=metaclaude:metaclaude /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build --chown=metaclaude:metaclaude /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build --chown=metaclaude:metaclaude /app/apps/web/dist ./web
+
+# One Claude CLI, and it is the one that runs the work.
+#
+# The image used to carry two. `npm install -g @anthropic-ai/claude-code` at a
+# version pinned in an ARG here, plus the binary the Agent SDK vendors for the
+# build platform — and nothing made the two agree. Measured in production:
+# 2.1.247 on the PATH against 2.1.263 under the SDK, in one container. The SDK
+# spawns its own unless `pathToClaudeCodeExecutable` says otherwise and nothing
+# sets it, so every run went through the second while every reading — the
+# credentials card, the doctor, the update badge — measured the first. A version
+# an operator is shown that no run uses is worse than showing none, and the
+# badge was comparing the wrong number against the registry.
+#
+# So the PATH entry becomes a link to the binary the SDK will actually spawn:
+# one version by construction, `docker compose exec app claude setup-token`
+# reaching the same CLI the agent does, and ~240 MB of image back. The pin
+# moves with `@anthropic-ai/claude-agent-sdk` in pnpm-lock.yaml, which is
+# reviewable in exactly the way the ARG was.
+#
+# Exactly one, or the build fails: a `head -1` over two candidates would pick by
+# directory order and hide the very ambiguity this exists to remove.
+RUN set -eu; \
+    found="$(find node_modules/.pnpm -type f -name claude -path '*claude-agent-sdk-*' | sort)"; \
+    count="$(printf '%s' "$found" | grep -c . || true)"; \
+    if [ "$count" != "1" ]; then \
+      echo "expected exactly one SDK-bundled Claude CLI, found $count:"; \
+      printf '%s\n' "$found"; \
+      exit 1; \
+    fi; \
+    ln -sf "/opt/metaclaude/$found" /usr/local/bin/claude; \
+    claude --version
+
 # The system workspace copies the documentation into itself at boot, so the
 # agent can read how the thing it stewards works. Until now `docs/` was only
 # reached by the web build, one stage up, and the runtime never had it.

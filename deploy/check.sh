@@ -303,20 +303,40 @@ else
   bad "reading the Node pin out of docker/Dockerfile" "the ARG or the FROM line moved"
 fi
 
-# The Claude CLI, which the runtime stage installs globally — the Agent SDK
-# spawns it as a subprocess, so a bad version here is an image that builds
-# nothing and an agent that cannot run.
-CLI_PIN="$(grep -oE '^ARG CLAUDE_CLI_VERSION=[A-Za-z0-9._-]+' "$REPO_ROOT/docker/Dockerfile" | head -1 | cut -d= -f2)"
-if [ -z "$CLI_PIN" ]; then
-  bad "reading CLAUDE_CLI_VERSION out of docker/Dockerfile" "the ARG moved"
+# The Claude CLI, of which the image must carry exactly one.
+#
+# It carried two for months: a globally installed `@anthropic-ai/claude-code`
+# pinned in an ARG, and the binary the Agent SDK vendors. Nothing made them
+# agree and they did not — 2.1.247 on the PATH against 2.1.263 under the SDK,
+# measured in production. The SDK spawns its own, so the second ran every job
+# while the first was what the interface reported. The fix is a link rather
+# than a second install, and these two assertions are what stop the second one
+# coming back: one for the install, one for the link that replaced it.
+if grep -qE '^RUN[[:space:]]+npm[[:space:]]+install[[:space:]]+-g[[:space:]]+@anthropic-ai/claude-code' "$REPO_ROOT/docker/Dockerfile"; then
+  bad "the image installs a second Claude CLI" "the SDK spawns its own; the PATH entry is a link to that one"
 else
-  cli_body="$(curl -sS --max-time 20 "https://registry.npmjs.org/@anthropic-ai/claude-code/${CLI_PIN}" 2>/dev/null || true)"
-  if [ -z "$cli_body" ]; then
-    skip "@anthropic-ai/claude-code@$CLI_PIN" "could not reach the npm registry"
-  elif printf '%s' "$cli_body" | grep -q "\"version\"[[:space:]]*:[[:space:]]*\"${CLI_PIN}\""; then
-    ok "@anthropic-ai/claude-code@$CLI_PIN"
+  ok "the image installs no second Claude CLI"
+fi
+
+if grep -q 'ln -sf "/opt/metaclaude/$found" /usr/local/bin/claude' "$REPO_ROOT/docker/Dockerfile"; then
+  ok "the PATH's claude is the binary the SDK spawns"
+else
+  bad "the PATH's claude is not linked to the SDK's binary"       "an operator's \`docker compose exec app claude\` would reach a different CLI than the agent"
+fi
+
+# And the version that link resolves to is the SDK's, so that is what has to be
+# published — the same claim the ARG check made, moved to where the pin now is.
+SDK_PIN="$(grep -oE "^  '@anthropic-ai/claude-agent-sdk@[0-9][0-9.]*'" "$REPO_ROOT/pnpm-lock.yaml" | head -1 | sed -E "s/.*@([0-9][0-9.]*)'/\1/")"
+if [ -z "$SDK_PIN" ]; then
+  skip "the Agent SDK pin" "could not read it out of pnpm-lock.yaml"
+else
+  sdk_body="$(curl -sS --max-time 20 "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/${SDK_PIN}" 2>/dev/null || true)"
+  if [ -z "$sdk_body" ]; then
+    skip "@anthropic-ai/claude-agent-sdk@$SDK_PIN" "could not reach the npm registry"
+  elif printf '%s' "$sdk_body" | grep -q "\"version\"[[:space:]]*:[[:space:]]*\"${SDK_PIN}\""; then
+    ok "@anthropic-ai/claude-agent-sdk@$SDK_PIN"
   else
-    bad "@anthropic-ai/claude-code@$CLI_PIN is not published" "the runtime stage will fail"
+    bad "@anthropic-ai/claude-agent-sdk@$SDK_PIN is not published" "the install stage will fail"
   fi
 fi
 

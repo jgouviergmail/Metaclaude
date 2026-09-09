@@ -613,9 +613,17 @@ run before the vault key is loaded, so the drain happens on the first boot of th
 new version instead. That upgrade needs `master.key` present — which it must be
 anyway.
 
-The Claude CLI version is pinned in the Dockerfile (`CLAUDE_CLI_VERSION`).
-Bumping it is a deliberate, reviewable change: an upstream CLI update should not
-silently alter how your agent behaves.
+The Claude CLI arrives with `@anthropic-ai/claude-agent-sdk`, pinned in
+`pnpm-lock.yaml`, and `/usr/local/bin/claude` is a link to the binary that SDK
+vendors. Moving it is therefore a deliberate, reviewable change — an upstream
+CLI update should not silently alter how your agent behaves — and it follows
+`docs/SDK-UPGRADE.md`, which exists because the version decides what the
+product can quietly stop doing.
+
+It used to be pinned separately, in a `CLAUDE_CLI_VERSION` build argument that
+installed a second CLI globally. The two drifted apart: 2.1.247 on the PATH
+against 2.1.263 under the SDK, in the same container. Since the SDK spawns its
+own, the second ran every job while the first was what the interface reported.
 
 ### Upgrading past the workspaces-directory move
 

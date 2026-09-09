@@ -2,12 +2,19 @@
  * Whether the Claude CLI this image ships is behind the published one.
  *
  * A reading, never an action, and the distinction is the whole design. The CLI
- * is installed into the image at build time — `npm install -g
- * @anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}` in the Dockerfile — and the
- * container refuses to change it three times over: the process runs as uid
- * 10001, the directory is root-owned, and the filesystem is mounted read-only.
- * All three are deliberate. So there is no honest "update" button to offer;
- * moving the CLI means raising the pin and shipping a Metaclaude release.
+ * arrives with the image: the Agent SDK vendors a binary for the platform, the
+ * Dockerfile links `/usr/local/bin/claude` to it, and the container refuses to
+ * change it three times over — the process runs as uid 10001, the directory is
+ * root-owned, and the filesystem is mounted read-only. All three are
+ * deliberate. So there is no honest "update" button to offer; moving the CLI
+ * means raising `@anthropic-ai/claude-agent-sdk` and shipping a release.
+ *
+ * That link is why this reading is worth anything. The image used to install a
+ * *second* CLI globally at its own pinned version, and the SDK spawns its own
+ * unless told otherwise — so this compared the version of a binary that ran no
+ * work at all against the registry, and reported an update for a CLI nobody
+ * was using. Measured in production before it was fixed: 2.1.247 on the PATH,
+ * 2.1.263 doing the work.
  *
  * What was missing was not the ability to update but the *knowledge* that an
  * update exists: the installed version was visible only in a diagnostics

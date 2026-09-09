@@ -1062,6 +1062,21 @@ restates the code is noise; one that records a decision or a trap is not.
   anything if the number leads somewhere; push the empty and let `joinPages` do
   what it is for. `pptx` maps rather than filters and never had this; `pdf`
   splits on the form feed and keeps every page.
+- **The `claude` on the PATH is not the one the SDK spawns.** The Agent SDK
+  vendors a Claude Code binary per platform and runs *that*, unless
+  `pathToClaudeCodeExecutable` says otherwise — and nothing here sets it. The
+  image also installed `@anthropic-ai/claude-code` globally at its own pinned
+  version, so `probeClaudeCli` ran `claude --version` off the PATH and reported
+  a binary that executed no work: measured in production, 2.1.247 on the PATH
+  against 2.1.263 doing every run, in one container. Everything downstream
+  inherited it — the credentials card, the doctor's line, and an update badge
+  comparing the wrong number against the registry. Nothing could see it,
+  because both numbers are real versions of the same product. The image now
+  links the PATH entry to the SDK's binary, `check.sh` refuses a second
+  install, and the rule generalises: **when a dependency vendors an executable,
+  the version worth reporting is the one it spawns, not the one a shell
+  resolves.**
+
 - **A relative-time helper answers one direction, and a deadline is the
   other.** `formatRelative` computes `now - timestamp` and its first branch
   returns "just now" for anything under 45 seconds — which is every negative

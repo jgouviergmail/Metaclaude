@@ -11,6 +11,31 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.89.2] — 2026-09-09
+
+### Fixed
+
+- **The image carried two Claude CLIs, and reported the one that ran nothing.**
+  Measured in production: 2.1.247 on the PATH, 2.1.263 under the Agent SDK, in
+  the same container. The SDK vendors a binary per platform and spawns *that*
+  unless `pathToClaudeCodeExecutable` says otherwise — nothing sets it — so
+  every run went through the second while the Dockerfile installed the first
+  globally at its own pinned version. Everything that reads a CLI version read
+  the wrong one: the credentials card, the doctor's line, and the update badge,
+  which was comparing a binary nobody used against the registry and announcing
+  a release that would not have changed anything.
+
+  Nothing could see it. Both numbers are real versions of the same product, and
+  no test can spawn a subprocess to find out which one answered.
+
+  `/usr/local/bin/claude` is now a link to the binary the SDK spawns, resolved
+  at build time and refused if there is not exactly one candidate — a `head -1`
+  over two would pick by directory order and hide the ambiguity this removes.
+  One version by construction, `docker compose exec app claude setup-token`
+  reaching the same CLI the agent does, and about 240 MB of image back. Two
+  assertions in `check.sh` stop the second install returning.
+
+
 ## [0.89.1] — 2026-09-09
 
 ### Fixed
