@@ -105,6 +105,49 @@ describe('beginning a pairing attempt', () => {
 });
 
 describe('completing the exchange', () => {
+  /**
+   * The date comes back with the token, and it is the one thing about a paired
+   * token nobody could see before.
+   *
+   * It is read off the *answer* rather than the request: `expires_in` is what
+   * Anthropic granted, `TOKEN_TTL_SECONDS` is what was asked for, and putting
+   * the ask on the screen would be a countdown the credential does not honour.
+   */
+  it('records when the token Anthropic granted actually runs out', async () => {
+    const { pairing } = build({
+      now: () => 1_000_000,
+      answer: {
+        status: 200,
+        statusText: 'OK',
+        // Not the year that was asked for: a grant is the grantor's to shorten.
+        body: { access_token: TOKEN, expires_in: 3600 },
+      },
+    });
+    const start = pairing.begin('claudeai');
+
+    const status = await pairing.complete(
+      `the-code#${new URL(start.url).searchParams.get('state')}`,
+    );
+
+    expect(status.expiresAt).toBe(1_000_000 + 3600 * 1000);
+  });
+
+  it('falls back to the lifetime it asked for when the answer is silent', async () => {
+    const { pairing } = build({
+      now: () => 1_000_000,
+      answer: { status: 200, statusText: 'OK', body: { access_token: TOKEN } },
+    });
+    const start = pairing.begin('claudeai');
+
+    const status = await pairing.complete(
+      `the-code#${new URL(start.url).searchParams.get('state')}`,
+    );
+
+    // A year, the `setup-token` default — better than null, which the screen
+    // would read as "nothing to watch" for a credential that does expire.
+    expect(status.expiresAt).toBe(1_000_000 + 31_536_000 * 1000);
+  });
+
   it('exchanges the pasted code with the verifier that produced the challenge', async () => {
     const { pairing, calls } = build();
     const start = pairing.begin('claudeai');
@@ -112,7 +155,7 @@ describe('completing the exchange', () => {
 
     const status = await pairing.complete(`the-code#${url.searchParams.get('state')}`);
 
-    expect(status).toEqual({ mode: 'subscription', source: 'stored', hint: '…DDDD', cliLogin: null });
+    expect(status).toMatchObject({ mode: 'subscription', source: 'stored', hint: '…DDDD', cliLogin: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(TOKEN);
 
     expect(calls).toHaveLength(1);

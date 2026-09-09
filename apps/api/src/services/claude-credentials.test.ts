@@ -33,17 +33,106 @@ function build(fromEnvironment: { oauthToken: string | null; apiKey: string | nu
 
 const NOTHING = { oauthToken: null, apiKey: null };
 
+/**
+ * When the credential in force stops working.
+ *
+ * The screen had one date and it was the *sign-in's*, read off the CLI store
+ * whether or not that sign-in was the credential being used. So an owner who
+ * paired a token saw a countdown belonging to a credential the pairing had
+ * just shadowed — and the token they were actually running on, which expires
+ * in a year, was tracked by nothing at all. The date has to follow the
+ * credential in force or it is worse than absent: it is a reassurance about
+ * the wrong thing.
+ */
+describe('when the credential in force runs out', () => {
+  const CLI_LOGIN = {
+    full: true,
+    scopes: ['user:inference', 'user:sessions:claude_code'],
+    subscriptionType: 'max',
+    expiresAt: 1_700_000_000_000,
+    signInEndsAt: 1_800_000_000_000,
+  };
+
+  it('is the sign-in’s end when the sign-in is what applies', () => {
+    const env: Record<string, string> = {};
+    const credentials = new ClaudeCredentials({
+      vault,
+      env,
+      fromEnvironment: NOTHING,
+      cliLogin: () => CLI_LOGIN,
+    });
+
+    expect(credentials.status()).toMatchObject({ source: 'cli-login', expiresAt: 1_800_000_000_000 });
+  });
+
+  it('is the paired token’s own end once a pairing shadows that sign-in', () => {
+    const env: Record<string, string> = {};
+    const credentials = new ClaudeCredentials({
+      vault,
+      env,
+      fromEnvironment: NOTHING,
+      cliLogin: () => CLI_LOGIN,
+    });
+
+    credentials.save(TOKEN, { expiresAt: 1_900_000_000_000 });
+
+    // The sign-in's date is still reported, because the card offers to hand
+    // back to it — but it is no longer the answer to "when does this stop".
+    expect(credentials.status()).toMatchObject({
+      source: 'stored',
+      expiresAt: 1_900_000_000_000,
+      cliLogin: { signInEndsAt: 1_800_000_000_000 },
+    });
+  });
+
+  /**
+   * A token pasted by hand carries no expiry anybody here can read, and the
+   * previous pairing's date must not be attributed to it: a stale date on a
+   * new credential is the reassurance-about-the-wrong-thing defect again, one
+   * turn further on.
+   */
+  it('forgets the date when a token arrives without one', () => {
+    const { credentials } = build(NOTHING);
+    credentials.save(TOKEN, { expiresAt: 1_900_000_000_000 });
+
+    credentials.save(OTHER_TOKEN);
+
+    expect(credentials.status()).toMatchObject({ source: 'stored', expiresAt: null });
+  });
+
+  it('has no date for an API key, which does not expire', () => {
+    const { credentials } = build(NOTHING);
+    credentials.save(API_KEY);
+    expect(credentials.status()).toMatchObject({ mode: 'api_key', expiresAt: null });
+  });
+
+  it('has no date for a token from the environment, minted somewhere else', () => {
+    // A fresh vault: `build` shares the one the suite opens, so a credential
+    // stored by a neighbouring case would still be winning here.
+    const { credentials } = build({ oauthToken: TOKEN, apiKey: null });
+    expect(credentials.status()).toMatchObject({ source: 'environment', expiresAt: null });
+  });
+
+  it('survives a restart, like the token it belongs to', () => {
+    const { credentials } = build(NOTHING);
+    credentials.save(TOKEN, { expiresAt: 1_900_000_000_000 });
+
+    const { credentials: reopened } = build(NOTHING);
+    expect(reopened.status()).toMatchObject({ expiresAt: 1_900_000_000_000 });
+  });
+});
+
 describe('where the credential comes from', () => {
   it('uses the environment when nothing has been paired', () => {
     const { env, credentials } = build({ oauthToken: TOKEN, apiKey: null });
-    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'environment', hint: '…AAAA', cliLogin: null });
+    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'environment', hint: '…AAAA', cliLogin: null, expiresAt: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(TOKEN);
   });
 
   it('prefers a paired credential over the environment', () => {
     const { env, credentials } = build({ oauthToken: TOKEN, apiKey: null });
     credentials.save(OTHER_TOKEN);
-    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…BBBB', cliLogin: null });
+    expect(credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…BBBB', cliLogin: null, expiresAt: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe(OTHER_TOKEN);
   });
 
@@ -57,7 +146,7 @@ describe('where the credential comes from', () => {
 
   it('reports none when there is nothing anywhere', () => {
     const { env, credentials } = build(NOTHING);
-    expect(credentials.status()).toEqual({ mode: 'none', source: null, hint: null, cliLogin: null });
+    expect(credentials.status()).toEqual({ mode: 'none', source: null, hint: null, cliLogin: null, expiresAt: null });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
@@ -67,7 +156,7 @@ describe('where the credential comes from', () => {
     first.credentials.save(TOKEN);
 
     const second = build(NOTHING);
-    expect(second.credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…AAAA', cliLogin: null });
+    expect(second.credentials.status()).toEqual({ mode: 'subscription', source: 'stored', hint: '…AAAA', cliLogin: null, expiresAt: null });
     expect(second.env.CLAUDE_CODE_OAUTH_TOKEN).toBe(TOKEN);
   });
 });
@@ -187,6 +276,8 @@ describe('the CLI’s own sign-in', () => {
       source: 'cli-login',
       hint: null,
       cliLogin: LOGIN,
+      // The sign-in is the credential here, so its end is the date to watch.
+      expiresAt: LOGIN.signInEndsAt,
     });
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();

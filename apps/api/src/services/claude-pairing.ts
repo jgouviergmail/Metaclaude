@@ -63,7 +63,9 @@ export interface PairingExchange {
 }
 
 export interface ClaudePairingDeps {
-  credentials: { save(value: string): ClaudeCredentialStatus };
+  credentials: {
+    save(value: string, options?: { expiresAt?: number | null }): ClaudeCredentialStatus;
+  };
   /** The token-endpoint POST, injectable so tests never touch the network. */
   post?: (url: string, body: Record<string, unknown>) => Promise<PairingExchange>;
   /** Overridable for the wire-format test only. */
@@ -210,9 +212,26 @@ export class ClaudePairing {
       );
     }
 
+    /*
+     * How long it lasts, from the answer rather than from the request.
+     *
+     * `expires_in` is what was *granted*; `TOKEN_TTL_SECONDS` is what was
+     * asked for, and the two are Anthropic's to diverge. Recording the ask
+     * would put a date on the screen that the credential does not honour,
+     * which is the same class of untruth as showing the sign-in's date for a
+     * token — the defect this field exists to end. The request's value is the
+     * fallback only when the answer says nothing.
+     */
+    const grantedSeconds = (answer.body as { expires_in?: unknown } | null)?.expires_in;
+    const seconds = typeof grantedSeconds === 'number' && grantedSeconds > 0
+      ? grantedSeconds
+      : TOKEN_TTL_SECONDS;
+
     // The credential service classifies, seals and applies it — the same
     // path a hand-pasted token takes, so there is exactly one of them.
-    const status = this.deps.credentials.save(token);
+    const status = this.deps.credentials.save(token, {
+      expiresAt: this.now() + seconds * 1000,
+    });
     this.attempt = null;
     this.deps.log?.('info', 'guided pairing completed; the token was sealed in the vault');
     return status;

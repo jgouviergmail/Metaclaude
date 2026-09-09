@@ -267,6 +267,21 @@ export const ClaudeCredentialStatus = z.object({
   hint: z.string().nullable(),
   /** The CLI's own sign-in, whether or not it is what applies. */
   cliLogin: ClaudeCliLoginInfo.nullable().default(null),
+  /**
+   * When the credential *in force* stops working, or null when nothing here
+   * knows.
+   *
+   * It follows the source rather than the CLI store, and that is the whole
+   * point: the screen used to show the sign-in's end whether or not the
+   * sign-in was what applied, so an owner who paired a token watched a
+   * countdown belonging to the credential their pairing had just shadowed —
+   * while the token they were actually running on was tracked by nothing.
+   *
+   * Null is *unknown*, not "never": an API key does not expire, a token
+   * pasted by hand carries no expiry anybody here can read, and a token from
+   * the environment was minted somewhere else.
+   */
+  expiresAt: Millis.nullable().default(null),
 });
 export type ClaudeCredentialStatus = z.infer<typeof ClaudeCredentialStatus>;
 

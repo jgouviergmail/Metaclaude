@@ -42,6 +42,16 @@ import type { Vault } from '../security/vault.js';
 /** Vault slots. Global scope: the credential is the deployment's, not a workspace's. */
 const TOKEN_KEY = 'claude.oauth_token';
 const API_KEY_KEY = 'claude.api_key';
+/**
+ * When the stored subscription token stops working, as millis.
+ *
+ * Beside the token rather than derived from it: an `sk-ant-oat` is opaque, so
+ * the only place its lifetime is ever stated is the token response that minted
+ * it. Written by the guided pairing, which reads it there, and cleared by any
+ * other write — a date from the previous token attributed to the next one
+ * would be a countdown for a credential that is already gone.
+ */
+const TOKEN_EXPIRY_KEY = 'claude.oauth_token_expires_at';
 
 export interface ClaudeCredentialsDeps {
   vault: Vault;
@@ -78,6 +88,14 @@ export class ClaudeCredentials {
     this.apply();
   }
 
+  /** The recorded expiry of the stored token, or null when none was recorded. */
+  private storedExpiry(): number | null {
+    const raw = this.deps.vault.get('global', TOKEN_EXPIRY_KEY);
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   private stored(): { token: string | null; apiKey: string | null } {
     return {
       token: this.deps.vault.get('global', TOKEN_KEY),
@@ -101,11 +119,19 @@ export class ClaudeCredentials {
 
     if (token) {
       this.deps.env.CLAUDE_CODE_OAUTH_TOKEN = token;
-      return { mode: 'subscription', source: 'stored', hint: hint(token), cliLogin };
+      return {
+        mode: 'subscription',
+        source: 'stored',
+        hint: hint(token),
+        cliLogin,
+        expiresAt: this.storedExpiry(),
+      };
     }
     if (apiKey) {
+      // An API key does not expire. Null here is "nothing to watch", which is
+      // the same field saying a different true thing.
       this.deps.env.ANTHROPIC_API_KEY = apiKey;
-      return { mode: 'api_key', source: 'stored', hint: hint(apiKey), cliLogin };
+      return { mode: 'api_key', source: 'stored', hint: hint(apiKey), cliLogin, expiresAt: null };
     }
     if (this.deps.fromEnvironment.oauthToken) {
       this.deps.env.CLAUDE_CODE_OAUTH_TOKEN = this.deps.fromEnvironment.oauthToken;
@@ -114,6 +140,8 @@ export class ClaudeCredentials {
         source: 'environment',
         hint: hint(this.deps.fromEnvironment.oauthToken),
         cliLogin,
+        // Minted elsewhere, so its lifetime was stated elsewhere too.
+        expiresAt: null,
       };
     }
     if (this.deps.fromEnvironment.apiKey) {
@@ -123,15 +151,23 @@ export class ClaudeCredentials {
         source: 'environment',
         hint: hint(this.deps.fromEnvironment.apiKey),
         cliLogin,
+        expiresAt: null,
       };
     }
     if (cliLogin) {
       // Nothing injected, on purpose: the CLI reads its own store exactly
       // when no token variable is set, and setting one would override the
       // sign-in this branch exists to hand over to.
-      return { mode: 'subscription', source: 'cli-login', hint: null, cliLogin };
+      // The sign-in *is* the credential here, so its end is the one to watch.
+      return {
+        mode: 'subscription',
+        source: 'cli-login',
+        hint: null,
+        cliLogin,
+        expiresAt: cliLogin.signInEndsAt,
+      };
     }
-    return { mode: 'none', source: null, hint: null, cliLogin: null };
+    return { mode: 'none', source: null, hint: null, cliLogin: null, expiresAt: null };
   }
 
   status(): ClaudeCredentialStatus {
@@ -145,17 +181,33 @@ export class ClaudeCredentials {
    * pasting into a box should not also have to classify what they pasted, and
    * the two prefixes are unambiguous.
    */
-  save(value: string): ClaudeCredentialStatus {
+  save(
+    value: string,
+    /**
+     * What the flow that minted this token knows about it. Only the guided
+     * pairing does — it reads the lifetime off the token response — and every
+     * other path leaves it absent, which *clears* any date the previous token
+     * had: a countdown belonging to a credential that is gone is worse than no
+     * countdown at all.
+     */
+    options: { expiresAt?: number | null } = {},
+  ): ClaudeCredentialStatus {
     const trimmed = value.trim();
     if (!trimmed) throw new CredentialError('Paste a token first.');
 
     if (looksLikeOauthToken(trimmed)) {
       this.deps.vault.set('global', TOKEN_KEY, trimmed);
       this.deps.vault.delete('global', API_KEY_KEY);
+      if (typeof options.expiresAt === 'number') {
+        this.deps.vault.set('global', TOKEN_EXPIRY_KEY, String(options.expiresAt));
+      } else {
+        this.deps.vault.delete('global', TOKEN_EXPIRY_KEY);
+      }
       this.deps.log?.('info', 'a Claude subscription token was stored from the interface');
     } else if (looksLikeApiKey(trimmed)) {
       this.deps.vault.set('global', API_KEY_KEY, trimmed);
       this.deps.vault.delete('global', TOKEN_KEY);
+      this.deps.vault.delete('global', TOKEN_EXPIRY_KEY);
       this.deps.log?.('info', 'an Anthropic API key was stored from the interface');
     } else {
       throw new CredentialError(
@@ -170,6 +222,7 @@ export class ClaudeCredentials {
   clear(): ClaudeCredentialStatus {
     this.deps.vault.delete('global', TOKEN_KEY);
     this.deps.vault.delete('global', API_KEY_KEY);
+    this.deps.vault.delete('global', TOKEN_EXPIRY_KEY);
     this.deps.log?.('info', 'the stored Claude credential was removed');
     return this.apply();
   }

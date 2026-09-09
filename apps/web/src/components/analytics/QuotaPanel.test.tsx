@@ -69,14 +69,49 @@ describe('QuotaPanel', () => {
     expect(screen.getByTestId('quota-bar-five_hour').className).not.toContain('bg-danger');
   });
 
-  it('says in words when the plan has no windows', () => {
+  /**
+   * Why there are no windows, rather than a guess at why.
+   *
+   * The panel asserted one cause — "this credential is an API key or a
+   * third-party provider" — for a state that has three. Reported from use: an
+   * owner paired a Claude subscription, the panel told them they were on an
+   * API key, and the credential screen two clicks away said the opposite. A
+   * `setup-token` carries `user:inference` and nothing else, so it can run and
+   * cannot read consumption; that is not a billing arrangement, it is a scope.
+   */
+  const noWindows = { windows: [], unavailable: ['rate_limits'], behaviors: null };
+
+  it('names the paired token when that is what is in force', () => {
     render(
       <QuotaPanel
-        usage={usage({ windows: [], unavailable: ['rate_limits'], behaviors: null })}
+        usage={usage(noWindows)}
+        credential={{ mode: 'subscription', source: 'stored' }}
         now={NOW}
       />,
     );
-    expect(screen.getByText(/do not apply/i)).toBeDefined();
+
+    expect(screen.getByText(/paired token/i)).toBeDefined();
+    expect(screen.queryByText(/API key/i)).toBeNull();
+  });
+
+  it('names the API key when that is what is in force', () => {
+    render(
+      <QuotaPanel
+        usage={usage(noWindows)}
+        credential={{ mode: 'api_key', source: 'stored' }}
+        now={NOW}
+      />,
+    );
+
+    expect(screen.getByText(/API key/i)).toBeDefined();
+  });
+
+  it('claims no cause at all when it does not know the credential', () => {
+    // The old text asserted one regardless. Naming the possibilities is the
+    // honest answer to a question the panel cannot settle on its own.
+    render(<QuotaPanel usage={usage(noWindows)} now={NOW} />);
+
+    expect(screen.getByText(/no plan quota windows/i)).toBeDefined();
   });
 
   it('shows the attribution with the CLI’s own caveat', () => {

@@ -11,6 +11,37 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+### Fixed
+
+- **The quota screen told an owner they were on an API key when they were
+  not.** Reported from use, and measured on the deployment: a Claude
+  subscription had just been paired, the panel said "this credential is an API
+  key or a third-party provider", and the credential screen two clicks away
+  said the opposite. One sentence was asserting one cause for a state that has
+  three — and it was the wrong one for the case that actually happens.
+
+  A token from `claude setup-token` asks for `user:inference` and nothing else.
+  It can run work and cannot read consumption, so the CLI reports no plan
+  windows for it. That is a *scope*, not a billing arrangement; the
+  subscription is billed exactly as before. The panel now takes the credential
+  in force and names it — the paired token, the API key — and when it does not
+  know, it says what was observed and names the possibilities rather than
+  picking one.
+
+- **The countdown belonged to a credential that was no longer being used.**
+  The card read the CLI sign-in's end whether or not the sign-in applied, so
+  pairing a token left an owner watching a date about the credential their
+  pairing had just shadowed — while the token they were actually running on,
+  which expires in a year, was tracked by nothing at all. Reassurance about the
+  wrong thing is worse than no date.
+
+  `ClaudeCredentialStatus.expiresAt` is now the end of whatever is in force,
+  and the sentence follows the source: a sign-in is renewed by signing in
+  again, a paired token by pairing again. The date comes from the token
+  response that minted it rather than from the lifetime that was requested —
+  a grant is the grantor's to shorten, and putting the ask on screen would be
+  a countdown the credential does not honour.
+
 ## [0.87.0] — 2026-09-09
 
 ### Changed

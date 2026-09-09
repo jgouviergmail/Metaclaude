@@ -162,6 +162,16 @@ export function AnalyticsPage() {
 
   // The quota read spawns a CLI subprocess server-side (cached a minute
   // there); a long staleTime keeps this page from re-asking on every focus.
+  /*
+   * Which credential is in force, so the quota panel can say why there are no
+   * windows instead of guessing. Cheap — the status is a vault read and a file
+   * stat — and only this screen asks for it here.
+   */
+  const credentialQuery = useQuery({
+    queryKey: ['claude-credential'],
+    queryFn: () => api.claudeCredential.get(),
+  });
+
   const usageQuery = useQuery({
     queryKey: ['claude-usage'],
     queryFn: () => api.claudeUsage(),
@@ -269,7 +279,17 @@ export function AnalyticsPage() {
               {usageQuery.isLoading ? (
                 <Skeleton className="h-24 rounded-xl" />
               ) : usageQuery.data ? (
-                <QuotaPanel usage={usageQuery.data} />
+                <QuotaPanel
+                  usage={usageQuery.data}
+                  {...(credentialQuery.data
+                    ? {
+                        credential: {
+                          mode: credentialQuery.data.mode,
+                          source: credentialQuery.data.source,
+                        },
+                      }
+                    : {})}
+                />
               ) : (
                 <p className="text-caption text-subtle">{t('The quota could not be read.')}</p>
               )}

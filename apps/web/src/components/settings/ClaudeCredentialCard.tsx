@@ -14,7 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type { ClaudePairingStart } from '@metaclaude/shared';
+import type { ClaudeCredentialStatus, ClaudePairingStart } from '@metaclaude/shared';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { CopyableCode } from '@/components/ui/CopyableCode';
 import {
@@ -201,7 +201,10 @@ export function ClaudeCredentialCard() {
             worth a line. It turns urgent only near the end, because a
             permanent warning is furniture.
         */}
-        <SignInEnds endsAt={status.data?.cliLogin?.signInEndsAt ?? null} />
+        <CredentialEnds
+          endsAt={status.data?.expiresAt ?? null}
+          source={status.data?.source ?? null}
+        />
 
         {/* ------------------------- Guided pairing ------------------------- */}
         <div className="space-y-3">
@@ -380,12 +383,32 @@ export function ClaudeCredentialCard() {
  * the two are meant to agree: whichever screen an operator happens to be on,
  * the answer about a credential that is about to lapse is the same one.
  */
-function SignInEnds({ endsAt }: { endsAt: number | null }) {
+/**
+ * When the credential *in force* runs out.
+ *
+ * It read the CLI sign-in's date whatever was actually being used, so an owner
+ * who paired a token watched a countdown belonging to the credential their
+ * pairing had just shadowed — while the token they were running on, which does
+ * expire, was tracked by nothing at all. Reassurance about the wrong thing is
+ * worse than no date.
+ *
+ * The sentence follows the source too: a sign-in is renewed by signing in
+ * again, a paired token by pairing again, and telling an owner to do the wrong
+ * one of those is how a credential lapses with the screen in front of them.
+ */
+function CredentialEnds({
+  endsAt,
+  source,
+}: {
+  endsAt: number | null;
+  source: ClaudeCredentialStatus['source'];
+}) {
   const t = useT();
   if (endsAt === null) return null;
 
   const days = Math.ceil((endsAt - Date.now()) / 86_400_000);
   const urgent = days <= 14;
+  const paired = source === 'stored';
 
   return (
     <p
@@ -395,10 +418,16 @@ function SignInEnds({ endsAt }: { endsAt: number | null }) {
       )}
     >
       {days > 0
-        ? t('This sign-in ends {when} — renew it before then, or pair a token below.', {
-            when: formatRelative(endsAt),
-          })
-        : t('This sign-in has ended. Runs cannot authenticate until you renew it.')}
+        ? paired
+          ? t('This paired token expires {when} — pair again before then.', {
+              when: formatRelative(endsAt),
+            })
+          : t('This sign-in ends {when} — renew it before then, or pair a token below.', {
+              when: formatRelative(endsAt),
+            })
+        : paired
+          ? t('This paired token has expired. Pair again to let runs authenticate.')
+          : t('This sign-in has ended. Runs cannot authenticate until you renew it.')}
     </p>
   );
 }

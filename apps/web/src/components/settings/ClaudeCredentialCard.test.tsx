@@ -221,6 +221,11 @@ describe('the end of a CLI sign-in', () => {
       expiresAt: Date.now() + 3 * 3_600_000,
       signInEndsAt,
     },
+    // The status carries the end of whatever is *in force*, and here the
+    // sign-in is it. Derived rather than typed twice: the server computes this
+    // from the same field, and a fixture that disagreed would be testing a
+    // status the API never sends.
+    expiresAt: signInEndsAt,
   });
 
   it('says when the sign-in ends, so the date is somewhere at all', async () => {
@@ -234,6 +239,30 @@ describe('the end of a CLI sign-in', () => {
     renderWithProviders(<ClaudeCredentialCard />);
     const line = await screen.findByText(/sign-in ends/i);
     expect(line.className).toMatch(/danger|warning/);
+  });
+
+  /**
+   * The date the screen never had.
+   *
+   * A paired token expires too — a year out, and nothing tracked it: the card
+   * showed the *sign-in's* countdown whether or not the sign-in applied, so an
+   * owner who paired watched a number about a credential their pairing had
+   * just shadowed. And the sentence has to name the right remedy: pairing
+   * again, not signing in again.
+   */
+  it('counts down the paired token when that is what is in force', async () => {
+    apiMock.claudeCredential.get.mockResolvedValue({
+      mode: 'subscription' as const,
+      source: 'stored' as const,
+      hint: '…AAAA',
+      cliLogin: null,
+      expiresAt: Date.now() + 300 * DAY,
+    });
+
+    renderWithProviders(<ClaudeCredentialCard />);
+
+    expect(await screen.findByText(/paired token expires/i)).toBeDefined();
+    expect(screen.queryByText(/sign-in ends/i)).toBeNull();
   });
 
   it('says nothing when the end is unknown, rather than guessing', async () => {

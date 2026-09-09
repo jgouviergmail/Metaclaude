@@ -12,7 +12,7 @@
  * devices and claude.ai are invisible to it.
  */
 
-import type { ClaudeUsage } from '@metaclaude/shared';
+import type { ClaudeCredentialStatus, ClaudeUsage } from '@metaclaude/shared';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 
@@ -31,14 +31,56 @@ function tone(utilization: number | null): string {
   return 'bg-accent';
 }
 
-export function QuotaPanel({ usage, now = Date.now() }: { usage: ClaudeUsage; now?: number }) {
+/**
+ * Why there are no windows — named, not guessed.
+ *
+ * The panel used to assert one cause for a state that has three, and it was
+ * the wrong one for the case that actually happens: an owner pairs a Claude
+ * subscription and is told they are on an API key, while the credential screen
+ * two clicks away says the opposite. A `setup-token` asks for
+ * `user:inference` and nothing else, so it can run and cannot read
+ * consumption. That is a scope, not a billing arrangement.
+ *
+ * The credential is passed in rather than inferred here: the usage payload
+ * knows only that the CLI reported no windows, and which credential is in
+ * force is a different question with a different answer.
+ */
+function noWindowsReason(
+  credential: { mode: ClaudeCredentialStatus['mode']; source: ClaudeCredentialStatus['source'] } | undefined,
+  t: ReturnType<typeof useT>,
+): string {
+  if (credential?.mode === 'api_key') {
+    return t(
+      'No plan quota windows here: this is an API key, billed per token rather than against a plan.',
+    );
+  }
+  if (credential?.mode === 'subscription' && credential.source !== 'cli-login') {
+    return t(
+      'No plan quota windows here: a paired token can run work but not read your consumption. Your subscription is billed as usual. Sign the container in to the account to see the windows again.',
+    );
+  }
+  // Unknown, or a sign-in that reported none anyway — say what was observed
+  // and stop, rather than assert a cause this panel cannot settle.
+  return t(
+    'No plan quota windows were reported for this credential — an API key, a third-party provider and a paired token all answer this way.',
+  );
+}
+
+export function QuotaPanel({
+  usage,
+  credential,
+  now = Date.now(),
+}: {
+  usage: ClaudeUsage;
+  /** Which credential is in force, when the screen knows. See `noWindowsReason`. */
+  credential?: { mode: ClaudeCredentialStatus['mode']; source: ClaudeCredentialStatus['source'] };
+  now?: number;
+}) {
   const t = useT();
   if (usage.unavailable.includes('rate_limits')) {
     return (
       <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-caption text-subtle">
-        {t(
-          'Plan quota windows do not apply here — this credential is an API key or a third-party provider, billed per token instead.',
-        )}
+        {noWindowsReason(credential, t)}
       </p>
     );
   }

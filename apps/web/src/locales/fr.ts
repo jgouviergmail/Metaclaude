@@ -1193,6 +1193,11 @@ export const fr: Record<string, string> = {
     'Réactivez-les dans Automatisations une fois la cause corrigée.',
   'Plan quota windows do not apply here — this credential is an API key or a third-party provider, billed per token instead.':
     'Les fenêtres de quota du forfait ne s’appliquent pas ici — cet identifiant est une clé d’API ou un fournisseur tiers, facturé au jeton.',
+  'No plan quota windows here: this is an API key, billed per token rather than against a plan.': 'Pas de fenêtres de quota ici : c’est une clé d’API, facturée au jeton et non sur un forfait.',
+  'No plan quota windows here: a paired token can run work but not read your consumption. Your subscription is billed as usual. Sign the container in to the account to see the windows again.': 'Pas de fenêtres de quota ici : un jeton appairé peut lancer des runs mais pas lire votre consommation. Votre abonnement est facturé normalement. Connectez le conteneur au compte pour revoir les fenêtres.',
+  'No plan quota windows were reported for this credential — an API key, a third-party provider and a paired token all answer this way.': 'Aucune fenêtre de quota n’a été rapportée pour cet identifiant — une clé d’API, un fournisseur tiers et un jeton appairé répondent tous ainsi.',
+  'This paired token expires {when} — pair again before then.': 'Ce jeton appairé expire {when} — refaites un appairage avant.',
+  'This paired token has expired. Pair again to let runs authenticate.': 'Ce jeton appairé a expiré. Refaites un appairage pour que les runs s’authentifient.',
   'The CLI could not report quota here — its usage endpoint is unavailable in this version.':
     'Le CLI n’a pas pu rapporter le quota ici — son point d’accès d’usage est indisponible dans cette version.',
   'Extra usage credits:': 'Crédits d’usage supplémentaires :',
