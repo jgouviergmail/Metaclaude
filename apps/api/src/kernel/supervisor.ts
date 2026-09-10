@@ -119,6 +119,12 @@ export interface RunRequest {
    * Extra system-prompt text that is *stable* for the session: the language
    * directive, the workspace's own conventions, the standing shelf. Anything
    * here rides inside the cached prefix, so it must not change between runs.
+   *
+   * "Stable" is not "frozen", and the difference became load-bearing at SDK
+   * 0.3.267: an operator who changes a workspace's language, pins a memory to
+   * the standing shelf or edits its conventions expects the next run of an
+   * *open* session to see it. That is why `snapshot: false` is passed
+   * explicitly below — see the note there.
    */
   systemPromptAppend: string;
   /**
@@ -1052,6 +1058,33 @@ export class AgentSupervisor {
         type: 'preset',
         preset: 'claude_code',
         ...(promptAppend ? { append: promptAppend } : {}),
+        /*
+         * Render the append fresh on every request, rather than replaying the
+         * one recorded when the conversation opened.
+         *
+         * This default inverted in SDK 0.3.267. Before it, an append turned
+         * recording *off* and was applied on every launch; after it, omitting
+         * `snapshot` records the prompt on the conversation's first request and
+         * every later request and `resume` sends that record as-is — "a
+         * different `append` passed on a later launch of the same session is
+         * ignored until compaction or a new session", in the SDK's own words.
+         *
+         * Measured across the bump with `scripts/sdk-probe.mjs`, which is the
+         * only thing that could see it: `resumeAppend.reappliedOnResume` went
+         * true -> false and `appendCacheCost.prefixRewrittenOnChange` true ->
+         * false. Nothing else moved — the typecheck passed, the narrator's
+         * union guard passed, 4,152 tests passed. The append carries the
+         * language directive, the workspace conventions and the standing
+         * memory shelf, so the silent version of this bump is an operator
+         * changing one of those and watching an open session ignore it.
+         *
+         * The cost the recording exists to avoid is already paid another way:
+         * per-message context lives in `contextPreamble`, on the user message,
+         * precisely so this text does not move between runs. What is left here
+         * changes only when a person changes a setting, which is exactly when
+         * rewriting the prefix is the point.
+         */
+        snapshot: false,
         // Keeps the working directory, the auto-memory path and — the one that
         // matters here — the *git status* out of the cached prefix, re-injected
         // as the first user message instead. An agent that edits files changes

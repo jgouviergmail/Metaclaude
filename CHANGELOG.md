@@ -11,6 +11,45 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.90.0] — 2026-09-10
+
+### Changed
+
+- **The Agent SDK moves to 0.3.267, which brings Claude CLI 2.1.267.** Shipped
+  alone, as `docs/SDK-UPGRADE.md` requires, and measured rather than assumed.
+  The static guards said nothing: the typecheck passed, the narrator's
+  message-union guard passed, and 4,152 tests passed. The probe found three
+  behavioural changes, all of them the same one seen from three angles.
+
+  **The `snapshot` default inverted.** Before, passing an `append` turned
+  recording off and the text was applied fresh on every launch. Now, omitting
+  `snapshot` records the prompt on the conversation's first request and every
+  later request and `resume` replays that record — "a different `append` passed
+  on a later launch of the same session is ignored until compaction or a new
+  session", in the SDK's own words. Metaclaude's append carries the language
+  directive, the workspace conventions and the standing memory shelf, so the
+  silent version of this bump is an operator changing one of those and watching
+  an open session go on ignoring it. Nothing would have failed; the feature
+  would simply have stopped working.
+
+  The decisions, one per measured change:
+
+  | measured | decision |
+  |---|---|
+  | `resumeAppend.reappliedOnResume` true → false | neutralised — `supervisor.ts` now states `snapshot: false` |
+  | `resumeAppend.accumulates` false → true | same cause, same fix |
+  | `appendCacheCost.prefixRewrittenOnChange` true → false | same cause; the prefix cost it saves is already avoided by keeping per-message context in `contextPreamble` |
+
+  Re-measured with the setting stated: `reappliedOnResume` true,
+  `accumulates` false — exactly the previous version's behaviour. The probe
+  gained `resumeAppendUnsnapshotted` so the two are tracked apart from now on;
+  measuring only the default would let a future bump answer for a setting
+  nobody passes.
+
+  Two probes could not run: the quota refusal and the CLI's own fallback need a
+  genuinely spent model. Unknown, not unchanged.
+
+
 ## [0.89.2] — 2026-09-09
 
 ### Fixed

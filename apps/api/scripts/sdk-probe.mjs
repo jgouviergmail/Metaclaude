@@ -262,7 +262,7 @@ async function probeUsageShape(query, cwd) {
  * rather than accumulates. Turns two and three differ only by whether the
  * append moved, so their cache-write figures price exactly that.
  */
-async function probeResumeAppend(query, cwd) {
+async function probeResumeAppend(query, cwd, snapshot) {
   const withMark = (mark) => ({
     cwd,
     model: 'haiku',
@@ -270,6 +270,7 @@ async function probeResumeAppend(query, cwd) {
       type: 'preset',
       preset: 'claude_code',
       append: `Context note: ${mark} is 4711.`,
+      ...(snapshot === undefined ? {} : { snapshot }),
     },
   });
 
@@ -443,6 +444,26 @@ async function main() {
 
   findings.rateLimitsShape = await probeUsageShape(query, freshCwd());
   Object.assign(findings, await probeResumeAppend(query, freshCwd()));
+  /*
+   * The same three turns again, with `snapshot: false` stated.
+   *
+   * The default inverted at 0.3.267: omitting it now records the prompt on the
+   * conversation's first request and replays that record on every resume, so a
+   * changed append is ignored. The measurement above is what the SDK does when
+   * a host says nothing; this one is what Metaclaude relies on, and the two
+   * have to be tracked separately or the next bump silently answers for a
+   * setting nobody passed. `supervisor.ts` states it explicitly for exactly
+   * this reason — the append carries the language directive, the workspace
+   * conventions and the standing shelf, and an operator who changes one of
+   * those expects an open session to see it.
+   */
+  const explicit = await probeResumeAppend(query, freshCwd(), false);
+  findings.resumeAppendUnsnapshotted = {
+    status: explicit.resumeAppend.status,
+    ...(explicit.resumeAppend.reason ? { reason: explicit.resumeAppend.reason } : {}),
+    reappliedOnResume: explicit.resumeAppend.reappliedOnResume,
+    accumulates: explicit.resumeAppend.accumulates,
+  };
   Object.assign(findings, await probeQuota(query, freshCwd));
 
   const report = {
