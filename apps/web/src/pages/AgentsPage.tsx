@@ -717,7 +717,7 @@ interface AgentDraft {
   reach?: ExtensionReach;
 }
 
-const AGENT_MODELS = ['default', 'opus', 'sonnet', 'haiku'] as const;
+const AGENT_MODELS = ['default', 'fable', 'opus', 'sonnet', 'haiku'] as const;
 
 function AgentsTab({
   workspaceId,

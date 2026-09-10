@@ -1,4 +1,5 @@
 import type { RunUsage } from '@metaclaude/shared';
+import { AUTO_MODEL, isAutoModel, ModelAlias, ModelSelector } from '@metaclaude/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../db/index.js';
 import { migrate, openDatabase } from '../db/index.js';
@@ -572,5 +573,32 @@ describe('PolicyLearner', () => {
     expect(learner.list(null)).toEqual([]);
     expect(learner.select(null, 'debug')).toBeNull();
     expect(learner.explain(null, 'debug')).toBe('No runs recorded yet for this kind of task.');
+  });
+});
+/**
+ * Every model the system can *choose* is a model the operator can *pin*.
+ *
+ * `fable` was missing from the alias list while the bandit carried two fable
+ * arms and could serve it on any Auto run — so the learner could reach a model
+ * no picker in the product offered, which is the wrong way round for a system
+ * whose first law is that the operator can read and override every learned
+ * decision. Derived from `DEFAULT_ARMS` rather than written out, so a ninth arm
+ * on a new model fails here on the day it is added.
+ */
+describe('the models an operator can name', () => {
+  it('includes every model the learner has an arm for', () => {
+    for (const arm of DEFAULT_ARMS) {
+      expect(ModelAlias.options).toContain(arm.model);
+    }
+  });
+
+  it('still accepts a pinned id that is not an alias', () => {
+    expect(ModelSelector.safeParse('claude-sonnet-5-20260101').success).toBe(true);
+  });
+
+  it('keeps the sentinel distinct from every real model', () => {
+    expect(ModelAlias.options).toContain(AUTO_MODEL);
+    expect(isAutoModel(AUTO_MODEL)).toBe(true);
+    expect(isAutoModel('fable')).toBe(false);
   });
 });

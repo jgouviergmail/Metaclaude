@@ -4,7 +4,8 @@ Most "AI memory" is a vector store with a `remember()` call bolted on. That is
 storage, not learning. Learning requires a loop: an action, an outcome, and a
 change in future behaviour caused by that outcome.
 
-Metaclaude closes three such loops, each on a different timescale.
+Metaclaude closes four such loops, each on a different timescale — and the
+fourth is the one that changes the *instructions* rather than the context.
 
 ---
 
@@ -626,6 +627,274 @@ skill. It lands in a review queue. Installing it is a click the operator makes.
 
 Auto-installing generated instructions into every future run is exactly the kind
 of unreviewed drift that turns a helpful system into an unpredictable one.
+
+---
+
+## Loop 4 — Revision: are the instructions right?
+
+**Timescale: a week of one workspace's runs.**
+
+The three loops above change what a run is *told* (memory), what serves it (the
+bandit) and what is remembered afterwards (reflexion). None of them has ever
+touched the instructions themselves — a workspace's standing prompt, a skill's
+description, a subagent's prompt, an automation's script. Those are written
+once by the operator and then left alone however often the runs show them to be
+wrong.
+
+Measured on this deployment on 2026-09-10, which is what forced the loop:
+
+| | |
+|---|---|
+| Runs in eight days | 63, of which **0 failed** |
+| Runs the operator rated | **2** |
+| Skills enabled | 5 |
+| Subagents enabled | 5 |
+| Invocations of either, in 173 tool calls | **0** |
+
+Two things follow. "What is not working" is not in `status = 'failed'` — this
+deployment has no failures at all — and the largest single defect on it is that
+ten extensions are carried into every run and never once used. Every enabled
+skill puts its *description* in front of the model on every run of its
+workspace; one that never fires is paid for on every one of them and returns
+nothing.
+
+Nothing could see that, either. `skills.use_count` was displayed on two screens
+and incremented by no code path at all, so it read zero whether a skill was
+working perfectly or had never been opened in its life — the `rewindPoint`
+family of defect, a surface with no source.
+
+### What a run did with what it was given
+
+`run_extension_usages` is the first half and it costs no model call. At the end
+of every run — before anything that can be switched off, because whether a
+skill was opened is a fact rather than an opinion — the kernel folds the
+transcript against the list of extensions that run was *offered*, and writes
+one row per `(run, kind, name)` with `available`, `invoked` and `failed`.
+
+The shape of an invocation on the wire had to be measured, because the SDK does
+not declare it: `ToolInputSchemas` has an entry for every built-in tool except
+`Skill`. Measured twice against Claude Code, once from a harness and once with
+every `CLAUDE_CODE_*` variable stripped — because one observation identifies a
+difference and never its cause:
+
+```
+a skill      Skill  { skill: "probe-widget" }
+a delegation Agent  { description, subagent_type, prompt }
+```
+
+**The delegation tool is `Agent`, and this repository spelled it `Task` in
+three places for four releases**: the permission card's summary, the
+transcript's tool label, and a comment reasoning about which tools only read.
+Nothing failed — the card printed raw JSON where it meant to print a sentence,
+and every delegation ever made went uncounted. `scripts/sdk-probe.mjs` now
+records both names so an SDK bump cannot move them quietly.
+
+Rows are keyed by *name*, not by id, because the name is what the CLI reports
+and what the model chooses between — and because an id does not exist for every
+invocation: a skill shipped by a plugin and a subagent type the CLI ships
+itself are real work no row here owns. Those carry a null id, which is what
+keeps the "offered and never used" query honest, since it joins on the id.
+
+### The window, and what is counted in it
+
+A pass runs at most once a week per workspace, and only where the operator has
+opted in (`improvementAuto`, off by default — an accepted revision is in force
+on the very next run, which is a stronger thing than the advisor's proposals,
+all of which land *disabled*). It reads the runs finished since the last
+completed pass, oldest first, at most forty of them: forty at ~1.8 kB is ~72 kB
+of prompt, and a window is *a period of work* rather than a corpus.
+
+Then, **in code and before any model sees it**, the recurrences are counted:
+
+| Observation | The bar |
+|---|---|
+| an extension offered and never invoked | 12 runs, 2 distinct days |
+| a subagent that fails when used | 3 runs, 2 days, over half its invocations |
+| a tool erroring again and again | 3 runs, 2 days |
+| an automation whose firings fail | 3 runs, 2 days |
+| instructions past 70% of the field's ceiling | — |
+
+Three runs on two days is the whole of "do not over-react", made arithmetic: one
+run is an incident, one day is a busy afternoon. Asking a model to notice that
+something happened three times is asking it to count, which it does
+confidently and unverifiably — the memory gate measured that four rules had to
+sit *after* the model there, and these are the same four in a different key.
+
+**The unused-extension bar is deliberately a blunt count and not a relevance
+test.** The obvious refinement — only count runs the extension was plausibly
+*for*, by cosine between its description and the prompt — was written and then
+rejected. Every floor in `retrieval.ts` is a measurement *of retrieval*, and
+reusing one for a question nobody has measured is how a number comes to mean
+two things; worse, it would mean two different things on two deployments, since
+under the hashing family a cosine carries no meaning at all and a small host
+still ships it. What the blunt rule costs is patience with a skill written for
+a rare job. What it buys is that being indicted means something.
+
+### The arbiter
+
+One tool-less, schema-constrained call on the cheap model, shown: the window,
+the counted facts *as counted facts*, the instruction texts, and the findings
+the operator has already refused. It answers with findings of its own — the
+things code cannot count, "these three runs failed because the calendar was
+down, which no instruction can fix" — and with at most three revisions, each
+naming its target by the **number** it carried in the prompt. The gate's
+`candidate` discipline: a model answering with an index cannot name a target it
+was never shown, while one answering with an id will occasionally invent a
+plausible one, and an invented id is a revision applied to the wrong text.
+
+A text too long to show whole is listed and marked unrevisable. `ARBITER_EXCERPT`
+from the consolidation pass, and with more force: the answer *becomes* the
+surviving text, so judging a long instruction on a prefix folds its tail away
+into a rewrite derived from that prefix, approved by an operator shown the same
+prefix.
+
+### The rules that sit after it
+
+Every one exists because a prompt cannot enforce its own:
+
+- the revision must cite a finding whose runs are **in this window**, and that
+  finding must name at least three of them — an invented citation is the same
+  as no citation;
+- not a finding the operator already refused;
+- not a text shown only in part, nor a field the target does not have;
+- not the text that is already there (trailing whitespace ignored — a model
+  hands back the prompt with a newline on the end often enough to matter);
+- not a *rewrite*: past six lines, no more than two fifths of the larger side
+  may stop being shared. Below six lines a full replacement is allowed and
+  normal — the single most useful edit this pass makes is turning "Reviews
+  migrations." into "Use when reviewing a database migration before it ships",
+  which is a hundred per cent of the text by any measure;
+- one revision per text, three per pass;
+- and, at the service, one *pending* proposal per text and a fortnight's
+  cooldown after a refusal.
+
+### What it produces, and what closes the loop
+
+A row in the advisor's existing inbox, kind `revision`, carrying `before`,
+`after`, a fingerprint of `before`, the unified diff, and the runs behind it as
+links. Applying is refused when the fingerprint no longer matches — the
+consolidation rule, for the consolidation reason. **Nothing else in that inbox
+can be accepted by the steward, and neither can this**: every other kind lands
+*disabled*, so "accepted" is the end of it, while a revision shapes the next
+run of its workspace including runs nobody is watching. Reversible has to be a
+button, and `revert` is it — refused in turn when what stands is no longer what
+the revision wrote, so an operator who has edited since cannot lose that edit
+to something labelled *undo*.
+
+At the following pass, each revision applied *before the oldest run of the new
+window* gets a `followUp`: the same deterministic observation, recomputed, and
+whether the finding it answered came back. It costs no model call. A background
+pass that cannot say whether its own advice worked is one nobody should take
+advice from — and it is the half of "what works and what does not" an operator
+cannot see for themselves, because it needs the same measurement repeated on
+the same terms.
+
+### What it may read, and what that costs
+
+Every text put to the arbiter was capped from the first day; the number of them
+was not, and one row per workspace plus two per enabled skill, two per enabled
+subagent and one per automation is four hundred thousand characters at forty
+skills — about a hundred thousand tokens on top of the window, weekly, per
+workspace, and past the model's context a pass that fails for good. The budget
+is `reviewTargetChars` on the Configuration screen, read per pass so a change
+applies without a restart, and it is spent greedily in list order: descriptions
+are small and nearly always fit, which is the right outcome because a
+description is what this pass most often has something useful to say about. The
+workspace's own instructions are never what is dropped to make room, and the
+prompt says how many texts are not shown so the arbiter does not propose
+creating one that already exists.
+
+### Every pass leaves a row
+
+`revision_reviews`, whether or not anything was proposed — including what the
+rules refused and why, and whether the call died. The `runs.reflected_at`
+lesson applied before it could be learned twice: without it, four outcomes are
+indistinguishable and every one renders as an empty screen — the window was not
+ready, the pass found nothing, the rules dropped everything it found, the model
+call failed. Three of those are correct and one is a defect, and the operator is
+entitled to know which. It is also the cursor: the newest completed row says how
+far the last pass read, so no second table holds a copy of something these rows
+already say. A pass that died does not move it.
+
+### Measured, and how it was nearly got wrong
+
+`scripts/eval-instruction-review.mjs` replays ten labelled windows — two that
+need a revision, eight where the honest answer is *nothing* — through the real
+prompt and the real model. Two prompts, five passes each, on haiku:
+
+| | over-reactions per pass | missed |
+|---|---|---|
+| without the "never used is not by itself a reason" rules | 2, 1, 0, 1, 1 | 1 |
+| with them | 1, 0, 0, 0, 0 | 0 |
+
+The recurring over-reaction — rewriting a description that already stated its
+trigger condition, on four passes of five — disappears; the survivor is a
+different window each time.
+
+Worth recording how that was nearly got wrong. At **three** passes the two
+prompts were indistinguishable, and sabotaging the rules did not move the
+number at all. The tempting conclusion was "the rules do nothing"; the true one
+was "this bench cannot tell yet". Three passes over six windows was simply too
+few to see past the model's own variance. **A measure that reads the same under
+sabotage is a measure to strengthen before it is a result to believe.**
+---
+
+## What each pass runs on
+
+Every loop above ends in a model call, and until 0.92 the model was a constant
+in the source: `haiku` for the five structured passes, the workspace's own
+model for the advisor. That was the right default and the wrong arrangement —
+an operator who wanted better judgement on the weekly instruction review, or
+cheaper reflexion on a chatty deployment, had no way to say so.
+
+Twelve settings now say it, one model and one effort per pass, on the
+Configuration screen and independent of every workspace:
+
+| Pass | What it does | Ships on |
+|---|---|---|
+| Reflexion | reads a finished run's transcript | `haiku` |
+| Memory gate | judges each proposed note | `haiku` |
+| Consolidation | merges overlapping memories | `haiku` |
+| Synthesis | distils a repeated procedure into a skill | `haiku` |
+| Revision | the weekly instruction review | `haiku` |
+| Advisor | the agentic run that comments on a workspace | the workspace's model |
+
+Four properties are worth stating, because each one is a way the obvious
+implementation is wrong.
+
+**The sentinel is `auto`, not `default`.** `default` is the CLI's own alias and
+means "whatever the CLI would pick", which on a subscription is Opus. An
+operator choosing it for the reflexion pass expecting "leave it alone" would
+move every post-run call from Haiku to Opus at roughly thirty times the price,
+with nothing on screen to say so. `auto` is the word the `language` setting
+already uses and it resolves to the phase's shipped default, which each row
+states in plain words rather than leaving the operator to infer it.
+
+**Absence is not `null`.** A pinned value is spread into the request; an
+unpinned one is *omitted*. An absent model lets the call take its own default,
+and an absent effort lets the CLI choose for the model it is serving —
+`effort: null` would be a value the SDK carries. One helper, `pinnedFields`,
+knows this, and every factory spreads it.
+
+**Every pass reads its setting at the moment of the call.** The five call
+contexts are built once, at boot, inside `context.ts`; a captured model would
+need a restart to change, which for a setting about spend is the wrong answer.
+So each factory takes a getter rather than a value, and
+`learning/phase-policy.test.ts` builds each call once and fires it twice with
+the setting moved in between — the only shape of test that can tell the two
+apart. Written the other way round, with the factory rebuilt between firings,
+it passed against a deliberately captured policy.
+
+**An effort has no meaning on a model without the knob.** Haiku has none, and a
+level pinned on it is silently downgraded — measured. So pinning an effort
+alone does nothing until the model is also changed, and the screen says so
+rather than letting the operator believe otherwise.
+
+The same reasoning reaches one row that is not a setting: `revision_reviews`
+records which model judged a window, and that value is read per review from the
+same setting. A captured name would have recorded `haiku` on a window an
+operator had just moved to `fable` — a column that is worse than absent,
+because it reads as an answer.
 
 ---
 

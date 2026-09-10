@@ -17,7 +17,14 @@
  */
 
 import { withLanguage, type ContentLanguage } from './language.js';
-import { extractJson, structuredCall } from './structured-call.js';
+import {
+  extractJson,
+  NO_PHASE_POLICY,
+  pinnedFields,
+  structuredCall,
+  type PhasePolicyReader,
+  type StructuredCallContext,
+} from './structured-call.js';
 import type { Insight, Run, TranscriptEvent } from '@metaclaude/shared';
 import { ReflexionInsightPayload } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
@@ -97,6 +104,35 @@ interface ReflexionOutput {
 // `withLanguage` moved to language.ts when the memory gate arrived; re-exported so callers and tests are undisturbed.
 export { withLanguage } from './language.js';
 
+/** What the reflector calls. Built at boot; reads its policy per call. */
+export type ReflexionCall = (
+  transcript: string,
+  language: ContentLanguage | null,
+) => Promise<ReflexionOutput | null>;
+
+/**
+ * The real call: one tool-less turn on the cheap model, schema-constrained.
+ *
+ * A factory rather than a method so this pass has the shape the other four
+ * have — one place per pass where the model, the prompt and the schema meet,
+ * and one place a test can drive without a database or a run.
+ */
+export function createReflexionCall(
+  context: StructuredCallContext,
+  policy: PhasePolicyReader = NO_PHASE_POLICY,
+): ReflexionCall {
+  return (transcript, language) =>
+    structuredCall<ReflexionOutput>(context, {
+      ...pinnedFields(policy),
+      prompt: transcript,
+      // A plain system prompt, not the claude_code preset: the reflector is
+      // a classifier, not an agent, and the preset would add cost and tools.
+      systemPrompt: withLanguage(SYSTEM_PROMPT, language),
+      schema: REFLEXION_SCHEMA as unknown as Record<string, unknown>,
+      accept: (parsed) => Array.isArray((parsed as ReflexionOutput).lessons),
+    });
+}
+
 const SYSTEM_PROMPT = `You analyse a finished AI coding session and extract knowledge worth remembering.
 
 You will be shown: the user's request, what the assistant did, which tools it used, and how the run ended.
@@ -154,6 +190,15 @@ export interface ReflexionDeps {
    * tools read; absent, every run reflects.
    */
   readOnlyRun?: (run: Run, events: TranscriptEvent[]) => boolean;
+  /**
+   * What serves this pass, read at the moment of the call.
+   *
+   * A getter rather than a value, because the setting is hot and this object
+   * is built once at boot: a captured model would need a restart to change,
+   * which for a setting about spend is the wrong answer. Absent means the
+   * shipped default, which `structuredCall` supplies.
+   */
+  policy?: PhasePolicyReader;
   /** The model call, injectable so `reflect()` can be tested without a CLI. */
   invoke?: (transcript: string, language: ContentLanguage | null) => Promise<ReflexionOutput | null>;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
@@ -409,17 +454,10 @@ export class ReflexionEngine {
     transcript: string,
     language: ContentLanguage | null,
   ): Promise<ReflexionOutput | null> {
-    return structuredCall<ReflexionOutput>(
+    return createReflexionCall(
       { env: this.deps.env, claudeBinPath: this.deps.claudeBinPath, cwd: this.deps.cwd },
-      {
-        prompt: transcript,
-        // A plain system prompt, not the claude_code preset: the reflector is
-        // a classifier, not an agent, and the preset would add cost and tools.
-        systemPrompt: withLanguage(SYSTEM_PROMPT, language),
-        schema: REFLEXION_SCHEMA as unknown as Record<string, unknown>,
-        accept: (parsed) => Array.isArray((parsed as ReflexionOutput).lessons),
-      },
-    );
+      this.deps.policy ?? NO_PHASE_POLICY,
+    )(transcript, language);
   }
 
   /* ---------------------------------------------------------------------- */

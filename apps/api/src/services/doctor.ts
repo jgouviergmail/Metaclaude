@@ -17,6 +17,7 @@ import { REFLEXION_GRACE_MS } from '../learning/reflexion.js';
 import { APP_VERSION } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { DUPLICATE_SCAN_LIMIT } from '../learning/memory.js';
+import { neglectedExtensions } from '../learning/extension-usage.js';
 
 const GB = 1024 ** 3;
 /** Below this, writes are at risk soon; below the floor, now. */
@@ -54,6 +55,19 @@ const DEDUPLICATION_WARN_AT = Math.round(DUPLICATE_SCAN_LIMIT * 0.9);
  * of 1500 characters; a list longer than this competes with itself.
  */
 export const STANDING_WARN_AT = 10;
+
+/**
+ * Runs an extension may be carried into, unused, before the doctor says so.
+ *
+ * Twenty is deliberately blunt and deliberately high: it is a count of runs
+ * that were *offered* the thing, with no notion of whether any of them was a
+ * job it fits. A relevance test would need the sentence-transformer, and the
+ * hashing family — which a small host still ships — cannot answer it at all,
+ * so the check would mean two different things on two deployments. What it
+ * costs is patience: a skill written for a rare job waits longer to be
+ * indicted. What it buys is that being indicted means something.
+ */
+export const NEGLECTED_WARN_AT = 20;
 
 export interface DoctorDeps {
   db: Db;
@@ -200,6 +214,7 @@ export class Doctor {
     await examine('knowledge-files', () => this.knowledgeFiles());
     await examine('memory', () => this.memory());
     await examine('reflexion', () => this.reflexion());
+    await examine('extensions', () => this.extensions());
     await examine('runs', () => this.runs());
     await examine('automations', () => this.automations());
 
@@ -727,6 +742,52 @@ export class Doctor {
     }
 
     return { name: 'memory', status: 'ok', summary, detail: shelves.trim() || null };
+  }
+
+  /**
+   * Skills and subagents this deployment carries into run after run and never
+   * uses.
+   *
+   * Measured on production the day the count became real: five skills and five
+   * subagents enabled, sixty-three runs, and not one invocation of either.
+   * Nothing could tell that from a deployment where they were doing their job,
+   * because `skills.use_count` was written by no code path and subagents had
+   * no counter at all.
+   *
+   * What it costs the operator is not nothing: the CLI reads every enabled
+   * skill's *description* when deciding what to open, so a description that
+   * never triggers is tokens spent on every run of the workspace. The remedy
+   * is to rewrite it as a trigger condition or to switch the thing off, and
+   * both are the operator's to do — which is why this is a warning and not a
+   * silent tidy-up.
+   */
+  private extensions(): DoctorCheck {
+    const neglected = neglectedExtensions(this.deps.db, { minRuns: NEGLECTED_WARN_AT });
+    if (neglected.length === 0) {
+      return {
+        name: 'extensions',
+        status: 'ok',
+        summary: 'Nothing is being carried into runs unused.',
+        detail: null,
+      };
+    }
+
+    const [worst] = neglected as [NonNullable<(typeof neglected)[number]>];
+    const others = neglected.length - 1;
+    return {
+      name: 'extensions',
+      status: 'warn',
+      summary:
+        `${worst.kind === 'skill' ? 'The skill' : 'The subagent'} “${worst.name}” has been offered to ` +
+        `${worst.runs} runs and never once used` +
+        (others > 0 ? `, and ${others} other${others === 1 ? '' : 's'} likewise.` : '.'),
+      detail:
+        'Every enabled skill puts its description in front of the model on every run of its ' +
+        'workspace, and every subagent its own. One that never fires is paying for itself and ' +
+        'returning nothing: rewrite the description as the condition under which to reach for it, ' +
+        'or switch it off under Agents & skills. ' +
+        neglected.map((entry) => `${entry.name} (${entry.kind}, ${entry.runs} runs)`).join(', '),
+    };
   }
 
   private runs(): DoctorCheck {

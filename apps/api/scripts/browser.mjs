@@ -138,6 +138,18 @@ results.section('phone (375×812)');
   await page.waitForTimeout(500);
   results.check('settings fits too', (await overflow()) <= 1);
 
+  // The densest row in the app: a label, two pickers side by side and a line
+  // of provenance, six times over. `/settings` lands on another section, so
+  // the section that carries it has to be asked for by name.
+  await page.goto(`${server.baseUrl}/settings/configuration`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(500);
+  results.check('configuration fits too', (await overflow()) <= 1);
+  results.check(
+    'every learning pass offers a model and an effort',
+    (await page.locator('button[aria-label^="Model for"]').count()) === 6 &&
+      (await page.locator('button[aria-label^="Effort for"]').count()) === 6,
+  );
+
   /*
    * Tap targets, measured by *hit area* rather than by painted box.
    *

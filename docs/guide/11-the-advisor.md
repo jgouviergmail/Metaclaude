@@ -52,6 +52,26 @@ manual button works either way. Every advisor run is pinned to the **Auto**
 permission mode: reads and web research flow, anything high-risk still asks
 — and the run is told plainly that it is an analyst, not an implementer.
 
+## Revisions — the one proposal that changes something at once
+
+A fifth kind reaches the same inbox, and it behaves differently from the four
+above because it creates nothing: a **revision** rewrites a text that is
+already in force. It comes from the weekly instruction review (see *Memory and
+learning*), or from any run you ask to relook at a skill.
+
+Everything else here lands **disabled** — an accepted skill exists and does
+nothing until you enable it — so accepting is nearly free. A revision is in
+force on the very next run of its workspace, including runs nobody is watching.
+Three things follow, and they are the whole design:
+
+- the card **shows the diff**, and the runs it is based on as links, because
+  approving a rewrite you cannot read is the one thing this must never be;
+- Metaclaude may **dismiss** one and may never **accept** one, whatever its
+  permission mode — it will tell you what it thinks and stop;
+- every applied revision keeps **Take it back**, under *revisions in force* on
+  the Dashboard. Undoing is refused if you have edited the text since, so a
+  button labelled *undo* can never cost you your own edit.
+
 ## Not only the advisor
 
 The proposal tools are mounted into **every** run. An agent working an

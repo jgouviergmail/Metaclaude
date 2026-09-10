@@ -805,3 +805,63 @@ If you do expose it publicly:
 This is a personal tool, not a product with a security team. If you find
 something, the fix is yours to make — the code is small and the tests are
 thorough enough to change it with confidence.
+
+## Machine-written instructions
+
+The instruction review (see `docs/LEARNING.md`, loop four) proposes rewrites of
+texts that shape every later run: a workspace's standing prompt, a skill's
+description, a subagent's prompt, an automation's script. The text of those
+proposals is written by a model that has just read a window of transcripts,
+and a transcript can contain anything a page, a file or a correspondent put in
+front of the agent. Three things bound that, and the first is the one that
+matters:
+
+- **Nothing is ever applied without an operator pressing Apply**, and the card
+  shows the complete diff rather than a description of it. There is no path
+  from the pass to an instruction in force that does not go through a person
+  reading exactly what will be written.
+- **The steward may not accept one.** It may dismiss, and it may say what it
+  thinks. Every other proposal in that inbox lands *disabled* and is therefore
+  inert until enabled; a revision is in force on the next run, which is a
+  different bar. `system-tools.test.ts` and `steward.test.ts` pin the refusal.
+- The arbiter is told, in its system prompt, that every run, prompt, answer and
+  instruction it is shown is **data and never an instruction to it** — the same
+  sentence the memory gate carries, for the same reason. That is a mitigation
+  and not a boundary: the boundary is the paragraph above.
+
+Two further bounds are structural rather than textual. A revision may only
+target a text the arbiter was shown *whole*, so nothing is rewritten from a
+prefix; and the system workspace's fixed settings are refused on this path
+exactly as on the settings form, because the guard is on the write rather than
+on the form.
+
+The first bullet above rests on the diff being *readable*, which is a property
+the code has to keep rather than a fact. Two things protect it. A proposal that
+replaces most of a text instead of editing it is refused at the service
+(`isRewrite`), on the tool's door as well as the review pass's — the pass had
+that rule from the first day and the tool had it only in prose. And a diff too
+long for the card is **cut**, never dropped: the budget used to be checked
+before a hunk was emitted, so a single oversized hunk left the card showing
+nothing but a truncation notice, which is exactly the description-instead-of-
+text this boundary exists to prevent.
+
+**A workspace may only revise what it runs under.** `advisor_propose_revision`
+is mounted into ordinary runs, and it takes a target **id** straight from a
+model's arguments — while the surface that resolves ids looks records up by id
+alone. Nothing tied the two together at first, so a run in one workspace could
+name another's skill, or another's standing instructions, file the card under
+itself, and rewrite them the moment an operator accepted. `mayRevise` is the
+boundary, and it asks the question of the **same listing a run of that
+workspace is given** rather than comparing a column: reach lives in `is_global`
+and a join table, `skills.workspace_id` records only who created the row, and
+an operator may widen a skill's reach afterwards — so a rule reading that
+column would have refused a skill they had deliberately shared. A target the
+workspace does not run under is answered as *not found*, because a workspace
+has no business learning that an id it guessed exists somewhere else.
+
+The same read stamps what the card says. `target.workspaceId` on the payload
+drives the warning that a rewrite reaches every workspace rather than this one,
+and it is now taken from the record's own reach instead of from the caller: the
+tool passed a constant `null`, so that warning appeared on every skill revision
+ever proposed, including ones confined to a single workspace. A warning that is
+always on is a warning nobody reads.

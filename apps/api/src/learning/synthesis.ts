@@ -16,6 +16,14 @@ import type { Insight, Memory } from '@metaclaude/shared';
 import { newId } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { toSkillName } from '../services/registry.js';
+import { withLanguage, type ContentLanguage } from './language.js';
+import {
+  NO_PHASE_POLICY,
+  pinnedFields,
+  structuredCall,
+  type PhasePolicyReader,
+  type StructuredCallContext,
+} from './structured-call.js';
 
 export class SynthesisError extends Error {
   constructor(
@@ -74,6 +82,30 @@ export interface SynthesisDeps {
   call: (prompt: string, workspaceId: string) => Promise<SynthesisOutput | null>;
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
   now?: () => number;
+}
+
+/**
+ * The real call: one tool-less turn on the cheap model, schema-constrained.
+ *
+ * Takes the language resolver rather than a language, because the workspace is
+ * only known per call — a skill is prose an operator reads, and one distilled
+ * in English from a French project is one they will not use.
+ */
+export function createSynthesisCall(
+  context: StructuredCallContext,
+  language: (workspaceId: string) => ContentLanguage | null,
+  policy: PhasePolicyReader = NO_PHASE_POLICY,
+): SynthesisDeps['call'] {
+  return (prompt, workspaceId) =>
+    structuredCall<SynthesisOutput>(context, {
+      // Read at the moment of the call: the setting is hot and this closure is
+      // built once at boot.
+      ...pinnedFields(policy),
+      prompt,
+      systemPrompt: withLanguage(SYNTHESIS_SYSTEM_PROMPT, language(workspaceId)),
+      schema: SYNTHESIS_SCHEMA as unknown as Record<string, unknown>,
+      accept: (parsed) => typeof (parsed as SynthesisOutput).worthIt === 'boolean',
+    });
 }
 
 export class SkillSynthesizer {

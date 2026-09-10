@@ -585,6 +585,38 @@ describe('writing, under its own name', () => {
     expect(asked.proposals.get('prop_a')?.decidedBy).toBe('metaclaude:run_steward');
   });
 
+  /**
+   * A revision is the one proposal the steward may refuse and may not accept.
+   *
+   * Ring 2 means "a change a person can undo from the interface in one
+   * gesture", and every other proposal in this inbox earns that by landing
+   * *disabled*: an accepted skill exists and does nothing until someone
+   * enables it. A revision has no such state — the text it rewrites is in
+   * force on the very next run, including runs nobody is watching. Undoing it
+   * is a button, and a button is not the same as inert.
+   *
+   * Dismissing stays open, because dismissing changes nothing.
+   */
+  it('may dismiss a revision and may never accept one', () => {
+    asked.proposals.set('prop_rev', {
+      id: 'prop_rev',
+      workspaceId: projectId,
+      runId: null,
+      kind: 'revision',
+      name: 'workspace:ws:systemPromptAppend',
+      summary: 'Rewrite the instructions',
+      rationale: 'r',
+      payload: {},
+      status: 'pending',
+      createdAt: NOW,
+      decidedAt: null,
+      decidedBy: null,
+    } as never);
+
+    expect(() => steward.proposalDecide(ACTOR, 'prop_rev', 'accept')).toThrow(StewardError);
+    expect(steward.proposalDecide(ACTOR, 'prop_rev', 'dismiss').status).toBe('dismissed');
+  });
+
   it('pauses, creates — disabled unless asked — and fires automations', async () => {
     expect(steward.automationToggle(ACTOR, 'auto_a', false).enabled).toBe(false);
 

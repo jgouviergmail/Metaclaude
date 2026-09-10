@@ -10,6 +10,13 @@ a review checklist, a deploy procedure, a house style. Manage them under
 **Agents & skills**; Metaclaude writes them into the workspace before each
 run, so the CLI discovers them exactly as it would in a terminal.
 
+The **use count** beside a skill is what it says: how many times a run has
+actually opened it. It was displayed and never incremented until 0.91, so it
+read zero everywhere; it is now real, and a skill offered to run after run with
+a count still at zero is the single most common thing the weekly instruction
+review will offer to fix — usually by rewriting the description as a condition
+rather than a summary.
+
 ## Custom agents
 
 A named sub-agent with its own prompt, tool list and optionally its own

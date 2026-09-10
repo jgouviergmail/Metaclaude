@@ -515,6 +515,124 @@ code, and is enforced at propose time and again at accept. A workspace can
 opt into one automatic analysis per day (`advisorAuto`, default off); an
 hourly sweep applies the 24-hour gate per workspace.
 
+## Revising the instructions
+
+`learning/improvement.ts` is the fourth learning loop and the only one that
+changes what a run is *instructed* rather than what it is told. It exists
+because of a measurement: on this deployment, sixty-three runs across eight
+days, no failures at all, two rated by the operator — and ten skills and
+subagents mounted with **zero** invocations between them. The signal worth
+acting on was not in any status column, and nothing could even see it, because
+`skills.use_count` was rendered on two screens and written by no code path.
+
+Three modules, one job each, and the split is the design.
+
+`learning/extension-usage.ts` records what each run was offered and what it
+reached for, at the end of every run and outside every workspace switch — a
+skill being opened is a fact, not an opinion. The wire shape it reads was
+*measured*, twice, because the SDK declares no input type for `Skill` and the
+delegation tool is `Agent` rather than the `Task` this repository named in
+three places for four releases.
+
+`learning/improvement.ts` builds the window (the runs since the last completed
+pass, oldest first, capped at forty) and counts the recurrences in code: three
+runs on two distinct days for most, twelve for an unused extension. The
+unused-extension bar is deliberately blunt and not a relevance test — every
+floor in `retrieval.ts` is a measurement of *retrieval*, and one reused for an
+unmeasured question would mean two different things on two deployments, since
+the hashing family carries no meaning at all.
+
+`collectTargetsWithBudget` decides which instruction texts it is shown. Each
+one was capped from the first day (`TARGET_MAX_CHARS`); the *number* of them
+was not, and one row per workspace plus two per enabled skill, two per enabled
+subagent and one per automation is four hundred thousand characters on a
+deployment with forty skills — roughly a hundred thousand tokens on top of the
+window, weekly, per workspace, and past the model's context a pass that fails
+for good with nothing on screen but a row saying the call died.
+`TARGETS_MAX_CHARS` spends the budget greedily in list order, never dropping
+the workspace's own instructions, and the prompt says how many texts it is not
+showing so the arbiter does not propose creating one that already exists. The
+number is the shipped default of the `reviewTargetChars` runtime setting and is
+read per pass, because what a weekly opinion is worth paying for is a judgement
+that depends on the deployment — and one nobody should have to wait for a
+release to change. The
+budget is applied where the list is *born*, not where the prompt is built,
+because that list is also what a revision's 1-based index is resolved against —
+trimming in one of the two consumers would land a rewrite on the wrong text.
+
+`learning/improvement-arbiter.ts` is the one model call: tool-less, schema
+constrained, shown the window, the counted facts *as counted*, the instruction
+texts and what the operator has already refused. It names targets by the number
+they carried in the prompt — the gate's `candidate` discipline, since an
+invented index is refused where an invented id is a revision applied to the
+wrong text. A text too long to be shown whole is unrevisable, `ARBITER_EXCERPT`
+again and with more force: the answer *becomes* the surviving text.
+
+`learning/improvement-review.ts` holds the rules that sit after the model, and
+they are the memory gate's four in another key: cite a finding whose runs are in
+this window and number at least three; not one already refused; not a text shown
+in part; not the text that is already there; and not a *rewrite* — past six
+lines, no more than two fifths of the larger side may stop being shared. Below
+six lines a full replacement is allowed, because turning "Reviews migrations."
+into a trigger condition is the most useful edit this pass makes and is a
+hundred per cent of the text.
+
+What it produces is a row in `advisor_proposals` of kind `revision`, carrying
+`before`, `after`, a fingerprint and the diff. Applying re-checks the
+fingerprint (the consolidation rule, for the consolidation reason) and writes
+through `learning/revision.ts`, which reads each record and rewrites exactly one
+field of it — `upsertSkill` takes a whole record, so a caller assembling one from
+the payload would silently reset the category, the enabled flag and the reach.
+The steward may dismiss one and may never accept one: ring 2 means "a change a
+person can undo in one gesture", and every other proposal earns that by landing
+*disabled*, while a revision shapes the next run. `revert` is what makes
+"reversible" a button rather than a principle, and is itself refused when what
+stands is no longer what the revision wrote.
+
+`revision_reviews` records every pass, proposed or not, with what the rules
+refused and why — the `runs.reflected_at` lesson applied before it could be
+learned twice — and its newest completed row is the cursor, so no second table
+holds a copy of what these rows already say.
+
+## What each background pass runs on
+
+Five of the six learning passes are one `structuredCall` — tool-less,
+schema-constrained, on a scratch directory. Each now has a factory beside its
+own prompt and schema (`createReflexionCall`, `createGateCall`,
+`createConsolidationCall`, `createSynthesisCall`, `createArbiterCall`), taking
+the call context and a **getter** for what serves it. Two of those factories
+did not exist: the consolidation and synthesis calls were written inline at the
+wiring site, where nothing could drive them without booting a server.
+
+The getter, rather than a value, is the whole point. `context.ts` builds each
+call once at boot and the settings behind them are hot, so a captured model
+would need a restart — which for a setting about spend is the wrong answer.
+`learning/phase-policy.test.ts` builds each call once and fires it twice with
+the setting moved in between, which is the only shape that can tell a getter
+from a capture; written the other way round, rebuilding the factory between
+firings, it passed against a deliberately captured policy.
+
+`structured-call.ts` holds the one piece all five share: `pinnedFields`, which
+spreads a model and an effort **or omits them**. Absence and `null` are
+different answers — an absent model lets the call take `STRUCTURED_DEFAULT_MODEL`,
+an absent effort lets the CLI choose for the model it is serving — and one
+helper knowing that is what keeps five call sites from each deciding again.
+
+The sixth pass, the advisor, is not a structured call at all: it is an ordinary
+agentic run, so its pin rides `submit`'s overrides and deliberately outranks the
+workspace's own default model. That default is what an operator chose for the
+work; this is the machine that comments on it afterwards.
+
+`services/runtime-settings.ts` generates the twelve specs from `LEARNING_PHASES`
+rather than listing them, and exposes `phasePolicyReader(settings, id)` typed by
+`LearningPhaseId`. The table itself lives in `packages/shared/src/settings.ts`,
+a module holding **no Zod schema**: the Configuration screen imports these
+values at runtime, and `api-contracts.ts` — where they started — cannot be
+imported for a value without carrying every request schema declared beside it
+into the bundle. It is deliberately not re-exported from `api-contracts.ts`
+either: two `export *` paths to one name leave a bundler to choose, and the one
+it chooses decides whether the schemas come too.
+
 ## Reading other sessions
 
 `kernel/sessions-tools.ts` is an in-process MCP server mounted into every

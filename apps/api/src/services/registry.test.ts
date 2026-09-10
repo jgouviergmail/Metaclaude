@@ -950,7 +950,27 @@ describe('MCP servers — CRUD', () => {
 
 describe('resolve', () => {
   it('returns an empty context when nothing is registered', () => {
-    expect(registry.resolve(wsA)).toEqual({ mcpServers: {}, agents: {} });
+    expect(registry.resolve(wsA)).toEqual({ mcpServers: {}, agents: {}, skills: [] });
+  });
+
+  /**
+   * The skills a run is offered, from the same query `materialiseSkills`
+   * writes to disk — so what the CLI discovers and what the run is recorded as
+   * having been offered are one answer rather than two that can disagree.
+   * Disabled ones are neither written nor offered, and must not be counted as
+   * having been ignored.
+   */
+  it('offers the enabled skills that reach this workspace, and only those', () => {
+    const on = registry.upsertSkill({ workspaceId: wsA.id, name: 'live-one', description: 'd', body: 'b' });
+    registry.upsertSkill({ workspaceId: wsA.id, name: 'switched-off', description: 'd', body: 'b', enabled: false });
+
+    expect(registry.resolve(wsA).skills).toEqual([{ id: on.id, name: 'live-one' }]);
+  });
+
+  it('does not offer another workspace its neighbour’s skills', () => {
+    registry.upsertSkill({ workspaceId: wsA.id, name: 'only-here', description: 'd', body: 'b' });
+
+    expect(registry.resolve(wsB).skills).toEqual([]);
   });
 
   it('builds a stdio entry with the decrypted environment', () => {

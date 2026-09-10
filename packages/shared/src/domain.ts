@@ -24,8 +24,16 @@ export const Millis = z.number().int().nonnegative();
  * Model aliases understood by the Claude CLI. We deliberately keep aliases
  * rather than pinned ids so a subscription user always lands on the current
  * generation, and we allow an arbitrary string for explicit pinning.
+ *
+ * `fable` was missing here while the learner carried two fable arms and could
+ * serve it on any Auto run — so the bandit could reach a model no picker in
+ * the product offered, and an operator who saw it in Analytics could not ask
+ * for it. That is the wrong way round for a system whose first law is that
+ * every learned decision is readable and overridable. `bandit.test.ts` derives
+ * the check from `DEFAULT_ARMS`, so a ninth arm on a new model fails on the
+ * day it is added rather than at the next time somebody looks.
  */
-export const ModelAlias = z.enum(['default', 'opus', 'sonnet', 'haiku', 'opusplan']);
+export const ModelAlias = z.enum(['default', 'fable', 'opus', 'sonnet', 'haiku', 'opusplan']);
 export type ModelAlias = z.infer<typeof ModelAlias>;
 
 export const ModelSelector = z.union([ModelAlias, z.string().min(1).max(120)]);
@@ -256,6 +264,22 @@ export const WorkspaceSettings = z.object({
    * manual "Ask the advisor" button works either way.
    */
   advisorAuto: z.boolean().default(false),
+  /**
+   * Let Metaclaude review this workspace's own instructions, at most once a
+   * week: a pass that reads what the last window of runs actually did and
+   * proposes rewrites of the workspace's standing instructions, its skills,
+   * its subagents and its automations' prompts. Off by default, and for a
+   * stronger reason than the advisor's — the advisor proposes things that do
+   * not exist yet and land disabled, while a revision rewrites a text that is
+   * in force on the very next run. Every proposal still waits for a person;
+   * this switch decides only whether the question gets asked unprompted.
+   *
+   * The default carries the decision for every row written before the field
+   * existed, the way `delegable` does: settings are reparsed through this
+   * schema on every read, so `false` here is what a live deployment gets, and
+   * an operator who wants it turns it on.
+   */
+  improvementAuto: z.boolean().default(false),
   /**
    * Whether another workspace's agent may consult this one by delegation.
    *
@@ -1866,5 +1890,3 @@ export const MarketplacePlugin = z.object({
   author: z.string().nullable().default(null),
 });
 export type MarketplacePlugin = z.infer<typeof MarketplacePlugin>;
-
-

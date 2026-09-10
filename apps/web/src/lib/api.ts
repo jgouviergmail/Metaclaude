@@ -14,6 +14,7 @@ import type {
 import {
   CSRF_COOKIE,
   type AdvisorProposal,
+  type RevisionReview,
   type AgentDefinitionRecord,
   type ApiTokenRecord,
   type AnalyticsSummary,
@@ -784,8 +785,25 @@ export const api = {
       method: 'POST',
       body: { workspaceId },
     }),
-  advisorProposals: (workspaceId?: string) =>
-    request<{ proposals: AdvisorProposal[] }>(`/api/advisor/proposals${qs({ workspaceId })}`),
+  advisorProposals: (workspaceId?: string, status?: 'pending' | 'accepted' | 'dismissed') =>
+    request<{ proposals: AdvisorProposal[] }>(`/api/advisor/proposals${qs({ workspaceId, status })}`),
+  /**
+   * Put back the text a revision replaced.
+   *
+   * The verb that makes accepting one safe: every other proposal in this inbox
+   * lands *disabled*, while a revision is in force on the next run.
+   */
+  revertAdvisorProposal: (id: string) =>
+    request<{ proposal: AdvisorProposal }>(`/api/advisor/proposals/${id}/revert`, { method: 'POST' }),
+  /** Ask for a review of one workspace's instructions now. */
+  reviewInstructions: (workspaceId: string) =>
+    request<{ started: boolean; reason?: string; runs?: number }>(
+      `/api/workspaces/${workspaceId}/review-instructions`,
+      { method: 'POST' },
+    ),
+  /** What the passes found, including the ones that found nothing. */
+  revisionReviews: (workspaceId: string) =>
+    request<{ reviews: RevisionReview[] }>(`/api/workspaces/${workspaceId}/revision-reviews`),
   acceptAdvisorProposal: (id: string) =>
     request<{ proposal: AdvisorProposal; appliedId: string | null }>(
       `/api/advisor/proposals/${id}/accept`,

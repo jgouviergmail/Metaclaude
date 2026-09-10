@@ -27,6 +27,16 @@
  */
 
 import type { RuntimeSettingKey, RuntimeSettingRecord } from '@metaclaude/shared';
+import {
+  LEARNING_PHASES,
+  SETTING_AUTO,
+  SETTING_EFFORTS,
+  SETTING_MODELS,
+  type EffortLevel,
+  type LearningPhaseId,
+} from '@metaclaude/shared';
+import { STRUCTURED_DEFAULT_MODEL } from '../learning/structured-call.js';
+import { TARGETS_MAX_CHARS } from '../learning/improvement.js';
 import type { Config } from '../config.js';
 import type { Db } from '../db/index.js';
 
@@ -126,6 +136,28 @@ export const RUNTIME_SETTING_SPECS: readonly RuntimeSettingSpec[] = [
     fromConfig: (config) => config.delegationDirectoryChars,
   },
   {
+    /*
+     * What the weekly instruction review may spend on the texts it is shown.
+     *
+     * No environment variable, like the twelve model rows and unlike every
+     * ceiling above it: this is an operator's judgement about spend, made from
+     * the screen, not a deployment's boot configuration. It is read straight
+     * into a model prompt, so the right number depends on how many skills a
+     * deployment carries and what it is willing to pay for a weekly opinion —
+     * which is precisely the kind of thing that must not need a release.
+     *
+     * 0 is meaningful rather than a switch-off: the workspace's own standing
+     * instructions are kept whatever the budget, so 0 reviews those alone.
+     */
+    key: 'reviewTargetChars',
+    kind: 'count',
+    min: 0,
+    max: 400_000,
+    options: [],
+    envVar: null,
+    fromConfig: () => TARGETS_MAX_CHARS,
+  },
+  {
     key: 'logLevel',
     kind: 'choice',
     min: null,
@@ -164,7 +196,88 @@ export const RUNTIME_SETTING_SPECS: readonly RuntimeSettingSpec[] = [
     fromConfig: (config) => config.embeddings.provider,
     applies: true,
   },
+  /*
+   * What serves each background pass.
+   *
+   * Generated from `LEARNING_PHASES` rather than written twelve times: the
+   * settings that exist, the getters the passes read and the rows the screen
+   * draws all have to agree, and three hand-written lists is three chances to
+   * disagree. No environment variable — these are an operator's choice about
+   * spend, made from the screen, not a deployment's boot configuration; the
+   * shipped default lives on the phase table beside the pass it serves.
+   *
+   * Every one is hot. The call contexts are built once at boot, so each pass
+   * reads its model through a getter at the moment of the call; a captured
+   * value would need a restart, which for a setting about cost is the wrong
+   * answer.
+   */
+  ...LEARNING_PHASES.flatMap((phase): RuntimeSettingSpec[] => [
+    {
+      key: phase.modelKey,
+      kind: 'choice',
+      min: null,
+      max: null,
+      options: [...SETTING_MODELS],
+      envVar: null,
+      fromConfig: () => SETTING_AUTO,
+    },
+    {
+      key: phase.effortKey,
+      kind: 'choice',
+      min: null,
+      max: null,
+      options: [...SETTING_EFFORTS],
+      envVar: null,
+      fromConfig: () => SETTING_AUTO,
+    },
+  ]),
 ];
+
+/**
+ * What a phase should be served by, or null for "leave it to the caller".
+ *
+ * One reader for the pair, because a caller that read the model and forgot the
+ * effort would half-apply the operator's choice. `auto` reads as *absence* on
+ * both halves — the `isAutoModel` discipline: ask "did the operator pin one?",
+ * never whether the field is present.
+ */
+export function phasePolicy(
+  settings: Pick<RuntimeSettings, 'choice'>,
+  phase: (typeof LEARNING_PHASES)[number],
+): { model: string | null; effort: EffortLevel | null } {
+  const model = settings.choice(phase.modelKey);
+  const effort = settings.choice(phase.effortKey);
+  return {
+    // `auto` means the phase's shipped default, so it becomes `null` here and
+    // the call omits the field entirely. It is emphatically not `AUTO_MODEL`,
+    // the CLI's own `default` alias, which would move every background call to
+    // Opus — see the note on `SETTING_AUTO`.
+    model: model === SETTING_AUTO ? null : model,
+    effort: effort === SETTING_AUTO ? null : (effort as EffortLevel),
+  };
+}
+
+const PHASE_BY_ID = new Map(LEARNING_PHASES.map((phase) => [phase.id as string, phase]));
+
+/**
+ * The reader a background pass is built with, by phase.
+ *
+ * Typed by `LearningPhaseId`, so a wiring site that names a phase which does
+ * not exist fails to compile rather than silently pinning nothing.
+ */
+export function phasePolicyReader(
+  settings: Pick<RuntimeSettings, 'choice'>,
+  id: LearningPhaseId,
+): () => { model: string | null; effort: EffortLevel | null } {
+  const phase = PHASE_BY_ID.get(id);
+  if (!phase) throw new Error(`Unknown learning phase: ${id}`);
+  return () => phasePolicy(settings, phase);
+}
+
+/** What a phase actually runs on right now, for a row that records it. */
+export function phaseModel(settings: Pick<RuntimeSettings, 'choice'>, id: LearningPhaseId): string {
+  return phasePolicyReader(settings, id)().model ?? STRUCTURED_DEFAULT_MODEL;
+}
 
 const BY_KEY = new Map(RUNTIME_SETTING_SPECS.map((spec) => [spec.key as string, spec]));
 

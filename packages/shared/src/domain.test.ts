@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  AdvisorProposalKind,
   ClaudeCliSession,
   ClaudePairingBeginInput,
   ClaudePairingCodeInput,
@@ -18,14 +19,23 @@ import {
   PasskeyRegisterFinishRequest,
   PatchKnowledgeRequest,
   PushSubscriptionInput,
+  REVISABLE_FIELDS,
+  RevisionField,
+  RevisionPayload,
+  RevisionReview,
+  RevisionTargetKind,
   RewindRequest,
   patchSchema,
   SaveKnowledgeRequest,
   UploadKnowledgeRequest,
 } from './api-contracts.js';
 import {
+  AUTO_MODEL,
   Automation,
   AutomationTrigger,
+  isAutoModel,
+  ModelAlias,
+  ModelSelector,
   declaredSources,
   MarketplaceInput,
   normaliseTags,
@@ -715,5 +725,129 @@ describe('AutomationTrigger — watching people, or watching automations', () =>
     expect(JSON.stringify(parsed)).toBe(
       JSON.stringify({ type: 'event', event: 'run_failed', automations: ['aut_1'] }),
     );
+  });
+});
+
+/**
+ * The revision contract — the fourth loop's proposal.
+ *
+ * Tested here rather than only where it is used, because this is the schema
+ * that decides what may be *submitted*: the edge-schema trap from both sides.
+ * `auth.test.ts` proved recovery codes worked by calling below the route that
+ * rejected them, and a route that re-declared `AutomationPolicy` dropped a
+ * field the browser was faithfully sending. A payload the API refuses is a
+ * feature that does not exist, whatever the pass believes it filed.
+ */
+describe('RevisionPayload', () => {
+  const payload = (over: Record<string, unknown> = {}) => ({
+    target: { kind: 'skill', id: 'skl_1', name: 'review-migrations', workspaceId: null },
+    field: 'description',
+    before: 'old text',
+    after: 'new text',
+    beforeFingerprint: 'abc123',
+    diff: '@@ -1 +1 @@\n-old text\n+new text',
+    rationale: 'It never fires.',
+    ...over,
+  });
+
+  it('accepts a complete proposal and defaults what it does not carry', () => {
+    const parsed = RevisionPayload.parse(payload());
+
+    expect(parsed.evidence).toEqual([]);
+    expect(parsed.findings).toEqual([]);
+    expect(parsed.reviewId).toBeNull();
+    expect(parsed.followUp).toBeNull();
+  });
+
+  it('refuses an empty replacement', () => {
+    expect(RevisionPayload.safeParse(payload({ after: '' })).success).toBe(false);
+  });
+
+  it('refuses a target kind it cannot apply', () => {
+    expect(RevisionPayload.safeParse(payload({ target: { kind: 'plugin', id: 'x', name: 'x', workspaceId: null } })).success).toBe(false);
+  });
+
+  it('refuses a field it does not know', () => {
+    expect(RevisionPayload.safeParse(payload({ field: 'name' })).success).toBe(false);
+  });
+
+  it('refuses a proposal with no fingerprint to check against', () => {
+    expect(RevisionPayload.safeParse(payload({ beforeFingerprint: '' })).success).toBe(false);
+  });
+
+  /**
+   * Every kind names at least one field, and every field it names is one the
+   * enum has. Derived rather than written out, so a fifth target added to the
+   * enum and forgotten here fails on the day it is added — the discipline
+   * `automation-policy.test.ts` was written for.
+   */
+  it('says which fields each target actually has, for every target there is', () => {
+    for (const kind of RevisionTargetKind.options) {
+      const fields = REVISABLE_FIELDS[kind];
+      expect(fields.length).toBeGreaterThan(0);
+      for (const field of fields) {
+        expect(RevisionField.options).toContain(field);
+        expect(RevisionPayload.safeParse(payload({
+          target: { kind, id: 'x', name: 'x', workspaceId: null },
+          field,
+        })).success).toBe(true);
+      }
+    }
+  });
+
+  it('is one of the kinds the inbox carries', () => {
+    expect(AdvisorProposalKind.options).toContain('revision');
+  });
+});
+
+describe('RevisionReview', () => {
+  it('records a pass that found nothing, which is the common answer', () => {
+    const parsed = RevisionReview.parse({
+      id: 'rev_1',
+      workspaceId: 'ws_1',
+      at: 1,
+      windowFrom: 0,
+      windowTo: 1,
+      runsExamined: 12,
+      proposed: 0,
+    });
+
+    expect(parsed).toMatchObject({ observations: [], findings: [], dropped: [], error: null });
+  });
+
+  it('records a pass that could not complete, which is a different fact', () => {
+    const parsed = RevisionReview.parse({
+      id: 'rev_1',
+      workspaceId: 'ws_1',
+      at: 1,
+      windowFrom: 0,
+      windowTo: 1,
+      runsExamined: 12,
+      proposed: 0,
+      error: 'the arbiter answered with nothing usable',
+    });
+
+    expect(parsed.error).toBe('the arbiter answered with nothing usable');
+  });
+});
+
+/**
+ * A pass that rewrites instructions in force is off until somebody says
+ * otherwise, and stays off for every workspace that existed before it did.
+ *
+ * Settings are reparsed through this schema on every read, so the default is
+ * not a convenience — it is what every stored row gets. `delegable` had to be
+ * `true` for that reason and this has to be `false` for the opposite one.
+ */
+describe('the instruction-review opt-in', () => {
+  it('is off unless the operator turns it on', () => {
+    expect(WorkspaceSettings.parse({}).improvementAuto).toBe(false);
+    expect(WorkspaceSettings.parse({ improvementAuto: true }).improvementAuto).toBe(true);
+  });
+
+  it('is not reinstated by a patch that does not name it', () => {
+    const patch = patchSchema(WorkspaceSettings).parse({ language: 'fr' });
+
+    expect('improvementAuto' in patch).toBe(false);
   });
 });

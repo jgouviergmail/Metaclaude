@@ -695,8 +695,28 @@ export class Steward {
     return { id, status };
   }
 
+  /**
+   * Decide a proposal in the inbox — with one exception it may not decide.
+   *
+   * Ring 2 is "what a person can undo from the interface in one gesture", and
+   * every other proposal here earns that by landing *disabled*: an accepted
+   * skill exists and does nothing until somebody enables it. A revision has no
+   * such state. It rewrites an instruction that is in force on the very next
+   * run, including runs nobody is watching, and "there is an undo button" is
+   * not the same promise as "nothing has happened yet". So the steward may
+   * dismiss one — which changes nothing — and never accept one.
+   */
   proposalDecide(actor: StewardActor, id: string, decision: 'accept' | 'dismiss') {
-    if (!this.deps.proposals.get(id)) throw new StewardError(`No proposal is called "${id}".`, 'not-found');
+    const existing = this.deps.proposals.get(id);
+    if (!existing) throw new StewardError(`No proposal is called "${id}".`, 'not-found');
+    if (decision === 'accept' && existing.kind === 'revision') {
+      throw new StewardError(
+        `Accepting a revision puts new instructions in force on the next run, which is the ` +
+          `operator's decision, not yours. Tell them what “${existing.name}” proposes and why you ` +
+          `agree; they accept it from the Dashboard. You may dismiss it.`,
+        'refused',
+      );
+    }
     const username = this.actorName(actor);
     const proposal =
       decision === 'accept' ? this.deps.proposals.accept(id, username).proposal : this.deps.proposals.dismiss(id, username);

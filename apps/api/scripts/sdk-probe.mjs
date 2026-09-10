@@ -33,7 +33,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const args = process.argv.slice(2);
@@ -254,6 +254,103 @@ async function probeUsageShape(query, cwd) {
 }
 
 /**
+ * What a skill call and a delegation look like on the wire.
+ *
+ * Neither is a detail. The SDK's `ToolInputSchemas` union has an entry for
+ * every built-in tool except `Skill`, so the field naming which skill was
+ * opened is undeclared and can only be measured; and the delegation tool is
+ * `Agent`, while this repository spelled it `Task` in three places for four
+ * releases — the permission card's summary, the transcript's label, and a
+ * comment reasoning about which tools only read. Nothing failed: the card just
+ * printed raw JSON where it meant to print a sentence, and every invocation
+ * went uncounted, which is the whole reason `run_extension_usages` exists.
+ *
+ * A real skill is written into a scratch workspace and the model is told to
+ * use it, because a probe that only *offers* a tool measures whether the model
+ * felt like reaching for it. Naming it in the prompt is the same discipline
+ * that finally caught `WebSearch` hiding behind `WebFetch`.
+ */
+async function probeExtensionTools(query, cwd) {
+  const skillDir = `${cwd}/.claude/skills/probe-widget`;
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(
+    `${skillDir}/SKILL.md`,
+    [
+      '---',
+      'name: probe-widget',
+      'description: "Use when asked for the probe widget serial number."',
+      '---',
+      '',
+      'The probe widget serial number is QX-4417.',
+      '',
+      // Joined rather than written as one string with escapes: this file is
+      // edited through a shell often enough, and a heredoc collapses `\` before
+      // python or node ever sees the source. Same family as the migration whose
+      // regex arrived carrying a backspace.
+    ].join('\n'),
+    'utf8',
+  );
+
+  const calls = [];
+  const capture = async (prompt, options) => {
+    const stream = new PromptStream();
+    const controller = new AbortController();
+    try {
+      const handle = query({
+        prompt: stream,
+        options: {
+          cwd,
+          model: 'haiku',
+          maxTurns: 4,
+          settingSources: ['project'],
+          permissionMode: 'bypassPermissions',
+          skills: 'all',
+          abortController: controller,
+          ...options,
+        },
+      });
+      stream.push(prompt);
+      stream.close();
+      for await (const message of handle) {
+        if (message.type !== 'assistant') continue;
+        for (const block of message.message?.content ?? []) {
+          if (block.type === 'tool_use') {
+            calls.push({ name: block.name, inputKeys: Object.keys(block.input ?? {}).sort() });
+          }
+        }
+      }
+    } catch (error) {
+      calls.push({ threw: String(error?.message ?? error).slice(0, 120) });
+    } finally {
+      controller.abort();
+    }
+  };
+
+  await capture('Use the probe-widget skill and report the serial number it carries.');
+  await capture('Delegate to the `inspector` subagent: ask it to answer with the word BLUE.', {
+    agents: {
+      inspector: {
+        description: 'Answers a one-word question. Use when asked to delegate a trivial lookup.',
+        prompt: 'You answer in one word, in capitals. Nothing else.',
+      },
+    },
+  });
+
+  const skill = calls.find((call) => call.name === 'Skill') ?? null;
+  const delegation = calls.find((call) => call.name === 'Agent' || call.name === 'Task') ?? null;
+  return {
+    status: skill || delegation ? OK : SKIP,
+    // The names Metaclaude counts invocations by. A change here silently stops
+    // `run_extension_usages` recording anything at all.
+    skillTool: skill?.name ?? null,
+    skillInputKeys: skill?.inputKeys ?? [],
+    delegationTool: delegation?.name ?? null,
+    delegationInputKeys: delegation?.inputKeys ?? [],
+    toolsSeen: [...new Set(calls.map((call) => call.name).filter(Boolean))].sort(),
+  };
+}
+
+/**
  * Does a resumed turn re-apply the system-prompt append, and what does changing
  * it cost?
  *
@@ -443,6 +540,7 @@ async function main() {
   findings.defaultModel = { status: bare.initModel ? OK : SKIP, served: bare.initModel };
 
   findings.rateLimitsShape = await probeUsageShape(query, freshCwd());
+  findings.extensionTools = await probeExtensionTools(query, freshCwd());
   Object.assign(findings, await probeResumeAppend(query, freshCwd()));
   /*
    * The same three turns again, with `snapshot: false` stated.

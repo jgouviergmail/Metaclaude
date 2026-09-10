@@ -21,7 +21,7 @@ import type { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import type { ApiTokenRecord, BoardTask, Memory, Run, Session } from '@metaclaude/shared';
 import { describe, expect, it } from 'vitest';
 import { buildGatewayServer, type GatewayDeps } from '../services/mcp-gateway.js';
-import { buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
+import { buildAdvisorServer, type AdvisorFacade, type RevisionFacade } from './advisor-tools.js';
 import { buildBoardServer, type BoardFacade } from './board-tools.js';
 import { buildMemoryServer, type WorkspaceMemoryFacade } from './memory-tools.js';
 import { buildPeerServer, type PeerFacade } from './peer-tools.js';
@@ -414,9 +414,9 @@ describe('every field a tool accepts reaches its facade', () => {
   });
 
   it('holds for the proposal tools', async () => {
-    const rec = recorder<AdvisorFacade>();
+    const rec = recorder<AdvisorFacade & RevisionFacade>();
     const tools = registered(buildAdvisorServer(rec.facade, { workspaceId: 'ws_1', runId: 'run_1' }));
-    expect(Object.keys(tools).length).toBe(5);
+    expect(Object.keys(tools).length).toBe(6);
     for (const [name, tool] of Object.entries(tools)) await assertForwards(name, tool, rec);
   });
 

@@ -1,7 +1,7 @@
 /** Constants shared by the API and the web app. */
 
 export const APP_NAME = 'Metaclaude';
-export const APP_VERSION = '0.90.1';
+export const APP_VERSION = '0.92.0';
 
 /**
  * How long a machine token may live. A year is the outer bound, not a default.
@@ -247,4 +247,43 @@ export function languageForPath(path: string): string | null {
   const dot = base.lastIndexOf('.');
   if (dot < 0) return null;
   return EXTENSION_LANGUAGE[base.slice(dot + 1)] ?? null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The two built-in tools that reach an extension                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The tool the CLI calls to open a skill, and the field naming which one.
+ *
+ * Measured against Claude Code through the SDK on 2026-09-10, because the SDK
+ * declares no input type for it — `ToolInputSchemas` in `sdk-tools.d.ts` has an
+ * entry for every other built-in and none for this. A run told to use a skill
+ * emits `{"skill":"probe-widget"}`, the directory name, and nothing else.
+ */
+export const SKILL_TOOL = 'Skill';
+export const SKILL_TOOL_FIELD = 'skill';
+
+/**
+ * The tool the CLI calls to delegate, and the field naming the subagent.
+ *
+ * It is `Agent`, not `Task`, and that had been wrong here in three places: the
+ * permission card's summary, the transcript's tool label, and a comment in
+ * `context.ts` reasoning about which tools only read. Measured twice on
+ * 2026-09-10 — once from this harness and once with every `CLAUDE_CODE_*`
+ * variable stripped, because a difference observed once identifies a
+ * difference and never its cause — and the name was `Agent` both times, with
+ * `{description, subagent_type, prompt}` as its input. The SDK agrees: the
+ * union declares `AgentInput`, and there has never been a `TaskInput`.
+ *
+ * `Task` is kept as an accepted alias rather than deleted. Nothing here can
+ * see which name a *future* CLI uses, the cost of accepting both is one array
+ * entry, and the cost of being wrong is an invocation nobody counts.
+ */
+export const DELEGATION_TOOLS = ['Agent', 'Task'] as const;
+export const DELEGATION_TOOL_FIELD = 'subagent_type';
+
+/** Whether a tool call is a delegation to a named subagent. */
+export function isDelegationTool(name: string): boolean {
+  return (DELEGATION_TOOLS as readonly string[]).includes(name);
 }

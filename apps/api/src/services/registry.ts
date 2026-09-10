@@ -1106,6 +1106,15 @@ export class Registry {
       };
     }
 
-    return { mcpServers, agents };
+    // The same list `materialiseSkills` writes to disk, so what the CLI
+    // discovers and what the run is recorded as having been offered are one
+    // answer rather than two that can disagree. Plugin skills reach the run
+    // too and are deliberately absent: nothing here owns them, and an
+    // invocation of one is recorded without an id.
+    const skills = this.listSkills(workspace.id)
+      .filter((skill) => skill.enabled)
+      .map((skill) => ({ id: skill.id, name: skill.name }));
+
+    return { mcpServers, agents, skills };
   }
 }

@@ -7,6 +7,7 @@
  * gates both paths.
  */
 
+import type { EffortLevel } from '@metaclaude/shared';
 import { describe, expect, it } from 'vitest';
 import { extractJson, structuredCall } from './structured-call.js';
 
@@ -134,5 +135,50 @@ describe('the turn ceiling', () => {
 
   it('still lets a caller ask for fewer', async () => {
     expect((await optionsOf({ maxTurns: 1 })).maxTurns).toBe(1);
+  });
+});
+
+/**
+ * The effort an operator pinned for a background pass.
+ *
+ * Absent and present mean different things to the CLI: absent lets it choose
+ * for the model it is serving, and a level on a model without the knob is
+ * silently downgraded. So the option is *omitted* when nothing is pinned,
+ * rather than sent as null — a null would be a value, and the difference
+ * between "choose for me" and "no effort" is not one to leave to chance.
+ */
+describe('effort', () => {
+  const capture = async (effort?: EffortLevel | null) => {
+    let options: Record<string, unknown> = {};
+    await structuredCall(
+      { env: {}, claudeBinPath: null, cwd: '/tmp' },
+      {
+        prompt: 'p',
+        systemPrompt: 's',
+        schema: {},
+        accept: () => true,
+        ...(effort === undefined ? {} : { effort }),
+        queryFn: ((input: { options: Record<string, unknown> }) => {
+          options = input.options;
+          return (async function* () {
+            yield { type: 'result', structured_output: { ok: true } } as never;
+          })();
+        }) as never,
+      },
+    );
+    return options;
+  };
+
+  it('sends the level the operator pinned', async () => {
+    expect(await capture('high')).toMatchObject({ effort: 'high' });
+  });
+
+  it('sends nothing at all when none is pinned', async () => {
+    expect('effort' in (await capture())).toBe(false);
+    expect('effort' in (await capture(null))).toBe(false);
+  });
+
+  it('still defaults the model to the cheap one', async () => {
+    expect(await capture('high')).toMatchObject({ model: 'haiku' });
   });
 });

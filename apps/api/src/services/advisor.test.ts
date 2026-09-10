@@ -6,7 +6,7 @@
  * registry and scheduler.
  */
 
-import type { Run, Workspace } from '@metaclaude/shared';
+import type { EffortLevel, Run, Workspace } from '@metaclaude/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { EventBus } from '../kernel/bus.js';
@@ -27,6 +27,8 @@ let scheduler: Scheduler;
 let advisor: AdvisorService;
 let workspace: Workspace;
 let submit: ReturnType<typeof vi.fn>;
+/** The collaborators, kept so a case can rebuild the service with one changed. */
+let advisorDeps: ConstructorParameters<typeof AdvisorService>[0];
 
 const noop = () => {
   /* no-op logger */
@@ -63,7 +65,7 @@ beforeEach(() => {
     return { id: 'run_test', sessionId: input.sessionId, status: 'queued' } as unknown as Run;
   });
 
-  advisor = new AdvisorService({
+  advisorDeps = {
     db,
     workspaces,
     sessions,
@@ -74,7 +76,8 @@ beforeEach(() => {
     board: { list: (workspaceId) => new BoardService(db).list({ workspaceId }) },
     submit: submit as never,
     log: noop,
-  });
+  };
+  advisor = new AdvisorService(advisorDeps);
 });
 
 afterEach(() => {
@@ -323,5 +326,60 @@ describe('the daily sweep', () => {
     const prompts = submit.mock.calls.map((call) => (call[0] as { prompt: string }).prompt);
     expect(prompts.some((prompt) => prompt.includes(`"${other.name}"`))).toBe(true);
     expect(prompts.some((prompt) => prompt.includes('"Alpha"'))).toBe(true);
+  });
+});
+
+/*
+ * The sixth learning phase, and the only one that is not a structured call.
+ *
+ * The advisor's judgement is an ordinary run through the kernel, so what an
+ * operator pins for it has to ride the submit's overrides — and it must be
+ * independent of the workspace's own default model, which is the thing they
+ * chose for the work rather than for the machine commenting on it. Nothing
+ * else in the suite can see that: `ask()` is the only place it is decided.
+ */
+describe('what the advisor itself is served', () => {
+  const withPolicy = (model: string | null, effort: EffortLevel | null) =>
+    new AdvisorService({ ...advisorDeps, policy: () => ({ model, effort }) });
+
+  it('leaves the session as it is when nothing is pinned', async () => {
+    await withPolicy(null, null).ask(workspace.id);
+    const overrides = submit.mock.calls[0]?.[0]?.overrides as Record<string, unknown>;
+    // Absence, not null: `model: null` reaches the kernel as an explicit choice
+    // of nothing, where absent means the session's own model.
+    expect(overrides).not.toHaveProperty('model');
+    expect(overrides).not.toHaveProperty('effort');
+    expect(overrides.permissionMode).toBe('auto');
+  });
+
+  it('overrides the run when the operator has pinned a model and an effort', async () => {
+    await withPolicy('fable', 'high').ask(workspace.id);
+    expect(submit.mock.calls[0]?.[0]?.overrides).toMatchObject({
+      permissionMode: 'auto',
+      model: 'fable',
+      effort: 'high',
+    });
+  });
+
+  it('is independent of the workspace default', async () => {
+    // The session is created from the workspace's default, and the pin has to
+    // win over it — otherwise pinning the advisor would do nothing at all for
+    // every workspace that already had a model of its own.
+    workspaces.update(workspace.id, {
+      settings: { ...workspace.settings, defaultModel: 'opus' },
+    });
+    await withPolicy('haiku', null).ask(workspace.id);
+    expect(submit.mock.calls[0]?.[0]?.overrides).toMatchObject({ model: 'haiku' });
+  });
+
+  it('reads the setting at the moment of the ask, not at construction', async () => {
+    let model: string | null = null;
+    // Built once, exactly as `context.ts` builds it: at boot.
+    const service = new AdvisorService({ ...advisorDeps, policy: () => ({ model, effort: null }) });
+    await service.ask(workspace.id);
+    model = 'sonnet';
+    await service.ask(workspace.id);
+    expect(submit.mock.calls[0]?.[0]?.overrides).not.toHaveProperty('model');
+    expect(submit.mock.calls.at(-1)?.[0]?.overrides).toMatchObject({ model: 'sonnet' });
   });
 });

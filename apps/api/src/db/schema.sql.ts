@@ -1261,4 +1261,82 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE runs ADD COLUMN ceiling TEXT;
     `,
   },
+  {
+    version: 31,
+    name: 'run_extension_usages',
+    sql: /* sql */ `
+      -- What each run was offered from the registry, and what it reached for.
+      --
+      -- Nothing recorded this. The registry has always known which skills and
+      -- subagents a workspace offers, and skills.use_count -- shown on two
+      -- screens -- was incremented by no code path at all, so it read zero on
+      -- every deployment that ever ran. Measured on production the day this
+      -- was written: five skills and five subagents enabled, sixty-three runs,
+      -- and not one invocation of either. Nothing could tell that from a
+      -- deployment where the extensions were doing their job.
+      --
+      -- Keyed by name rather than by id, because the name is what the CLI
+      -- reports and what the model chooses between, and because an id does not
+      -- exist for every invocation: a skill shipped by a plugin and a subagent
+      -- type the CLI ships itself are real work that no row here owns. Those
+      -- carry extension_id NULL and available 0, which is what keeps the
+      -- "offered and never used" query honest -- it joins on the id.
+      --
+      -- One row per (run, kind, name). The kind is half the key because the
+      -- two registries have their own unique indexes and a skill may share a
+      -- name with a subagent.
+      CREATE TABLE run_extension_usages (
+        run_id       TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        kind         TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        extension_id TEXT,
+        available    INTEGER NOT NULL DEFAULT 0,
+        invoked      INTEGER NOT NULL DEFAULT 0,
+        failed       INTEGER NOT NULL DEFAULT 0,
+        at           INTEGER NOT NULL,
+        PRIMARY KEY (run_id, kind, name)
+      );
+      -- The two questions asked of it: "what became of this extension" and
+      -- "which extensions has this workspace's traffic ignored".
+      CREATE INDEX idx_run_extension_usages_extension ON run_extension_usages(kind, extension_id);
+      CREATE INDEX idx_run_extension_usages_at ON run_extension_usages(at DESC);
+    `,
+  },
+  {
+    version: 32,
+    name: 'revision_reviews',
+    sql: /* sql */ `
+      -- One row per completed pass over one workspace's window, whether or not
+      -- it proposed anything.
+      --
+      -- The runs.reflected_at lesson, applied before it could be learned a
+      -- second time: without a row per pass, four outcomes are
+      -- indistinguishable and every one of them renders as an empty screen --
+      -- the window was not ready, the pass found nothing, the rules dropped
+      -- everything it found, or the model call died. Three of those are
+      -- correct and one is a defect, and an operator is entitled to know
+      -- which. It is also what gives the sweep its clock: reviewed_through_at
+      -- is the cursor, so a pass never re-reads runs it has already judged.
+      --
+      -- No separate cursor table. The newest row for a workspace is the
+      -- cursor, which keeps the two from disagreeing -- a stored value derived
+      -- from another is only right until its input moves.
+      CREATE TABLE revision_reviews (
+        id             TEXT PRIMARY KEY,
+        workspace_id   TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        at             INTEGER NOT NULL,
+        window_from    INTEGER NOT NULL,
+        window_to      INTEGER NOT NULL,
+        runs_examined  INTEGER NOT NULL DEFAULT 0,
+        observations   TEXT NOT NULL DEFAULT '[]',
+        findings       TEXT NOT NULL DEFAULT '[]',
+        proposed       INTEGER NOT NULL DEFAULT 0,
+        dropped        TEXT NOT NULL DEFAULT '[]',
+        model          TEXT,
+        duration_ms    INTEGER NOT NULL DEFAULT 0,
+        error          TEXT
+      );
+      CREATE INDEX idx_revision_reviews_workspace ON revision_reviews(workspace_id, at DESC);
+    `,
+  },
 ];

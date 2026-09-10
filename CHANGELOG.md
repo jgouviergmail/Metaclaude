@@ -11,6 +11,267 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.92.0] — 2026-09-10
+
+### Added
+
+- **The model and effort of every learning pass, on the Configuration screen.**
+  Six rows, one per background pass, each with a model and an effort, and
+  independent of every workspace: a workspace's model is what an operator chose
+  for the *work*, and these are the machines that read that work afterwards. Up
+  to here the model was a constant in the source — `haiku` for the five
+  structured passes, the workspace's own for the advisor — which was the right
+  default and the wrong arrangement: wanting better judgement on the weekly
+  instruction review, or cheaper reflexion on a chatty deployment, was not
+  something an operator could say.
+
+  Four decisions in it are worth keeping, because each is a way the obvious
+  version is wrong.
+
+  **The sentinel is `auto`, not `default`.** `default` is the CLI's own alias
+  and means "whatever the CLI would pick", which on a subscription is Opus.
+  Choosing it for the reflexion pass expecting "leave it alone" would move every
+  post-run call from Haiku to Opus at roughly thirty times the price, with
+  nothing on screen saying so. `auto` is the word the `language` setting already
+  uses, and every row states in plain words what it resolves to rather than
+  leaving an operator to infer it from two pickers both reading `auto`. The
+  picker does not offer `default` at all: two words that read alike and differ
+  by thirty times the price is not a choice anyone is well served by making.
+
+  **Absence is not `null`.** A pin is spread into the request; an unpinned value
+  is *omitted*, because an absent model lets the call take its own default and
+  an absent effort lets the CLI choose for the model it is serving. One helper,
+  `pinnedFields`, knows that; five call sites spread it.
+
+  **Every pass reads its setting at the moment of the call.** The call contexts
+  are built once at boot, so a captured model would need a restart. The test
+  that proves it builds each call once and fires it twice with the setting moved
+  in between — and the first version of that test, which rebuilt the factory
+  between firings, passed against a deliberately captured policy. A sabotage
+  that changes nothing is a test to fix before it is a result to believe.
+
+  **An effort means nothing on a model without the knob.** Haiku has none and a
+  level pinned there is silently downgraded — measured — so the screen says to
+  change the model first rather than letting an operator believe a control did
+  something.
+
+  Two of the five passes had no factory at all: the consolidation and synthesis
+  calls were written inline at the wiring site, where nothing could drive them
+  without booting a server. They now sit beside their own prompt and schema, as
+  the other three do.
+
+- **The instruction review's budget is a setting.** What that weekly pass may
+  spend on the texts it reads is money, and the right number depends on how
+  many skills a deployment carries — so it belongs on the Configuration screen
+  beside the models, not in the source where needing it changed means waiting
+  for a release. Read per pass, so a change applies to the next one with no
+  restart. Zero is meaningful rather than off: a workspace's own standing
+  instructions are kept whatever the budget says, so zero reviews those alone.
+
+- **`fable` wherever a model is chosen.** It was in the bandit's arms and in no
+  picker, so the learner could serve a model an operator could not select. A
+  test derived from `DEFAULT_ARMS` now refuses that.
+
+### Fixed
+
+- **A review row could name the model that did not judge it.** `revision_reviews`
+  records which model read a window, and the value was a constant — so a window
+  judged on a pinned model would have been recorded as `haiku`. Read per review
+  now, from the same setting the call reads. A column that is wrong reads as an
+  answer, which is worse than one that is absent.
+
+- **The structured passes forbade a tool the CLI has never sent.** Their
+  belt-and-braces deny list named `Task`; the delegation tool is `Agent` —
+  measured, and the fourth place in the repository where that four-release-old
+  naming defect was still standing. Harmless here, since these calls offer no
+  tools at all, and now correct.
+
+### Security
+
+- **A workspace could propose — and on accept, apply — a rewrite of another
+  workspace's instructions.** `advisor_propose_revision` is mounted into
+  ordinary runs and takes a target **id** straight from a model's arguments,
+  while the surface that resolves ids looks records up by id alone. Nothing
+  tied the two together, so a run in one workspace could name another's skill,
+  or another's standing prompt, file the card under itself, and rewrite it the
+  moment an operator pressed Apply. Revisions are the one proposal kind that
+  takes effect on accept, which is what made this the worst reachable defect in
+  the feature.
+
+  `mayRevise` is the boundary, and where it asks its question was measured
+  rather than assumed: reach lives in `is_global` and a join table, while
+  `skills.workspace_id` records only who created the row and an operator may
+  widen a skill's reach later. A rule comparing that column — the obvious one,
+  and the one written first — would have refused a skill they had deliberately
+  shared. So the question is asked of the *same listing a run of that workspace
+  is given*, which cannot drift from what the workspace actually runs under
+  because it is that query. A target outside it is answered as not found.
+
+### Fixed (found in review)
+
+- **The card warned that every skill revision reaches every workspace.** The
+  payload's `target.workspaceId` drives that warning and was taken from the
+  caller, which passed a constant `null` — so the warning was on for every
+  skill, subagent and automation revision ever proposed, including ones
+  confined to one workspace. Read from the record's own reach now, the way the
+  target's *name* already was. A warning that is always on is a warning nobody
+  reads.
+
+- **The arbiter's prompt had no budget for the instruction texts.** Each text
+  was capped; the number of them was not. A deployment with forty skills would
+  have sent about a hundred thousand tokens on top of the window, every week,
+  per workspace — and past the model's context, a pass that fails for good with
+  nothing on screen but a row saying the call died. `TARGETS_MAX_CHARS` bounds
+  the section, the workspace's own instructions are never what is dropped, and
+  the prompt says how many texts it is not showing. The budget is applied where
+  the list is born rather than where the prompt is built, because that same
+  list is what a revision's index is resolved against.
+
+- **A second, coarser lock on the review route refused every other workspace.**
+  The reviewer already holds one per workspace and says in its own source that
+  the guard lives there because the route is only one of two doors; the route
+  kept a global boolean beside it, so a review of one workspace answered 409
+  for all the others for the length of a model call, protecting nothing — two
+  workspaces read disjoint runs and propose against disjoint texts. The route
+  asks the reviewer now.
+
+- **Two field definitions had drifted into an unrelated checklist** in the
+  arbiter's system prompt, where they read as further conditions to satisfy
+  before proposing an edit to an unused extension. Moved back beside the other
+  two. Character-neutral, and the bench is unchanged at 2/2 caught and no
+  over-reactions.
+
+- **The dashboard's revision cards were three buttons all called "Apply".**
+  The generic proposal rows beside them name theirs after the proposal for
+  exactly that reason. Named now, with the visible label inside the accessible
+  name rather than replaced by it.
+
+- **A large diff rendered as the word "truncated" and nothing else.** The line
+  budget was checked *before* a hunk was emitted, so a hunk bigger than the
+  whole budget was skipped entire — and the operator's card, whose entire
+  premise is that they approve the text rather than a description of it, showed
+  them the description. It even said "open the target to read the rest", where
+  the target holds the text being replaced. Oversized hunks are cut now, the
+  header counts only the lines actually shown, and the notice no longer sends
+  anyone to the wrong text.
+
+- **A wholesale replacement could be filed through the tool.** The review pass
+  has refused one since the first day — an edit, not a rewrite, above six lines
+  and two fifths of the larger side. `advisor_propose_revision`, mounted into
+  ordinary runs, was told the same thing in prose and held to it by nothing,
+  and prose is not a rule: what it produced was a card whose diff is a wall of
+  green nobody can read, which is the outcome the rule exists to prevent. The
+  rule moved to `learning/revision.ts` beside the read and the write, and both
+  doors now enforce the one definition.
+
+- **A payload guard asked `in` where it meant `hasOwn`.** `kind in
+  TARGET_LABELS` walks the prototype chain, so `constructor` and `toString`
+  answer true and the label the card would then render is a function, which
+  React throws on. Unreachable through the server, which validates the payload
+  on write — and a guard's whole job is to be the last line.
+
+
+## [0.91.0] — 2026-09-10
+
+### Added
+
+- **The instructions review themselves — a fourth learning loop.** Memory
+  changes what a run is told, the bandit what serves it, reflexion what is
+  remembered. None of the three ever touched the *instructions*: a workspace's
+  standing prompt, a skill's description, a subagent's prompt, an automation's
+  script, all written once and then left alone however often the runs showed one
+  of them to be wrong.
+
+  What forced it was a measurement on this deployment: sixty-three runs in eight
+  days, **no failures at all**, two rated by the operator — and five skills and
+  five subagents enabled with **zero invocations between them** in a hundred and
+  seventy-three tool calls. "What is not working" was not in any status column,
+  and the largest defect on the deployment was that ten extensions were carried
+  into every run, paid for in every prompt, and never used.
+
+  Nothing could see it either. `skills.use_count` was rendered on two screens and
+  incremented by no code path in the repository, so it read zero whether a skill
+  was working perfectly or had never been opened — the `rewindPoint` family of
+  defect, a surface with no source.
+
+  So: `run_extension_usages` records what each run was offered and what it
+  reached for, at the end of every run and outside every workspace switch,
+  because whether a skill was opened is a fact rather than an opinion. Once a
+  week per workspace (opt-in, off by default) a pass reads the runs since the
+  last one, **counts the recurrences in code** — three runs on two distinct days,
+  twelve for an unused extension — and puts the counted facts to one cheap
+  tool-less model call, which proposes at most three *edits*. Every proposal
+  lands in the advisor's existing inbox with its diff and the runs behind it as
+  links; nothing is applied until an operator presses Apply, and every applied
+  revision keeps an undo. At the next pass the same measurement is repeated over
+  the runs that followed, and the card says whether the problem came back.
+
+  Four things about it are worth stating because each was a decision:
+
+  - **The bar is arithmetic, and it is in code.** Asking a model to notice that
+    something happened three times is asking it to count. The memory gate
+    measured that four rules had to sit *after* the model; these are the same
+    four in another key — cite a finding whose runs this window actually holds
+    and which names at least three of them, not one already refused, not a text
+    shown in part, not the text that is already there, and not a rewrite.
+  - **A revision is the one proposal Metaclaude may not accept.** Every other
+    kind lands *disabled*, so accepting is nearly free; a revision is in force on
+    the very next run, including runs nobody is watching. The steward may dismiss
+    one and say what it thinks, and that is all.
+  - **The unused-extension bar is a blunt count on purpose.** The obvious
+    refinement — score relevance by cosine between description and prompt — was
+    written and rejected: every floor in `retrieval.ts` is a measurement *of
+    retrieval*, and one reused for an unmeasured question would mean two
+    different things on two deployments, since the hashing family carries no
+    meaning at all.
+  - **Every pass leaves a row**, proposed or not, with what the rules refused and
+    why. Without it, "nothing needed changing", "the window was not ready" and
+    "the call died" are the same empty screen — which is exactly what
+    `runs.reflected_at` was added to fix, at the cost of a day of lost memory.
+
+  `scripts/eval-instruction-review.mjs` replays ten labelled windows, eight of
+  which should produce nothing at all, and refuses a prompt change whose worst
+  pass over-reacts more than once. It is also a lesson in its own right: at
+  three passes two materially different prompts were indistinguishable and a
+  sabotage moved nothing, and only at five did the difference appear — five
+  over-reactions and a miss against one and none. A measure that reads the same
+  under sabotage is a measure to strengthen before it is a result to believe.
+
+### Fixed
+
+- **The delegation tool is called `Agent`, and this repository said `Task` in
+  three places for four releases.** Measured against Claude Code twice — once
+  from a harness and once with every `CLAUDE_CODE_*` variable stripped, because
+  one observation identifies a difference and never its cause — and the name was
+  `Agent` both times, with `{description, subagent_type, prompt}`. The SDK
+  agrees: its union declares `AgentInput` and has never had a `TaskInput`.
+
+  Nothing failed, which is why it survived: the permission card fell through to
+  its generic branch and printed `Agent{"description":…}` where it meant to say
+  "Delegate to a subagent", the transcript showed a raw tool name where it meant
+  to say "Subagent", and every delegation ever made went uncounted. A skill call
+  had the same problem for the opposite reason — the SDK declares no input type
+  for `Skill` at all, so its one field had to be measured: `{skill: "<name>"}`.
+  Both names now live in `packages/shared` with the date and the method beside
+  them, both are labelled on the card and in the transcript, and
+  `scripts/sdk-probe.mjs` records them so an SDK bump cannot move them quietly.
+
+- **`skills.use_count` is a real number.** It was shown on the skills list and in
+  the steward's library projection, and written by nothing at all.
+
+### Changed
+
+- `deploy/ratchets.json` raises `initialJsGzipKb` from 196 to 197, deliberately.
+  The Dashboard gained a second query, a revert mutation and a folded section of
+  applied revisions, and that is the kilobyte. What is *not* in it is the diff
+  renderer and the revision card itself: written statically they cost five, and
+  they now load on demand behind an `import()` boundary — most dashboards have
+  no revision to draw, and a phone should not fetch a diff viewer to reach one.
+  The schemas travelled the same road: parsed in the browser they pulled the
+  whole of `api-contracts.ts` into the entry graph, so the card reads the
+  payload through a two-line guard instead, and the server keeps the two
+  validations it already had.
+
 ## [0.90.1] — 2026-09-10
 
 ### Fixed

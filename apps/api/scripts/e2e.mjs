@@ -349,6 +349,147 @@ results.section('learning');
 }
 
 /**
+ * What a run did with what it was given.
+ *
+ * The "only observable end to end" case, and the reason this section exists at
+ * all: the tool the CLI calls to open a skill is undeclared by the SDK — its
+ * `ToolInputSchemas` union has an entry for every other built-in and none for
+ * `Skill` — and the tool it calls to delegate is `Agent`, not the `Task` this
+ * repository believed in for four releases. Both names were *measured*, and a
+ * unit test can only ever re-assert the measurement: it drives a fixture built
+ * from the same belief. If a CLI renames either, nothing but a real run will
+ * say so, and the whole of loop four goes quietly blind.
+ *
+ * So: a skill this workspace offers, a prompt that names it, and a row that
+ * has to say it was invoked.
+ */
+results.section('what serves each learning pass');
+{
+  // The twelve keys the Configuration screen draws. Unit tests cover the
+  // catalogue and the resolution; what only the running server can answer is
+  // whether the route accepts them at all — a key declared in the shared enum
+  // and refused at the edge would be a picker that saves nothing.
+  const pin = await api.call('/api/system/settings/reflexionModel', {
+    method: 'PUT',
+    body: { value: 'fable' },
+  });
+  results.check('a learning pass can be pinned to a model', pin.status === 200);
+
+  const listed = (await api.call('/api/system/settings')).body.settings ?? [];
+  const row = listed.find((entry) => entry.key === 'reflexionModel');
+  results.check(
+    'the pin is in force and says where it came from',
+    row?.value === 'fable' && row?.source === 'stored',
+    JSON.stringify({ value: row?.value, source: row?.source }),
+  );
+  results.check(
+    'the picker offers auto but not the CLI alias',
+    row?.options?.includes('auto') === true && row?.options?.includes('default') === false,
+    (row?.options ?? []).join(','),
+  );
+
+  // `default` means Opus on a subscription; offering it beside `auto` would be
+  // two words that read alike at thirty times the price, so the server refuses
+  // it rather than trusting the screen not to send it.
+  const alias = await api.call('/api/system/settings/reflexionModel', {
+    method: 'PUT',
+    body: { value: 'default' },
+  });
+  results.check('the CLI alias is refused, not merely unlisted', alias.status === 400, String(alias.status));
+
+  // `null` on the same route is how the form says "back to the default"; there
+  // is no DELETE, deliberately — clearing is a write and earns the same audit
+  // entry.
+  const cleared = await api.call('/api/system/settings/reflexionModel', {
+    method: 'PUT',
+    body: { value: null },
+  });
+  results.check('and it can be handed back', cleared.status === 200, String(cleared.status));
+  const after = ((await api.call('/api/system/settings')).body.settings ?? []).find(
+    (entry) => entry.key === 'reflexionModel',
+  );
+  results.check('back to the shipped default', after?.value === 'auto' && after?.source === 'default');
+}
+
+results.section('extension usage');
+{
+  const skill = await api.call('/api/skills', {
+    method: 'POST',
+    body: {
+      workspaceId,
+      name: 'e2e-marker',
+      description: 'Use when asked for the end-to-end marker phrase.',
+      body: ['# The marker', '', 'The end-to-end marker phrase is MARQUEUR-SKILL.'].join('\n'),
+      enabled: true,
+      reach: { global: false, workspaceIds: [workspaceId] },
+    },
+  });
+  results.check('a skill can be created for the run to reach', skill.status === 201, skill.text.slice(0, 160));
+
+  if (AGENT_CHECKS_ENABLED && skill.status === 201) {
+    const submitted = await api.call(`/api/sessions/${sessionId}/runs`, {
+      method: 'POST',
+      // The skill is *named*, for the reason the WebSearch measurement paid
+      // for: a probe that merely offers a capability measures whether the
+      // model felt like reaching for it.
+      body: { prompt: 'Use the e2e-marker skill and reply with the marker phrase it carries.' },
+    });
+    results.check('the skill run is accepted', submitted.status === 202, submitted.text.slice(0, 160));
+
+    const finishedAt = await until(
+      async () => {
+        const runs = (await api.call(`/api/runs?workspaceId=${workspaceId}`)).body.runs ?? [];
+        return runs.find((entry) => entry.prompt?.includes('e2e-marker') && entry.finishedAt) ?? null;
+      },
+      { timeoutMs: 240_000, everyMs: 1000, what: 'the skill run to finish' },
+    ).catch(() => null);
+    results.check('the skill run finishes', finishedAt !== null, 'timed out');
+
+    if (finishedAt) {
+      // The learning loop is out of band, so the row lands a moment later.
+      const row = await until(
+        () => {
+          const rows = context.db
+            .prepare(
+              "SELECT name, available, invoked FROM run_extension_usages WHERE run_id = ? AND kind = 'skill'",
+            )
+            .all(finishedAt.id);
+          return rows.find((entry) => entry.name === 'e2e-marker') ?? null;
+        },
+        { timeoutMs: 30_000, everyMs: 250, what: 'the extension usage row' },
+      ).catch(() => null);
+
+      results.check('the run records what it was offered', row !== null && row.available === 1);
+      /*
+       * `invoked > 0`, not `typeof invoked === 'number'`.
+       *
+       * Zero satisfies the type and is exactly the state this whole feature
+       * was built to reveal, so a check phrased that way would pass on the
+       * defect — the `canRewind` lesson, one section down, in another key.
+       */
+      results.check(
+        `the CLI's skill tool is the one this counts (invoked ${row?.invoked ?? 'none'})`,
+        (row?.invoked ?? 0) > 0,
+        'the skill was offered and the run did not record opening it — if the run answered with the ' +
+          'marker, the tool name has changed and `SKILL_TOOL` is stale',
+      );
+
+      const counted = await api.call(`/api/skills?workspaceId=${workspaceId}`);
+      const stored = (counted.body.skills ?? []).find((entry) => entry.name === 'e2e-marker');
+      const raw = context.db
+        .prepare('SELECT use_count FROM skills WHERE name = ?')
+        .get('e2e-marker');
+      results.check(
+        `and the skill’s use count follows (listed ${stored?.useCount ?? 'absent'}, stored ${raw?.use_count ?? 'absent'})`,
+        (stored?.useCount ?? 0) > 0,
+      );
+    }
+  } else {
+    results.skip('a real skill invocation', 'no Claude credentials (METACLAUDE_E2E_NO_AGENT)');
+  }
+}
+
+/**
  * Rewind.
  *
  * The unit tests drive a fake `query`, so what they cannot prove is the part

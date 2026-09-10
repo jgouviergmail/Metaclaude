@@ -36,6 +36,8 @@ const { apiMock } = vi.hoisted(() => ({
     applyConsolidation: vi.fn(),
     setInsightStatus: vi.fn(),
     synthesiseSkill: vi.fn(),
+    reviewInstructions: vi.fn(),
+    revisionReviews: vi.fn(),
     installSkillFromInsight: vi.fn(),
     keepInsightNote: vi.fn(),
     knowledge: {
@@ -96,6 +98,8 @@ beforeEach(() => {
   apiMock.knowledge.list.mockResolvedValue({ documents: [] });
   apiMock.memoryMaintenance.mockResolvedValue({ affected: 0 });
   apiMock.deleteMemory.mockResolvedValue({ ok: true });
+  apiMock.revisionReviews.mockResolvedValue({ reviews: [] });
+  apiMock.reviewInstructions.mockResolvedValue({ started: true });
 });
 
 describe('the shelf', () => {
@@ -1239,5 +1243,115 @@ describe('an insight card', () => {
     expect(link.getAttribute('href')).toBe('/agents');
     // Installing again would only hit the registry's unique-name conflict.
     expect(screen.queryByRole('button', { name: 'Install skill' })).toBeNull();
+  });
+});
+
+/**
+ * The fourth loop, from the screen the operator already reads.
+ *
+ * Two things it owes them, and both are here because their absence is silent:
+ * a way to ask for a pass without waiting a week, and a line saying what the
+ * last one made of it. Without the second, "nothing needed changing", "the
+ * window was not ready" and "the call died" are the same empty screen — the
+ * defect `runs.reflected_at` exists to fix, which cost a deployment a day of
+ * lost memory before anyone noticed.
+ */
+describe('reviewing the instructions', () => {
+  const withWorkspace = () => {
+    apiMock.workspaces.mockResolvedValue({
+      workspaces: [{ id: 'ws_a', name: 'Alpha', color: '#6366f1' }],
+    });
+  };
+
+  it('offers the review only once a workspace is chosen', async () => {
+    renderWithProviders(<MemoryPage />);
+    await screen.findByText('Préavis de résiliation');
+
+    expect(screen.queryByRole('button', { name: /Review the instructions/ })).toBeNull();
+  });
+
+  it('asks the server, and says the pass has started', async () => {
+    withWorkspace();
+    renderWithProviders(<MemoryPage />, { route: '/memory?workspace=ws_a' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Review the instructions/ }));
+
+    await waitFor(() => expect(apiMock.reviewInstructions).toHaveBeenCalledWith('ws_a'));
+  });
+
+  /**
+   * A refusal the server states plainly must not read as a start. The route
+   * answers 200 with a reason when the window holds too little, precisely so
+   * the screen can say so rather than promise a pass that will skip.
+   */
+  it('says plainly when there is not enough to go on', async () => {
+    withWorkspace();
+    apiMock.reviewInstructions.mockResolvedValue({ started: false, reason: 'too-few-runs', runs: 2 });
+    renderWithProviders(<MemoryPage />, { route: '/memory?workspace=ws_a' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Review the instructions/ }));
+
+    await waitFor(() => expect(toast.info).toHaveBeenCalled());
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('says what the last pass made of it when it found nothing', async () => {
+    withWorkspace();
+    apiMock.revisionReviews.mockResolvedValue({
+      reviews: [
+        {
+          id: 'rvw_1',
+          workspaceId: 'ws_a',
+          at: Date.now() - 3_600_000,
+          windowFrom: 0,
+          windowTo: 1,
+          runsExamined: 12,
+          observations: [],
+          findings: [],
+          proposed: 0,
+          dropped: [],
+          model: 'haiku',
+          durationMs: 900,
+          error: null,
+        },
+      ],
+    });
+    renderWithProviders(<MemoryPage />, { route: '/memory?workspace=ws_a' });
+
+    expect(await screen.findByText(/nothing worth changing/)).toBeTruthy();
+  });
+
+  it('says when the last pass could not finish, which is a different fact', async () => {
+    withWorkspace();
+    apiMock.revisionReviews.mockResolvedValue({
+      reviews: [
+        {
+          id: 'rvw_1',
+          workspaceId: 'ws_a',
+          at: Date.now() - 3_600_000,
+          windowFrom: 0,
+          windowTo: 1,
+          runsExamined: 12,
+          observations: [],
+          findings: [],
+          proposed: 0,
+          dropped: [],
+          model: 'haiku',
+          durationMs: 900,
+          error: 'the review answered with nothing usable',
+        },
+      ],
+    });
+    renderWithProviders(<MemoryPage />, { route: '/memory?workspace=ws_a' });
+
+    expect(await screen.findByText(/could not finish/)).toBeTruthy();
+  });
+
+  it('says nothing at all when no pass has ever run', async () => {
+    withWorkspace();
+    renderWithProviders(<MemoryPage />, { route: '/memory?workspace=ws_a' });
+    await screen.findByRole('button', { name: /Review the instructions/ });
+
+    expect(screen.queryByText(/Last instruction review/)).toBeNull();
   });
 });

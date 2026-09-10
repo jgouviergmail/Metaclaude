@@ -1101,6 +1101,91 @@ restates the code is noise; one that records a decision or a trap is not.
   input, one test has to drive the whole round trip and read the sentence a
   person actually gets.
 
+- **The delegation tool is `Agent`, not `Task`, and the SDK declares no input
+  type for `Skill` at all.** Measured against Claude Code on 2026-09-10, twice —
+  once from a harness and once with every `CLAUDE_CODE_*` variable stripped,
+  because one observation identifies a difference and never its cause. A
+  delegation is `Agent {description, subagent_type, prompt}`; a skill call is
+  `Skill {skill}`, and `ToolInputSchemas` has an entry for every other built-in
+  and none for that one. `Task` had been spelled in three places here for four
+  releases and nothing failed: the permission card fell through to its generic
+  branch and printed raw JSON, the transcript showed a bare tool name, and every
+  delegation went uncounted. Both names now live in `packages/shared/constants.ts`
+  with the date beside them, and `scripts/sdk-probe.mjs` records them so a bump
+  cannot move them quietly. **A tool name taken from a type declaration rather
+  than from the wire is a guess.**
+
+- **Three passes cannot tell two prompts apart.** Measuring the instruction
+  arbiter, two materially different prompts scored 0–1 over-reactions each over
+  three passes, and *sabotaging* the rules moved nothing — the tempting reading
+  was "the rules do nothing". At five passes over ten windows the same two
+  prompts scored five over-reactions and a miss against one and none. The model's
+  own variance was simply larger than the effect at that sample size. A measure
+  that reads the same under sabotage is a measure to **strengthen** before it is
+  a result to believe, and the fix is more passes and more cases, not a
+  conclusion.
+
+- **A ratio that counts an edit script's entries scores a replacement twice.**
+  `changedLineRatio` first counted removals plus additions, so replacing five
+  lines of twenty came out at 0.5 while appending five to twenty came out at
+  0.2 — one ceiling meaning two different things depending on the shape of the
+  edit. It is the share of the larger side *not shared* instead, which is
+  monotone both ways. And such a rule must not apply below a handful of lines
+  at all: a one-line skill description rewritten is 100% changed by any measure,
+  and rewriting it is the single most useful thing the pass does.
+
+- **An ordered list of reasons hides every reason after the first.**
+  `reviewDue` answered `opted-out` and said nothing about whether the workspace
+  had the traffic for a pass, so the caller that *waives* the opt-in — the
+  button — was told it could proceed on a window of two runs, promised a pass,
+  and watched it skip in silence. Whatever a caller may waive has to be
+  answerable on its own terms: `enoughRuns` sits beside the reason rather than
+  behind it.
+
+- **A test's own fixture is the likeliest thing wrong.** Three of the failures
+  in this lot were mine, not the code's: a context test asserting three lines of
+  context where the code correctly gives three and the array had eight; a
+  window fixture seeding fourteen days of runs past a clock set to day ten; and
+  a factory whose `...over` spread was missing, so every override was silently
+  ignored and the assertion failed on an id that was never set. Read the
+  fixture before the code — four times out of five here the code was right.
+
+- **A sabotage that does not go red may not have been applied.** A `python -
+  <<'PY'` replacement whose anchor no longer matches exits non-zero, and under
+  `sab "$a" "$b" && run` the `&&` then quietly skips the run — which prints the
+  *restored* file's green result and reads exactly like a test that cannot fail.
+  Every sabotage asserts `s.count(anchor) == 1` before writing, and the anchor
+  count is checked when the number surprises you.
+
+- **A feature with two doors needs the rule on both.** The instruction review
+  and the `advisor_propose_revision` tool both file the same proposal, and
+  three rules lived only in the pass or only in the tool's prose: which
+  workspace's texts may be rewritten, "an edit, not a rewrite", and the
+  prompt's own size. The tool takes a target **id straight from a model's
+  arguments**, and the surface resolved ids alone, so a run in one workspace
+  could rewrite another's standing instructions on accept. Whatever a prompt
+  tells a model, the service has to enforce — prose is a request, not a rule.
+  Related and measured while fixing it: the authority question is *membership
+  of what the workspace runs under*, never `skills.workspace_id`. That column
+  records who created the row; the reach lives in `is_global` and a join table
+  and an operator may widen it later, so the obvious comparison would refuse a
+  skill they had deliberately shared.
+- **A budget checked before a unit is emitted drops the unit whole.**
+  `unifiedDiff` tested `out.length + hunk > maxLines` and `break`, so a hunk
+  larger than the entire budget — which is what a wholesale rewrite is — left
+  the card showing nothing but "… diff truncated". On a screen whose premise is
+  that the operator approves *the text* rather than a description of it, that
+  is the failure, not the mitigation. Cut the unit to the room that is left,
+  and count the header over what was actually emitted.
+- **A per-item cap is not a cap.** Every instruction text put to the review
+  arbiter was bounded from the first day; the *number* of them was not, and
+  one row per workspace plus two per skill, two per subagent and one per
+  automation is four hundred thousand characters at forty skills — past the
+  context window, a weekly pass that fails for good. Where such a budget is
+  applied matters as much: the same list is what a revision's 1-based index is
+  resolved against, so trimming in one of the two consumers lands a rewrite on
+  the wrong text. Trim where the list is born.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +

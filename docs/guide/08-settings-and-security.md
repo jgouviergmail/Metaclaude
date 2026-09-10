@@ -117,9 +117,9 @@ one token set, so both themes are first-class — including the charts.
 
 Owner only. The operational settings this server runs on — how long a run may
 go quiet before it is stopped, how many may run at once, when the quota guard
-pauses automatic starts, how long finished runs are kept, and what the server
-writes to its own log. A value saved here applies to the **next run**, with no
-restart.
+pauses automatic starts, how long finished runs are kept, what the server
+writes to its own log, and which model each background learning pass runs on. A
+value saved here applies to the **next run**, with no restart.
 
 Two things are worth knowing before you change one.
 
@@ -131,6 +131,47 @@ each row reports where the value in force came from — saved here, from the
 environment, or the built-in default — and offers **Use the environment's
 value** to hand it back. You do not have to remember what the `.env` said; the
 row tells you.
+
+### What the weekly review may read
+
+One number, beside the ceilings: **Instruction review budget**, in characters.
+The instruction review reads your own texts — skill descriptions and bodies,
+subagent prompts, automation prompts — and puts them to a model in one go, so
+this is what that pass costs. Above the budget the review says how many texts
+it could not show rather than sending them; if you see that line and want it to
+look wider, raise this. A workspace's own standing instructions are always
+included whatever it says, so `0` reviews those alone.
+
+### What serves each learning pass
+
+Six rows at the bottom of Configuration, one per background pass, each with a
+model and an effort. They are independent of every workspace: a workspace's
+model is what you chose for the *work*, and these are the machines that read
+that work afterwards.
+
+The passes are reading a finished run, deciding what to remember, merging
+duplicate memories, distilling a skill, reviewing the instructions, and the
+advisor. Five of them ship on **haiku** because they are classifiers rather
+than agents — they read text and answer JSON under a schema, and the money is
+better spent on the run itself. The advisor is the exception: it is an ordinary
+agentic run with tools and a session, so left alone it uses the workspace's own
+model, and pinning one here overrides that for every workspace at once.
+
+Both pickers offer `auto`, which is the way back to the shipped default and is
+what every row starts on. `auto` is **not** the `default` you see in a model
+picker elsewhere: that one is the CLI's own alias, and on a subscription it
+means Opus. Choosing it for a background pass would multiply its price by
+roughly thirty, silently, which is exactly why these rows use a different word.
+
+One trap the screen states rather than hides: **an effort means nothing on a
+model that has no such knob.** Haiku has none, and a level pinned on it is
+accepted and then quietly ignored — so raise the model first, and the effort
+after.
+
+A change here applies to the next pass with no restart: each pass reads its
+setting at the moment it calls, not at boot. The **Back to the default** button
+clears both halves of a row at once, because an effort left pinned on a pass
+whose model has gone back to `auto` is invisible.
 
 **Anything that is a security decision is deliberately not here.** Bypass mode,
 allowed origins, proxy trust, the master key, the bootstrap account: those stay

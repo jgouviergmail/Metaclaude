@@ -38,7 +38,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 
-const MODELS = ['default', 'opus', 'sonnet', 'haiku', 'opusplan'];
+const MODELS = ['default', 'fable', 'opus', 'sonnet', 'haiku', 'opusplan'];
 const EFFORTS: Array<EffortLevel | null> = [null, 'low', 'medium', 'high', 'xhigh', 'max'];
 /** `auto` is first because it is the default, and because it costs nothing. */
 const LANGUAGE_INFO: Record<
@@ -461,6 +461,15 @@ export function WorkspaceSettingsModal({
             label={t('Let the advisor study this workspace daily')}
             hint={t(
               'At most once a day, an advisor run reads recent runs, the board and the registry, creates backlog tickets and disabled automations, and leaves anything that would act — skills, agents, vetted MCP servers — in the Dashboard inbox for you to accept. The manual button works either way.',
+            )}
+          />
+
+          <CheckboxField
+            checked={draft.improvementAuto}
+            onChange={(value) => update('improvementAuto', value)}
+            label={t('Let Metaclaude review this workspace’s own instructions weekly')}
+            hint={t(
+              'Once a week at most, a pass reads what the last runs actually did — which skills and subagents went unused, which errors kept repeating — and proposes rewrites of this workspace’s instructions, its skills, its subagents and its automations. Every proposal shows its diff and the runs behind it, and nothing changes until you accept. Off by default: unlike the advisor’s, an accepted revision is in force on the next run.',
             )}
           />
         </fieldset>

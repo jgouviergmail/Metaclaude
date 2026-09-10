@@ -47,7 +47,12 @@ import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
-import { advisorToolNames, buildAdvisorServer, type AdvisorFacade } from './advisor-tools.js';
+import {
+  advisorToolNames,
+  buildAdvisorServer,
+  type AdvisorFacade,
+  type RevisionFacade,
+} from './advisor-tools.js';
 import {
   DIRECTORY_CONTEXT_MINIMUM,
   delegationPeers,
@@ -279,7 +284,7 @@ export interface SupervisorDeps {
    * every run for the same reason as the board: noticing "this should be an
    * automation" is not reserved to the advisor's own analysis runs.
    */
-  advisor?: AdvisorFacade;
+  advisor?: AdvisorFacade & RevisionFacade;
   /**
    * The workspace's own memory, when the deployment wires the store in.
    *

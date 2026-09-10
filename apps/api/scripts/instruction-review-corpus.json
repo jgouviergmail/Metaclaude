@@ -1,0 +1,668 @@
+{
+  "note": "Windows for the instruction-review bench. Synthetic and deliberately so: the real thing is one operator's prompts and answers, and this repository is public. Each case states what a correct pass does with it — `expect: none` means the honest answer is to propose nothing, which is the common case and the one a prompt change most easily breaks.",
+  "cases": [
+    {
+      "name": "quiet week",
+      "expect": "none",
+      "why": "Nothing recurs. A pass that proposes anything here is over-reacting, which is the failure this bench exists to price.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French. Cite the file you read a claim from.",
+      "observations": [],
+      "targets": [
+        {
+          "kind": "skill",
+          "name": "revue-migration",
+          "field": "description",
+          "text": "Use when reviewing a database migration before it ships."
+        },
+        {
+          "kind": "agent",
+          "name": "verificateur",
+          "field": "description",
+          "text": "Use to check a factual claim against a source before it is published."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_a1",
+          "status": "succeeded",
+          "prompt": "Résume les trois derniers articles de veille.",
+          "answer": "Trois résumés, avec les liens.",
+          "tools": [
+            "WebSearch×3"
+          ],
+          "used": [
+            "verificateur"
+          ]
+        },
+        {
+          "id": "run_a2",
+          "status": "succeeded",
+          "prompt": "Relis cette migration avant la mise en production.",
+          "answer": "Deux remarques, aucune bloquante.",
+          "tools": [
+            "Read×2"
+          ],
+          "used": [
+            "revue-migration"
+          ]
+        },
+        {
+          "id": "run_a3",
+          "status": "succeeded",
+          "prompt": "Quelle est la version déployée ?",
+          "answer": "0.90.1.",
+          "tools": [],
+          "used": []
+        },
+        {
+          "id": "run_a4",
+          "status": "succeeded",
+          "prompt": "Prépare le brouillon de la lettre.",
+          "answer": "Brouillon prêt.",
+          "tools": [
+            "Write×1"
+          ],
+          "used": []
+        }
+      ]
+    },
+    {
+      "name": "a description that never triggers",
+      "expect": "revise",
+      "target": "guide-achat",
+      "field": "description",
+      "why": "Offered to every run of a window that is full of exactly the job it is for, and opened by none. The description is written as a summary of the contents rather than as a condition under which to reach for it, which is the failure a skill's description has.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French.",
+      "observations": [
+        {
+          "key": "unused-extension:skill:skl_guide",
+          "kind": "unused-extension",
+          "summary": "The skill \"guide-achat\" was available to 5 of these runs and never invoked once.",
+          "runIds": [
+            "run_b1",
+            "run_b2",
+            "run_b3",
+            "run_b4",
+            "run_b5"
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "kind": "skill",
+          "name": "guide-achat",
+          "field": "description",
+          "text": "Contient la méthode d'achat en cinq étapes, le tableau comparatif et les critères de décision."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_b1",
+          "status": "succeeded",
+          "prompt": "Je dois choisir un lave-vaisselle, aide-moi à comparer.",
+          "answer": "Voici trois modèles.",
+          "tools": [
+            "WebSearch×2"
+          ],
+          "idle": [
+            "guide-achat"
+          ]
+        },
+        {
+          "id": "run_b2",
+          "status": "succeeded",
+          "prompt": "Quel ordinateur portable acheter pour du montage vidéo ?",
+          "answer": "Deux options.",
+          "tools": [
+            "WebSearch×3"
+          ],
+          "idle": [
+            "guide-achat"
+          ]
+        },
+        {
+          "id": "run_b3",
+          "status": "succeeded",
+          "prompt": "Compare ces deux assurances habitation avant que je signe.",
+          "answer": "La seconde est moins chère.",
+          "tools": [],
+          "idle": [
+            "guide-achat"
+          ]
+        },
+        {
+          "id": "run_b4",
+          "status": "succeeded",
+          "prompt": "Faut-il racheter la voiture en fin de leasing ?",
+          "answer": "Cela dépend du kilométrage.",
+          "tools": [],
+          "idle": [
+            "guide-achat"
+          ]
+        },
+        {
+          "id": "run_b5",
+          "status": "succeeded",
+          "prompt": "Aide-moi à décider entre ces trois vélos électriques.",
+          "answer": "Le troisième.",
+          "tools": [
+            "WebSearch×1"
+          ],
+          "idle": [
+            "guide-achat"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a broken tool, which no instruction can fix",
+      "expect": "none",
+      "why": "The runs failed because a third party was down. Rewriting an instruction would be a rewrite for its own sake, and the prompt asks for the finding to be reported instead.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French. Always say which source a date came from.",
+      "observations": [
+        {
+          "key": "tool-errors:calendar_list_events",
+          "kind": "tool-errors",
+          "summary": "calendar_list_events returned an error in 3 of these runs (5 calls in all).",
+          "runIds": [
+            "run_c1",
+            "run_c2",
+            "run_c3"
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workspace",
+          "name": "Atelier",
+          "field": "systemPromptAppend",
+          "text": "Answer in French. Always say which source a date came from."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_c1",
+          "status": "failed",
+          "prompt": "Qu'ai-je demain matin ?",
+          "error": "calendar_list_events: 503 upstream unavailable",
+          "tools": [
+            "calendar_list_events×2 (2 failed)"
+          ]
+        },
+        {
+          "id": "run_c2",
+          "status": "failed",
+          "prompt": "Déplace le rendez-vous de jeudi.",
+          "error": "calendar_list_events: 503 upstream unavailable",
+          "tools": [
+            "calendar_list_events×2 (2 failed)"
+          ]
+        },
+        {
+          "id": "run_c3",
+          "status": "succeeded",
+          "prompt": "Ai-je quelque chose vendredi ?",
+          "answer": "Je n'ai pas pu lire l'agenda.",
+          "tools": [
+            "calendar_list_events×1 (1 failed)"
+          ]
+        },
+        {
+          "id": "run_c4",
+          "status": "succeeded",
+          "prompt": "Rédige le compte rendu de la réunion.",
+          "answer": "Compte rendu prêt.",
+          "tools": []
+        }
+      ]
+    },
+    {
+      "name": "one bad afternoon",
+      "expect": "none",
+      "why": "Three runs, all within an hour, all the same complaint. Enough runs and not enough days: an incident, not a habit. The single most likely way for a prompt change to start over-reacting.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French.",
+      "observations": [],
+      "targets": [
+        {
+          "kind": "workspace",
+          "name": "Atelier",
+          "field": "systemPromptAppend",
+          "text": "Answer in French."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_d1",
+          "status": "succeeded",
+          "prompt": "Non, plus court.",
+          "answer": "Version courte.",
+          "tools": []
+        },
+        {
+          "id": "run_d2",
+          "status": "succeeded",
+          "prompt": "Encore plus court.",
+          "answer": "Deux phrases.",
+          "tools": []
+        },
+        {
+          "id": "run_d3",
+          "status": "succeeded",
+          "prompt": "Toujours trop long.",
+          "answer": "Une phrase.",
+          "tools": []
+        }
+      ]
+    },
+    {
+      "name": "a subagent that fails whenever it is used",
+      "expect": "revise",
+      "target": "chercheur",
+      "field": "prompt",
+      "why": "Delegated to four times across three days and failed three of them, always for the same reason — its prompt tells it to use a tool it has not been given.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French.",
+      "observations": [
+        {
+          "key": "failing-subagent:agt_chercheur",
+          "kind": "extension-errors",
+          "summary": "The subagent \"chercheur\" was delegated to 4 time(s) across 4 runs and failed 3 of them.",
+          "runIds": [
+            "run_e1",
+            "run_e2",
+            "run_e3",
+            "run_e4"
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "kind": "agent",
+          "name": "chercheur",
+          "field": "prompt",
+          "text": "Tu cherches des sources. Ouvre chaque page avec Bash et curl, puis résume."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_e1",
+          "status": "succeeded",
+          "prompt": "Trouve trois sources sur le sujet.",
+          "answer": "Le sous-agent n'a pas pu ouvrir les pages.",
+          "tools": [
+            "Agent×1 (1 failed)"
+          ],
+          "used": [
+            "chercheur"
+          ]
+        },
+        {
+          "id": "run_e2",
+          "status": "succeeded",
+          "prompt": "Vérifie cette affirmation.",
+          "answer": "Le sous-agent a échoué.",
+          "tools": [
+            "Agent×1 (1 failed)"
+          ],
+          "used": [
+            "chercheur"
+          ]
+        },
+        {
+          "id": "run_e3",
+          "status": "succeeded",
+          "prompt": "Cherche la source officielle.",
+          "answer": "Trouvée.",
+          "tools": [
+            "Agent×1"
+          ],
+          "used": [
+            "chercheur"
+          ]
+        },
+        {
+          "id": "run_e4",
+          "status": "succeeded",
+          "prompt": "Trouve la date exacte.",
+          "answer": "Le sous-agent a échoué, j'ai cherché moi-même.",
+          "tools": [
+            "Agent×1 (1 failed)"
+          ],
+          "used": [
+            "chercheur"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an instruction that is already right",
+      "expect": "none",
+      "why": "The observations name a skill nobody used, and its description is already a trigger condition. There is nothing to improve, and the honest answer is to say so — a pass that rewrites it anyway is churning.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French.",
+      "observations": [
+        {
+          "key": "unused-extension:skill:skl_impots",
+          "kind": "unused-extension",
+          "summary": "The skill \"declaration-impots\" was available to 5 of these runs and never invoked once.",
+          "runIds": [
+            "run_f1",
+            "run_f2",
+            "run_f3",
+            "run_f4",
+            "run_f5"
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "kind": "skill",
+          "name": "declaration-impots",
+          "field": "description",
+          "text": "Use when preparing or checking a French income-tax return, including deadlines and deductible expenses."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_f1",
+          "status": "succeeded",
+          "prompt": "Résume ce contrat de location.",
+          "answer": "Trois points.",
+          "tools": [
+            "Read×1"
+          ],
+          "idle": [
+            "declaration-impots"
+          ]
+        },
+        {
+          "id": "run_f2",
+          "status": "succeeded",
+          "prompt": "Prépare la liste de courses de la semaine.",
+          "answer": "Liste prête.",
+          "tools": [],
+          "idle": [
+            "declaration-impots"
+          ]
+        },
+        {
+          "id": "run_f3",
+          "status": "succeeded",
+          "prompt": "Quel est le préavis de ce bail ?",
+          "answer": "Trois mois.",
+          "tools": [],
+          "idle": [
+            "declaration-impots"
+          ]
+        },
+        {
+          "id": "run_f4",
+          "status": "succeeded",
+          "prompt": "Traduis ce paragraphe en anglais.",
+          "answer": "Traduction faite.",
+          "tools": [],
+          "idle": [
+            "declaration-impots"
+          ]
+        },
+        {
+          "id": "run_f5",
+          "status": "succeeded",
+          "prompt": "Planifie le week-end.",
+          "answer": "Deux options.",
+          "tools": [],
+          "idle": [
+            "declaration-impots"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the operator changed their mind, twice",
+      "expect": "none",
+      "why": "Four runs where the operator redirects mid-task. That is what a conversation looks like, not a defect in any instruction — and it is the single most tempting thing to over-read as one.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French.",
+      "observations": [],
+      "targets": [
+        {
+          "kind": "workspace",
+          "name": "Atelier",
+          "field": "systemPromptAppend",
+          "text": "Answer in French."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_g1",
+          "status": "succeeded",
+          "prompt": "Prépare un plan pour la refonte du site.",
+          "answer": "Plan en cinq parties.",
+          "tools": []
+        },
+        {
+          "id": "run_g2",
+          "status": "succeeded",
+          "prompt": "Finalement, garde l'ancien design et change seulement les couleurs.",
+          "answer": "Palette proposée.",
+          "tools": []
+        },
+        {
+          "id": "run_g3",
+          "status": "succeeded",
+          "prompt": "Non, reviens au plan complet.",
+          "answer": "Plan repris.",
+          "tools": []
+        },
+        {
+          "id": "run_g4",
+          "status": "succeeded",
+          "prompt": "Ajoute une page de contact.",
+          "answer": "Ajoutée au plan.",
+          "tools": []
+        }
+      ]
+    },
+    {
+      "name": "an unused skill in a window of unrelated work",
+      "expect": "none",
+      "why": "Offered and never used, and not one run of the window was a job it is for. Its description is not the reason it was not opened, and rewriting it would be rewriting for the sake of the observation.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French.",
+      "observations": [
+        {
+          "key": "unused-extension:skill:skl_deuil",
+          "kind": "unused-extension",
+          "summary": "The skill \"succession\" was available to 5 of these runs and never invoked once.",
+          "runIds": [
+            "run_h1",
+            "run_h2",
+            "run_h3",
+            "run_h4",
+            "run_h5"
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "kind": "skill",
+          "name": "succession",
+          "field": "description",
+          "text": "Use when settling an estate after a death: the deadlines, the notary, the declaration."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_h1",
+          "status": "succeeded",
+          "prompt": "Corrige ce script de sauvegarde.",
+          "answer": "Deux corrections.",
+          "tools": [
+            "Read×1"
+          ],
+          "idle": [
+            "succession"
+          ]
+        },
+        {
+          "id": "run_h2",
+          "status": "succeeded",
+          "prompt": "Pourquoi le conteneur redémarre-t-il ?",
+          "answer": "La sonde échouait.",
+          "tools": [
+            "Bash×3"
+          ],
+          "idle": [
+            "succession"
+          ]
+        },
+        {
+          "id": "run_h3",
+          "status": "succeeded",
+          "prompt": "Ajoute un test pour ce cas limite.",
+          "answer": "Test ajouté.",
+          "tools": [
+            "Write×1"
+          ],
+          "idle": [
+            "succession"
+          ]
+        },
+        {
+          "id": "run_h4",
+          "status": "succeeded",
+          "prompt": "Relis ce diff.",
+          "answer": "Rien à signaler.",
+          "tools": [
+            "Read×2"
+          ],
+          "idle": [
+            "succession"
+          ]
+        },
+        {
+          "id": "run_h5",
+          "status": "succeeded",
+          "prompt": "Mets à jour la documentation.",
+          "answer": "Faite.",
+          "tools": [
+            "Write×1"
+          ],
+          "idle": [
+            "succession"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "two failures with different causes",
+      "expect": "none",
+      "why": "Two runs failed and one nearly did, each for its own reason. Three failures are not a pattern unless they are the same failure, and a model reading a count rather than the causes will treat them as one.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French. Ask before deleting anything.",
+      "observations": [],
+      "targets": [
+        {
+          "kind": "workspace",
+          "name": "Atelier",
+          "field": "systemPromptAppend",
+          "text": "Answer in French. Ask before deleting anything."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_i1",
+          "status": "failed",
+          "prompt": "Déploie la version.",
+          "error": "the deploy key was rejected",
+          "tools": [
+            "Bash×1 (1 failed)"
+          ]
+        },
+        {
+          "id": "run_i2",
+          "status": "failed",
+          "prompt": "Génère le rapport mensuel.",
+          "error": "the spreadsheet is password-protected",
+          "tools": [
+            "Read×1 (1 failed)"
+          ]
+        },
+        {
+          "id": "run_i3",
+          "status": "succeeded",
+          "prompt": "Nettoie les vieilles images docker.",
+          "answer": "J'ai listé ce qui serait supprimé, dis-moi si je continue.",
+          "tools": [
+            "Bash×2"
+          ]
+        },
+        {
+          "id": "run_i4",
+          "status": "succeeded",
+          "prompt": "Résume la semaine.",
+          "answer": "Trois points.",
+          "tools": []
+        }
+      ]
+    },
+    {
+      "name": "instructions that already say it",
+      "expect": "none",
+      "why": "The runs do show a habit worth a rule — and the rule is already in the instructions, in the operator's own words. Adding it again is the corpus repeating itself, which is the failure the memory gate was built for one register down.",
+      "workspaceName": "Atelier",
+      "instructions": "Answer in French. Always cite the file and line a claim comes from. Never rewrite a file without showing the diff first.",
+      "observations": [],
+      "targets": [
+        {
+          "kind": "workspace",
+          "name": "Atelier",
+          "field": "systemPromptAppend",
+          "text": "Answer in French. Always cite the file and line a claim comes from. Never rewrite a file without showing the diff first."
+        }
+      ],
+      "runs": [
+        {
+          "id": "run_j1",
+          "status": "succeeded",
+          "prompt": "Où est définie la limite de taux ?",
+          "answer": "Dans server.ts:212, citée.",
+          "tools": [
+            "Grep×1"
+          ]
+        },
+        {
+          "id": "run_j2",
+          "status": "succeeded",
+          "prompt": "Change ce message d'erreur.",
+          "answer": "Voici le diff avant d'écrire.",
+          "tools": [
+            "Read×1"
+          ]
+        },
+        {
+          "id": "run_j3",
+          "status": "succeeded",
+          "prompt": "Quelle est la valeur par défaut du délai ?",
+          "answer": "45 minutes, config.ts:88.",
+          "tools": [
+            "Grep×1"
+          ]
+        },
+        {
+          "id": "run_j4",
+          "status": "succeeded",
+          "prompt": "Corrige la faute dans le guide.",
+          "answer": "Diff proposé.",
+          "tools": [
+            "Read×1"
+          ]
+        }
+      ]
+    }
+  ]
+}

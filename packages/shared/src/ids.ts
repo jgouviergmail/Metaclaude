@@ -40,6 +40,8 @@ export const ID_PREFIXES = {
   pushSub: 'psh',
   passkey: 'pky',
   proposal: 'prp',
+  /** One pass of the instruction review over one workspace's window. */
+  review: 'rvw',
   document: 'doc',
   chunk: 'chk',
   apiToken: 'tok',

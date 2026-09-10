@@ -40,6 +40,7 @@ import {
   setInsightPayload,
   setInsightStatus,
 } from '../learning/reflexion.js';
+import { listReviews, reviewDue } from '../learning/improvement.js';
 import { SYSTEM_TOPIC, routes as appRoutes } from '@metaclaude/shared';
 
 /**
@@ -598,6 +599,95 @@ export function registerLearningRoutes(app: App, context: AppContext): void {
 
       if (!insight) return reply.status(204).send();
       return reply.status(201).send({ insight });
+    },
+  );
+
+  /* ------------------------- Instruction review -------------------------- */
+
+  /**
+   * Review one workspace's instructions now.
+   *
+   * A button rather than a wait, and the operator's press waives the weekly
+   * clock and the opt-in — those exist to stop the machine asking unprompted,
+   * not to stop a person asking. What it cannot waive is the floor: a pass
+   * over three runs would be answering a question nobody can answer from
+   * three runs.
+   *
+   * It cannot be synchronous. One model call over a window of forty runs takes
+   * tens of seconds, so the answer says the pass started and the notification
+   * says what came of it.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/api/workspaces/:id/review-instructions',
+    async (request, reply) => {
+      const actor = requireOperator(request);
+      const workspace = mustGetWorkspace(context, request.params.id);
+      // Asked of the reviewer, per workspace, rather than kept here. It holds
+      // that state already and says in its own source that the guard lives
+      // there because the route is only one of two doors — and a second lock
+      // here was global, so reviewing one workspace refused every other for
+      // the length of a model call, protecting nothing.
+      if (context.improvement.busy(workspace.id)) {
+        throw new HttpError(409, 'A review of this workspace is already running.');
+      }
+
+      // The floor, checked before anything is promised: an answer of "started"
+      // followed by a silent skip is the shape of a feature nobody trusts.
+      // `enoughRuns` rather than the reason, because the reasons are ordered
+      // and a workspace that has opted out reports that and nothing about
+      // whether it has the traffic — which is exactly the case this button is
+      // for.
+      const due = reviewDue(context.db, workspace, Date.now());
+      if (!due.enoughRuns) {
+        return reply
+          .status(200)
+          .send({ started: false, reason: due.fresh === 0 ? 'no-runs' : 'too-few-runs', runs: due.fresh });
+      }
+
+      context.audit.record({
+        actor: actor.username,
+        action: 'improvement.review',
+        target: workspace.id,
+        ipAddress: requestIp(context, request),
+      });
+
+      void context.improvement
+        .review(workspace.id, { force: true })
+        .then((result) => {
+          context.bus.publish(SYSTEM_TOPIC, {
+            type: 'notification',
+            topic: SYSTEM_TOPIC,
+            level: result.status === 'failed' ? 'warning' : 'info',
+            title: 'Instruction review finished',
+            message:
+              result.status === 'failed'
+                ? `The review of “${workspace.name}” could not finish: ${result.reason ?? 'no reason given'}.`
+                : result.proposed === 0
+                  ? `Read ${result.runsExamined} run(s) of “${workspace.name}” and found nothing worth changing.`
+                  : `Read ${result.runsExamined} run(s) of “${workspace.name}” and proposed ${result.proposed} revision(s).`,
+            href: appRoutes.dashboard(),
+          });
+        })
+        .catch((error: unknown) => {
+          context.log.error({ message: (error as Error).message }, 'the instruction review failed');
+        });
+
+      return reply.status(202).send({ started: true, runs: due.fresh });
+    },
+  );
+
+  /**
+   * What the passes have found, newest first.
+   *
+   * A pass that proposed nothing still has a row, which is the whole reason
+   * this exists: without it "nothing needed changing", "the window was not
+   * ready" and "the call died" render as the same empty screen.
+   */
+  app.get<{ Params: { id: string } }>(
+    '/api/workspaces/:id/revision-reviews',
+    async (request, reply) => {
+      mustGetWorkspace(context, request.params.id);
+      return reply.send({ reviews: listReviews(context.db, request.params.id, 20) });
     },
   );
 

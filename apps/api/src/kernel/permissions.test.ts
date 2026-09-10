@@ -101,6 +101,38 @@ describe('summarise', () => {
   });
 
   /**
+   * The delegation tool is called `Agent`, and this branch named only `Task`.
+   *
+   * Measured against Claude Code on 2026-09-10, twice — once from a harness
+   * and once with every `CLAUDE_CODE_*` variable stripped, because one
+   * observation identifies a difference and never its cause. Both runs emitted
+   * `Agent` with `{description, subagent_type, prompt}`, and the SDK's own
+   * union has an `AgentInput` and has never had a `TaskInput`. So every
+   * delegation this deployment has ever raised a card for fell through to the
+   * generic branch and read `Agent{"description":"…","subagent_type":"…"}`
+   * instead of a sentence — a card an operator has to decode rather than read.
+   */
+  it('names a delegation whichever of the two names the CLI uses', () => {
+    for (const tool of ['Agent', 'Task']) {
+      expect(summarise(tool, { description: 'audit the auth code', subagent_type: 'code-reviewer' })).toBe(
+        'Delegate to a subagent: audit the auth code',
+      );
+    }
+  });
+
+  /**
+   * A skill call carries one field — the directory name — and nothing else.
+   * Measured the same day: `{"skill":"probe-widget"}`. Without this the card
+   * read `Skill{"skill":"…"}`, which is the shape of a defect rather than of
+   * a sentence.
+   */
+  it('names the skill a skill call opens', () => {
+    expect(summarise('Skill', { skill: 'review-migrations' })).toBe(
+      'Open the skill: review-migrations',
+    );
+  });
+
+  /**
    * A server whose name carries an underscore is stripped like any other.
    *
    * `splitToolName` exists in `packages/shared` precisely for this, with a

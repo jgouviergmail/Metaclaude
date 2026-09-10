@@ -7,6 +7,7 @@
  */
 
 import { pruneInsights } from './learning/reflexion.js';
+import { pruneReviews } from './learning/improvement.js';
 import type { AppContext } from './context.js';
 
 /** Fast sweep: expired sessions, stale replay buffers. */
@@ -42,10 +43,13 @@ export function startJanitor(context: AppContext): () => void {
       const collected = context.memory.collect();
       const audited = context.audit.prune(AUDIT_RETENTION_DAYS);
       const insights = pruneInsights(context.db, INSIGHT_RETENTION_DAYS);
+      // The same horizon as the insights beside them: a review is a record of a
+      // judgement, and "grows forever" is not a retention policy.
+      const reviews = pruneReviews(context.db, INSIGHT_RETENTION_DAYS);
 
-      if (decayed > 0 || collected > 0 || audited > 0 || insights > 0) {
+      if (decayed > 0 || collected > 0 || audited > 0 || insights > 0 || reviews > 0) {
         context.log.info(
-          { decayed, collected, auditPruned: audited, insightsPruned: insights },
+          { decayed, collected, auditPruned: audited, insightsPruned: insights, reviewsPruned: reviews },
           'janitor: memory and audit maintenance',
         );
       }

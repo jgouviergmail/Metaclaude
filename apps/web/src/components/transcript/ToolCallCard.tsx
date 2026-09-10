@@ -76,7 +76,13 @@ const TOOLS: Record<string, { label: string; field: string | null; path?: true }
   Grep: { label: 'Search', field: 'pattern' },
   WebFetch: { label: 'Fetch', field: 'url' },
   WebSearch: { label: 'Web search', field: 'query' },
+  // `Agent` is what the CLI actually sends; `Task` is the name this repository
+  // believed in for four releases and is kept as an alias. Both entries rather
+  // than a lookup helper, because this table is also what says which field is
+  // worth the one line, and the two names share that answer.
+  Agent: { label: 'Subagent', field: 'description' },
   Task: { label: 'Subagent', field: 'description' },
+  Skill: { label: 'Skill', field: 'skill' },
   TodoWrite: { label: 'Plan', field: null },
 };
 

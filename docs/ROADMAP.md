@@ -113,6 +113,20 @@ The changelog carries the detail; this is the map.
   notification, and nothing is embedded under one model and compared under
   another. *(0.46.0)*
 
+- **The instructions review themselves.** A fourth learning loop: once a week
+  per workspace, a pass reads what the last runs actually did — which skills and
+  subagents were carried into run after run and never opened, which errors kept
+  repeating, which automation keeps failing — and proposes *edits* to the texts
+  that shape every run. The bar for a proposal is arithmetic and sits in code
+  rather than in a prompt: three runs on two distinct days, evidence from runs
+  the window actually holds, an edit rather than a rewrite. Every proposal shows
+  its diff and the runs behind it; the operator applies it, Metaclaude may not;
+  every applied one keeps an undo, and the next pass says whether it worked.
+  Underneath it, the first honest count of what a run *did* with what it was
+  given — measured on this deployment as ten extensions mounted and zero
+  invocations, which nothing could see because `use_count` was written by no
+  code path at all. *(0.91.0)*
+
 ### The multiplier
 - **Skill synthesis** from recurring procedural lessons, reviewed before it
   ships. *(0.2.0)*

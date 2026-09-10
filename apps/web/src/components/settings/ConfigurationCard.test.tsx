@@ -22,11 +22,17 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { RuntimeSettingKey, type RuntimeSettingRecord } from '@metaclaude/shared';
+import {
+  LEARNING_PHASES,
+  RuntimeSettingKey,
+  SETTING_EFFORTS,
+  SETTING_MODELS,
+  type RuntimeSettingRecord,
+} from '@metaclaude/shared';
 
 import { renderInFrench, renderWithProviders } from '@/test/render';
 
-import { ConfigurationCard, COPY } from './ConfigurationCard';
+import { ConfigurationCard, COPY, PHASE_COPY } from './ConfigurationCard';
 
 const { apiMock, toastMock } = vi.hoisted(() => ({
   apiMock: { runtimeSettings: vi.fn(), setRuntimeSetting: vi.fn() },
@@ -78,6 +84,30 @@ const SETTINGS: RuntimeSettingRecord[] = [
     options: ['fatal', 'error', 'warn', 'info', 'debug', 'trace'],
     source: 'default',
   }),
+  // The twelve the server returns for the six passes. Derived from the phase
+  // table rather than typed out, for the reason five wrong fixtures in one
+  // session taught: a fixture written from memory is the bug more often than
+  // the code is.
+  ...LEARNING_PHASES.flatMap((phase) => [
+    record({
+      key: phase.modelKey,
+      value: 'auto',
+      kind: 'choice',
+      min: null,
+      max: null,
+      options: [...SETTING_MODELS],
+      source: 'default',
+    }),
+    record({
+      key: phase.effortKey,
+      value: 'auto',
+      kind: 'choice',
+      min: null,
+      max: null,
+      options: [...SETTING_EFFORTS],
+      source: 'default',
+    }),
+  ]),
 ];
 
 beforeEach(() => {
@@ -272,15 +302,108 @@ describe('what it does with what you typed', () => {
  * try with `language`.
  */
 describe('every setting the server can expose has words on this screen', () => {
+  /** The twelve drawn by the phase block rather than by the generic list. */
+  const phaseKeys = new Set<string>(
+    LEARNING_PHASES.flatMap((phase) => [phase.modelKey, phase.effortKey] as string[]),
+  );
+
   it('covers every RuntimeSettingKey', () => {
-    const missing = RuntimeSettingKey.options.filter((key) => !(key in COPY));
+    const missing = RuntimeSettingKey.options.filter(
+      (key) => !(key in COPY) && !phaseKeys.has(key),
+    );
     expect(missing).toEqual([]);
   });
 
   it('says what each one is, not merely what it is called', () => {
     for (const key of RuntimeSettingKey.options) {
+      if (phaseKeys.has(key)) continue;
       expect(COPY[key]!.label.length).toBeGreaterThan(3);
       expect(COPY[key]!.help.length).toBeGreaterThan(40);
     }
+  });
+
+  it('says what every learning pass is', () => {
+    for (const phase of LEARNING_PHASES) {
+      expect(PHASE_COPY[phase.id]!.label.length).toBeGreaterThan(3);
+      expect(PHASE_COPY[phase.id]!.help.length).toBeGreaterThan(40);
+    }
+  });
+});
+
+/*
+ * What serves each learning pass.
+ *
+ * The screen is the only place an operator can see, let alone change, what the
+ * background passes cost — and the failure this family is prone to is a key
+ * declared on the server that no screen draws. So the rows are derived from
+ * the phase table here too: a seventh pass fails on the day it is declared.
+ */
+describe('what serves each learning pass', () => {
+  it('draws one row per pass, with a model and an effort', async () => {
+    renderWithProviders(<ConfigurationCard />);
+    for (const phase of LEARNING_PHASES) {
+      const label = PHASE_COPY[phase.id]!.label;
+      expect(await screen.findByLabelText(new RegExp(`Model for ${label}`, 'i'))).toBeDefined();
+      expect(await screen.findByLabelText(new RegExp(`Effort for ${label}`, 'i'))).toBeDefined();
+    }
+  });
+
+  it('says what the shipped default actually is, rather than only "auto"', async () => {
+    renderWithProviders(<ConfigurationCard />);
+    // Five passes run on Haiku; the advisor follows the workspace. A screen
+    // showing `auto` twice per row and nothing else says nothing about what
+    // is running right now.
+    expect((await screen.findAllByText(/Runs on haiku/i)).length).toBe(5);
+    expect(await screen.findByText(/Runs on the workspace/i)).toBeDefined();
+  });
+
+  it('offers every model the picker knows, plus the way back', async () => {
+    renderWithProviders(<ConfigurationCard />);
+    const trigger = await screen.findByLabelText(/Model for Reading a finished run/i);
+    // Radix opens on the pointer event, not on click.
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 });
+    fireEvent.click(trigger);
+    for (const option of SETTING_MODELS) {
+      expect(await screen.findByRole('menuitemcheckbox', { name: option })).toBeDefined();
+    }
+  });
+
+  it('sends the model the operator picked for that pass, and only that one', async () => {
+    renderWithProviders(<ConfigurationCard />);
+    const trigger = await screen.findByLabelText(/Model for Reviewing the instructions/i);
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'fable' }));
+    fireEvent.click(await screen.findByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(apiMock.setRuntimeSetting).toHaveBeenCalledTimes(1));
+    expect(apiMock.setRuntimeSetting).toHaveBeenCalledWith('revisionModel', 'fable');
+  });
+
+  it('hands a pinned pass back to the default in one action, both halves at once', async () => {
+    // A revert that cleared only the model would leave an effort pinned on a
+    // pass the operator believes is back to normal — and an effort alone is
+    // invisible, since the row would show `auto` for the model.
+    apiMock.runtimeSettings.mockResolvedValue({
+      settings: SETTINGS.map((entry) =>
+        entry.key === 'reflexionModel'
+          ? { ...entry, value: 'opus', source: 'stored' as const, updatedBy: 'jules' }
+          : entry,
+      ),
+    });
+    renderWithProviders(<ConfigurationCard />);
+    fireEvent.click(await screen.findByRole('button', { name: /back to the default/i }));
+
+    await waitFor(() => expect(apiMock.setRuntimeSetting).toHaveBeenCalledTimes(2));
+    expect(apiMock.setRuntimeSetting).toHaveBeenCalledWith('reflexionModel', null);
+    expect(apiMock.setRuntimeSetting).toHaveBeenCalledWith('reflexionEffort', null);
+  });
+
+  it('warns that an effort means nothing on a model without the knob', async () => {
+    // Haiku has no effort knob and a pinned level is silently downgraded, so a
+    // screen that let an operator pin one without saying so would be showing
+    // them a setting that does nothing.
+    renderWithProviders(<ConfigurationCard />);
+    expect(await screen.findByText(/Haiku has none/i)).toBeDefined();
   });
 });

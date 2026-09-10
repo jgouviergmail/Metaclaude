@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DELEGATION_TOOL_FIELD,
   HIGH_RISK_TOOLS,
   NETWORK_TOOLS,
   PREAPPROVABLE_TOOLS,
+  SKILL_TOOL,
+  SKILL_TOOL_FIELD,
   bareToolName,
+  isDelegationTool,
   isPreapprovedTool,
   languageForPath,
   mcpToolName,
@@ -171,5 +175,41 @@ describe('mcpToolName', () => {
     const built = mcpToolName('google', 'gmail_search');
 
     expect(reviewToolNames([built])).toEqual({ allowed: [built], rejected: [] });
+  });
+});
+
+
+describe('the two built-in tools that reach an extension', () => {
+  /**
+   * Measured against Claude Code through the SDK on 2026-09-10, and pinned
+   * here because nothing else can hold them: the SDK declares no input type
+   * for `Skill` at all — `ToolInputSchemas` has an entry for every other
+   * built-in — and the name of the other one was wrong in this repository for
+   * four releases. A constant that drifts from the wire is an invocation
+   * nobody counts and a permission card nobody can read.
+   */
+  it('names the skill tool and the field it carries', () => {
+    expect(SKILL_TOOL).toBe('Skill');
+    expect(SKILL_TOOL_FIELD).toBe('skill');
+  });
+
+  it('accepts the name the CLI actually sends for a delegation', () => {
+    expect(isDelegationTool('Agent')).toBe(true);
+    expect(DELEGATION_TOOL_FIELD).toBe('subagent_type');
+  });
+
+  /**
+   * `Task` is kept as an alias rather than deleted. Nothing here can see what
+   * a future CLI calls it, the cost of accepting both is one array entry, and
+   * the cost of being wrong is an invocation that goes unrecorded.
+   */
+  it('keeps accepting the name this repository used to believe in', () => {
+    expect(isDelegationTool('Task')).toBe(true);
+  });
+
+  it('refuses anything else, prefixed names included', () => {
+    for (const name of ['Bash', 'Skill', 'agent', 'AgentX', 'mcp__x__Agent', '']) {
+      expect(isDelegationTool(name)).toBe(false);
+    }
   });
 });

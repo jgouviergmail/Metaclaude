@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseDiff, renderMarkdown, renderNoteMarkdown } from './markdown.js';
+import { renderMarkdown, renderNoteMarkdown } from './markdown.js';
 
 /** True when the rendered output contains no executable or fetching surface. */
 function isInert(html: string): boolean {
@@ -184,48 +184,5 @@ describe('renderNoteMarkdown — wikilinks', () => {
     const html = renderMarkdown('See [[Widget]].');
     expect(html).not.toContain('data-note');
     expect(html).toContain('[[Widget]]');
-  });
-});
-
-describe('parseDiff', () => {
-  const diff = [
-    'diff --git a/x.ts b/x.ts',
-    'index 1111111..2222222 100644',
-    '--- a/x.ts',
-    '+++ b/x.ts',
-    '@@ -3,4 +3,5 @@ function f() {',
-    ' const a = 1;',
-    '-const b = 2;',
-    '+const b = 3;',
-    '+const c = 4;',
-    ' return a;',
-  ].join('\n');
-
-  it('classifies each line and tracks both line numbers', () => {
-    const lines = parseDiff(diff);
-    const kinds = lines.map((line) => line.type);
-    expect(kinds.filter((k) => k === 'add')).toHaveLength(2);
-    expect(kinds.filter((k) => k === 'remove')).toHaveLength(1);
-    expect(kinds).toContain('hunk');
-    expect(kinds).toContain('meta');
-
-    const context = lines.find((line) => line.type === 'context');
-    expect(context?.oldLine).toBe(3);
-    expect(context?.newLine).toBe(3);
-
-    const removed = lines.find((line) => line.type === 'remove');
-    expect(removed?.oldLine).toBe(4);
-    expect(removed?.newLine).toBeNull();
-
-    const added = lines.filter((line) => line.type === 'add');
-    expect(added[0]?.newLine).toBe(4);
-    expect(added[1]?.newLine).toBe(5);
-    expect(added[0]?.oldLine).toBeNull();
-  });
-
-  it('handles an empty diff and a malformed hunk header', () => {
-    // No hunk header means no line origin, so the counters stay at zero.
-    expect(parseDiff('')).toEqual([{ type: 'context', text: '', oldLine: 0, newLine: 0 }]);
-    expect(() => parseDiff('@@ nonsense @@\n+x')).not.toThrow();
   });
 });

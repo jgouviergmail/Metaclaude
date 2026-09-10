@@ -44,16 +44,9 @@ import {
   type EmbeddingProvider,
 } from './learning/embeddings.js';
 import { MemoryStore } from './learning/memory.js';
-import {
-  CONSOLIDATION_SCHEMA,
-  CONSOLIDATION_SYSTEM_PROMPT,
-  Consolidator,
-  buildConsolidationPrompt,
-  readConsolidationOutput,
-  type ConsolidationOutput,
-} from './learning/consolidation.js';
+import { Consolidator, createConsolidationCall } from './learning/consolidation.js';
 import { contentLanguageDirective, resolveContentLanguage } from './learning/language.js';
-import { listInsights, setInsightStatus, withLanguage } from './learning/reflexion.js';
+import { listInsights, setInsightStatus } from './learning/reflexion.js';
 import { countStale, createRebuildTrigger, reindexStale } from './learning/reindex.js';
 import { KnowledgeStore } from './learning/knowledge.js';
 import { KnowledgeFileStore } from './learning/knowledge-files.js';
@@ -81,14 +74,13 @@ import { BoardService } from './services/board.js';
 import { BoardGateway } from './services/board-gateway.js';
 import { ClaudeSessions } from './services/claude-sessions.js';
 import { Doctor } from './services/doctor.js';
-import { RuntimeSettings } from './services/runtime-settings.js';
+import { phaseModel, phasePolicyReader, RuntimeSettings } from './services/runtime-settings.js';
 import { MarketplacesService } from './services/marketplaces.js';
 import { UpdateChecker } from './services/update-check.js';
 import { ClaudeCliUpdate } from './services/claude-cli-update.js';
 import { UpdateApplier } from './services/update-apply.js';
 import { BriefService } from './services/brief.js';
-import { SkillSynthesizer, SYNTHESIS_SCHEMA, SYNTHESIS_SYSTEM_PROMPT, type SynthesisOutput } from './learning/synthesis.js';
-import { structuredCall } from './learning/structured-call.js';
+import { createSynthesisCall, SkillSynthesizer } from './learning/synthesis.js';
 import { PluginRegistry } from './services/plugin-registry.js';
 import { AnalyticsService } from './services/analytics.js';
 import { FileService } from './services/files.js';
@@ -96,6 +88,8 @@ import { GitService } from './services/git.js';
 import { Registry } from './services/registry.js';
 import { LibraryService } from './library/service.js';
 import { AdvisorService } from './services/advisor.js';
+import { createArbiterCall } from './learning/improvement-arbiter.js';
+import { ImprovementReviewer } from './learning/improvement-review.js';
 import { Scheduler } from './services/scheduler.js';
 import { Steward } from './services/steward.js';
 import { seedSystemAutomation } from './services/system-automation.js';
@@ -167,6 +161,8 @@ export interface AppContext {
   mcpOAuth: McpOAuth;
   library: LibraryService;
   advisor: AdvisorService;
+  /** Loop four: the pass that proposes rewrites of the instructions in force. */
+  improvement: ImprovementReviewer;
   /** What Metaclaude may see and do about itself — the facade behind its tools. */
   steward: Steward;
   workspaces: WorkspaceService;
@@ -603,8 +599,12 @@ export async function createAppContext(
   const readOnlyTools = new Set<string>([
     ...SYSTEM_TOOLS.filter((entry) => entry.ring === 1).map((entry) => mcpToolName(SYSTEM_SERVER_NAME, entry.name)),
     ...BOARD_TOOL_CATALOGUE.filter((entry) => entry.ring === 1).map((entry) => mcpToolName(BOARD_SERVER_NAME, entry.name)),
-    // Not `Task`: a subagent's own calls are not in these events, so a run
-    // that delegated could have changed something this list cannot see.
+    // Neither `Agent` nor `Skill`: a subagent's own calls are not in these
+    // events, so a run that delegated could have changed something this list
+    // cannot see, and a skill is a procedure that may well tell the run to
+    // act. (`Agent` is the delegation tool's real name — measured; this
+    // comment said `Task`, which the CLI has never sent. The behaviour was
+    // right by accident, since neither name is on the list.)
     'Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'ToolSearch', 'WebFetch', 'WebSearch', 'TodoWrite',
   ]);
 
@@ -630,7 +630,10 @@ export async function createAppContext(
   ];
   const gate = new Gatekeeper({
     memory,
-    call: createGateCall({ env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir }),
+    call: createGateCall(
+      { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
+      phasePolicyReader(runtimeSettings, 'memoryGate'),
+    ),
     describedTools: (workspaceId) => (systemWorkspace.isSystem(workspaceId) ? stewardToolNames : []),
     instructions: standingInstructions,
     language: (workspaceId) => contentLanguage(workspaceId),
@@ -647,6 +650,7 @@ export async function createAppContext(
     // tools, and pointing it at project files would be a needless risk.
     cwd: config.dataDir,
     gate,
+    policy: phasePolicyReader(runtimeSettings, 'reflexion'),
     readOnlyRun: (run, events) =>
       systemWorkspace.isSystem(run.workspaceId) &&
       events.every((event) => event.kind !== 'tool_call' || readOnlyTools.has(event.name)),
@@ -661,19 +665,10 @@ export async function createAppContext(
     memory,
     embedder,
     language: (workspaceId) => contentLanguage(workspaceId),
-    call: async (groups, language) => {
-      const { prompt, numbering } = buildConsolidationPrompt(groups);
-      const output = await structuredCall<ConsolidationOutput>(
-        { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
-        {
-          prompt,
-          systemPrompt: withLanguage(CONSOLIDATION_SYSTEM_PROMPT, language),
-          schema: CONSOLIDATION_SCHEMA as unknown as Record<string, unknown>,
-          accept: (parsed) => Array.isArray((parsed as ConsolidationOutput).groups),
-        },
-      );
-      return readConsolidationOutput(output, groups, numbering);
-    },
+    call: createConsolidationCall(
+      { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
+      phasePolicyReader(runtimeSettings, 'consolidation'),
+    ),
     log: kernelLog,
   });
 
@@ -789,6 +784,10 @@ export async function createAppContext(
       proposeAutomation: (input) => {
         if (!advisorRef) throw new Error('The advisor is not ready yet.');
         return advisorRef.proposeAutomation(input);
+      },
+      proposeRevision: (input) => {
+        if (!advisorRef) throw new Error('The advisor is not ready yet.');
+        return advisorRef.proposeRevision(input);
       },
     },
     // Same lazy shape again: the steward is built last, because it reaches
@@ -1009,6 +1008,17 @@ export async function createAppContext(
     library,
     board: { list: (workspaceId) => board.list(workspaceId) },
     submit: (input) => kernel.submit(input),
+    // A revision writes through the same repository the settings form does,
+    // so it meets the same guard: the system workspace's fixed settings are
+    // fixed against a machine's proposal exactly as against a person's, and a
+    // guard that lived on the form would not be there for this path.
+    systemWorkspaceGuard: (workspaceId, patch) => systemWorkspace.guard(workspaceId, patch),
+    // The one pass that is an ordinary run rather than a structured call, so
+    // its pin rides the submit's overrides instead of a request field — and it
+    // is deliberately independent of the workspace's own default model, which
+    // is what an operator picks for the work, not for the machine that
+    // comments on it.
+    policy: phasePolicyReader(runtimeSettings, 'advisor'),
     log: (level, message, data) => log[level](data ?? {}, message),
   });
   advisorRef = advisor;
@@ -1016,6 +1026,60 @@ export async function createAppContext(
   // workspace to at most one automatic analysis per day.
   const advisorTimer = setInterval(() => void advisor.sweep(), 60 * 60_000);
   advisorTimer.unref();
+
+  /*
+   * Loop four: are the instructions right?
+   *
+   * The same tool-less, scratch-directory call as the reflector and the
+   * consolidator, for the same reason — it reads text and answers JSON, and
+   * giving it a workspace or a tool would be a risk it has no use for. What is
+   * different is what it proposes: every other proposal in the inbox lands
+   * *disabled*, while a revision is in force on the next run, which is why
+   * nothing but an operator may accept one.
+   */
+  const improvement = new ImprovementReviewer({
+    db,
+    workspaces: workspaceRepo,
+    registry,
+    automations: scheduler,
+    advisor,
+    arbiter: createArbiterCall(
+      { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
+      phasePolicyReader(runtimeSettings, 'revision'),
+    ),
+    // Read per review, not captured: the row has to name the model that
+    // actually judged that window.
+    model: () => phaseModel(runtimeSettings, 'revision'),
+    language: (workspaceId) => contentLanguage(workspaceId),
+    // The autopilot's guard, and the same reading of it: a background pass
+    // must not spend the last of a window the operator is about to want, and
+    // an unknowable quota (an API key, a broken probe) fails open.
+    quota: async (workspace) => planUtilization(await claudeUsage.get(workspace.path)),
+    // Read per pass, not captured: an operator raises or lowers this from the
+    // Configuration screen and the next review obeys, with no restart.
+    targetChars: () => runtimeSettings.number('reviewTargetChars'),
+    // A weekly pass nobody hears about is a brief read ten hours late — the
+    // steward's own observation about its morning review. Only when something
+    // was proposed: a weekly "nothing to change" is the notification an
+    // operator turns off within a month, taking the one that mattered with it.
+    notify: ({ workspace, proposed }) => {
+      bus.publish(SYSTEM_TOPIC, {
+        type: 'notification',
+        topic: SYSTEM_TOPIC,
+        level: 'info',
+        title: 'Instructions worth a look',
+        message:
+          `The weekly review of “${workspace.name}” proposed ${proposed} revision` +
+          `${proposed === 1 ? '' : 's'}. Each shows its diff and the runs behind it.`,
+        href: routes.dashboard(),
+      });
+    },
+    log: kernelLog,
+  });
+  // Daily is the beat; the pass itself holds each workspace to one review a
+  // week, so the timer only decides how soon after a week has elapsed it runs.
+  const improvementTimer = setInterval(() => void improvement.sweep(), 24 * 60 * 60_000);
+  improvementTimer.unref();
 
   // Read-only self-diagnosis. Probes are bound here so the doctor itself
   // stays testable against fakes; on demand only, so no caching.
@@ -1136,16 +1200,11 @@ export async function createAppContext(
   const synthesizer = new SkillSynthesizer({
     db,
     memory,
-    call: (prompt, workspaceId) =>
-      structuredCall<SynthesisOutput>(
-        { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
-        {
-          prompt,
-          systemPrompt: withLanguage(SYNTHESIS_SYSTEM_PROMPT, contentLanguage(workspaceId)),
-          schema: SYNTHESIS_SCHEMA as unknown as Record<string, unknown>,
-          accept: (parsed) => typeof (parsed as SynthesisOutput).worthIt === 'boolean',
-        },
-      ),
+    call: createSynthesisCall(
+      { env: claudeEnv, claudeBinPath: config.claude.binPath, cwd: config.dataDir },
+      (workspaceId) => contentLanguage(workspaceId),
+      phasePolicyReader(runtimeSettings, 'synthesis'),
+    ),
     log: kernelLog,
   });
 
@@ -1263,6 +1322,7 @@ export async function createAppContext(
     registry,
     library,
     advisor,
+    improvement,
     steward,
     workspaces,
     files: new FileService(),

@@ -11,6 +11,52 @@
  */
 
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
+import type { EffortLevel } from '@metaclaude/shared';
+import { DELEGATION_TOOLS, SKILL_TOOL } from '@metaclaude/shared';
+
+/**
+ * What a background pass runs on unless an operator says otherwise.
+ *
+ * One name for it, in one place: the shipped default the five structured
+ * passes share, the value each phase row on the settings screen states, and
+ * what a review row records when nothing was pinned. Three copies of `haiku`
+ * is three chances to disagree, and the one that disagreed would be the row
+ * telling the operator which model judged their instructions.
+ */
+export const STRUCTURED_DEFAULT_MODEL = 'haiku';
+
+/**
+ * What serves one background pass, as the operator has pinned it.
+ *
+ * `null` on either side means "unpinned" — the shipped default — and never
+ * "no model" or "no effort". Both are read through a getter rather than held
+ * as a value, because every one of these calls is built once at boot and the
+ * settings behind them are hot: a captured model would need a restart, which
+ * for a setting about spend is the wrong answer.
+ */
+export interface PhasePolicy {
+  model: string | null;
+  effort: EffortLevel | null;
+}
+
+export type PhasePolicyReader = () => PhasePolicy;
+
+/** The reader a factory takes when its caller pins nothing — tests, mostly. */
+export const NO_PHASE_POLICY: PhasePolicyReader = () => ({ model: null, effort: null });
+
+/**
+ * The pinned fields of a request, **omitted** when nothing is pinned.
+ *
+ * Absence and `null` are different answers here: an absent `model` lets the
+ * call take its own default, and an absent `effort` lets the CLI choose for
+ * the model it is serving, while `effort: null` is a value the SDK would carry.
+ * Every factory spreads this rather than spelling the two conditionals out,
+ * so there is one place that knows it.
+ */
+export function pinnedFields(policy: PhasePolicyReader): { model?: string; effort?: EffortLevel } {
+  const { model, effort } = policy();
+  return { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+}
 
 export interface StructuredCallContext {
   /** Environment for the CLI subprocess (carries subscription auth). */
@@ -27,6 +73,17 @@ export interface StructuredCallRequest {
   /** Accept only shapes the caller can actually use; rejects become null. */
   accept: (parsed: unknown) => boolean;
   model?: string;
+  /**
+   * Reasoning effort, when the operator has pinned one for this pass.
+   *
+   * Omitted rather than defaulted, because absence and a value mean different
+   * things to the CLI: absent lets it choose for the model it is serving, and
+   * a level on a model without the knob is *silently downgraded* — measured,
+   * and true of Haiku, which is what these passes ship on. So pinning one here
+   * does nothing until the model is also changed to one that has it, and the
+   * settings screen says so rather than letting the operator believe otherwise.
+   */
+  effort?: EffortLevel | null;
   timeoutMs?: number;
   /**
    * Turns the CLI may take. Three by default.
@@ -68,11 +125,18 @@ export async function structuredCall<T>(
       options: {
         cwd: context.cwd,
         systemPrompt: request.systemPrompt,
-        model: request.model ?? 'haiku',
+        model: request.model ?? STRUCTURED_DEFAULT_MODEL,
+        ...(request.effort ? { effort: request.effort } : {}),
         maxTurns: request.maxTurns ?? 3,
         // Belt and braces: no tools offered, and none permitted.
         allowedTools: [],
-        disallowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task'],
+        // Belt and braces twice over, since `allowedTools: []` already
+        // refuses everything: the delegation tool's real name is `Agent`,
+        // measured — `Task` alone was a list that named nothing the CLI sends.
+        disallowedTools: [
+          'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch', 'WebSearch',
+          ...DELEGATION_TOOLS, SKILL_TOOL,
+        ],
         permissionMode: 'dontAsk',
         settingSources: [],
         thinking: { type: 'disabled' },

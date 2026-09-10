@@ -35,6 +35,34 @@ const call = (over: Partial<ToolCall> = {}): ToolCall =>
 
 describe('ToolCallCard', () => {
   /**
+   * The delegation tool is `Agent`. This table said `Task`, which the CLI has
+   * never sent: measured against Claude Code on 2026-09-10, twice, once with
+   * every `CLAUDE_CODE_*` variable stripped. So every delegation in every
+   * transcript this product has ever rendered fell through to the generic
+   * branch and showed a raw tool name where it meant to say "Subagent".
+   */
+  it('labels a delegation whichever of the two names the CLI uses', () => {
+    for (const name of ['Agent', 'Task']) {
+      const { unmount } = render(
+        <ToolCallCard
+          call={call({ name, input: { description: 'audit the auth code', subagent_type: 'code-reviewer' }, status: 'ok' })}
+        />,
+      );
+      expect(screen.getByText('Subagent')).toBeTruthy();
+      expect(screen.getByText(/audit the auth code/)).toBeTruthy();
+      unmount();
+    }
+  });
+
+  /** A skill call carries one field, measured: `{"skill":"<directory name>"}`. */
+  it('labels a skill call by the skill it opens', () => {
+    render(<ToolCallCard call={call({ name: 'Skill', input: { skill: 'review-migrations' }, status: 'ok' })} />);
+
+    expect(screen.getByText('Skill')).toBeTruthy();
+    expect(screen.getByText(/review-migrations/)).toBeTruthy();
+  });
+
+  /**
    * A tool is labelled by its own name, whatever server offers it.
    *
    * `splitToolName` lives in `packages/shared` with a note explaining that its

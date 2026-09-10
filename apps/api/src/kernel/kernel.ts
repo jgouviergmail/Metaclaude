@@ -38,6 +38,11 @@ import {
 import type { Db } from '../db/index.js';
 import type { PolicyLearner } from '../learning/bandit.js';
 import { computeReward } from '../learning/bandit.js';
+import {
+  collectExtensionUsage,
+  recordExtensionUsage,
+  type AvailableExtension,
+} from '../learning/extension-usage.js';
 import type { TaskCategory, TaskClassifier } from '../learning/classifier.js';
 import type { Consolidator } from '../learning/consolidation.js';
 import type { MemoryStore } from '../learning/memory.js';
@@ -72,6 +77,17 @@ export interface RuntimeContext {
   mcpServers: Record<string, unknown>;
   /** Custom agents available to the run. */
   agents: Record<string, { description: string; prompt: string; tools?: string[]; model?: string }>;
+  /**
+   * The registry's own skills this run is offered, by id and name.
+   *
+   * The names alone would be enough for the CLI — it discovers them from
+   * `.claude/skills/`, which `materialiseSkills` writes from the same list —
+   * but not for the question this answers afterwards: which *row* was offered,
+   * so an extension nobody ever reaches for can be named rather than counted.
+   * Plugin skills are deliberately absent: they reach the run too, and nothing
+   * here owns them, so an invocation of one is recorded without an id.
+   */
+  skills: Array<{ id: string; name: string }>;
   /**
    * Enabled plugin marketplaces, keyed by name. Optional because most
    * providers have none; the kernel normalises absence to an empty record.
@@ -183,6 +199,16 @@ interface ActiveRun {
   session: Session;
   controller: AbortController;
   toolErrors: number;
+  /**
+   * What the registry offered this run, captured when the run was assembled.
+   *
+   * Captured rather than re-read at the end, because the two answers differ:
+   * an operator who disables a skill mid-run would otherwise have the record
+   * say it was never offered, when the CLI had it on disk the whole time. The
+   * same reasoning as crediting the memories that were *injected* rather than
+   * the ones retrieval considered.
+   */
+  extensions: AvailableExtension[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1014,7 +1040,7 @@ export class Kernel {
     category: TaskCategory,
   ): Promise<void> {
     const controller = new AbortController();
-    const activeRun: ActiveRun = { run, session, controller, toolErrors: 0 };
+    const activeRun: ActiveRun = { run, session, controller, toolErrors: 0, extensions: [] };
     this.active.set(run.id, activeRun);
 
     // Anything between the `set` above and the supervisor call can throw —
@@ -1165,6 +1191,13 @@ export class Kernel {
     // `ContextProvider.prepare` for why this is not folded into `resolve`.
     await this.deps.contextProvider.prepare?.(workspace);
     const runtime = this.deps.contextProvider.resolve(workspace);
+    // What this run was offered, recorded at the moment it was offered — see
+    // `ActiveRun.extensions`. The subagents come from the same record the SDK
+    // is handed, so the two can never disagree about what was mounted.
+    activeRun.extensions = [
+      ...runtime.skills.map((skill) => ({ kind: 'skill' as const, id: skill.id, name: skill.name })),
+      ...Object.entries(runtime.agents).map(([name]) => ({ kind: 'agent' as const, id: name, name })),
+    ];
     const topic = sessionTopic(session.id);
 
     const request: RunRequest = {
@@ -1297,7 +1330,7 @@ export class Kernel {
     // Learning runs after the operator already has their answer, and its
     // failures are contained: a broken learner degrades the OS's improvement,
     // never its correctness.
-    void this.learn(finished, workspace, category, activeRun.toolErrors);
+    void this.learn(finished, workspace, category, activeRun.toolErrors, activeRun.extensions);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1309,8 +1342,22 @@ export class Kernel {
     workspace: Workspace,
     category: TaskCategory,
     toolErrors: number,
+    extensions: readonly AvailableExtension[],
   ): Promise<void> {
     try {
+      /*
+       * What the run did with what it was given — before anything that can be
+       * switched off, because it is a fact rather than an opinion.
+       *
+       * Reflexion is a workspace setting and the policy learner is another;
+       * neither decides whether a skill was opened. Recording it under those
+       * gates would leave a workspace that turned reflexion off unable to see
+       * that its own extensions are never used, which is the one question this
+       * table exists for.
+       */
+      const events = this.deps.transcript.byRun(run.id);
+      recordExtensionUsage(this.deps.db, run.id, collectExtensionUsage(extensions, events));
+
       const reward = computeReward({
         status: run.status === 'succeeded' ? 'succeeded' : run.status === 'failed' ? 'failed' : 'interrupted',
         usage: run.usage,
@@ -1340,7 +1387,6 @@ export class Kernel {
       }
 
       if (workspace.settings.reflexionEnabled) {
-        const events = this.deps.transcript.byRun(run.id);
         const written = await this.deps.reflexion.reflect(run, events);
         if (written.length > 0) {
           this.deps.bus.publish(SYSTEM_TOPIC, {

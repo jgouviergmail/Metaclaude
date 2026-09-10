@@ -12,6 +12,73 @@
  */
 
 export const fr: Record<string, string> = {
+  /* Révision des consignes : la quatrième boucle */
+  'Loading the proposal…': 'Chargement de la proposition…',
+  'reaches every workspace':
+    'atteint tous les workspaces',
+  'No diff was recorded for this proposal.':
+    'Aucun diff n’a été enregistré pour cette proposition.',
+  'What it is based on':
+    'Sur quoi elle se fonde',
+  'Since this was applied, the problem it was meant to fix happened again.':
+    'Depuis son application, le problème qu’elle devait corriger s’est reproduit.',
+  'Since this was applied, the problem it was meant to fix has not happened again.':
+    'Depuis son application, le problème qu’elle devait corriger ne s’est pas reproduit.',
+  'Applied, then taken back {when}.':
+    'Appliquée, puis annulée {when}.',
+  'Take it back':
+    'Annuler',
+  'Dismissed.':
+    'Écartée.',
+  'Put back':
+    'Remise en état',
+  'The text it replaced is in force again.':
+    'Le texte qu’elle remplaçait s’applique de nouveau.',
+  'Could not take that revision back.':
+    'Impossible d’annuler cette révision.',
+  'One revision in force':
+    'Une révision en vigueur',
+  '{n} revisions in force':
+    '{n} révisions en vigueur',
+  'Reading this workspace’s recent runs':
+    'Lecture des derniers runs de ce workspace',
+  'Proposals land on the Dashboard with their diff. This takes a minute.':
+    'Les propositions arrivent sur le Tableau de bord avec leur diff. Comptez une minute.',
+  'Not enough to go on yet':
+    'Pas encore assez d’éléments',
+  'A review needs several runs across more than one day: one run is an incident, one day is a busy afternoon.':
+    'Une relecture demande plusieurs runs répartis sur plus d’une journée : un run est un incident, une journée est un après-midi chargé.',
+  'Could not start the review.':
+    'Impossible de lancer la relecture.',
+  'Read what the last runs of this workspace actually did and propose rewrites of its instructions, its skills and its subagents. Proposals land on the Dashboard with their diff; nothing changes until you accept.':
+    'Lire ce que les derniers runs de ce workspace ont réellement fait et proposer des réécritures de ses consignes, de ses skills et de ses sous-agents. Les propositions arrivent sur le Tableau de bord avec leur diff ; rien ne change tant que vous n’acceptez pas.',
+  'Review the instructions':
+    'Relire les consignes',
+  'Last instruction review {when}: it could not finish.':
+    'Dernière relecture des consignes {when} : elle n’a pas pu aboutir.',
+  'Last instruction review {when}: {runs} run(s) read, nothing worth changing.':
+    'Dernière relecture des consignes {when} : {runs} run(s) lu(s), rien à changer.',
+  'Last instruction review {when}: {runs} run(s) read, {n} proposal(s) on the Dashboard.':
+    'Dernière relecture des consignes {when} : {runs} run(s) lu(s), {n} proposition(s) sur le Tableau de bord.',
+  'workspace instructions':
+    'consignes du workspace',
+  'subagent':
+    'sous-agent',
+  'automation':
+    'automatisation',
+  'instructions':
+    'consignes',
+  'description':
+    'description',
+  'body':
+    'corps',
+  'prompt':
+    'prompt',
+  'revision': 'révision',
+  'Let Metaclaude review this workspace’s own instructions weekly':
+    'Laisser Metaclaude relire chaque semaine les consignes de ce workspace',
+  'Once a week at most, a pass reads what the last runs actually did — which skills and subagents went unused, which errors kept repeating — and proposes rewrites of this workspace’s instructions, its skills, its subagents and its automations. Every proposal shows its diff and the runs behind it, and nothing changes until you accept. Off by default: unlike the advisor’s, an accepted revision is in force on the next run.':
+    'Une fois par semaine au plus, une passe lit ce que les derniers runs ont réellement fait — quels skills et sous-agents n’ont jamais servi, quelles erreurs se sont répétées — et propose des réécritures des consignes de ce workspace, de ses skills, de ses sous-agents et de ses automatisations. Chaque proposition montre son diff et les runs qui la motivent, et rien ne change tant que vous n’acceptez pas. Désactivé par défaut : contrairement à celles du conseiller, une révision acceptée s’applique dès le run suivant.',
   /* Mémoire : portée, consolidation */
   'Metaclaude writes in':
     'Metaclaude écrit en',
@@ -309,6 +376,35 @@ export const fr: Record<string, string> = {
     'Cette connexion a pris fin. Les runs ne peuvent plus s’authentifier tant qu’elle n’est pas renouvelée.',
   '{n} unsaved change': '{n} modification non enregistrée',
   '{n} unsaved changes': '{n} modifications non enregistrées',
+  // Ce qui sert chaque passe d'apprentissage : six lignes, deux sélecteurs.
+  'What serves each learning pass': 'Ce qui sert chaque passe d’apprentissage',
+  'The passes that read your runs and write what the system remembers. They ship on the cheapest capable model and are meant to stay in the background; raising one buys better judgement and costs more on every run. An effort means nothing on a model without the knob — Haiku has none, and a level pinned there is quietly ignored, so change the model first.':
+    'Les passes qui lisent vos runs et écrivent ce que le système retient. Elles sont livrées sur le modèle capable le moins cher et sont faites pour rester en arrière-plan ; en monter une achète un meilleur jugement et coûte plus cher à chaque run. Un effort ne veut rien dire sur un modèle qui n’a pas ce réglage — Haiku n’en a pas, et un niveau fixé là est ignoré en silence : changez d’abord le modèle.',
+  'Model for {pass}': 'Modèle pour {pass}',
+  'Effort for {pass}': 'Effort pour {pass}',
+  'Back to the default': 'Revenir au réglage par défaut',
+  'Runs on {model}.': 'Tourne sur {model}.',
+  'the workspace’s own model': 'le modèle propre à l’espace',
+  'Reading a finished run': 'Lire un run terminé',
+  'Runs after every run that did something, and reads the whole transcript — the longest prompt here, and the most frequent call. Raising this one costs the most.':
+    'Tourne après chaque run qui a fait quelque chose, et lit toute la transcription — le prompt le plus long ici, et l’appel le plus fréquent. Monter celle-ci est ce qui coûte le plus cher.',
+  'Deciding what to remember': 'Décider quoi retenir',
+  'Judges each proposed note against its neighbours and your standing instructions, and refuses most of them. It is the pass that keeps the memory small, so its judgement is worth more than its price.':
+    'Juge chaque note proposée face à ses voisines et à vos consignes permanentes, et en refuse la plupart. C’est la passe qui garde la mémoire petite : son jugement vaut plus que son prix.',
+  'Merging duplicate memories': 'Fusionner les souvenirs en double',
+  'Rewrites a group of overlapping notes into the one sentence that survives. Rare, and its answer becomes the stored text.':
+    'Réécrit un groupe de notes qui se recouvrent en la seule phrase qui survit. Rare, et sa réponse devient le texte stocké.',
+  'Distilling a skill': 'Distiller un skill',
+  'Turns a procedure repeated across runs into a draft skill you review. Rare, and what it writes is prose an operator reads.':
+    'Transforme une procédure répétée d’un run à l’autre en brouillon de skill que vous relisez. Rare, et ce qu’elle écrit est de la prose lue par un opérateur.',
+  'Reviewing the instructions': 'Relire les consignes',
+  'The weekly pass that reads a workspace’s own week and proposes rewrites of its instructions, its skills and its agents. Its answer becomes the proposed text.':
+    'La passe hebdomadaire qui lit la semaine d’un espace et propose des réécritures de ses consignes, de ses skills et de ses agents. Sa réponse devient le texte proposé.',
+  'Not a classifier but an ordinary agentic run, with tools and a session of its own. Left alone it uses each workspace’s own model; pinning one here overrides that for every workspace at once.':
+    'Pas un classifieur mais un run agentique ordinaire, avec des outils et sa propre session. Laissé tel quel il prend le modèle propre à chaque espace ; en fixer un ici l’emporte pour tous les espaces à la fois.',
+  'Instruction review budget': 'Budget de la relecture des consignes',
+  'Characters of your own instructions — skill descriptions and bodies, subagent prompts, automation prompts — put to the weekly review in one go. It is read straight into a model prompt, so it is what that pass costs. A workspace’s own standing instructions are always included, whatever this says, so 0 reviews those alone. Raise it if the review keeps saying it could not show everything.':
+    'Caractères de vos propres consignes — descriptions et corps de skills, prompts de sous-agents, prompts d’automatisations — soumis d’un coup à la relecture hebdomadaire. C’est lu tel quel dans un prompt de modèle : c’est donc ce que cette passe coûte. Les consignes permanentes d’un espace sont toujours incluses, quoi qu’en dise ce réglage, donc 0 ne relit qu’elles. Montez-le si la relecture répète qu’elle n’a pas pu tout montrer.',
   'Stop a run that goes quiet after': 'Arrêter un run devenu silencieux après',
   'The ceiling that should normally do the stopping: it asks whether a run is still alive, not how long it has worked. The agent reports every half minute while a tool runs, so silence this long means it stopped. 0 switches it off.':
     'Le plafond qui devrait normalement arrêter : il demande si le run est encore vivant, pas depuis combien de temps il travaille. L’agent se manifeste toutes les trente secondes pendant qu’un outil tourne, donc un silence aussi long signifie qu’il s’est arrêté. 0 le désactive.',
@@ -847,7 +943,6 @@ export const fr: Record<string, string> = {
   'The library could not be read': "La bibliothèque n'a pas pu être lue",
   'Reload the page, or check the server logs if it keeps failing.':
     'Rechargez la page, ou consultez les journaux du serveur si cela persiste.',
-  subagent: 'sous-agent',
   Installed: 'Installé',
   Install: 'Installer',
   'Install “{name}”': 'Installer « {name} »',
@@ -880,6 +975,8 @@ export const fr: Record<string, string> = {
   Dismiss: 'Écarter',
   'Accept “{name}”': 'Accepter « {name} »',
   'Dismiss “{name}”': 'Écarter « {name} »',
+  'Apply “{name}”': 'Appliquer « {name} »',
+  'Take it back: “{name}”': 'Annuler : « {name} »',
 
   /* La boucle rendue visible */
   'chosen from experience': "choisi par l'expérience",
@@ -2138,6 +2235,7 @@ export const fr: Record<string, string> = {
   'Edit': 'Modifier',
   'Search': 'Rechercher',
   'Subagent': 'Sous-agent',
+  'Skill': 'Skill',
   '{n} entry changed': '{n} entrée modifiée',
   '{n} entries changed': '{n} entrées modifiées',
   'Delete {n} skill?': 'Supprimer {n} compétence ?',

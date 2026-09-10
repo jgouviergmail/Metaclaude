@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AuditLog } from '../security/audit.js';
 import { Vault } from '../security/vault.js';
 import { migrate, openDatabase, type Db } from '../db/index.js';
-import { Doctor, type DoctorDeps } from './doctor.js';
+import { Doctor, NEGLECTED_WARN_AT, type DoctorDeps } from './doctor.js';
 
 let db: Db;
 let audit: AuditLog;
@@ -76,6 +76,7 @@ describe('a healthy system', () => {
       'knowledge-files',
       'memory',
       'reflexion',
+      'extensions',
       'runs',
       'automations',
     ]);
@@ -718,5 +719,82 @@ describe('the reflexion check', () => {
   it('ignores an interrupted run, which the pass declines by design', async () => {
     seedRun('run_1', { status: 'interrupted' });
     expect((await check())?.status).toBe('ok');
+  });
+});
+
+
+/**
+ * Ten extensions mounted and not one ever invoked.
+ *
+ * That was the production deployment on 2026-09-10, and nothing anywhere could
+ * say so — `skills.use_count` was displayed on two screens and incremented by
+ * no code path at all, so it read zero whether an extension was working
+ * perfectly or had never been opened in its life. A description that never
+ * fires is dead weight in every prompt that carries it, and it is the operator
+ * who has to rewrite it, so it is the operator who has to be told.
+ */
+describe('the extensions check', () => {
+  const seedRun = (id: string) => {
+    db.prepare(
+      "INSERT INTO workspaces (id, name, slug, path, created_at, updated_at) VALUES ('ws_1','W','w','/tmp/w',0,0) ON CONFLICT DO NOTHING",
+    ).run();
+    db.prepare(
+      "INSERT INTO sessions (id, workspace_id, created_at, updated_at, last_activity_at) VALUES ('ses_1','ws_1',0,0,0) ON CONFLICT DO NOTHING",
+    ).run();
+    db.prepare(
+      "INSERT INTO runs (id, session_id, workspace_id, prompt, status, started_at, finished_at) VALUES (?,'ses_1','ws_1','p','succeeded',0,?)",
+    ).run(id, NOW);
+  };
+
+  const offer = (runId: string, over: { name?: string; id?: string; invoked?: number } = {}) => {
+    db.prepare(
+      `INSERT INTO run_extension_usages (run_id, kind, name, extension_id, available, invoked, failed, at)
+       VALUES (?, 'skill', ?, ?, 1, ?, 0, ?)`,
+    ).run(runId, over.name ?? 'review-migrations', over.id ?? 'skl_1', over.invoked ?? 0, NOW);
+  };
+
+  const check = async () => (await makeDoctor().run()).checks.find((entry) => entry.name === 'extensions');
+
+  it('is quiet when nothing has been offered yet', async () => {
+    expect((await check())?.status).toBe('ok');
+  });
+
+  it('is quiet below the threshold', async () => {
+    for (let index = 0; index < NEGLECTED_WARN_AT - 1; index += 1) {
+      seedRun(`run_${index}`);
+      offer(`run_${index}`);
+    }
+    expect((await check())?.status).toBe('ok');
+  });
+
+  it('names an extension carried into run after run and never once used', async () => {
+    for (let index = 0; index < NEGLECTED_WARN_AT; index += 1) {
+      seedRun(`run_${index}`);
+      offer(`run_${index}`);
+    }
+
+    const result = await check();
+    expect(result?.status).toBe('warn');
+    expect(result?.summary).toContain('review-migrations');
+  });
+
+  it('goes quiet again the moment one run reaches for it', async () => {
+    for (let index = 0; index < NEGLECTED_WARN_AT; index += 1) {
+      seedRun(`run_${index}`);
+      offer(`run_${index}`, { invoked: index === 0 ? 1 : 0 });
+    }
+    expect((await check())?.status).toBe('ok');
+  });
+
+  it('says how many when several are neglected', async () => {
+    for (let index = 0; index < NEGLECTED_WARN_AT; index += 1) {
+      seedRun(`run_${index}`);
+      offer(`run_${index}`);
+      offer(`run_${index}`, { name: 'postmortem', id: 'skl_2' });
+    }
+
+    const result = await check();
+    expect(result?.status).toBe('warn');
+    expect(result?.detail).toContain('postmortem');
   });
 });

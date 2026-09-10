@@ -24,9 +24,10 @@ import type { Memory, Run, TranscriptEvent, Workspace, WorkspaceSettings } from 
 import { AUTO_MODEL, WorkspaceSettings as WorkspaceSettingsSchema } from '@metaclaude/shared';
 import { migrate, openDatabase, type Db } from '../db/index.js';
 import { HashingEmbedder } from '../learning/embeddings.js';
+import { usageForRun } from '../learning/extension-usage.js';
 import { KnowledgeStore } from '../learning/knowledge.js';
 import { EventBus } from './bus.js';
-import { delegationTimeoutFor, deriveTitle, Kernel, languageDirective } from './kernel.js';
+import { delegationTimeoutFor, deriveTitle, Kernel, languageDirective, type ContextProvider } from './kernel.js';
 import { ModelAvailability } from './model-availability.js';
 import { capPermissionMode } from './permissions.js';
 import { AttachmentService } from '../services/attachments.js';
@@ -176,7 +177,12 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
   // knowledge injection lives between the kernel, the store and the rows —
   // same reasoning as the repositories being genuine.
   const knowledge = new KnowledgeStore(db, new HashingEmbedder());
-  const contextProvider = { resolve: vi.fn().mockReturnValue({ mcpServers: {}, agents: {} }) };
+  // Typed rather than cast: the `as never` this used to reach the kernel
+  // through hid a missing field for a whole release's worth of edits, and the
+  // symptom was thirty-seven red tests that looked like a broken kernel.
+  const contextProvider: ContextProvider = {
+    resolve: vi.fn<ContextProvider['resolve']>().mockReturnValue({ mcpServers: {}, agents: {}, skills: [] }),
+  };
   const finished: Run[] = [];
 
   const settings = WorkspaceSettingsSchema.parse(options.settings ?? {});
@@ -203,7 +209,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     policy: policy as never,
     availability,
     reflexion: reflexion as never,
-    contextProvider: contextProvider as never,
+    contextProvider,
     supervisor: supervisor as never,
     // Real service against the same in-memory database — attachments are part
     // of the storage the kernel is tested against, not a learning collaborator.
@@ -244,6 +250,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     reflexion,
     memory,
     knowledge,
+    contextProvider,
     finished,
     newSession,
   };
@@ -1685,5 +1692,97 @@ describe('the delegation waiter against the run ceiling', () => {
     const unbounded = delegationTimeoutFor(0);
     expect(unbounded).toBeGreaterThan(0);
     expect(Number.isFinite(unbounded)).toBe(true);
+  });
+});
+
+/**
+ * What a run was offered, and what it reached for.
+ *
+ * Driven through the real kernel rather than by calling the fold directly,
+ * because the fold's own tests already pin what it makes of an event list and
+ * would not notice the two things that can go wrong here: an availability list
+ * assembled from the wrong place, and a write that never happens because the
+ * workspace switched something off. Measured in production before this
+ * existed: ten extensions mounted, zero invocations, and nothing anywhere that
+ * could tell that from ten extensions doing their job.
+ */
+describe('extension usage', () => {
+  const skillCall = (skill: string, runId: string): TranscriptEvent => ({
+    kind: 'tool_call',
+    id: `ev_${skill}`,
+    runId,
+    seq: 1,
+    at: Date.now(),
+    toolUseId: `tu_${skill}`,
+    name: 'Skill',
+    input: { skill },
+    status: 'ok',
+    result: null,
+    resultIsError: false,
+    durationMs: null,
+  });
+
+  /** Offer the run one skill and one subagent, the way the registry would. */
+  function offer(fixture: ReturnType<typeof setup>): void {
+    (fixture.contextProvider.resolve as ReturnType<typeof vi.fn>).mockReturnValue({
+      mcpServers: {},
+      agents: { 'code-reviewer': { description: 'd', prompt: 'p' } },
+      skills: [{ id: 'skl_1', name: 'review-migrations' }],
+    });
+  }
+
+  it('records what was offered even when nothing was invoked', async () => {
+    const fixture = setup();
+    offer(fixture);
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'Do a thing please' });
+    await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
+
+    await vi.waitFor(() => expect(usageForRun(fixture.db, run.id)).toHaveLength(2));
+    expect(usageForRun(fixture.db, run.id)).toEqual([
+      { kind: 'agent', extensionId: 'code-reviewer', name: 'code-reviewer', available: true, invoked: 0, failed: 0 },
+      { kind: 'skill', extensionId: 'skl_1', name: 'review-migrations', available: true, invoked: 0, failed: 0 },
+    ]);
+  });
+
+  it('counts an invocation the run actually made', async () => {
+    const fixture = setup();
+    offer(fixture);
+    fixture.supervisor.hold();
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'Review the migration' });
+
+    await vi.waitFor(() => expect(fixture.supervisor.holding).toBe(1));
+    fixture.transcript.append(session.id, { ...skillCall('review-migrations', run.id), seq: undefined } as never);
+    fixture.supervisor.finish();
+
+    await vi.waitFor(() =>
+      expect(usageForRun(fixture.db, run.id).find((row) => row.kind === 'skill')).toMatchObject({ invoked: 1 }),
+    );
+  });
+
+  /**
+   * Reflexion is a workspace setting; whether a skill was opened is not an
+   * opinion. Recording this under that gate would leave a workspace that
+   * turned reflexion off unable to see that its own extensions go unused —
+   * which is the one question the table exists for.
+   */
+  it('records usage even where reflexion is switched off', async () => {
+    const fixture = setup({ settings: { reflexionEnabled: false } });
+    offer(fixture);
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'Do a thing please' });
+    await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
+
+    await vi.waitFor(() => expect(usageForRun(fixture.db, run.id)).toHaveLength(2));
+  });
+
+  it('writes nothing at all for a workspace that offers nothing', async () => {
+    const fixture = setup();
+    const session = fixture.newSession();
+    const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'Do a thing please' });
+    await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
+
+    expect(usageForRun(fixture.db, run.id)).toEqual([]);
   });
 });

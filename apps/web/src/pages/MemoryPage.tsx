@@ -30,6 +30,7 @@ import {
   Pin,
   Plus,
   Search,
+  ScrollText,
   Sparkles,
   Trash2,
   Wrench,
@@ -75,7 +76,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { readDecisions } from '@/lib/insights';
 import { cn, formatPercent, formatRelative } from '@/lib/utils';
-import { usePlural, useT } from '@/lib/i18n';
+import { interpolate, usePlural, useT } from '@/lib/i18n';
 import { describeRetrieval } from '@/lib/retrieval';
 import { routes } from '@metaclaude/shared';
 
@@ -597,6 +598,42 @@ export function MemoryPage() {
     onError: (error) => toast.error(messageFor(error, t('Could not update that insight.'))),
   });
 
+  /**
+   * The pass over this workspace's own instructions.
+   *
+   * A button as well as a schedule: pressing it waives the weekly clock and
+   * the per-workspace opt-in, because those exist to stop the machine asking
+   * unprompted rather than to stop a person asking. What it cannot waive is
+   * the floor — the server answers 200 with a reason when the window holds too
+   * little to say anything, and that reason is what the toast repeats.
+   */
+  const reviewInstructions = useMutation({
+    mutationFn: (id: string) => api.reviewInstructions(id),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['revision-reviews'] });
+      if (result.started) {
+        toast.success(t('Reading this workspace’s recent runs'), {
+          description: t('Proposals land on the Dashboard with their diff. This takes a minute.'),
+        });
+        return;
+      }
+      toast.info(t('Not enough to go on yet'), {
+        description: t(
+          'A review needs several runs across more than one day: one run is an incident, one day is a busy afternoon.',
+        ),
+      });
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : t('Could not start the review.')),
+  });
+
+  const reviewsQuery = useQuery({
+    queryKey: ['revision-reviews', workspaceId ?? null],
+    queryFn: () => api.revisionReviews(workspaceId as string),
+    enabled: Boolean(workspaceId),
+  });
+  const lastReview = reviewsQuery.data?.reviews[0] ?? null;
+
   const synthesise = useMutation({
     mutationFn: (id: string) => api.synthesiseSkill(id),
     onSuccess: (result) => {
@@ -1106,22 +1143,66 @@ export function MemoryPage() {
             )}
             actions={
               workspaceId ? (
-                <Tooltip content={t(
-                  "Read this workspace's accumulated procedures and, if they cohere, draft one skill — as a proposal below, never installed directly.",
-                )}>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={synthesise.isPending}
-                    onClick={() => synthesise.mutate(workspaceId)}
-                  >
-                    <Sparkles className="size-4" aria-hidden />
-                    {t('Distil a skill')}
-                  </Button>
-                </Tooltip>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Tooltip content={t(
+                    "Read this workspace's accumulated procedures and, if they cohere, draft one skill — as a proposal below, never installed directly.",
+                  )}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={synthesise.isPending}
+                      onClick={() => synthesise.mutate(workspaceId)}
+                    >
+                      <Sparkles className="size-4" aria-hidden />
+                      {t('Distil a skill')}
+                    </Button>
+                  </Tooltip>
+                  <Tooltip content={t(
+                    'Read what the last runs of this workspace actually did and propose rewrites of its instructions, its skills and its subagents. Proposals land on the Dashboard with their diff; nothing changes until you accept.',
+                  )}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={reviewInstructions.isPending}
+                      onClick={() => reviewInstructions.mutate(workspaceId)}
+                    >
+                      <ScrollText className="size-4" aria-hidden />
+                      {t('Review the instructions')}
+                    </Button>
+                  </Tooltip>
+                </div>
               ) : null
             }
           >
+            {/*
+              What the last pass made of it — including a pass that found
+              nothing, which is the common and correct answer. Without this
+              line, "nothing needed changing", "the window was not ready" and
+              "the call died" are the same empty screen; that is the defect
+              `runs.reflected_at` was added to fix, and it cost a deployment a
+              day of lost memory before anyone saw it.
+            */}
+            {workspaceId && lastReview ? (
+              <p className="pb-3 text-caption leading-relaxed text-subtle">
+                {lastReview.error
+                  ? interpolate(t('Last instruction review {when}: it could not finish.'), {
+                      when: formatRelative(lastReview.at),
+                    })
+                  : lastReview.proposed === 0
+                    ? interpolate(
+                        t('Last instruction review {when}: {runs} run(s) read, nothing worth changing.'),
+                        { when: formatRelative(lastReview.at), runs: lastReview.runsExamined },
+                      )
+                    : interpolate(
+                        t('Last instruction review {when}: {runs} run(s) read, {n} proposal(s) on the Dashboard.'),
+                        {
+                          when: formatRelative(lastReview.at),
+                          runs: lastReview.runsExamined,
+                          n: lastReview.proposed,
+                        },
+                      )}
+              </p>
+            ) : null}
             {/* Under the heading rather than beside it: the chips choose which
                 list is shown, so they belong with the list, and the heading
                 names whichever one they landed on. */}

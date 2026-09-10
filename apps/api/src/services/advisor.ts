@@ -23,8 +23,31 @@
  * refuses the rest, whatever the run believes.
  */
 
-import type { AdvisorProposal, Automation, BoardTask, Run, Workspace } from '@metaclaude/shared';
-import { newId } from '@metaclaude/shared';
+import type {
+  AdvisorProposal,
+  Automation,
+  BoardTask,
+  EffortLevel,
+  RevisionField,
+  RevisionFinding,
+  RevisionFollowUp,
+  RevisionTargetKind,
+  Run,
+  Workspace,
+} from '@metaclaude/shared';
+import { newId, REVISABLE_FIELDS, RevisionPayload, unifiedDiff } from '@metaclaude/shared';
+import {
+  fitsField,
+  hasField,
+  isRewrite,
+  mayRevise,
+  readRevisable,
+  RevisionTargetError,
+  sameText,
+  textFingerprint,
+  writeRevisable,
+  type RevisionSurfaceDeps,
+} from '../learning/revision.js';
 import { z } from 'zod';
 import type { Db } from '../db/index.js';
 import type { RunRepo, SessionRepo, WorkspaceRepo } from '../kernel/repositories.js';
@@ -160,7 +183,26 @@ const PAYLOADS = {
   agent: AgentPayload,
   mcp: McpPayloadSchema,
   plugin: PluginPayload,
+  // The one kind that creates nothing. Its schema lives in `packages/shared`
+  // because the card parses it in the browser too, and a second hand-written
+  // copy at the edge is how `AutomationPolicy` came to drop a field the form
+  // was faithfully sending.
+  revision: RevisionPayload,
 } as const;
+
+/**
+ * How long a refused revision keeps its target quiet.
+ *
+ * A fortnight is two review windows, so an operator who says no is not asked
+ * again next week by a pass looking at almost the same runs. It is deliberately
+ * longer than the window rather than a multiple of it: the point is that a
+ * refusal outlives the evidence that produced it, or the same handful of runs
+ * would keep re-proposing the same idea until they aged out.
+ */
+export const REVISION_COOLDOWN_DAYS = 14;
+
+/** Proposals one listing returns. Enough for any inbox worth reading at once. */
+export const PROPOSAL_PAGE = 100;
 
 /* -------------------------------------------------------------------------- */
 /* Rows                                                                        */
@@ -202,11 +244,27 @@ const toProposal = (row: ProposalRow): AdvisorProposal => ({
 
 export interface AdvisorDeps {
   db: Db;
-  workspaces: Pick<WorkspaceRepo, 'get' | 'list'>;
+  workspaces: Pick<WorkspaceRepo, 'get' | 'list' | 'update'>;
   sessions: Pick<SessionRepo, 'get' | 'create'>;
   runs: Pick<RunRepo, 'listRecent'>;
-  registry: Pick<Registry, 'listSkills' | 'listAgents' | 'listMcpServers' | 'upsertSkill' | 'upsertAgent' | 'upsertMcpServer'>;
-  scheduler: Pick<Scheduler, 'list' | 'create'>;
+  registry: Pick<
+    Registry,
+    | 'listSkills'
+    | 'listAgents'
+    | 'listMcpServers'
+    | 'upsertSkill'
+    | 'upsertAgent'
+    | 'upsertMcpServer'
+    | 'getSkill'
+    | 'getAgent'
+  >;
+  scheduler: Pick<Scheduler, 'list' | 'create' | 'get' | 'update'>;
+  /**
+   * Refuses a change the system workspace must not take — the same guard the
+   * settings route leans on. Optional so the service can be built before the
+   * system workspace exists; absent, nothing is refused on that ground.
+   */
+  systemWorkspaceGuard?: (workspaceId: string, patch: { settings?: Record<string, unknown> }) => void;
   library: Pick<LibraryService, 'list'>;
   board: { list(workspaceId: string): BoardTask[] };
   /** The kernel's submit, narrowed to what the advisor's run needs. */
@@ -214,8 +272,20 @@ export interface AdvisorDeps {
     sessionId: string;
     prompt: string;
     triggeredBy: 'system';
-    overrides: { permissionMode: 'auto' };
+    overrides: { permissionMode: 'auto'; model?: string; effort?: EffortLevel };
   }) => Promise<Run>;
+  /**
+   * What the advisor's own run is served, read at the moment it is submitted.
+   *
+   * Independent of the workspace's default on purpose: that default is what an
+   * operator picks for the work, and this is the machine that comments on it —
+   * a project run on Opus has no reason to pay Opus for a weekly review, and a
+   * project run on Haiku may well deserve better judgement here. Absent, or
+   * unpinned, the workspace default stands, which is what shipped before.
+   *
+   * A getter, because the setting is hot and this service is built at boot.
+   */
+  policy?: () => { model: string | null; effort: EffortLevel | null };
   log: (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }
 
@@ -230,18 +300,32 @@ export class AdvisorService {
 
   /* ------------------------------ Proposals ------------------------------ */
 
-  list(workspaceId?: string, status: AdvisorProposal['status'] = 'pending'): AdvisorProposal[] {
+  /**
+   * Proposals of one status, newest first.
+   *
+   * Bounded, which it was not while only `pending` was ever asked for — that
+   * set is drained by definition. `accepted` is not: it only grows, it is read
+   * on every Dashboard now, and each row carries a whole revision payload with
+   * its diff. An unbounded read of it would send a year of them to the browser
+   * to draw the three that still have an undo.
+   */
+  list(
+    workspaceId?: string,
+    status: AdvisorProposal['status'] = 'pending',
+    limit = PROPOSAL_PAGE,
+  ): AdvisorProposal[] {
+    const bounded = Math.max(1, Math.min(limit, 500));
     const rows = workspaceId
       ? this.deps.db
-          .prepare<[string, string], ProposalRow>(
-            'SELECT * FROM advisor_proposals WHERE workspace_id = ? AND status = ? ORDER BY created_at DESC',
+          .prepare<[string, string, number], ProposalRow>(
+            'SELECT * FROM advisor_proposals WHERE workspace_id = ? AND status = ? ORDER BY created_at DESC, rowid DESC LIMIT ?',
           )
-          .all(workspaceId, status)
+          .all(workspaceId, status, bounded)
       : this.deps.db
-          .prepare<[string], ProposalRow>(
-            'SELECT * FROM advisor_proposals WHERE status = ? ORDER BY created_at DESC',
+          .prepare<[string, number], ProposalRow>(
+            'SELECT * FROM advisor_proposals WHERE status = ? ORDER BY created_at DESC, rowid DESC LIMIT ?',
           )
-          .all(status);
+          .all(status, bounded);
     return rows.map(toProposal);
   }
 
@@ -401,6 +485,12 @@ export class AdvisorService {
         headers: {},
         enabled: false,
       }).id;
+    } else if (proposal.kind === 'revision') {
+      // The one kind that creates nothing. It rewrites a text already in
+      // force, so it is checked against what is there right now and applied
+      // through the same services the interface writes through.
+      this.applyRevision(proposal);
+      appliedId = (parsed.data as z.infer<typeof RevisionPayload>).target.id;
     }
     // 'plugin': nothing to create server-side — plugins install through a
     // marketplace or by path, both deliberate owner actions. Accepting one
@@ -429,6 +519,338 @@ export class AdvisorService {
       .run(status, Date.now(), username, id);
   }
 
+
+  /* ------------------------------ Revisions ------------------------------ */
+
+  /**
+   * The services a revision reads and writes through, gathered once.
+   *
+   * One object so the read path and the apply path cannot be given different
+   * ones — a proposal drawn against one reading of "the description of a
+   * skill" and applied to another is the failure this shape exists to make
+   * impossible.
+   */
+  private get surface(): RevisionSurfaceDeps {
+    return {
+      workspaces: this.deps.workspaces,
+      registry: this.deps.registry,
+      automations: this.deps.scheduler,
+      ...(this.deps.systemWorkspaceGuard ? { guard: this.deps.systemWorkspaceGuard } : {}),
+    };
+  }
+
+  /** Whether this service knows how to apply a revision of that kind at all. */
+  canApply(kind: RevisionTargetKind): boolean {
+    return (REVISABLE_FIELDS[kind]?.length ?? 0) > 0;
+  }
+
+  /**
+   * The name a revision proposal is filed under.
+   *
+   * It is also the duplicate key, and that is the whole design: one pending
+   * proposal per target *and field*, so a second pass reaching the same
+   * conclusion cannot stack two rewrites of one text — of which applying
+   * either leaves the other drawn against text that no longer exists.
+   */
+  private static revisionName(kind: RevisionTargetKind, id: string, field: RevisionField): string {
+    return `${kind}:${id}:${field}`;
+  }
+
+  /**
+   * Propose a rewrite of a text that is already in force.
+   *
+   * Everything that makes this safe is checked here rather than asked of the
+   * model, because the memory gate measured what asking costs: four rules had
+   * to sit *after* the model there, and the same reasoning applies to every
+   * rule below. A rewrite identical to what is there is refused; a field the
+   * target does not have is refused; a target that has gone is refused; a
+   * second pending proposal for one text is refused; and a target whose
+   * revision was recently declined is refused, because the operator has
+   * already answered.
+   */
+  proposeRevision(input: {
+    workspaceId: string;
+    runId: string | null;
+    target: { kind: RevisionTargetKind; id: string; name: string; workspaceId: string | null };
+    field: RevisionField;
+    after: string;
+    rationale: string;
+    evidence?: Array<{ runId: string; sessionId: string | null; workspaceId: string | null; note: string }>;
+    findings?: RevisionFinding[];
+    reviewId?: string | null;
+    now?: number;
+  }): AdvisorProposal {
+    if (!this.deps.workspaces.get(input.workspaceId)) {
+      throw new AdvisorError('Unknown workspace.', 404);
+    }
+    if (!hasField(input.target.kind, input.field)) {
+      throw new AdvisorError(
+        `A ${input.target.kind} has no ${input.field} to revise. It has ` +
+          `${REVISABLE_FIELDS[input.target.kind].join(' and ')}.`,
+      );
+    }
+
+    const current = readRevisable(this.surface, input.target, input.field);
+    if (!current) {
+      throw new AdvisorError(`There is no ${input.target.kind} “${input.target.name}” to revise.`, 404);
+    }
+    /*
+     * Whose text is this?
+     *
+     * The id arrives from a model's arguments through
+     * `advisor_propose_revision`, and the surface resolves it by id alone — so
+     * without this a run in one workspace could name another's skill, or
+     * another's standing instructions, file the card here, and rewrite them the
+     * moment an operator accepted. Answered as *not found* rather than as
+     * forbidden: a workspace has no business learning that an id it guessed
+     * exists somewhere else.
+     */
+    if (!mayRevise(this.surface, input.workspaceId, input.target)) {
+      throw new AdvisorError(`There is no ${input.target.kind} “${input.target.name}” to revise.`, 404);
+    }
+    // What the field itself accepts, asked of the schema that owns it. A
+    // rewrite over the ceiling would otherwise reach `WorkspaceRepo.update`,
+    // which reparses the whole settings object, and surface as a 500 at accept
+    // time about a proposal that should never have been filed.
+    const fits = fitsField(input.target.kind, input.field, input.after);
+    if (!fits.ok) throw new AdvisorError(fits.reason);
+
+    if (sameText(current.text, input.after)) {
+      throw new AdvisorError(
+        'That rewrite is the text that is already there. Propose a change, or propose nothing.',
+      );
+    }
+    /*
+     * An edit, not a rewrite.
+     *
+     * The review pass has applied this since the first day; the tool was told
+     * it in prose and held to it by nothing, and prose is not a rule. What it
+     * stops is a card whose diff is a wall of green an operator cannot read —
+     * and the diff is the entire reason this proposal kind is safe to accept.
+     */
+    if (isRewrite(current.text, input.after)) {
+      throw new AdvisorError(
+        'That replaces most of the text rather than editing it. Change as little as possible, ' +
+          'keep the operator’s own wording, and propose the smallest edit that fixes what you saw.',
+      );
+    }
+
+    const name = AdvisorService.revisionName(input.target.kind, input.target.id, input.field);
+    const now = input.now ?? Date.now();
+    const quiet = this.revisionCooldownUntil(name, now);
+    if (quiet !== null) {
+      throw new AdvisorError(
+        `A revision of that text was recently declined; it can be proposed again in ` +
+          `${Math.ceil((quiet - now) / 86_400_000)} day(s).`,
+        409,
+      );
+    }
+
+    const payload = RevisionPayload.parse({
+      // The name *and* the owner are read from the live record. Both decide
+      // what the card tells the operator — the second one draws the warning
+      // that this revision reaches every workspace — and a caller's claim
+      // about either is a claim, not a fact.
+      target: {
+        ...input.target,
+        name: current.name,
+        // Null means "reaches every workspace", which is the only thing the
+        // card asks this field. Read from the record's own reach, never from
+        // what the caller claimed.
+        workspaceId: current.global ? null : input.workspaceId,
+      },
+      field: input.field,
+      before: current.text,
+      after: input.after,
+      beforeFingerprint: textFingerprint(current.text),
+      diff: unifiedDiff(current.text, input.after),
+      rationale: input.rationale,
+      evidence: input.evidence ?? [],
+      findings: input.findings ?? [],
+      reviewId: input.reviewId ?? null,
+    });
+
+    return this.propose({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      kind: 'revision',
+      name,
+      summary: `Rewrite the ${input.field} of ${current.name}`,
+      rationale: input.rationale,
+      payload,
+    });
+  }
+
+  /**
+   * When this target stops being quiet, or null if it is not.
+   *
+   * Derived from the proposals themselves rather than from a table of its own.
+   * A second table would be a stored copy of something these rows already say,
+   * and a stored derived value is only correct until its input moves — which
+   * is how every workspace row came to name a directory the volume no longer
+   * mounted.
+   */
+  private revisionCooldownUntil(name: string, now: number): number | null {
+    // Two ways an operator says no, and the second says it louder: a dismissal
+    // refuses the idea, a revert says it was tried and was wrong. Both start
+    // the clock, each from its own moment.
+    const row = this.deps.db
+      .prepare<[string], { at: number | null }>(
+        `SELECT MAX(CASE WHEN status = 'dismissed' THEN decided_at
+                         ELSE json_extract(payload, '$.revertedAt') END) AS at
+           FROM advisor_proposals
+          WHERE kind = 'revision' AND name = ?
+            AND (status = 'dismissed' OR json_extract(payload, '$.revertedAt') IS NOT NULL)`,
+      )
+      .get(name);
+    const until = row?.at ? row.at + REVISION_COOLDOWN_DAYS * 86_400_000 : null;
+    return until !== null && until > now ? until : null;
+  }
+
+  /**
+   * Findings this workspace's operator has refused lately.
+   *
+   * Handed to the next pass so it is not asked to rediscover one: an operator
+   * who dismisses a proposal is answering the *finding*, not the wording, and
+   * a pass that does not know that spends a model call reaching the same
+   * conclusion and has the answer thrown away by the rule above.
+   */
+  refusedFindings(workspaceId: string, now: number = Date.now()): string[] {
+    const cutoff = now - REVISION_COOLDOWN_DAYS * 86_400_000;
+    const rows = this.deps.db
+      .prepare<[string, number, number], { payload: string }>(
+        `SELECT payload FROM advisor_proposals
+          WHERE kind = 'revision' AND workspace_id = ?
+            AND ((status = 'dismissed' AND decided_at IS NOT NULL AND decided_at > ?)
+                 OR json_extract(payload, '$.revertedAt') > ?)`,
+      )
+      .all(workspaceId, cutoff, cutoff);
+
+    const keys = new Set<string>();
+    for (const row of rows) {
+      const parsed = RevisionPayload.safeParse(safeJson(row.payload));
+      if (!parsed.success) continue;
+      for (const finding of parsed.data.findings) keys.add(finding.key);
+    }
+    return [...keys];
+  }
+
+  /**
+   * Apply a revision the operator has read and agreed with.
+   *
+   * The fingerprint check is the consolidation rule, and it is here for the
+   * consolidation reason: the proposal was drawn against a text that has been
+   * live ever since, and folding onto it blindly would delete an operator's
+   * own edit with nothing on screen to say so. A drift is a 409 they can act
+   * on, never a silent best effort.
+   */
+  private applyRevision(proposal: AdvisorProposal): void {
+    const parsed = RevisionPayload.safeParse(proposal.payload);
+    if (!parsed.success) throw new AdvisorError('The stored revision no longer validates.', 500);
+    // `before` is deliberately not read here: what a revert restores comes off
+    // the payload at revert time, and the fingerprint below is what proves the
+    // stored `before` is still what stands.
+    const { target, field, after, beforeFingerprint } = parsed.data;
+
+    const current = readRevisable(this.surface, target, field);
+    if (!current) {
+      throw new AdvisorError(`That ${target.kind} no longer exists — dismiss this proposal.`, 409);
+    }
+    if (textFingerprint(current.text) !== beforeFingerprint) {
+      throw new AdvisorError(
+        `“${current.name}” changed since this was proposed — dismiss it and let the next review look again.`,
+        409,
+      );
+    }
+    try {
+      writeRevisable(this.surface, target, field, after);
+    } catch (error) {
+      if (error instanceof RevisionTargetError) throw new AdvisorError(error.message, 409);
+      throw error;
+    }
+  }
+
+  /**
+   * Put back the text a revision replaced.
+   *
+   * What makes accepting one safe. A revision is in force on the very next
+   * run — unlike every other proposal in this inbox, which lands disabled —
+   * so "reversible" has to mean a button rather than a principle. It is
+   * refused when what stands is no longer what this revision wrote, because
+   * an operator who has edited since would otherwise lose that edit to
+   * something labelled *undo*.
+   */
+  revert(id: string, username: string, now: number = Date.now()): AdvisorProposal {
+    const proposal = this.get(id);
+    if (!proposal) throw new AdvisorError('No such proposal.', 404);
+    if (proposal.kind !== 'revision') throw new AdvisorError('That proposal is not a revision.', 400);
+    if (proposal.status !== 'accepted') {
+      throw new AdvisorError('That revision was never applied, so there is nothing to take back.', 409);
+    }
+
+    const parsed = RevisionPayload.safeParse(proposal.payload);
+    if (!parsed.success) throw new AdvisorError('The stored revision no longer validates.', 500);
+    if (parsed.data.revertedAt !== null) {
+      throw new AdvisorError('That revision has already been taken back.', 409);
+    }
+
+    const { target, field, before, after } = parsed.data;
+    const current = readRevisable(this.surface, target, field);
+    if (!current) {
+      throw new AdvisorError(`That ${target.kind} no longer exists.`, 409);
+    }
+    if (textFingerprint(current.text) !== textFingerprint(after)) {
+      throw new AdvisorError(
+        `“${current.name}” changed since the revision was applied — taking it back would discard that edit. ` +
+          'Edit it yourself instead.',
+        409,
+      );
+    }
+
+    try {
+      writeRevisable(this.surface, target, field, before);
+    } catch (error) {
+      if (error instanceof RevisionTargetError) throw new AdvisorError(error.message, 409);
+      throw error;
+    }
+
+    // Recorded on the payload rather than as a fifth status: the operator did
+    // accept it, and a revert is a later fact about the target rather than a
+    // change to that decision. It also starts the cooldown, because taking a
+    // revision back is the strongest thing anyone can say about it.
+    const updated = { ...parsed.data, revertedAt: now };
+    this.deps.db
+      .prepare('UPDATE advisor_proposals SET payload = ?, decided_by = ? WHERE id = ?')
+      .run(JSON.stringify(updated), username, id);
+    return this.get(id) as AdvisorProposal;
+  }
+
+  /**
+   * Record what became of a revision that was applied.
+   *
+   * Written by the *next* review, over the window that followed the change.
+   * A background pass that cannot say whether its own advice worked is one
+   * nobody should take advice from — and it is the half of "what works and
+   * what does not" an operator cannot see for themselves, because it needs the
+   * same measurement repeated on the same terms.
+   *
+   * Refused once set: a follow-up is a reading taken at a moment, and a second
+   * one over a later window would answer a different question while looking
+   * like a correction of the first.
+   */
+  recordFollowUp(id: string, followUp: RevisionFollowUp): boolean {
+    const proposal = this.get(id);
+    if (!proposal || proposal.kind !== 'revision') return false;
+    const parsed = RevisionPayload.safeParse(proposal.payload);
+    if (!parsed.success || parsed.data.followUp !== null) return false;
+
+    return (
+      this.deps.db
+        .prepare('UPDATE advisor_proposals SET payload = ? WHERE id = ?')
+        .run(JSON.stringify({ ...parsed.data, followUp }), id).changes > 0
+    );
+  }
+
   /* ------------------------------- The run ------------------------------- */
 
   /**
@@ -447,11 +869,19 @@ export class AdvisorService {
     const sessionId = this.resolveSession(workspace);
     const prompt = this.composeDossier(workspace);
 
+    // Only a pin overrides. `null` is not a choice to pass on: it would reach
+    // the kernel as an explicit selection of nothing, where absence means the
+    // session's own model — the `isAutoModel` distinction, from the other side.
+    const pinned = this.deps.policy?.() ?? { model: null, effort: null };
     const run = await this.deps.submit({
       sessionId,
       prompt,
       triggeredBy: 'system',
-      overrides: { permissionMode: 'auto' },
+      overrides: {
+        permissionMode: 'auto',
+        ...(pinned.model ? { model: pinned.model } : {}),
+        ...(pinned.effort ? { effort: pinned.effort } : {}),
+      },
     });
 
     if (options.auto) {
@@ -603,6 +1033,15 @@ export class AdvisorService {
     }
 
     return lines.join('\n');
+  }
+}
+
+/** Parse a stored payload without throwing on one a hand edit corrupted. */
+function safeJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
   }
 }
 

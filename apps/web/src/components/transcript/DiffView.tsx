@@ -8,7 +8,7 @@
 
 import { ChevronRight, FileDiff, Minus, Plus } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
-import { parseDiff, type DiffLine } from '@/lib/markdown';
+import { parseDiff, type DiffLine } from '@metaclaude/shared';
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
 

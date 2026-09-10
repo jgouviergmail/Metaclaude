@@ -24,7 +24,13 @@
 import type { Memory, MemoryKind, MemoryShelf } from '@metaclaude/shared';
 import { withLanguage, type ContentLanguage } from './language.js';
 import type { MemoryStore } from './memory.js';
-import { structuredCall, type StructuredCallContext } from './structured-call.js';
+import {
+  NO_PHASE_POLICY,
+  pinnedFields,
+  structuredCall,
+  type PhasePolicyReader,
+  type StructuredCallContext,
+} from './structured-call.js';
 
 /* -------------------------------------------------------------------------- */
 /* Contract                                                                    */
@@ -482,9 +488,15 @@ export function readGateOutput(parsed: unknown): GateVerdict[] | null {
 }
 
 /** The real call: one tool-less haiku turn, schema-constrained, through `structuredCall`. */
-export function createGateCall(context: StructuredCallContext): GateCall {
+export function createGateCall(
+  context: StructuredCallContext,
+  policy: PhasePolicyReader = NO_PHASE_POLICY,
+): GateCall {
   const once = () => (input: Parameters<GateCall>[0]) =>
     structuredCall<{ verdicts: unknown }>(context, {
+      // Read at the moment of the call: the setting is hot and this closure is
+      // built once at boot.
+      ...pinnedFields(policy),
       prompt: buildGatePrompt(input),
       systemPrompt: withLanguage(GATE_SYSTEM_PROMPT, input.language),
       schema: GATE_SCHEMA as unknown as Record<string, unknown>,

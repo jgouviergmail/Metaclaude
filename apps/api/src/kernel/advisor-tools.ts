@@ -12,7 +12,13 @@
 
 import { createSdkMcpServer, tool as sdkTool } from '@anthropic-ai/claude-agent-sdk';
 import type { AdvisorProposal, Automation } from '@metaclaude/shared';
-import { AutomationTrigger, LibraryCategory, mcpToolName } from '@metaclaude/shared';
+import {
+  AutomationTrigger,
+  LibraryCategory,
+  mcpToolName,
+  RevisionField,
+  RevisionTargetKind,
+} from '@metaclaude/shared';
 import { z } from 'zod';
 
 /** What the tools need from the advisor — the service satisfies it. */
@@ -39,6 +45,21 @@ export interface AdvisorFacade {
 export interface AdvisorToolScope {
   workspaceId: string;
   runId: string;
+}
+
+/** What a revision tool call needs from the advisor. */
+export interface RevisionFacade {
+  proposeRevision(input: {
+    workspaceId: string;
+    runId: string | null;
+    target: { kind: RevisionTargetKind; id: string; name: string; workspaceId: string | null };
+    field: RevisionField;
+    after: string;
+    rationale: string;
+    evidence?: Array<{ runId: string; sessionId: string | null; workspaceId: string | null; note: string }>;
+    findings?: Array<{ key: string; kind: string; summary: string; runIds: string[] }>;
+    reviewId?: string | null;
+  }): AdvisorProposal;
 }
 
 const asToolResult = (fn: () => unknown) => {
@@ -69,7 +90,10 @@ const receipt = (proposal: AdvisorProposal) => ({
   note: 'Filed to the advisor inbox; the operator will accept or dismiss it.',
 });
 
-export function createAdvisorHandlers(advisor: AdvisorFacade, scope: AdvisorToolScope) {
+export function createAdvisorHandlers(
+  advisor: AdvisorFacade & RevisionFacade,
+  scope: AdvisorToolScope,
+) {
   const file = (
     kind: AdvisorProposal['kind'],
     name: string,
@@ -169,6 +193,39 @@ export function createAdvisorHandlers(advisor: AdvisorFacade, scope: AdvisorTool
         source: args.source,
       });
     },
+
+    revision(args: {
+      targetKind: RevisionTargetKind;
+      targetId: string;
+      field: RevisionField;
+      after: string;
+      rationale: string;
+      evidenceRunIds?: string[];
+    }) {
+      const proposal = advisor.proposeRevision({
+        workspaceId: scope.workspaceId,
+        runId: scope.runId,
+        // The name is read from the live record by the service, so a run that
+        // guesses one cannot make the card say something the target is not.
+        target: { kind: args.targetKind, id: args.targetId, name: args.targetId, workspaceId: null },
+        field: args.field,
+        after: args.after,
+        rationale: args.rationale,
+        evidence: (args.evidenceRunIds ?? []).map((runId) => ({
+          runId,
+          sessionId: null,
+          workspaceId: scope.workspaceId,
+          note: '',
+        })),
+      });
+      return {
+        id: proposal.id,
+        name: proposal.name,
+        status: proposal.status,
+        note:
+          'Filed as a revision; the operator reads the diff and decides. Nothing changes until they do.',
+      };
+    },
   };
 }
 
@@ -187,6 +244,11 @@ export const ADVISOR_TOOL_CATALOGUE: ReadonlyArray<{ name: string; ring: 1 | 2; 
   { name: 'advisor_propose_agent', ring: 2, description: 'Propose a subagent for the operator’s inbox.' },
   { name: 'advisor_propose_mcp', ring: 2, description: 'Propose an MCP server from a recognised publisher.' },
   { name: 'advisor_propose_plugin', ring: 2, description: 'Propose a plugin, naming a verifiable source.' },
+  {
+    name: 'advisor_propose_revision',
+    ring: 2,
+    description: 'Propose a rewrite of an instruction already in force; the operator reads the diff.',
+  },
 ];
 
 /** The names as the CLI and the broker see them. */
@@ -195,7 +257,7 @@ export function advisorToolNames(): string[] {
 }
 
 export function buildAdvisorServer(
-  advisor: AdvisorFacade,
+  advisor: AdvisorFacade & RevisionFacade,
   scope: AdvisorToolScope,
 ): ReturnType<typeof createSdkMcpServer> {
   const handlers = createAdvisorHandlers(advisor, scope);
@@ -261,6 +323,33 @@ export function buildAdvisorServer(
           rationale: RATIONALE,
         },
         async (args) => asToolResult(() => handlers.mcp(args)),
+      ),
+      sdkTool(
+        'advisor_propose_revision',
+        'Propose a rewrite of an instruction that is ALREADY IN FORCE — a workspace’s standing ' +
+          'instructions, a skill’s description or body, a subagent’s prompt, an automation’s prompt. ' +
+          'Use it when several runs show the same thing going wrong, never on the strength of one. ' +
+          'Change as little as possible and keep the operator’s own wording: this is an edit, not a ' +
+          'rewrite. The operator reads the diff and decides; nothing changes until they accept.',
+        {
+          targetKind: RevisionTargetKind,
+          targetId: z.string().min(1).max(64).describe('The id of the workspace, skill, subagent or automation.'),
+          field: RevisionField.describe(
+            'systemPromptAppend for a workspace; description or body for a skill; description or prompt for a subagent; prompt for an automation.',
+          ),
+          after: z
+            .string()
+            .min(1)
+            .max(200_000)
+            .describe('The complete replacement text, not a patch.'),
+          rationale: RATIONALE,
+          evidenceRunIds: z
+            .array(z.string().max(64))
+            .max(20)
+            .optional()
+            .describe('Runs that show the problem. The operator opens them from the card.'),
+        },
+        async (args) => asToolResult(() => handlers.revision(args)),
       ),
       sdkTool(
         'advisor_propose_plugin',

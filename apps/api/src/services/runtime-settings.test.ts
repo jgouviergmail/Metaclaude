@@ -24,7 +24,16 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config.js';
 import { migrate, openDatabase, type Db } from '../db/index.js';
-import { RuntimeSettings, RUNTIME_SETTING_SPECS } from './runtime-settings.js';
+import {
+  phaseModel,
+  phasePolicy,
+  phasePolicyReader,
+  RuntimeSettings,
+  RUNTIME_SETTING_SPECS,
+} from './runtime-settings.js';
+import { AUTO_MODEL, LEARNING_PHASES, SETTING_AUTO, SETTING_EFFORTS, SETTING_MODELS } from '@metaclaude/shared';
+import { TARGETS_MAX_CHARS } from '../learning/improvement.js';
+import { STRUCTURED_DEFAULT_MODEL } from '../learning/structured-call.js';
 
 let db: Db;
 let dataRoot: string;
@@ -285,5 +294,142 @@ describe('replaying stored settings at boot', () => {
     const fresh = make();
     fresh.settings.applyStored();
     expect(fresh.applied).toEqual([]);
+  });
+});
+
+/*
+ * What serves each background pass.
+ *
+ * Everything here is derived from `LEARNING_PHASES` rather than written out,
+ * because the failure this family is prone to is a key declared in one list
+ * and read by nothing: a seventh phase with no spec, or a spec whose options
+ * do not match the picker the screen draws, would ship as a control that looks
+ * like it works. Twelve hand-written cases would each have to be remembered.
+ */
+describe('the model and effort of each learning phase', () => {
+  it('exposes both settings for every phase', () => {
+    const keys = new Set(RUNTIME_SETTING_SPECS.map((spec) => spec.key as string));
+    for (const phase of LEARNING_PHASES) {
+      expect(keys, `${phase.id} model`).toContain(phase.modelKey);
+      expect(keys, `${phase.id} effort`).toContain(phase.effortKey);
+    }
+  });
+
+  it('offers exactly the aliases a picker knows, plus the sentinel', () => {
+    for (const phase of LEARNING_PHASES) {
+      const model = RUNTIME_SETTING_SPECS.find((spec) => spec.key === phase.modelKey);
+      const effort = RUNTIME_SETTING_SPECS.find((spec) => spec.key === phase.effortKey);
+      expect(model?.kind).toBe('choice');
+      expect(effort?.kind).toBe('choice');
+      expect(model?.options).toEqual([...SETTING_MODELS]);
+      expect(effort?.options).toEqual([...SETTING_EFFORTS]);
+      // `auto` has to be offerable, or an operator who pinned a model could
+      // never go back to the shipped default from the screen.
+      expect(model?.options).toContain(SETTING_AUTO);
+      expect(effort?.options).toContain(SETTING_AUTO);
+    }
+  });
+
+  it('starts unpinned, and reads as unpinned', () => {
+    const { settings } = make();
+    for (const phase of LEARNING_PHASES) {
+      expect(settings.choice(phase.modelKey)).toBe(SETTING_AUTO);
+      expect(settings.choice(phase.effortKey)).toBe(SETTING_AUTO);
+      // `null`, never the string `auto`: the callers spread this into a
+      // request, and a literal `auto` would reach the CLI as a model name.
+      expect(phasePolicy(settings, phase)).toEqual({ model: null, effort: null });
+    }
+  });
+
+  it('carries a stored pin through to the pass', () => {
+    const { settings } = make();
+    for (const phase of LEARNING_PHASES) {
+      settings.set(phase.modelKey, 'fable', 'owner');
+      settings.set(phase.effortKey, 'high', 'owner');
+      expect(phasePolicyReader(settings, phase.id)()).toEqual({ model: 'fable', effort: 'high' });
+    }
+  });
+
+  it('goes back to the shipped default when the pin is cleared', () => {
+    const { settings } = make();
+    for (const phase of LEARNING_PHASES) {
+      settings.set(phase.modelKey, 'opus', 'owner');
+      settings.clear(phase.modelKey);
+      expect(phasePolicy(settings, phase).model).toBeNull();
+    }
+  });
+
+  it('never offers the CLI’s own `default` alias beside `auto`', () => {
+    // Two words that read alike and differ by roughly thirty times the price:
+    // `auto` is the phase’s shipped default, `default` is the CLI’s alias,
+    // which on a subscription is Opus. Only one of them is offered.
+    expect(SETTING_MODELS).not.toContain(AUTO_MODEL);
+    expect(SETTING_MODELS).toContain(SETTING_AUTO);
+    const { settings } = make();
+    expect(() => settings.set(LEARNING_PHASES[0].modelKey, AUTO_MODEL, 'owner')).toThrow();
+  });
+
+  it('refuses a model no picker offers', () => {
+    const { settings } = make();
+    // The screen is not the guard: a key posted straight to the route has to
+    // meet the same list, or a typo becomes a model name the CLI rejects on
+    // every background call, silently, forever.
+    expect(() => settings.set(LEARNING_PHASES[0].modelKey, 'gpt-4', 'owner')).toThrow();
+    expect(() => settings.set(LEARNING_PHASES[0].effortKey, 'maximum', 'owner')).toThrow();
+  });
+
+  it('names the model a review row should record', () => {
+    const { settings } = make();
+    expect(phaseModel(settings, 'revision')).toBe(STRUCTURED_DEFAULT_MODEL);
+    settings.set('revisionModel', 'fable', 'owner');
+    expect(phaseModel(settings, 'revision')).toBe('fable');
+  });
+
+  it('needs no environment variable, and says so', () => {
+    // These are an operator's choice about spend, made from the screen — not a
+    // deployment's boot configuration. A row claiming an env var nobody sets
+    // would report its provenance as `default` for a value that has none.
+    for (const phase of LEARNING_PHASES) {
+      for (const key of [phase.modelKey, phase.effortKey]) {
+        expect(RUNTIME_SETTING_SPECS.find((spec) => spec.key === key)?.envVar).toBeNull();
+      }
+    }
+  });
+});
+
+/*
+ * What the weekly review may spend on instruction texts.
+ *
+ * A ceiling with real money behind it — it is read straight into a model
+ * prompt — and the right number depends on how many skills a deployment
+ * carries and what it is willing to pay. A constant in the source would mean
+ * an operator who needs it higher, or lower, is blocked on a release.
+ */
+describe('the instruction-review budget', () => {
+  it('is a setting, bounded the way the server would accept it', () => {
+    const spec = RUNTIME_SETTING_SPECS.find((entry) => entry.key === 'reviewTargetChars');
+    expect(spec?.kind).toBe('count');
+    expect(spec?.min).toBe(0);
+    expect(spec?.max).toBeGreaterThan(0);
+    // An operator's choice about spend, made from the screen, not a boot
+    // variable — like the twelve model rows and unlike every ceiling above.
+    expect(spec?.envVar).toBeNull();
+  });
+
+  it('starts at what the code shipped with', () => {
+    const { settings } = make();
+    expect(settings.number('reviewTargetChars')).toBe(TARGETS_MAX_CHARS);
+  });
+
+  it('carries a stored value through', () => {
+    const { settings } = make();
+    settings.set('reviewTargetChars', 12_000, 'owner');
+    expect(settings.number('reviewTargetChars')).toBe(12_000);
+  });
+
+  it('refuses a number the pass could not use', () => {
+    const { settings } = make();
+    expect(() => settings.set('reviewTargetChars', -1, 'owner')).toThrow();
+    expect(() => settings.set('reviewTargetChars', 10_000_000, 'owner')).toThrow();
   });
 });

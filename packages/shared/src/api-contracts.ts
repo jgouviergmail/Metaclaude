@@ -31,6 +31,7 @@ import {
   MemoryShelf,
   RunPolicy,
   Millis,
+  ModelAlias,
   ModelSelector,
   PluginSkill,
   UnattendedCeiling,
@@ -114,11 +115,34 @@ export const RuntimeSettingKey = z.enum([
   'runRetentionDays',
   'runKeepPerWorkspace',
   'delegationDirectoryChars',
+  // What the weekly instruction review may spend on the texts it is shown.
+  'reviewTargetChars',
   'logLevel',
   'language',
   'embeddings',
+  // What serves each background pass. One pair per phase — see
+  // `LEARNING_PHASES` below for why they are named rather than grouped.
+  'reflexionModel',
+  'reflexionEffort',
+  'memoryGateModel',
+  'memoryGateEffort',
+  'consolidationModel',
+  'consolidationEffort',
+  'synthesisModel',
+  'synthesisEffort',
+  'revisionModel',
+  'revisionEffort',
+  'advisorModel',
+  'advisorEffort',
 ]);
 export type RuntimeSettingKey = z.infer<typeof RuntimeSettingKey>;
+
+// The phase table and the two picker lists live in `settings.ts`, which holds
+// no schema of its own — the web app draws these twelve rows, and a *value*
+// imported from this module would carry every request schema declared beside
+// it into the bundle. Deliberately **not** re-exported from here: `export *`
+// from two modules would give the barrel two paths to the same name, and the
+// one a bundler follows decides whether the schemas come too.
 
 /**
  * One setting, with the value in force and where that value came from.
@@ -878,8 +902,16 @@ export type KnowledgeSearchHit = KnowledgeLocation & {
  * directly but disabled (inert until enabled). What lands in the inbox is
  * exactly what would *act* the moment it exists — so it does not exist until
  * a person accepts it.
+ *
+ * `revision` is the fifth kind and the one that does not create anything: it
+ * rewrites a text that is already in force — a workspace's standing
+ * instructions, a skill, a subagent, an automation's prompt. It belongs in
+ * this inbox for exactly the reason the other four do, and rather more so: a
+ * revision is in force on the very next run, which is why nothing but an
+ * operator may accept one and why every accepted revision keeps the text it
+ * replaced (see `RevisionPayload`).
  */
-export const AdvisorProposalKind = z.enum(['skill', 'agent', 'mcp', 'plugin']);
+export const AdvisorProposalKind = z.enum(['skill', 'agent', 'mcp', 'plugin', 'revision']);
 export type AdvisorProposalKind = z.infer<typeof AdvisorProposalKind>;
 
 export const AdvisorProposal = z.object({
@@ -1347,3 +1379,195 @@ export const ApplyConsolidationRequest = z.object({
   promote: z.boolean().default(false),
 });
 export type ApplyConsolidationRequest = z.infer<typeof ApplyConsolidationRequest>;
+
+/* -------------------------------------------------------------------------- */
+/* Revisions — the fourth loop's proposal                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * API-only, and measured to matter.
+ *
+ * The card that renders one of these was first written to *parse* it in the
+ * browser, which meant importing a value from this module — and that drags the
+ * whole of it, every API-only schema in it, into the web app's entry graph.
+ * Measured: 196 kB gzipped became 201, and 198 with the schemas moved into
+ * `domain.ts` instead. It is the −1.2 kB split that created this module,
+ * running backwards and several times over.
+ *
+ * Nothing is lost by keeping it here. Unlike `ReflexionInsightPayload`, which
+ * the Memory page genuinely has to parse because one `payload` column holds
+ * three different shapes, a proposal's own `kind` already says this is a
+ * revision — so the browser needs the *type* and a two-line guard, and the
+ * server validates the value twice, at propose time and again at accept.
+ */
+
+/**
+ * What a revision proposes to rewrite.
+ *
+ * Four targets, and the list is closed on purpose. A workspace's standing
+ * instructions, a skill and a subagent are the three the operator asked for; an
+ * automation's prompt is the fourth because automations are the runs that
+ * repeat, which makes them the only target with a genuine statistic behind it
+ * — measured in production, one automation had fired nine times with the same
+ * prompt while the busiest workspace had thirty-four runs of thirty-four
+ * different requests.
+ *
+ * What is deliberately *not* here: a workspace's `CLAUDE.md`, which is a file
+ * in the operator's own repository and therefore code; `NOTES.md`, which the
+ * system workspace's own contract promises never to touch; and anything a
+ * plugin ships, which nothing in this database owns.
+ */
+export const RevisionTargetKind = z.enum(['workspace', 'skill', 'agent', 'automation']);
+export type RevisionTargetKind = z.infer<typeof RevisionTargetKind>;
+
+/**
+ * Which text of that target.
+ *
+ * A skill has two, and which one to revise is the more interesting question:
+ * the CLI reads a skill's *description* when deciding whether to open it, so a
+ * skill nobody ever invokes usually needs its description rewritten as a
+ * trigger condition rather than its body improved.
+ */
+export const RevisionField = z.enum(['systemPromptAppend', 'description', 'body', 'prompt']);
+export type RevisionField = z.infer<typeof RevisionField>;
+
+/** Which fields each kind of target actually has. Enforced, not documented. */
+export const REVISABLE_FIELDS: Record<RevisionTargetKind, readonly RevisionField[]> = {
+  workspace: ['systemPromptAppend'],
+  skill: ['description', 'body'],
+  agent: ['description', 'prompt'],
+  automation: ['prompt'],
+};
+
+/**
+ * One run that shows why the revision is proposed.
+ *
+ * The run id is a *destination*: the card links to the session it happened in,
+ * so a claim about what the agent kept getting wrong can be read rather than
+ * trusted. `note` is one sentence about that run in particular — what it did
+ * that the revision is meant to change.
+ */
+export const RevisionEvidence = z.object({
+  runId: z.string(),
+  sessionId: z.string().nullable(),
+  workspaceId: z.string().nullable(),
+  note: z.string().max(500),
+});
+export type RevisionEvidence = z.infer<typeof RevisionEvidence>;
+
+/**
+ * A recurrence the pass believes it has seen, and the runs it saw it in.
+ *
+ * `key` is what makes a refusal stick: an operator who dismisses a proposal is
+ * answering the *finding*, not the wording, so the key is what the cooldown
+ * remembers and what a later pass is shown as already refused.
+ */
+export const RevisionFinding = z.object({
+  key: z.string().min(1).max(120),
+  kind: z.string().max(60),
+  summary: z.string().max(600),
+  runIds: z.array(z.string()).max(50),
+});
+export type RevisionFinding = z.infer<typeof RevisionFinding>;
+
+/**
+ * Whether the thing a revision was meant to fix stopped happening.
+ *
+ * Written at the *next* review, over the window that followed the change. A
+ * background pass that cannot say whether its own advice worked is a pass
+ * nobody should take advice from — and it is the half of "what works and what
+ * does not" that the operator cannot see for themselves, because it needs the
+ * same measurement to be repeated on the same terms.
+ */
+export const RevisionFollowUp = z.object({
+  at: Millis,
+  /** Runs the follow-up window held. Zero means "not enough traffic to say". */
+  windowRuns: z.number().int().nonnegative(),
+  /** Whether the finding that motivated the revision showed up again. */
+  recurred: z.boolean(),
+  note: z.string().max(500),
+});
+export type RevisionFollowUp = z.infer<typeof RevisionFollowUp>;
+
+/**
+ * Everything a revision proposal carries, stored verbatim on the row.
+ *
+ * `before` and `beforeFingerprint` are what make it applicable *and*
+ * reversible: applying is refused when the target has moved since — the
+ * consolidation rule, for the consolidation reason, because a plan drawn
+ * against text that has changed would silently delete an edit nobody saw —
+ * and reverting is refused unless what stands is still what this proposal
+ * wrote. That pair is also the whole version history: a row that remembers
+ * both sides of a change needs no second table to say what the text used to
+ * be.
+ *
+ * The diff travels with it rather than being recomputed at render time, so
+ * what an operator approves is exactly what they were shown.
+ */
+export const RevisionPayload = z.object({
+  target: z.object({
+    kind: RevisionTargetKind,
+    id: z.string(),
+    /** What to call it on the card. Kept so a deleted target still reads. */
+    name: z.string().max(200),
+    /** Null for a target that reaches every workspace. */
+    workspaceId: z.string().nullable(),
+  }),
+  field: RevisionField,
+  before: z.string().max(200_000),
+  after: z.string().min(1).max(200_000),
+  beforeFingerprint: z.string().min(1).max(128),
+  diff: z.string().max(100_000),
+  rationale: z.string().min(1).max(4000),
+  evidence: z.array(RevisionEvidence).max(20).default([]),
+  findings: z.array(RevisionFinding).max(10).default([]),
+  /** The review that produced it, so a proposal can be traced to its window. */
+  reviewId: z.string().nullable().default(null),
+  followUp: RevisionFollowUp.nullable().default(null),
+  /**
+   * When the operator took it back, if they did.
+   *
+   * Here rather than as a fifth `status`, because the two say different
+   * things: the status records what was decided about the *proposal*, and they
+   * did accept it. A revert is a later fact about the *target*. Keeping them
+   * apart is also what lets an undone revision still be read as the history of
+   * that text, which is the only history there is.
+   */
+  revertedAt: Millis.nullable().default(null),
+});
+export type RevisionPayload = z.infer<typeof RevisionPayload>;
+
+/* -------------------------------------------------------------------------- */
+/* The instruction review's own log                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One completed pass over one workspace's window, recorded whether or not it
+ * proposed anything.
+ *
+ * The `reflected_at` lesson, applied before it can be learned again: without a
+ * row per pass, four outcomes are indistinguishable and all four render as an
+ * empty screen — the window was not ready, the pass found nothing, the rules
+ * dropped everything it found, or the model call died. Three of those are
+ * correct and one is a defect, and the operator is entitled to know which.
+ */
+export const RevisionReview = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  at: Millis,
+  windowFrom: Millis,
+  windowTo: Millis,
+  runsExamined: z.number().int().nonnegative(),
+  /** What the deterministic pass found, before any model saw it. */
+  observations: z.array(RevisionFinding).default([]),
+  /** What the model made of it. */
+  findings: z.array(RevisionFinding).default([]),
+  proposed: z.number().int().nonnegative(),
+  /** Revisions the rules refused, and why — the pass's own honesty. */
+  dropped: z.array(z.object({ target: z.string(), reason: z.string().max(300) })).default([]),
+  model: z.string().nullable().default(null),
+  durationMs: z.number().int().nonnegative().default(0),
+  /** Set when the pass could not complete. Null on a pass that simply found nothing. */
+  error: z.string().max(500).nullable().default(null),
+});
+export type RevisionReview = z.infer<typeof RevisionReview>;

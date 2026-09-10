@@ -248,6 +248,48 @@ reusable skill from them or answers that they do not cohere — refusal being
 the common, correct case. A draft lands in the same review queue as every
 other proposal: nothing changes the agent's behaviour until you accept it.
 
+## Reviewing the instructions
+
+Memory changes what the agent is *told*; the policy learner changes what serves
+it; reflexion changes what is remembered. None of those touches the
+**instructions** — your workspace's standing prompt, a skill's description, a
+subagent's prompt, an automation's script. Those you wrote once, and until now
+nothing ever came back to say one of them was not working.
+
+**Review the instructions** (on the Memory page, with a workspace selected)
+reads what the last runs of that workspace actually did, and proposes edits.
+Once a week at most, and only where you opt in under **Workspace settings →
+Autonomy**; the button works either way.
+
+What it looks for is repetition, and the bar is arithmetic rather than a
+judgement: the same thing has to go wrong, or the same chance be missed, in at
+least three different runs on at least two different days. One run is an
+incident. One day is a busy afternoon. Neither rewrites anything.
+
+The commonest finding is the one nothing could see before: a skill or subagent
+that is offered to run after run and never once used. The agent reads a skill's
+**description** when deciding whether to open it, so a description written as a
+summary of the contents — "Contains the five-step purchase method and the
+comparison table" — never fires, while the same skill described as a condition
+— "Use when choosing between several products before buying" — does. That is
+usually the whole fix, and it is one line.
+
+**Every proposal shows its diff**, and the runs behind it as links you can open.
+Nothing changes until you press **Apply**. Once applied it is in force on the
+very next run — which is why this is the one proposal Metaclaude itself may
+never accept on your behalf, and why every applied revision keeps **Take it
+back** on the Dashboard under *revisions in force*. Undoing is refused if you
+have edited the text since, rather than discarding your edit.
+
+Under the insights heading you will find one line saying what the last pass
+made of it — *"12 runs read, nothing worth changing"* is the ordinary answer,
+and it is written down precisely so that a pass that found nothing, a pass that
+was not due, and a pass that failed cannot look alike.
+
+At the following review, each applied revision is checked: the same measurement
+is repeated over the runs that came after the change, and the card says whether
+the problem it was meant to fix came back.
+
 ## Reading the posteriors
 
 The Analytics screen draws each arm's Beta posterior as a curve, not a bar,

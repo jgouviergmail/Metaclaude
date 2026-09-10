@@ -17,9 +17,12 @@ import {
   bareToolName,
   DANGEROUS_COMMAND_PATTERNS,
   HIGH_RISK_TOOLS,
+  isDelegationTool,
   NETWORK_TOOLS,
   newId,
   READ_ONLY_TOOLS,
+  SKILL_TOOL,
+  SKILL_TOOL_FIELD,
 } from '@metaclaude/shared';
 
 export type PermissionOutcome =
@@ -294,7 +297,17 @@ export function summarise(toolName: string, input: Record<string, unknown>): str
   const str = (key: string): string | null =>
     typeof input[key] === 'string' ? (input[key] as string) : null;
 
-  switch (bareToolName(toolName)) {
+  // Before the switch, because the delegation tool answers to two names and a
+  // `case` per name would be two branches of one sentence. It is `Agent` in
+  // every Claude Code measured here; `Task` is the name this repository
+  // believed in for four releases and is kept as an alias, at the cost of one
+  // array entry, because nothing here can see what a future CLI calls it.
+  const bare = bareToolName(toolName);
+  if (isDelegationTool(bare)) {
+    return `Delegate to a subagent: ${truncate(str('description') ?? '', 100)}`;
+  }
+
+  switch (bare) {
     case 'Bash':
       return `Run: ${truncate(str('command') ?? '', 160)}`;
     case 'Read':
@@ -311,8 +324,8 @@ export function summarise(toolName: string, input: Record<string, unknown>): str
       return `Fetch ${str('url') ?? 'a URL'}`;
     case 'WebSearch':
       return `Search the web for ${truncate(str('query') ?? '?', 80)}`;
-    case 'Task':
-      return `Delegate to a subagent: ${truncate(str('description') ?? '', 100)}`;
+    case SKILL_TOOL:
+      return `Open the skill: ${truncate(str(SKILL_TOOL_FIELD) ?? '?', 100)}`;
     default:
       return `${toolName}${describeArgs(input)}`;
   }

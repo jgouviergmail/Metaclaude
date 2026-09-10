@@ -42,7 +42,14 @@ import type { EmbeddingProvider } from './embeddings.js';
 import { retrievalProfile } from './retrieval.js';
 import { unpackEmbedding } from '../db/index.js';
 import { cosineSimilarity } from './embeddings.js';
-import type { ContentLanguage } from './language.js';
+import { withLanguage, type ContentLanguage } from './language.js';
+import {
+  NO_PHASE_POLICY,
+  pinnedFields,
+  structuredCall,
+  type PhasePolicyReader,
+  type StructuredCallContext,
+} from './structured-call.js';
 
 /**
  * Cosine floor for admitting a neighbour to a group.
@@ -738,6 +745,34 @@ export function buildConsolidationPrompt(groups: readonly ArbiterMemory[][]): {
  * batch is dropped rather than trusted; `Consolidator.file` drops anything
  * outside the group as well, so an invented reference costs nothing twice.
  */
+/**
+ * The real call: one tool-less turn on the cheap model, schema-constrained.
+ *
+ * Same scratch-directory, tool-less shape as the reflector's, for the same
+ * reason — it reads memories and answers JSON, and giving it a workspace or a
+ * tool would be a risk it has no use for. It lives here rather than at the
+ * wiring site so the prompt, the schema and the model that fills them sit
+ * together, and so a test can drive it without booting a server.
+ */
+export function createConsolidationCall(
+  context: StructuredCallContext,
+  policy: PhasePolicyReader = NO_PHASE_POLICY,
+): ConsolidationDeps['call'] {
+  return async (groups, language) => {
+    const { prompt, numbering } = buildConsolidationPrompt(groups);
+    const output = await structuredCall<ConsolidationOutput>(context, {
+      // Read at the moment of the call: the setting is hot and this closure is
+      // built once at boot.
+      ...pinnedFields(policy),
+      prompt,
+      systemPrompt: withLanguage(CONSOLIDATION_SYSTEM_PROMPT, language),
+      schema: CONSOLIDATION_SCHEMA as unknown as Record<string, unknown>,
+      accept: (parsed) => Array.isArray((parsed as ConsolidationOutput).groups),
+    });
+    return readConsolidationOutput(output, groups, numbering);
+  };
+}
+
 export function readConsolidationOutput(
   output: ConsolidationOutput | null,
   groups: readonly ArbiterMemory[][],
