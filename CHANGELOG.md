@@ -11,6 +11,33 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.90.1] — 2026-09-10
+
+### Fixed
+
+- **The settings chapter described a layout two moves out of date.** Asked
+  whether the documentation was aligned, it was not, and `check.sh` could not
+  have said so: it verifies "Settings → X" citations against the screens that
+  exist, and every one of those was correct. What had drifted was the prose
+  *around* them — the part that says where a thing lives and why.
+
+  Six claims, all in the settings chapter. The Server screen was "the first of
+  the System section, not a settings group" (it has led Settings for three
+  releases) and shown as carrying "the Claude CLI's state" (that moved to
+  Connections). Connections "started with Google" (it starts with Claude).
+  Analytics was described nowhere as a settings screen at all, though it moved
+  there two releases ago. And the doctor's countdown was explained as the CLI
+  sign-in's, when it follows whichever credential is in force — a paired token
+  standing in front of a sign-in is the case an owner is most likely to be in,
+  and the chapter did not mention it.
+
+  A citation check catches a dangling link; nothing catches a paragraph that
+  describes the app it used to be. The remedy is to read the chapter after
+  moving a screen, and this entry is the reminder that it has to happen in the
+  same session — the alternative is exactly what happened here, three moves
+  landing before anyone re-read the page describing them.
+
+
 ## [0.90.0] — 2026-09-10
 
 ### Changed

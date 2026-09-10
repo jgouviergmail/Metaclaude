@@ -143,11 +143,12 @@ stored memory unreadable to the new one.
 
 ## Server, doctor and updates
 
-The **Server** screen — the first of the System section, not a settings group —
-shows the server's vitals: version, uptime, memory, disk, and the Claude CLI's
-state. None of it is a preference, which is why it sits with what the
-deployment *does* rather than with how you like it. For the owner, two more
-cards:
+The **Server** screen leads this section, and it is the one entry that is not a
+settings group: it shows the server's vitals — version, uptime, timezone,
+CPU, memory and disk. None of it is a preference, and it comes first because
+"how is this deployment set up" starts with the machine it runs on. What the
+CLI is authenticating with used to be here too; that moved in with the other
+connections, which is the section below. For the owner, two more cards:
 
 **Doctor** runs every self-check the system knows in one pass — database
 integrity, the audit chain, the secrets vault, disk space on both volumes,
@@ -166,12 +167,18 @@ first thing to look at when runs fail for no visible reason — it separates
 "this server has no network" from "the model was refused", which otherwise
 look identical from a transcript.
 
-A credential the server can date gets counted down: two weeks before a CLI
-account sign-in ends, the check turns to a warning naming the days left, and to
-a failure once it has passed. That matters because the end is a wall rather
-than a rolling window — using the deployment does not push it back — and
-because everything works perfectly right up to the moment it does not. A pasted
-token carries no date this server can read, so nothing is claimed about one.
+A credential the server can date gets counted down: two weeks before it ends,
+the check turns to a warning naming the days left, and to a failure once it has
+passed. That matters because an account sign-in ends at a wall rather than a
+rolling window — using the deployment does not push it back — and because
+everything works perfectly right up to the moment it does not.
+
+The date is the one belonging to whichever credential is **in force**, which is
+not always the one you might expect. A paired token stands in front of an
+account sign-in, so it is the token's year that is counted down while the
+sign-in behind it runs out on its own — the credentials card says so on the
+line about it. And a token pasted by hand carries no date this server can read,
+so nothing is claimed about one: unknown is not "expiring".
 
 **Updates** compares this version against the latest published release
 (`METACLAUDE_UPDATE_REPO`; set it empty to disable the check) — and, on a
@@ -186,12 +193,34 @@ the failure shown on the card. Without the host updater (re-run
 `deploy/install-app.sh` to add it) the card stays informational, exactly
 as before.
 
+## Analytics
+
+Second in this section, next to the machine it measures: what the deployment
+has spent, over a period you choose — tokens and cost per day, the prompt cache
+split, the ranking of workspaces against each other, the policy learner's arms,
+and the subscription's own quota windows as the CLI reports them. The sessions
+chapter reads each of those figures in detail; what belongs here is why it sits
+in Settings at all.
+
+It moved out of the System strip, which is what the deployment *can do* —
+automations, agents, plugins. Consumption is not a capability. It is read
+deliberately, usually because a bill or a slowdown prompted the question, and
+the answer sits next to the machine that ran the work. Its address did not
+change, so any link or bookmark to it still lands.
+
 ## Connections
 
-Owner only: connections Metaclaude authorises for itself, starting with
-**Google**. The full walkthrough lives in the extensions chapter beside the
-MCP registry it feeds — the short version is that you register your own OAuth
-application (the screen shows the exact redirect URI to paste into the Google
+Owner only: everything this deployment authenticates against.
+
+**Claude comes first**, because it is the connection without which none of the
+others matter — the CLI reading, and under it the credentials card the whole
+section above describes. The two arrived here from the Server screen, where
+they sat three sections apart under a heading about the machine; a credential
+is not the box, it is what the box talks to.
+
+Then **Google**. The full walkthrough lives in the extensions chapter beside
+the MCP registry it feeds — the short version is that you register your own
+OAuth application (the screen shows the exact redirect URI to paste into the Google
 Cloud console), tick what the agent may do grant by grant, and consent once
 in your own browser. The refresh token lands in the vault, the
 Gmail/Calendar/Drive server ships inside the image, and it appears under
