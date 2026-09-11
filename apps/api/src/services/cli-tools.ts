@@ -28,6 +28,8 @@ import {
   DEFAULT_DISABLED_CLI_TOOLS,
   MAX_DISABLED_CLI_TOOLS,
   reviewDeniedToolNames,
+  reviewToolNames,
+  splitToolName,
   type ToolNameReview,
 } from '@metaclaude/shared';
 import { kvGet, kvSet, type Db } from '../db/index.js';
@@ -41,8 +43,42 @@ export type CliToolSource = 'stored' | 'default';
  */
 const KEY = 'cli.disabledTools';
 
+/**
+ * A second row for a second owner. The choice above is the operator's and
+ * changes when they click; what the CLI offers is the CLI's and changes when
+ * a run happens. One row for both would make every run rewrite a choice it
+ * has no business touching.
+ */
+const OFFERED_KEY = 'cli.offeredTools';
+
+/** A ceiling on the observed list, for the same reason as the stored one. */
+const MAX_OFFERED_CLI_TOOLS = 200;
+
 interface Stored {
   tools: string[];
+}
+
+interface Offered {
+  tools: string[];
+  /** When the run that reported this started its CLI. */
+  seenAt: number;
+}
+
+/**
+ * A frame's tool list as the screen should hold it: built-ins only, vetted,
+ * de-duplicated, sorted.
+ *
+ * MCP tools are stripped because they belong to a server and are reported
+ * beside it; `reviewToolNames` is the alphabet the deny list already uses,
+ * so a frame naming something no deny list could ever refuse is not stored.
+ */
+function vetOffered(names: readonly unknown[]): string[] {
+  return reviewToolNames(
+    names
+      .filter((name): name is string => typeof name === 'string')
+      .filter((name) => splitToolName(name).server === null)
+      .slice(0, MAX_OFFERED_CLI_TOOLS),
+  ).allowed.sort();
 }
 
 export class CliToolPolicy {
@@ -93,6 +129,53 @@ export class CliToolPolicy {
     const review = reviewDeniedToolNames(names.slice(0, MAX_DISABLED_CLI_TOOLS));
     kvSet(this.db, KEY, { tools: [...review.allowed].sort() } satisfies Stored);
     return { allowed: [...review.allowed].sort(), rejected: review.rejected };
+  }
+
+  /**
+   * What the CLI was last seen to offer, and when.
+   *
+   * From a run, and only from a run — a probe cannot answer this. The CLI
+   * names its tools on the `system/init` frame and nowhere else, and it emits
+   * that frame only with the first user message: measured, twenty seconds of
+   * listening, `reinitialize()` and `initializationResult()` all produced
+   * nothing, one prompt produced it at 817 ms. Every run sends a prompt, so
+   * every run is the measurement, and a deployment that has not run since it
+   * booted honestly knows nothing yet.
+   */
+  offered(): { tools: readonly string[]; seenAt: number | null } {
+    const row = kvGet<Partial<Offered> | null>(this.db, OFFERED_KEY, null);
+    if (!row || !Array.isArray(row.tools) || typeof row.seenAt !== 'number') {
+      return { tools: [], seenAt: null };
+    }
+    return { tools: vetOffered(row.tools), seenAt: row.seenAt };
+  }
+
+  /**
+   * Record what a run's opening frame listed.
+   *
+   * `forbidden` is added back, and that is the whole subtlety. The frame lists
+   * the tools *after* the run's deny list took effect — measured, a denied
+   * tool vanishes from `init.tools` — so the frame alone would report every
+   * refused tool as one the CLI had dropped, and the screen would badge the
+   * deployment's own choices as obsolete. The run knows exactly what it
+   * removed; putting it back turns the run's leftovers into the CLI's
+   * offering. What this cannot see is a tool that is both refused *and*
+   * dropped by a newer CLI: it stays listed as offered until the operator
+   * un-refuses it, at which point the next run's frame no longer names it and
+   * it disappears. Self-correcting, and in the harmless direction.
+   *
+   * An empty frame is ignored: no CLI offers no tools, so it is a frame that
+   * was read wrong, and overwriting a good answer with it would leave the
+   * screen and the doctor with nothing.
+   */
+  rememberOffered(
+    fromFrame: readonly string[],
+    forbidden: readonly string[],
+    seenAt: number = Date.now(),
+  ): void {
+    const tools = vetOffered([...fromFrame, ...forbidden]);
+    if (fromFrame.length === 0 || tools.length === 0) return;
+    kvSet(this.db, OFFERED_KEY, { tools, seenAt } satisfies Offered);
   }
 
   /**

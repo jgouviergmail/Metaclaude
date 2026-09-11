@@ -30,6 +30,7 @@ import { Page, Section } from '@/components/ui/layout';
 import { Badge, Button, Card, EmptyState, Spinner } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { usePlural, useT } from '@/lib/i18n';
+import { formatRelative } from '@/lib/utils';
 
 /**
  * What each tool actually does, in one line an operator can decide on.
@@ -161,25 +162,33 @@ export function CliToolsPage() {
             <Card>
               <EmptyState
                 icon={<Wrench />}
-                title={t('The CLI could not be asked what it offers')}
+                title={t('No run has reported what the CLI offers yet')}
                 description={t(
-                  'This list is read from the Claude CLI when it starts. Check the CLI’s credentials on the Server screen, then reload.',
+                  'The CLI names its tools when a run starts, and nowhere else. The list appears here after the first run since the server started.',
                 )}
               />
             </Card>
           ) : (
             <div className="space-y-3">
-              {/* Said once, at the top, rather than repeated on every row:
-                  when the probe failed the list below is only what this
-                  deployment refuses, with nothing to say about what exists. */}
+              {/* Said once, at the top, rather than repeated on every row.
+                  The list is learned from runs — the CLI names its tools only
+                  on the frame it emits with a first message — so before one
+                  has happened the rows below are only what this deployment
+                  refuses, with nothing to say about what exists. */}
               {!report.probed ? (
                 <Card className="border-warning/25 bg-warning-soft">
                   <p className="text-body text-ink">
                     {t(
-                      'The CLI could not be asked what it offers, so this is only what the deployment refuses. Nothing here says whether these tools still exist.',
+                      'No run has reported what the CLI offers since the server started, so this is only what the deployment refuses. The full list appears after the first run.',
                     )}
                   </p>
                 </Card>
+              ) : report.seenAt !== null ? (
+                <p className="text-caption text-muted">
+                  {t('As the CLI offered them to the last run, {when}.', {
+                    when: formatRelative(report.seenAt),
+                  })}
+                </p>
               ) : null}
 
               {report.tools.map((tool) => {

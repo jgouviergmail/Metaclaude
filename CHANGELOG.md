@@ -11,6 +11,32 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.93.3] — 2026-09-11
+
+### Fixed
+
+- **The CLI tools screen said the CLI could not be asked. No probe can ask; every
+  run answers.** In production the Tools section showed every row as "no longer
+  offered" under a warning, while the Skills section beneath it was full — and
+  the same thing had been on the design bench, misread as a bench without
+  credentials. The CLI names its tools only on its `system/init` frame, and it
+  emits that frame only with the first user message: measured, twenty seconds
+  of listening, `reinitialize()` and `initializationResult()` all produced
+  nothing, one prompt produced it at 817 ms. The catalogue probe sends no
+  prompt, so its ten-second wait for the frame could never end any other way.
+  The test double had emitted the frame on open, under a comment saying that
+  is what the CLI does.
+
+  The list is now learned from runs: `execute` hands each run's opening frame
+  to `CliToolPolicy.rememberOffered` together with what that run had refused —
+  the frame lists the tools *after* the deny list took effect, so without the
+  add-back every refused tool would be badged as one the CLI had dropped. The
+  screen says when the last run saw the list; before any run has since the
+  server started, it says that instead of blaming the CLI, and so does the
+  doctor. The probe-side machinery — the deferred wait, the catalogue's
+  `tools` field — is gone, and `scripts/sdk-probe.mjs` records that the frame
+  does not come unprompted so a CLI that changes this is noticed.
+
 ## [0.93.2] — 2026-09-11
 
 ### Changed

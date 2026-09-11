@@ -770,6 +770,9 @@ export async function createAppContext(
     // applies to the next run rather than the next restart.
     disabledCliTools: () => cliTools.disabled(),
     cliSkills: () => cliSkills.plan(),
+    // Every run's opening frame teaches the deployment what the CLI offers —
+    // the only place that can be read without spending a model turn.
+    onCliTools: ({ tools, forbidden }) => cliTools.rememberOffered(tools, forbidden),
     log: kernelLog,
     // Same lazy shape as the broker, for the same mutual-construction reason.
     // The roster travels with the verb: the supervisor mounts the tool exactly
@@ -1233,18 +1236,13 @@ export async function createAppContext(
      * subprocess of its own. Null on failure: the check has to be able to tell
      * "the CLI offers nothing", which is never true, from "I could not ask".
      */
+    // From the store the runs feed, never from a probe: the CLI names its
+    // tools only on the init frame, and sends that frame only with the first
+    // user message. Null until a run has happened since boot, which the
+    // doctor reports as "not measured yet" rather than as a finding.
     offeredCliTools: async () => {
-      try {
-        const catalogue = await claudeCatalogue.get(config.dataDir);
-        // Keyed on the answer rather than on a failure label. The catalogue has
-        // more than one way to come back empty — the tools question failing,
-        // or the CLI session never opening at all, which is recorded under a
-        // different name — and enumerating those names is a list that goes
-        // stale. No CLI offers no tools, so an empty list *is* the failure.
-        return catalogue.tools.length > 0 ? catalogue.tools : null;
-      } catch {
-        return null;
-      }
+      const { tools } = cliTools.offered();
+      return tools.length > 0 ? [...tools] : null;
     },
     disabledCliTools: () => cliTools.disabled(),
     /**

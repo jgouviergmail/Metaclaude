@@ -490,7 +490,10 @@ list outright: the model is never offered it, so there is nothing to refuse and
 no prompt to inject around. The list itself is read off the CLI's own opening
 frame rather than written down anywhere, because it differs by platform and
 moves with every version — a hard-coded list is a screen that lies after the
-next bump. One tool cannot be refused: `ToolSearch` is how the CLI keeps every
+next bump. That frame is emitted only with a run's first message, never to a
+probe, so the list is what the last run was offered, dated on the screen, and
+a deployment that has not run since it booted says so. One tool cannot be
+refused: `ToolSearch` is how the CLI keeps every
 other tool's schema *out* of the prompt until something needs it, and denying
 it puts about fifteen thousand tokens back into every run with no symptom but
 the bill. It is refused at the form, at the deployment's list, at a workspace's

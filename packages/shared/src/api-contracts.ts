@@ -231,14 +231,17 @@ export const CliToolsReport = z.object({
    */
   source: z.enum(['stored', 'default']),
   /**
-   * Whether the CLI could be asked what it offers.
+   * Whether the CLI's offering is known at all.
    *
-   * False means the list below is only what the deployment refuses, with
-   * nothing to say about what exists. Reported rather than shown as an empty
-   * catalogue, because "the CLI offers no tools" is never true and a screen
-   * that implies it is worse than one that admits it could not look.
+   * It is learned from runs, not from a probe: the CLI names its tools only on
+   * the `system/init` frame, and emits that frame only with the first user
+   * message. So a deployment that has not run since it booted knows nothing
+   * yet, and says so — "the CLI offers no tools" is never true, and a screen
+   * that implied it would be worse than one that admits it has not looked.
    */
   probed: z.boolean(),
+  /** When the run that reported the offering started its CLI. Null until one has. */
+  seenAt: Millis.nullable(),
 });
 export type CliToolsReport = z.infer<typeof CliToolsReport>;
 
@@ -351,17 +354,6 @@ export const ClaudeCatalogue = z.object({
   models: z.array(ClaudeModelInfo).default([]),
   commands: z.array(ClaudeCommandInfo).default([]),
   agents: z.array(ClaudeAgentInfo).default([]),
-  /**
-   * The CLI's own tools, as it offers them for a run in this directory.
-   *
-   * Measured off the opening frame rather than enumerated anywhere, because
-   * the set is platform-dependent — `PowerShell` on Windows against `Bash`
-   * elsewhere, and the plan-mode pair only in a mode that can use them — and
-   * it moves with the CLI. A list written down here would be a screen that
-   * lies after the next bump. Defaulted, so a catalogue cached before this
-   * field existed still parses.
-   */
-  tools: z.array(z.string()).default([]),
   mcpServers: z.array(ClaudeMcpServerStatus).default([]),
   account: ClaudeAccountInfo.nullable().default(null),
   /**

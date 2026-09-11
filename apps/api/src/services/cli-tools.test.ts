@@ -68,6 +68,66 @@ describe('CliToolPolicy', () => {
    * including a hand-edited database and a downgrade from a future version
    * that stored something else.
    */
+  /**
+   * Where the offered list comes from, and why it is not a probe.
+   *
+   * The CLI names its tools on the `system/init` frame and on nothing else,
+   * and — measured — it emits that frame only with the *first user message*:
+   * twenty seconds of listening, `reinitialize()` and `initializationResult()`
+   * all produced nothing, one prompt produced it at 817 ms. A probe that sends
+   * no prompt can therefore never answer, which is exactly what production
+   * showed. Every run sends a prompt, so every run is the measurement.
+   */
+  describe('what the CLI was last seen to offer', () => {
+    it('knows nothing until a run has happened', () => {
+      expect(policy.offered()).toEqual({ tools: [], seenAt: null });
+    });
+
+    /**
+     * A run's frame lists the tools *after* the deny list took effect —
+     * measured, a denied tool vanishes from `init.tools` — so the frame alone
+     * would report every refused tool as one the CLI had dropped. The run
+     * knows what it refused; adding that back is what makes the list the
+     * CLI's offering rather than the run's leftovers.
+     */
+    it('adds back what the run itself had refused', () => {
+      policy.rememberOffered(['Bash', 'Read', 'ToolSearch'], ['Artifact', 'CronCreate'], 1_000);
+
+      expect(policy.offered()).toEqual({
+        tools: ['Artifact', 'Bash', 'CronCreate', 'Read', 'ToolSearch'],
+        seenAt: 1_000,
+      });
+    });
+
+    it('keeps the newest run’s answer', () => {
+      policy.rememberOffered(['Bash', 'OldThing'], [], 1_000);
+      policy.rememberOffered(['Bash', 'NewThing'], [], 2_000);
+
+      expect(policy.offered()).toEqual({ tools: ['Bash', 'NewThing'], seenAt: 2_000 });
+    });
+
+    it('ignores a frame that names no tools, which no CLI sends', () => {
+      policy.rememberOffered(['Bash'], [], 1_000);
+      policy.rememberOffered([], [], 2_000);
+
+      expect(policy.offered()).toEqual({ tools: ['Bash'], seenAt: 1_000 });
+    });
+
+    it('strips MCP tools: those belong to a server, not to the CLI', () => {
+      policy.rememberOffered(['Bash', 'mcp__docs__search'], [], 1_000);
+
+      expect(policy.offered().tools).toEqual(['Bash']);
+    });
+
+    it('does not lose the choice when a run reports', () => {
+      policy.set(['WebSearch']);
+      policy.rememberOffered(['Bash', 'WebSearch'], ['WebSearch'], 1_000);
+
+      expect(policy.disabled()).toEqual(['WebSearch']);
+      expect(policy.source()).toBe('stored');
+    });
+  });
+
   describe('a row that was not written by this class', () => {
     it('drops ToolSearch rather than putting every tool schema back in the prompt', () => {
       kvSet(db, 'cli.disabledTools', { tools: ['ToolSearch', 'Artifact'] });

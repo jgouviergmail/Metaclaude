@@ -631,11 +631,14 @@ export class Doctor {
   private async cliTools(): Promise<DoctorCheck> {
     const offered = await this.deps.offeredCliTools();
     if (offered === null) {
+      // Not a failure of the CLI: the list is learned from runs, because the
+      // CLI names its tools only on the frame it emits with a first message.
+      // A server that has not run since it booted has simply not looked yet.
       return {
         name: 'cli-tools',
         status: 'warn',
-        summary: 'The CLI could not be asked which tools it offers.',
-        detail: null,
+        summary: 'No run has reported which tools the CLI offers since the server started.',
+        detail: 'The list is read from the first frame of every run; it appears after one.',
       };
     }
     // An empty list is the same "could not measure" in different clothing: no

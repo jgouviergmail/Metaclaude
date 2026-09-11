@@ -41,7 +41,6 @@ import {
   mcpToolName,
   newId,
   reviewDeniedToolNames,
-  splitToolName,
   reviewToolNames,
 } from '@metaclaude/shared';
 import { createHash, randomUUID } from 'node:crypto';
@@ -237,6 +236,17 @@ export interface SupervisorDeps {
    * every run got before the screen existed.
    */
   cliSkills?: () => CliSkillPlan;
+  /**
+   * What a run's opening frame listed as the CLI's tools, with what that run
+   * had refused, so the caller can put the two back together.
+   *
+   * A run is the only place this can be measured. The CLI names its tools on
+   * `system/init` and nowhere else, and — measured — emits that frame only
+   * with the first user message: a probe that sends none listens for ever. The
+   * frame arrives ~800 ms in, before any model call, so it costs nothing to
+   * read here and would cost a turn to read anywhere else.
+   */
+  onCliTools?: (report: { tools: readonly string[]; forbidden: readonly string[] }) => void;
   /** Extra environment handed to the CLI subprocess (auth token lives here). */
   env: Record<string, string>;
   /** Bounds on what `additionalDirectories` may grant. */
@@ -664,44 +674,6 @@ const EMPTY_USAGE: RunUsage = {
  * *policy* at the managed tier so a cloned repository's `.claude/settings.json`
  * can pre-approve no tool, register no hook and add no MCP server.
  */
-/**
- * What the probe keeps off the CLI's opening frame.
- *
- * One field, and it is here rather than inlined because it is a *measurement*
- * that a screen then renders: the tools a run would actually be offered on
- * this platform, which differ between them — `PowerShell` on Windows, and the
- * plan-mode pair only in a mode that can use it. Nothing here may guess at
- * that list; the CLI is the authority on its own tool set.
- */
-interface ProbedInit {
-  tools: string[];
-}
-
-/**
- * How long the catalogue waits for the CLI's opening frame.
- *
- * A backstop rather than a budget: the frame is the first thing the CLI emits
- * and every other question on that channel would hang too if it never came.
- * What this actually buys is that `Promise.all` cannot be held open by the one
- * answer that waits on a *message* instead of a reply.
- */
-const INIT_FRAME_DEADLINE_MS = 10_000;
-
-/** Resolve `value`, or `null` if it takes longer than `ms`. Clears its timer. */
-async function withDeadline<T>(value: Promise<T>, ms: number): Promise<T | null> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      value,
-      new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 const MANAGED_POLICY_LOCKS = {
   allowManagedPermissionRulesOnly: true,
   allowManagedHooksOnly: true,
@@ -1814,6 +1786,11 @@ export class AgentSupervisor {
           claudeSessionId = captured.claudeSessionId;
           callbacks.onClaudeSessionId(captured.claudeSessionId);
         }
+        // The frame lists the tools *after* this run's deny list took effect,
+        // so the refused names travel with it; the store adds them back.
+        if (captured.offeredTools) {
+          this.deps.onCliTools?.({ tools: captured.offeredTools, forbidden: resolved.forbidden });
+        }
         // First acknowledgement only. A run is steerable, so the operator can
         // type a follow-up into it and the CLI acknowledges that too; letting
         // the anchor move forward would silently shrink what "undo this run"
@@ -2092,7 +2069,6 @@ export class AgentSupervisor {
       models: [],
       commands: [],
       agents: [],
-      tools: [],
       mcpServers: [],
       account: null,
       unavailable,
@@ -2133,40 +2109,16 @@ export class AgentSupervisor {
             ? { agents: runtime.agents as Options['agents'] }
             : {}),
         },
-        async (handle, init) => {
+        async (handle) => {
         // Concurrent: these are independent control requests on one channel,
         // and asking in series would multiply the round trips by five for no
         // benefit.
-        const [models, commands, agents, mcpServers, account, opening] = await Promise.all([
+        const [models, commands, agents, mcpServers, account] = await Promise.all([
           ask('models', () => handle.supportedModels()),
           ask('commands', () => handle.supportedCommands()),
           ask('agents', () => handle.supportedAgents()),
           ask('mcpServers', () => settleMcpStatus(() => handle.mcpServerStatus())),
           ask('account', () => handle.accountInfo()),
-          /*
-           * Bounded, unlike the others: this waits on a *message* rather than
-           * on a reply, so nothing else would ever settle it if the frame did
-           * not come. The frame is the first thing the CLI emits, so the
-           * deadline is a backstop and not a budget.
-           *
-           * An *empty* answer is treated as no answer, and that is the whole
-           * point: `ask` records what failed by name, and returning quietly
-           * left `unavailable` clean while `tools` came back empty. The screen
-           * reading it then said the CLI offers no tools — which is never true
-           * — and marked every tool the deployment refuses as one the CLI had
-           * dropped. Nothing in the suite could see that; a screenshot could.
-           *
-           * Empty is safe to call a failure here because this probe passes no
-           * `disallowedTools`: it asks what the CLI *has*, not what a run is
-           * left with, so the honest answer is never none.
-           */
-          ask('tools', async () => {
-            const frame = await withDeadline(init, INIT_FRAME_DEADLINE_MS);
-            if (!frame || frame.tools.length === 0) {
-              throw new Error('the CLI named no tools on its opening frame');
-            }
-            return frame;
-          }),
         ]);
 
         return {
@@ -2190,20 +2142,6 @@ export class AgentSupervisor {
             description: agent.description ?? '',
             model: agent.model ?? null,
           })),
-          /*
-           * The CLI's own tools, as it lists them for a run in this directory.
-           *
-           * MCP tools are stripped: they are reported per server just below,
-           * with their descriptions and annotations, and this list answers a
-           * different question — what the *CLI* brings, which is what the
-           * System screen lets an operator refuse. Measured rather than
-           * enumerated here, because the set is platform-dependent
-           * (`PowerShell` on Windows, `Bash` elsewhere) and moves with the
-           * CLI: a hard-coded list would be a screen that lies after a bump.
-           */
-          tools: (opening?.tools ?? [])
-            .filter((name) => splitToolName(name).server === null)
-            .sort(),
           mcpServers: (mcpServers ?? []).map((server) => ({
             name: server.name,
             status: server.status ?? 'unknown',
@@ -2401,7 +2339,7 @@ export class AgentSupervisor {
       | 'mcpServers'
       | 'agents'
     >,
-    ask: (handle: Query, init: Promise<ProbedInit | null>) => Promise<T>,
+    ask: (handle: Query) => Promise<T>,
   ): Promise<T> {
     const stream = new PromptStream();
     const controller = new AbortController();
@@ -2416,41 +2354,21 @@ export class AgentSupervisor {
       },
     });
 
-    /*
-     * The init frame, which is a *message* rather than a control response.
-     *
-     * `initializationResult()` looks like the place to ask and does not carry
-     * the tool list — checked against the SDK's own declaration, which has
-     * `commands`, `agents` and `models` on it and no `tools`. The only place
-     * the CLI says which tools it is offering is the `system/init` frame it
-     * emits first, which this loop was already throwing away.
-     *
-     * Resolved on the drain and again when it ends, so a session that dies
-     * before initialising answers `null` rather than leaving a caller waiting;
-     * `resolve` after the first call is a no-op.
-     */
-    let settleInit: (frame: ProbedInit | null) => void = () => undefined;
-    const init = new Promise<ProbedInit | null>((resolve) => {
-      settleInit = resolve;
-    });
-
     const drained = (async () => {
       try {
-        for await (const message of handle) {
-          if (message.type === 'system' && message.subtype === 'init') {
-            settleInit({ tools: [...(message.tools ?? [])] });
-          }
-        }
+        // Drained, not read. Nothing a probe wants is on this stream: the
+        // one thing that looked like it was — the CLI's tool list on
+        // `system/init` — is a frame the CLI emits only with the first user
+        // message, and a probe sends none. Measured; it is read from runs.
+        for await (const message of handle) void message;
       } catch (error) {
         // Ends on the abort below; that is the expected way out, not a fault.
         this.deps.log('debug', 'probe session ended', { message: (error as Error).message });
-      } finally {
-        settleInit(null);
       }
     })();
 
     try {
-      return await ask(handle, init);
+      return await ask(handle);
     } finally {
       // Close first so a CLI that exits cleanly does; abort so one that does
       // not still goes. Awaiting the drain after both keeps the subprocess from
@@ -2470,6 +2388,8 @@ export class AgentSupervisor {
 interface Captured {
   claudeSessionId?: string;
   servedModel?: string;
+  /** The CLI's tool list off the init frame — the only frame that has it. */
+  offeredTools?: string[];
   usage?: RunUsage;
   error?: string;
   rewindPoint?: string;
@@ -2612,7 +2532,11 @@ export class StreamState {
 
   private handleSystem(message: Extract<SDKMessage, { type: 'system' }>): Captured {
     if (message.subtype === 'init') {
-      return { claudeSessionId: message.session_id, servedModel: message.model };
+      return {
+        claudeSessionId: message.session_id,
+        servedModel: message.model,
+        offeredTools: [...(message.tools ?? [])],
+      };
     }
     if (message.subtype === 'permission_denied') {
       // The narrowing above already gives this the SDK's own

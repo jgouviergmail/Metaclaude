@@ -43,6 +43,7 @@ const report = (over: Partial<CliToolsReport> = {}): CliToolsReport => ({
   tools: [tool('Bash'), tool('Artifact', { disabled: true })],
   source: 'default',
   probed: true,
+  seenAt: 1_700_000_000_000,
   ...over,
 });
 
@@ -188,23 +189,41 @@ describe('CliToolsPage', () => {
    * list would be describing a state that cannot exist, so it says instead
    * that the question could not be asked.
    */
-  it('says the CLI could not be asked rather than showing an empty list', async () => {
-    apiMock.cliTools.mockResolvedValue(report({ tools: [], probed: false }));
+  /**
+   * The offering is learned from runs — the CLI names its tools only on the
+   * frame it emits with a first message, so no probe can ask. Before a run
+   * has reported, the honest sentence is "not yet", not "the CLI failed":
+   * the first version said the latter, in production, above a Skills section
+   * that had answered fine.
+   */
+  it('says no run has reported yet rather than blaming the CLI', async () => {
+    apiMock.cliTools.mockResolvedValue(report({ tools: [], probed: false, seenAt: null }));
     renderWithProviders(<CliToolsPage />);
 
     await waitFor(() =>
-      expect(screen.getByText('The CLI could not be asked what it offers')).toBeTruthy(),
+      expect(screen.getByText('No run has reported what the CLI offers yet')).toBeTruthy(),
     );
   });
 
-  it('warns when the list is only what the deployment refuses', async () => {
+  it('warns that the list is only what the deployment refuses until a run reports', async () => {
     apiMock.cliTools.mockResolvedValue(
-      report({ tools: [tool('Artifact', { disabled: true, offered: false })], probed: false }),
+      report({
+        tools: [tool('Artifact', { disabled: true, offered: false })],
+        probed: false,
+        seenAt: null,
+      }),
     );
     renderWithProviders(<CliToolsPage />);
 
     await waitFor(() => expect(boxFor('Artifact')).toBeTruthy());
     expect(screen.getByText(/only what the deployment refuses/)).toBeTruthy();
+  });
+
+  it('says when the last run saw the offering', async () => {
+    renderWithProviders(<CliToolsPage />);
+
+    await waitFor(() => expect(boxFor('Bash')).toBeTruthy());
+    expect(screen.getByText(/As the CLI offered them to the last run/)).toBeTruthy();
   });
 
   /**

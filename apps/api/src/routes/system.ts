@@ -405,38 +405,37 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
    * the agent every workspace runs, and three of the tools it can close reach
    * outside Metaclaude entirely.
    */
-  const cliToolsReport = async (): Promise<CliToolsReport> => {
-    const catalogue = await context.claudeCatalogue.get(context.config.dataDir);
+  const cliToolsReport = (): CliToolsReport => {
     /*
-     * "Was this measured" is answered by the *answer*, not by a failure label.
-     *
-     * The catalogue has more than one way to come back with no tools — the
-     * question failing, or the CLI session never opening at all, which is
-     * recorded under its own name — and a predicate that lists the names it
-     * knows about is a predicate that goes stale on the next failure mode.
-     * Asking "did anything come back" cannot be defeated that way, and it is
-     * exact: no CLI offers no tools, and the supervisor refuses to report zero
-     * as an answer.
+     * From the store the runs feed, not from a probe — and the first version
+     * probed. The CLI names its tools only on its `system/init` frame, and
+     * emits that frame only with the first user message; a probe that sends
+     * none listens for ever, which is what production showed as "the CLI could
+     * not be asked" under a Skills section that had answered fine (that one
+     * rides a control request). Every run sends a prompt, so every run is the
+     * measurement, and the screen says when it was taken.
      */
-    const probed = catalogue.tools.length > 0;
+    const seen = context.cliTools.offered();
+    const offered = new Set(seen.tools);
     const disabled = new Set(context.cliTools.disabled());
-    const names = [...new Set([...catalogue.tools, ...disabled])].sort();
+    const names = [...new Set([...offered, ...disabled])].sort();
 
     return {
       tools: names.map((name) => ({
         name,
         disabled: disabled.has(name),
-        offered: catalogue.tools.includes(name),
+        offered: offered.has(name),
         locked: name === TOOL_SEARCH_TOOL ? toolSearchLock : null,
       })),
       source: context.cliTools.source(),
-      probed,
+      probed: offered.size > 0,
+      seenAt: seen.seenAt,
     };
   };
 
   app.get('/api/system/cli-tools', async (request, reply) => {
     requireOwner(request);
-    return reply.send(await cliToolsReport());
+    return reply.send(cliToolsReport());
   });
 
   app.put('/api/system/cli-tools', async (request, reply) => {
@@ -475,7 +474,7 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       ipAddress: requestIp(context, request),
       detail: parsed.data.disabled === null ? 'cleared' : stored.allowed.join(', '),
     });
-    return reply.send(await cliToolsReport());
+    return reply.send(cliToolsReport());
   });
 
   /* -------------------------- The CLI's skills -------------------------- */

@@ -157,10 +157,19 @@ workspace's own `disallowedTools` through `reviewDeniedToolNames`, which is
 `reviewToolNames` plus the one rule that only makes sense in the deny
 direction: `ToolSearch` is refused, because denying it loads every deferred
 schema back into every prompt (measured, +15,500 tokens a run). The list the
-screen shows comes off the `system/init` frame — `initializationResult()`
-carries `commands`, `agents` and `models` and no tools — filtered to
-built-ins, and an *empty* answer is reported as "could not ask" rather than as
-an offering, because no CLI offers no tools.
+screen shows is **learned from runs, never from a probe**, and the reason is a
+measurement that overturned the first version: the CLI names its tools only on
+its `system/init` frame (`initializationResult()` carries `commands`, `agents`
+and `models` and no tools), and it emits that frame only with the first user
+message — twenty seconds of listening, `reinitialize()` and
+`initializationResult()` all produced nothing; one prompt produced it at
+817 ms. A probe that sends no prompt therefore listens for ever, which is what
+production showed as "could not be asked". Every run sends a prompt, so
+`execute` hands the frame's tools to `CliToolPolicy.rememberOffered` together
+with what that run had *refused* — the frame lists the tools after the deny
+list took effect, so without the add-back every refused tool would be badged
+as one the CLI had dropped. The screen says when the last run saw the list, and
+before any run has, it says that rather than blaming the CLI.
 
 **Two shapes for the skills.** `CliSkillPolicy.plan()` answers either
 `{ kind: 'floor' }` — one flag, nothing chosen, covering whatever a future CLI

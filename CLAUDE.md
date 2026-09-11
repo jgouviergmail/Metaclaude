@@ -1247,6 +1247,24 @@ restates the code is noise; one that records a decision or a trap is not.
   and the swap is two renames rather than a delete-and-rebuild (two runs of one
   workspace overlap, and a CLI can spawn into a half-written directory).
 
+- **`system/init` comes with the first user message, not with the session.**
+  Measured on 2.1.267: twenty seconds of listening with no prompt, then
+  `reinitialize()`, then `initializationResult()` — no init frame from any of
+  them; one prompt, and it arrives at 817 ms. So anything that lives only on
+  that frame (the CLI's tool list does; `initializationResult()` carries
+  commands, agents and models and no tools) **cannot be read by a probe**,
+  only by a run. The first CLI-tools screen read it from the catalogue probe
+  with a ten-second wait, passed every test, and in production showed every
+  tool as "no longer offered" under a warning — while the Skills section
+  beneath it, fed by a control request, was full. The same picture had been on
+  the design bench and was misread as a bench without credentials. The test
+  double emitted init on open under a comment saying that is what the CLI
+  does: emitting what the real thing emits *later* proves a reading order it
+  never offers, which is the test-double trap with the sign reversed. The list
+  is fed by `execute` now, from every run, with the run's own `forbidden`
+  added back because the frame lists tools after the deny list took effect.
+  `sdk-probe.mjs` records `initFrameWithoutPrompt` so a bump that changes it
+  is seen.
 - **`init.tools` says `Task`; the wire says `Agent`.** The opening frame lists
   the delegation tool under its internal name and the tool call arrives named
   `Agent` — both measured on CLI 2.1.267, in the same run. `disallowedTools`

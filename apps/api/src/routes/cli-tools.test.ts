@@ -8,27 +8,23 @@
  * prompt; and it reports a provenance an operator acts on.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_DISABLED_CLI_TOOLS, type ClaudeCatalogue, type CliToolsReport } from '@metaclaude/shared';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_DISABLED_CLI_TOOLS, type CliToolsReport } from '@metaclaude/shared';
 import { bootTestServer, type ServerHarness } from '../test/server-harness.js';
 
 let harness: ServerHarness;
 
-/** A catalogue the CLI probe would have produced, with these tools on it. */
-const offering = (tools: string[], unavailable: string[] = []): ClaudeCatalogue => ({
-  models: [],
-  commands: [],
-  agents: [],
-  tools,
-  mcpServers: [],
-  account: null,
-  unavailable,
-  fetchedAt: Date.now(),
-});
-
-/** Answer the catalogue read without spawning a CLI. */
-const offers = (tools: string[], unavailable: string[] = []): void => {
-  vi.spyOn(harness.context.claudeCatalogue, 'get').mockResolvedValue(offering(tools, unavailable));
+/**
+ * What a run's opening frame taught the deployment.
+ *
+ * Not a stubbed probe: the CLI names its tools only on `system/init`, and it
+ * sends that frame only with the first user message, so no probe can ask. A
+ * run can, and does, on every start — this is that report, as the supervisor
+ * hands it over. `[]` stands for "no run since boot".
+ */
+const offers = (tools: string[], forbidden: string[] = []): void => {
+  if (tools.length === 0) return;
+  harness.context.cliTools.rememberOffered(tools, forbidden, 1_700_000_000_000);
 };
 
 beforeEach(async () => {
@@ -36,7 +32,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  vi.restoreAllMocks();
   await harness.close();
 });
 
@@ -81,40 +76,44 @@ describe('GET /api/system/cli-tools', () => {
   });
 
   /**
-   * "The CLI offers no tools" is never true, so a screen that showed an empty
-   * list would be describing a state that cannot exist. The honest answer is
-   * that the question could not be asked — the same rule the rest of the
-   * catalogue follows with `unavailable`.
+   * Before any run has happened since boot, the deployment knows nothing about
+   * what the CLI offers — and says so, rather than showing an empty offering
+   * as a fact. "The CLI offers no tools" is never true.
    */
-  it('says the CLI could not be asked rather than showing an empty catalogue', async () => {
-    offers([], ['tools']);
-
+  it('says the offering is not known yet before a run has reported it', async () => {
     const report = await harness.get<CliToolsReport>('/api/system/cli-tools');
 
     expect(report.probed).toBe(false);
+    expect(report.seenAt).toBeNull();
     // Still the refused ones, because those are known without asking anybody.
     expect(report.tools.map((tool) => tool.name)).toEqual([...DEFAULT_DISABLED_CLI_TOOLS]);
     expect(report.tools.every((tool) => !tool.offered)).toBe(true);
   });
 
-  /**
-   * The same emptiness by a different door, which is the one that got through.
-   *
-   * The first version asked `unavailable.includes('tools')` — and when the CLI
-   * session cannot be opened at all (no binary, no credential) the catalogue
-   * records that under `session`, not `tools`. So the screen was told the
-   * question had been answered, showed an empty offering as fact, and marked
-   * every tool the deployment refuses as one the CLI had dropped — with no
-   * warning. Enumerating failure names is a list that goes stale; the answer
-   * itself is not.
-   */
-  it('reports "could not measure" when the CLI session never opened', async () => {
-    offers([], ['session']);
+  it('says when the offering was seen', async () => {
+    offers(['Bash']);
 
     const report = await harness.get<CliToolsReport>('/api/system/cli-tools');
 
-    expect(report.probed).toBe(false);
-    expect(report.tools.every((tool) => !tool.offered)).toBe(true);
+    expect(report.probed).toBe(true);
+    expect(report.seenAt).toBe(1_700_000_000_000);
+  });
+
+  /**
+   * A run's frame lists the tools *after* its deny list took effect, so the
+   * report carries what the run refused and the store adds it back. Without
+   * that, every tool the deployment refuses would be badged as one the CLI had
+   * dropped — the screen calling its own defaults obsolete.
+   */
+  it('shows a refused tool as still offered when the run that refused it says so', async () => {
+    offers(['Bash', 'Read'], ['Artifact', 'CronCreate']);
+
+    const report = await harness.get<CliToolsReport>('/api/system/cli-tools');
+
+    expect(report.tools.find((tool) => tool.name === 'Artifact')).toMatchObject({
+      disabled: true,
+      offered: true,
+    });
   });
 
   it('locks ToolSearch, with the reason on the row', async () => {

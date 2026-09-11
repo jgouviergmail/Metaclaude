@@ -48,7 +48,10 @@ section says whether you are on that default or on a choice of your own, and
 **Restore defaults** puts it back.
 
 The list is read from the CLI itself rather than written down here, so it
-follows your platform and the installed version. Switching a tool off removes
+follows your platform and the installed version. It is read from the first
+frame of every run — the CLI names its tools there and nowhere else — so the
+screen says when the last run saw it, and on a server that has not run since
+it started, it says so and shows the list after the first run. Switching a tool off removes
 it from the agent's tool list outright — the model is never offered it, rather
 than being refused it — and one tool cannot be switched off at all:
 `ToolSearch` is how the CLI loads every other tool's description on demand, so

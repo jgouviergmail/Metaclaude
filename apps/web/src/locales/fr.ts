@@ -2479,12 +2479,6 @@ export const fr: Record<string, string> = {
     'Ce que le CLI Claude propose lui-même à l’agent, avant toute skill, tout sous-agent et tout plugin. En désactiver un le retire de chaque run de ce déploiement.',
   'The list comes from the CLI itself, so it follows the platform and the installed version rather than anything written down here. A tool that is off is removed from the agent’s tool list outright — the model is never offered it, rather than being refused it.':
     'La liste vient du CLI lui-même : elle suit donc la plateforme et la version installée, et non une liste écrite ici. Un outil désactivé est retiré purement et simplement de la liste d’outils de l’agent — le modèle ne se le voit jamais proposer, plutôt que refuser.',
-  'The CLI could not be asked what it offers':
-    'Impossible de demander au CLI ce qu’il propose',
-  'This list is read from the Claude CLI when it starts. Check the CLI’s credentials on the Server screen, then reload.':
-    'Cette liste est lue auprès du CLI Claude à son démarrage. Vérifiez ses identifiants sur l’écran Serveur, puis rechargez.',
-  'The CLI could not be asked what it offers, so this is only what the deployment refuses. Nothing here says whether these tools still exist.':
-    'Impossible de demander au CLI ce qu’il propose : voici seulement ce que le déploiement refuse. Rien ici ne dit si ces outils existent encore.',
   'Always on: it is how the CLI loads every other tool on demand, so switching it off would put all of their descriptions back into every prompt.':
     'Toujours actif : c’est ainsi que le CLI charge tous les autres outils à la demande ; le désactiver remettrait toutes leurs descriptions dans chaque prompt.',
   'Publishes a web page to claude.ai from inside a run.':
@@ -2575,4 +2569,16 @@ export const fr: Record<string, string> = {
     '{n} skill proposée',
   '{n} skills offered':
     '{n} skills proposées',
+
+  /* Outils CLI : la liste vient des runs, pas d'une sonde */
+  'No run has reported what the CLI offers yet':
+    'Aucun run n’a encore rapporté ce que le CLI propose',
+  'The CLI names its tools when a run starts, and nowhere else. The list appears here after the first run since the server started.':
+    'Le CLI nomme ses outils au démarrage d’un run, et nulle part ailleurs. La liste apparaît ici après le premier run depuis le démarrage du serveur.',
+  'No run has reported what the CLI offers since the server started, so this is only what the deployment refuses. The full list appears after the first run.':
+    'Aucun run n’a rapporté ce que le CLI propose depuis le démarrage du serveur : voici seulement ce que le déploiement refuse. La liste complète apparaît après le premier run.',
+  'As the CLI offered them to the last run, {when}.':
+    'Tels que le CLI les a proposés au dernier run, {when}.',
+  'This list is read from the Claude CLI when it starts. Check the CLI’s credentials on the Server screen, then reload.':
+    'Cette liste est lue auprès du CLI Claude à son démarrage. Vérifiez ses identifiants sur l’écran Serveur, puis rechargez.',
 };

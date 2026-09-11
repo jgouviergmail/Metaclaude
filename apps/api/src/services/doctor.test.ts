@@ -846,7 +846,7 @@ describe('the deferred-tools check', () => {
       const check = report.checks.find((entry) => entry.name === 'cli-tools');
 
       expect(check?.status).toBe('warn');
-      expect(check?.summary).toMatch(/could not be asked|nothing here could be measured/);
+      expect(check?.summary).toMatch(/No run has reported|nothing here could be measured/);
       expect(check?.summary).not.toContain('15k');
     }
   });

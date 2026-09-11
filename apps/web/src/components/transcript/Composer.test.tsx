@@ -17,7 +17,6 @@ const catalogue = (models: ClaudeCatalogue['models']): ClaudeCatalogue => ({
   models,
   commands: [],
   agents: [],
-  tools: [],
   mcpServers: [],
   account: null,
   unavailable: [],

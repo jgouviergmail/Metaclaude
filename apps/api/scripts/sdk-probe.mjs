@@ -436,6 +436,27 @@ async function probeContextLoading(query, cwd) {
     return seen;
   };
 
+  /*
+   * Does the CLI emit `system/init` before the first user message?
+   *
+   * Measured on 2.1.267: no — twenty seconds of listening, `reinitialize()`
+   * and `initializationResult()` all produced nothing, one prompt produced it
+   * at ~800 ms. The CLI's tool list lives only on that frame, so Metaclaude
+   * reads it from runs and never from a probe. A CLI that started emitting it
+   * on open would let that simplify; one that stopped naming tools on it would
+   * blind the CLI-tools screen. Ten seconds is generous against 800 ms.
+   */
+  const initWithoutPrompt = await (async () => {
+    const stream = new PromptStream();
+    const controller = new AbortController();
+    let arrived = false;
+    const handle = query({ prompt: stream, options: { cwd, settingSources: ['project'], abortController: controller } });
+    const drained = (async () => { try { for await (const m of handle) { if (m.type === 'system' && m.subtype === 'init') arrived = true; } } catch { /* aborted */ } })();
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    stream.close(); controller.abort(); await drained;
+    return arrived;
+  })();
+
   const bundled = await measure({});
   const lean = await measure({ settings: { disableBundledSkills: true } });
   const managed = await measure({ managedSettings: { disableBundledSkills: true } });
@@ -460,6 +481,9 @@ async function probeContextLoading(query, cwd) {
 
   return {
     status: OK,
+    // The frame that names the tools, and whether it comes unprompted. It does
+    // not, which is why the CLI-tools screen is fed by runs and not by a probe.
+    initFrameWithoutPrompt: initWithoutPrompt,
     // A 24 kB body against its own frontmatter. Single digits means the body
     // is fetched by `Skill` rather than carried in the prompt.
     skillBodyTokens: skillTokens(bundled.context, 'probe-long'),

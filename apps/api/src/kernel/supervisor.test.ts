@@ -280,21 +280,30 @@ function fakeQuery() {
   const query = (params: { prompt: unknown; options?: Record<string, unknown> }) => {
     control.opened.push(params.options ?? {});
     /*
-     * The opening frame, the way the real CLI always sends one.
+     * The opening frame, when the real CLI sends it: with the first user
+     * message, and not before.
      *
-     * The fake used to send it only when a test asked, which is the wrong
-     * direction of the test-double trap: omitting what the real thing always
-     * emits hides anything that reads it. The catalogue reads exactly this to
-     * report which tools a run would be offered — the CLI is the only
-     * authority on that, and `initializationResult()` does not carry it.
+     * Measured on 2.1.267 — twenty seconds of listening with no prompt,
+     * `reinitialize()` and `initializationResult()` all produced nothing; one
+     * prompt produced `system/init` at 817 ms. An earlier version of this fake
+     * emitted it on open, under a comment claiming that is what the CLI does,
+     * and a feature built on that read the tool list off a probe that sends no
+     * prompt. It passed every test and answered nothing in production. This
+     * is the test-double trap with the sign reversed: emitting what the real
+     * thing emits *later* proves a reading order the real thing never offers.
      */
-    control.emit({
-      type: 'system',
-      subtype: 'init',
-      session_id: 'sdk-session',
-      tools: control.tools_,
-      ...(control.model_ === undefined ? {} : { model: control.model_ }),
-    });
+    let initSent = false;
+    const sendInit = () => {
+      if (initSent) return;
+      initSent = true;
+      control.emit({
+        type: 'system',
+        subtype: 'init',
+        session_id: 'sdk-session',
+        tools: control.tools_,
+        ...(control.model_ === undefined ? {} : { model: control.model_ }),
+      });
+    };
     // Faithful to the SDK: aborting the controller ends the message stream.
     // Without this the fake would let the supervisor pass a test the real thing
     // would fail, which is worse than having no test.
@@ -309,13 +318,17 @@ function fakeQuery() {
     void (async () => {
       const prompt = params.prompt as AsyncIterable<unknown> | string;
       if (typeof prompt === 'string') {
+        sendInit();
         control.received.push(prompt);
         control.inputEnded = true;
         done = true;
         wake?.();
         return;
       }
-      for await (const message of prompt) control.received.push(message);
+      for await (const message of prompt) {
+        sendInit();
+        control.received.push(message);
+      }
       control.inputEnded = true;
       done = true;
       wake?.();
@@ -411,6 +424,7 @@ function makeSupervisor(
     idleTimeoutMs?: number;
     disabledCliTools?: readonly string[];
     cliSkills?: { kind: 'floor' } | { kind: 'overrides'; overrides: Record<string, 'on' | 'off'> };
+    onCliTools?: (report: { tools: readonly string[]; forbidden: readonly string[] }) => void;
   } = {},
 ) {
   return new AgentSupervisor({
@@ -433,6 +447,7 @@ function makeSupervisor(
       ? { disabledCliTools: () => extra.disabledCliTools as readonly string[] }
       : {}),
     ...(extra.cliSkills ? { cliSkills: () => extra.cliSkills as never } : {}),
+    ...(extra.onCliTools ? { onCliTools: extra.onCliTools } : {}),
   });
 }
 
@@ -606,6 +621,35 @@ describe('the served model is captured off the wire', () => {
 
     const outcome = await run;
     expect(outcome.servedModel).toBe('claude-opus-5');
+  });
+
+  /**
+   * The CLI's tool list, from the only place it exists.
+   *
+   * The `system/init` frame is the one message that names the tools, and the
+   * CLI emits it only with the first user message — measured: a probe that
+   * sends none listens for ever. So this is not read by a probe on a settings
+   * screen; it is read here, on every run, where it costs nothing, and handed
+   * to whoever keeps it together with what *this* run had refused, because the
+   * frame lists the tools after the deny list took effect.
+   */
+  it('reports the tools the opening frame lists, with what the run refused', async () => {
+    const reports: Array<{ tools: readonly string[]; forbidden: readonly string[] }> = [];
+    const { query, control } = fakeQuery();
+    control.tools_ = ['Bash', 'Read', 'mcp__docs__search'];
+    const supervisor = makeSupervisor(query, undefined, {
+      onCliTools: (report) => reports.push(report),
+      disabledCliTools: ['Artifact'],
+    });
+
+    const run = supervisor.execute(withSettings({ disallowedTools: ['WebFetch'] }), makeCallbacks());
+    await vi.waitFor(() => expect(control.received.length).toBe(1));
+    control.finish();
+    await run;
+
+    expect(reports).toEqual([
+      { tools: ['Bash', 'Read', 'mcp__docs__search'], forbidden: ['WebFetch', 'Artifact'] },
+    ]);
   });
 
   it('reports null when the opening frame carries no model', async () => {
@@ -1290,84 +1334,6 @@ describe('reading the CLI’s own catalogue', () => {
    * than against a literal is what stops the two drifting when a third flag
    * joins them.
    */
-  /**
-   * Which tools this CLI offers, from the CLI.
-   *
-   * The System screen lets an operator refuse the CLI's own tools, and the
-   * list it shows has to come from the CLI rather than from anything written
-   * down here: the set is platform-dependent — `PowerShell` on Windows against
-   * `Bash` elsewhere, the plan-mode pair only in a mode that can use them —
-   * and it moves with every bump. A screen built on a hard-coded list is a
-   * screen that lies the day the CLI changes, with nothing to notice.
-   *
-   * It comes off the opening frame because that is the only place the CLI says
-   * it. `initializationResult()` reads like the right question and carries
-   * `commands`, `agents` and `models` — no tools.
-   */
-  it('reports the CLI’s own tools, from the frame that names them', async () => {
-    const { query, control } = fakeQuery();
-    control.tools_ = ['Read', 'Bash', 'ToolSearch', 'mcp__docs__search'];
-    const supervisor = makeSupervisor(query);
-
-    const catalogue = await supervisor.catalogue(WORKSPACE);
-
-    // Sorted, and MCP names stripped: those are reported per server just
-    // below, with their descriptions, and this list answers what the *CLI*
-    // brings — which is what the screen lets an operator refuse.
-    expect(catalogue.tools).toEqual(['Bash', 'Read', 'ToolSearch']);
-    expect(catalogue.unavailable).not.toContain('tools');
-  });
-
-  /**
-   * "The CLI offers no tools" is never true, so an empty list can only mean
-   * the question failed — and it has to be *named* as failed, not merely come
-   * back empty. The first version answered null quietly, `unavailable` stayed
-   * clean, and the screen reading it declared that the CLI offered nothing and
-   * marked every refused tool as one the CLI had dropped. Nothing in the suite
-   * could see it; a screenshot could.
-   */
-  it('names the question as unanswered rather than inventing an empty list', async () => {
-    const { query, control } = fakeQuery();
-    control.tools_ = [];
-    const supervisor = makeSupervisor(query);
-
-    const catalogue = await supervisor.catalogue(WORKSPACE);
-    expect(catalogue.tools).toEqual([]);
-    expect(catalogue.unavailable).toContain('tools');
-  });
-
-  /**
-   * The CLI's own skills, asked for in the one posture that can see them.
-   *
-   * A run — and therefore the catalogue — carries `disableBundledSkills`, which
-   * is exactly the flag that removes these. Asking both questions of one
-   * session would mean answering one of them wrongly, so this is a probe of its
-   * own, and the assertion that matters is the *absence* of the flag.
-   */
-  it('asks for the CLI’s own skills without the flag that hides them', async () => {
-    const { query, control } = fakeQuery();
-    const supervisor = makeSupervisor(query);
-
-    const skills = await supervisor.builtInSkills(WORKSPACE);
-
-    expect(skills).toEqual([
-      { name: 'dataviz', tokens: 362 },
-      { name: 'code-review', tokens: 202 },
-    ]);
-    // The workspace's own skill is not one of the CLI's and must not be listed
-    // as something the operator can switch off here.
-    expect(skills.map((skill) => skill.name)).not.toContain('house-style');
-    expect(control.opened[0]?.settings).toBeUndefined();
-  });
-
-  it('answers an empty list rather than throwing when the CLI cannot be asked', async () => {
-    const { query, control } = fakeQuery();
-    control.skillFrontmatter_ = [];
-    const supervisor = makeSupervisor(query);
-
-    expect(await supervisor.builtInSkills(WORKSPACE)).toEqual([]);
-  });
-
   it('carries the same flag settings a run does, so the menu cannot outrun the CLI', async () => {
     const { query, control } = fakeQuery();
     const supervisor = makeSupervisor(query);
