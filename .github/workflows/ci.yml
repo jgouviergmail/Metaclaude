@@ -161,7 +161,13 @@ jobs:
     name: Browser check
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The responsive guard grows with the app — one route per screen, times
+    # viewports, passes and a dialog sweep — and it grew past the old ceiling
+    # of 20: measured on this runner, 14m04 at 0.90.1, 15m37 at 0.92.0, 18m31
+    # at 0.93.0, when every step passed and the job was cancelled at 20m01 with
+    # no tag laid. A cancelled job with all-green steps and a duration equal to
+    # the ceiling is this, not a person pressing Cancel.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

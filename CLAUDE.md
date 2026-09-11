@@ -1004,6 +1004,16 @@ restates the code is noise; one that records a decision or a trap is not.
   are `gh run view <id> --json jobs` and the tag actually existing on the
   remote; check those, not the watcher's exit code. The tag is the better of
   the two because it is what the deployment consumes.
+- **A job whose every step passed can still conclude `cancelled`, and then no
+  tag is laid.** `timeout-minutes` cancels the *job* when the ceiling is hit,
+  even if the running step finishes a second later and reports success — so
+  the browser-check job for 0.93.0 showed thirteen green steps, a conclusion of
+  `cancelled`, and a duration of 20m01 against a ceiling of 20. It reads as
+  somebody pressing Cancel. The tell is the duration matching the ceiling; the
+  cause was the responsive guard growing with the app (14m04 → 15m37 → 18m31
+  across three releases, one route per new screen). Check the steps and the
+  duration before reading `cancelled` as a person, and raise the ceiling with
+  the measurements beside it rather than guessing a new round number.
 - **One method that reads the wall clock while its callers reason at a given
   `now` is a test that passes on one machine and fails on another three minutes
   later.** `ModelAvailability.release` took no `now` and read `Date.now()`, so

@@ -11,6 +11,19 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.93.1] — 2026-09-11
+
+### Fixed
+
+- **The browser-check job's ceiling, raised from 20 to 30 minutes.** The
+  responsive guard walks every route across viewports, passes and a dialog
+  sweep, and it grows with the app: measured on the CI runner, 14m04 at
+  0.90.1, 15m37 at 0.92.0 and 18m31 at 0.93.0 — where every step passed and
+  the job was cancelled at 20m01, so 0.93.0 was never tagged. A cancelled job
+  whose steps are all green and whose duration equals its ceiling is the
+  ceiling, not a hand on the button; it now has room for the app it measures.
+
+
 ## [0.93.0] — 2026-09-10
 
 ### Fixed
