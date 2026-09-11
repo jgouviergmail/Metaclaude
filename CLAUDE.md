@@ -1014,6 +1014,20 @@ restates the code is noise; one that records a decision or a trap is not.
   across three releases, one route per new screen). Check the steps and the
   duration before reading `cancelled` as a person, and raise the ceiling with
   the measurements beside it rather than guessing a new round number.
+- **A version that was never tagged must not keep its changelog section.**
+  The GitHub release body is extracted from *the section carrying that
+  version number* (`ci.yml`, "Publish the GitHub release"), so when 0.93.0
+  died at a CI ceiling and 0.93.1 shipped the fix, the "latest" release — the
+  page `UpdateCard` links to — described a twenty-minute timeout and nothing
+  about the work sitting under `## [0.93.0]`. Fold the dead version into the
+  one that ships, with a line saying so, and republish the release notes
+  (`gh release edit v<x> --notes-file`) from the folded section. Two traps
+  met doing that: Git Bash's `awk` reads `\[` as `[`, so the extraction that
+  CI runs on Linux answered **zero bytes** here and `gh release edit` happily
+  published an empty body — guard the size before editing, never after; and
+  node resolves `/tmp/x` to `C:\tmp\x` while bash's `/tmp` is MSYS's, so a
+  file node wrote was not the file bash read. Use one absolute path both
+  runtimes agree on.
 - **One method that reads the wall clock while its callers reason at a given
   `now` is a test that passes on one machine and fails on another three minutes
   later.** `ModelAvailability.release` took no `now` and read `Date.now()`, so

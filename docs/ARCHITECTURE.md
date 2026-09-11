@@ -131,6 +131,60 @@ asking — is read at the end of every run and written to the transcript as one
 line. It used to be dropped, leaving the agent's closing paragraph as the only
 trace, which nobody reads on an unattended run.
 
+### What the CLI brings, and what a run is told about it
+
+The Agent SDK spawns the real Claude Code binary, and the binary brings a tool
+set and a skill set of its own before a workspace adds anything. Three
+decisions govern what of that reaches a run, and each rests on a measurement
+rather than on the SDK's declarations, because the declarations were wrong or
+silent on every one.
+
+**The tier.** `disableBundledSkills` and `skillOverrides` are declared on
+`Settings`, and `managedSettings` is where every policy lock of this
+deployment rides — so that is where they went first, and there they do
+*nothing*: 19 skills and 2,040 tokens, byte for byte the same as sending
+nothing. Only the flag-tier `settings` payload bites. `buildOptions` sends
+that payload on every run now (it used to be conditional on ultracode and
+plugins), and the catalogue probe carries the same one, or `supportedCommands()`
+answers 56 against a run's 38 and the composer's slash menu offers eighteen
+commands the CLI will refuse.
+
+**The deny list.** `CliToolPolicy` holds which of the CLI's own tools the
+deployment refuses, in `kv` rather than `runtime_settings` — that table is one
+scalar per key, typed by a catalogue that renders it, and a list of names is
+neither a number nor a choice. `resolvePreapproval` merges it with the
+workspace's own `disallowedTools` through `reviewDeniedToolNames`, which is
+`reviewToolNames` plus the one rule that only makes sense in the deny
+direction: `ToolSearch` is refused, because denying it loads every deferred
+schema back into every prompt (measured, +15,500 tokens a run). The list the
+screen shows comes off the `system/init` frame — `initializationResult()`
+carries `commands`, `agents` and `models` and no tools — filtered to
+built-ins, and an *empty* answer is reported as "could not ask" rather than as
+an offering, because no CLI offers no tools.
+
+**Two shapes for the skills.** `CliSkillPolicy.plan()` answers either
+`{ kind: 'floor' }` — one flag, nothing chosen, covering whatever a future CLI
+ships — or `{ kind: 'overrides' }`, every known skill named `on` or `off`. Two
+shapes because they do not compose: the flag beside `skillOverrides:
+{ 'code-review': 'on' }` still leaves zero built-in skills. The known list is
+written down by the route that reads the CLI, since a run cannot spawn a probe
+of its own, and the probe that enumerates them (`AgentSupervisor.builtInSkills`)
+is separate from the catalogue's on purpose — the catalogue carries the flag
+that hides exactly these. `getContextUsage({ detail: 'summary' })` carries the
+frontmatter without the per-category token-count calls; the per-skill figure
+is model-dependent and is shown as an order of magnitude.
+
+**And the write that had to move.** The workspace's skills reach the CLI only
+through `.claude/skills/`, and `materialiseSkills` was called from three of the
+eight places that submit a run. It is called from `ContextProvider.prepare`
+now, which `execute` awaits before `resolve` on every run — guarded, so a
+failure there is a transcript line and a run with yesterday's skills rather
+than no run. Being on every run is what made it idempotent (a fingerprint of
+the rows plus the plugin revision, *and* one `readdir` because the agent can
+delete what it was given), serialised per workspace (two runs of one workspace
+overlap), and atomic (a staging directory and two renames, never a delete
+followed by a rebuild a spawning CLI could read half of).
+
 ### Two ceilings on a run
 `runTimeoutMs` measured elapsed time and nothing else, which is the wrong
 question: it punishes a run for working, and a loop, a long refactor and a

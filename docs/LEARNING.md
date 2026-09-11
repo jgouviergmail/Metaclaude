@@ -689,6 +689,18 @@ Nothing failed — the card printed raw JSON where it meant to print a sentence,
 and every delegation ever made went uncounted. `scripts/sdk-probe.mjs` now
 records both names so an SDK bump cannot move them quietly.
 
+`available` comes from the registry's list, and until 0.93 that list and the
+disk could disagree. The skills were written to `.claude/skills/` — the only
+place the CLI reads them — from three of the eight paths that submit a run,
+and the five without were the scheduler, the steward, the advisor, delegation
+and the gateway. An automation therefore ran against whatever the last typed
+message had left on disk, and this table recorded its skills as *offered and
+never opened* when the CLI had never been shown them at all — which is the
+sentence the instruction review acts on, so it would have proposed rewriting a
+description that was never the problem. The write lives in
+`ContextProvider.prepare` now, on the path of every run, and `available` means
+what it says.
+
 Rows are keyed by *name*, not by id, because the name is what the CLI reports
 and what the model chooses between — and because an id does not exist for every
 invocation: a skill shipped by a plugin and a subagent type the CLI ships

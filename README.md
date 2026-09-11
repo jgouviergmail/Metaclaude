@@ -405,8 +405,9 @@ What is fixed is its reach: no shell, no file editor, no extra directory,
 and the steward itself is refused every reach setting on every workspace.
 
 ### Extensibility
-Skills (written to `.claude/skills/` before each run so the CLI discovers them),
-custom subagents, and MCP servers with credentials held in an AES-256-GCM vault.
+Skills (written to `.claude/skills/` before every run — on every path that
+starts one, not only a typed message — so the CLI discovers them), custom
+subagents, and MCP servers with credentials held in an AES-256-GCM vault.
 A built-in **library** ships a starter shelf of both — curated and versioned in
 this very repository rather than fetched from a store, installed disabled with
 one click. It has two halves: the work of building software, and the rest of a
@@ -420,6 +421,16 @@ and the budget are explicitly not medical or financial advice, and a test
 enforces it. Entries that lean on a national system open with a
 `Jurisdiction: France` line naming the portal to confirm against, and a second
 test refuses any that cite one without declaring it.
+
+Underneath what you add sits what the CLI brings on its own, and
+**System → CLI tools** puts that on a screen too: the CLI's own tools, read
+off the CLI rather than written down, with nine refused by default — three of
+them because they reach past the deployment (`CronCreate` schedules outside
+the automations, `Artifact` publishes to claude.ai) and the rest because they
+describe a terminal this is not; and the seventeen skills the CLI ships inside
+itself, governed like yours, a box each, off unless chosen. Measured against
+CLI 2.1.267, the defaults take about twelve thousand tokens off the cached
+prefix of every run.
 
 Beside the registry sits a **connector directory** — MCP endpoints whose
 documentation this repository has read, with the exact URL and the exact name

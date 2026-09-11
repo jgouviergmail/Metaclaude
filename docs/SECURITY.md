@@ -473,6 +473,41 @@ Whatever a run *was* refused — by this list, by the mode, or by the auto-mode
 classifier — the run ends with one line naming it, because an unattended run
 that quietly did half its work is the failure that costs the most to find.
 
+### What the CLI brings on its own
+
+Everything above governs what *you* give the agent. Underneath sits what Claude
+Code brings before anybody adds anything, and until 0.93 Metaclaude mounted all
+of it, on no screen and behind no switch. The CLI is written for a person at a
+terminal signed in to claude.ai, and three of its own tools reach past this
+deployment: `CronCreate` (and its pair) schedules recurring work in the CLI's
+own scheduler — outside the Automations screen, outside its quota guard,
+outside anything an operator can see or stop — and `Artifact` publishes a web
+page to claude.ai from inside a run. Neither needed a card under `dontAsk`.
+
+**System → CLI tools** is where that is decided now. Nine tools are refused by
+default, those three among them, and a refused tool is removed from the CLI's
+list outright: the model is never offered it, so there is nothing to refuse and
+no prompt to inject around. The list itself is read off the CLI's own opening
+frame rather than written down anywhere, because it differs by platform and
+moves with every version — a hard-coded list is a screen that lies after the
+next bump. One tool cannot be refused: `ToolSearch` is how the CLI keeps every
+other tool's schema *out* of the prompt until something needs it, and denying
+it puts about fifteen thousand tokens back into every run with no symptom but
+the bill. It is refused at the form, at the deployment's list, at a workspace's
+own deny list, and again when the stored row is read.
+
+The CLI also ships seventeen skills of its own, which every run used to carry.
+They are governed the way your skills are — a box each, off unless chosen —
+and the shape underneath is a measurement: with nothing chosen the run carries
+one flag that refuses the lot *including whatever a future CLI ships*, because
+an exception cannot climb back over that flag; choosing even one switches the
+run to naming every known skill individually. A deployment that has chosen
+nothing is therefore safe against a CLI update for ever, and one that has
+chosen something maintains a list the screen refreshes each time it reads the
+CLI. Both flags bite only in the flag-tier `settings` payload — in
+`managedSettings`, where every other policy of this deployment rides, they do
+nothing at all; measured, twice.
+
 ### What the configuration screen may and may not touch
 
 Since 0.41 an owner can change operational settings from the app without a

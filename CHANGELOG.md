@@ -11,20 +11,26 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.93.2] — 2026-09-11
+
+### Changed
+
+- **The documentation catches up with 0.93.1, and the changelog stops
+  describing a version nobody ran.** README, `docs/ARCHITECTURE.md`,
+  `docs/SECURITY.md` and `docs/LEARNING.md` now cover what the CLI brings on
+  its own and how a run is told about it — the tier that bites, the deny list,
+  the two payload shapes for the CLI's skills, and the write that moved onto
+  every submission path. The `0.93.0` section of this file is folded into
+  `0.93.1`: that version was tagged by nothing, and because the GitHub release
+  body is extracted per version, the "latest" release had been carrying a
+  note about a CI ceiling and nothing about the work. The v0.93.1 release notes
+  were republished from the folded section.
+
 ## [0.93.1] — 2026-09-11
 
-### Fixed
-
-- **The browser-check job's ceiling, raised from 20 to 30 minutes.** The
-  responsive guard walks every route across viewports, passes and a dialog
-  sweep, and it grows with the app: measured on the CI runner, 14m04 at
-  0.90.1, 15m37 at 0.92.0 and 18m31 at 0.93.0 — where every step passed and
-  the job was cancelled at 20m01, so 0.93.0 was never tagged. A cancelled job
-  whose steps are all green and whose duration equals its ceiling is the
-  ceiling, not a hand on the button; it now has room for the app it measures.
-
-
-## [0.93.0] — 2026-09-10
+_0.93.0 was tagged by nothing: its browser-check job was cancelled at its
+twenty-minute ceiling with every step green, so no release carried the work
+below until this one. Nothing here shipped before 0.93.1._
 
 ### Fixed
 
@@ -55,6 +61,14 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
   the new tree is built beside the old one and renamed in, since two runs of
   one workspace overlap in ordinary operation and the old shape emptied the
   directory while a CLI was spawning into it.
+
+- **The browser-check job's ceiling, raised from 20 to 30 minutes.** The
+  responsive guard walks every route across viewports, passes and a dialog
+  sweep, and it grows with the app: measured on the CI runner, 14m04 at
+  0.90.1, 15m37 at 0.92.0 and 18m31 at 0.93.0 — where every step passed and
+  the job was cancelled at 20m01, so 0.93.0 was never tagged. A cancelled job
+  whose steps are all green and whose duration equals its ceiling is the
+  ceiling, not a hand on the button; it now has room for the app it measures.
 
 ### Added
 
@@ -149,7 +163,6 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
   deferred, and `disableBundledSkills` bites in the flag tier and not in the
   managed one. A bump that moves any of them now shows up in the diff instead
   of in the bill.
-
 
 ## [0.92.0] — 2026-09-10
 
