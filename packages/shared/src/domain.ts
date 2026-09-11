@@ -336,9 +336,20 @@ export const Session = z.object({
   /** The Claude CLI session id, once the first run has initialised. */
   claudeSessionId: z.string().nullable(),
   status: SessionStatus,
+  /**
+   * The session's own choices, or what it inherits.
+   *
+   * One rule for the three: the workspace gives the base value, a session
+   * follows it until somebody picks one here, and a session that picked keeps
+   * its pick whatever the workspace later says. Inherited is Auto for the
+   * model, `null` for the effort and `null` for the mode — the mode's own
+   * `'default'` is a real mode, Ask, never "unset". The row used to hold a
+   * *copy* of the workspace's values, and a model set on the workspace then
+   * reached no existing session.
+   */
   model: ModelSelector,
   effort: EffortLevel.nullable(),
-  permissionMode: PermissionMode,
+  permissionMode: PermissionMode.nullable(),
   agentName: z.string().nullable(),
   pinned: z.boolean(),
   archived: z.boolean(),

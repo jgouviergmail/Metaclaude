@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestQueryClient, renderWithProviders } from '@/test/render';
 import { useSessionStore } from '@/lib/store';
+import { toast } from 'sonner';
 
 import { SessionPage } from './SessionPage';
 
@@ -27,6 +28,7 @@ const { apiMock, navigate, pending } = vi.hoisted(() => ({
     submitRun: vi.fn(),
     rateRun: vi.fn(),
     deleteSession: vi.fn(),
+    updateSession: vi.fn(),
     markSessionRead: vi.fn(),
     transcript: vi.fn(),
     approvals: vi.fn(),
@@ -52,10 +54,34 @@ vi.mock('@/components/transcript/MessageStream', () => ({
   MessageStream: () => <div data-testid="stream" />,
 }));
 vi.mock('@/components/transcript/Composer', () => ({
-  Composer: ({ onSubmit }: { onSubmit: (prompt: string) => void }) => (
-    <button type="button" onClick={() => onSubmit('Résume le bail')}>
-      submit
-    </button>
+  Composer: ({
+    value,
+    onChange,
+    onSubmit,
+    workspaceDefaults,
+  }: {
+    value: Record<string, unknown>;
+    onChange: (value: Record<string, unknown>) => void;
+    onSubmit: (prompt: string) => void;
+    workspaceDefaults?: unknown;
+  }) => (
+    <>
+      <button
+        type="button"
+        onClick={() => onSubmit('Résume le bail')}
+        data-defaults={JSON.stringify(workspaceDefaults ?? null)}
+        data-value={JSON.stringify(value)}
+      >
+        submit
+      </button>
+      {/* Two pills, standing in for the real ones: one pins, one inherits. */}
+      <button type="button" onClick={() => onChange({ ...value, model: 'opus' })}>
+        pin opus
+      </button>
+      <button type="button" onClick={() => onChange({ ...value, permissionMode: null })}>
+        inherit mode
+      </button>
+    </>
   ),
 }));
 vi.mock('@/components/workspace/SessionList', () => ({ SessionList: () => null }));
@@ -67,9 +93,10 @@ const session = {
   id: 'ses_1',
   workspaceId: 'ws_a',
   title: 'Bail',
+  // Born inheriting all three, as the route creates them.
   model: 'default',
   effort: null,
-  permissionMode: 'default',
+  permissionMode: null,
   pinned: false,
   archived: false,
   status: 'idle',
@@ -94,6 +121,7 @@ beforeEach(() => {
   apiMock.mcpServers.mockResolvedValue({ servers: [] });
   apiMock.submitRun.mockResolvedValue({ run: { id: 'run_1' } });
   apiMock.deleteSession.mockResolvedValue({ ok: true });
+  apiMock.updateSession.mockResolvedValue({ session });
   apiMock.markSessionRead.mockResolvedValue({ session });
 });
 
@@ -110,7 +138,7 @@ describe('submitting a prompt', () => {
         expect.objectContaining({
           prompt: 'Résume le bail',
           model: 'default',
-          permissionMode: 'default',
+          effort: null,
           ultracode: false,
         }),
       ),
@@ -160,6 +188,88 @@ describe('the screen itself', () => {
     page();
     expect(await screen.findByTestId('stream')).toBeDefined();
     expect(apiMock.session).toHaveBeenCalledWith('ses_1');
+  });
+
+  it('tells the composer what the workspace resolves Auto to', async () => {
+    // The pill reads `Auto · Opus` from this prop; without it a workspace's
+    // model is invisible from the session, which is what the report said.
+    apiMock.workspace.mockResolvedValue({
+      workspace: {
+        id: 'ws_a',
+        name: 'Alpha',
+        path: '/srv/a',
+        settings: { defaultModel: 'opus', defaultEffort: 'high', defaultPermissionMode: 'acceptEdits' },
+      },
+      sessions: [session],
+      gitStatus: null,
+      memoryStats: {},
+    });
+    page();
+    const composer = await screen.findByRole('button', { name: 'submit' });
+    await waitFor(() =>
+      expect(composer.getAttribute('data-defaults')).toBe(
+        JSON.stringify({ model: 'opus', effort: 'high', permissionMode: 'acceptEdits' }),
+      ),
+    );
+  });
+
+  /**
+   * A touched pill is the session's setting, not the next message's.
+   *
+   * The pickers used to be local state — gone on reload — while the rule the
+   * operator asked for is "a session follows the workspace until you touch
+   * it, then keeps what you chose". So a change is written to the session,
+   * one field at a time, and the message still carries the values so a
+   * PATCH in flight cannot lose the race with Send.
+   */
+  it('remembers a touched pill on the session, that field alone', async () => {
+    page();
+    fireEvent.click(await screen.findByRole('button', { name: 'pin opus' }));
+    await waitFor(() => expect(apiMock.updateSession).toHaveBeenCalledWith('ses_1', { model: 'opus' }));
+    expect(apiMock.updateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes null to put a field back to inheriting', async () => {
+    apiMock.session.mockResolvedValue({
+      session: { ...session, permissionMode: 'plan' },
+      runs: [],
+      events: [],
+    });
+    page();
+    const composer = await screen.findByRole('button', { name: 'submit' });
+    // Seeded from the session first, or the click below would diff against
+    // the initial state and write nothing.
+    await waitFor(() =>
+      expect(JSON.parse(composer.getAttribute('data-value') ?? '{}')).toMatchObject({
+        permissionMode: 'plan',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'inherit mode' }));
+    await waitFor(() =>
+      expect(apiMock.updateSession).toHaveBeenCalledWith('ses_1', { permissionMode: null }),
+    );
+  });
+
+  it('says so when the setting could not be remembered, and keeps it for this page', async () => {
+    apiMock.updateSession.mockRejectedValue(new Error('offline'));
+    page();
+    fireEvent.click(await screen.findByRole('button', { name: 'pin opus' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    // The message still carries the choice: the run follows what is on screen.
+    fireEvent.click(screen.getByRole('button', { name: 'submit' }));
+    await waitFor(() =>
+      expect(apiMock.submitRun).toHaveBeenCalledWith('ses_1', expect.objectContaining({ model: 'opus' })),
+    );
+  });
+
+  it('sends no mode with the message while the session inherits it', async () => {
+    // `null` on the wire would be an explicit selection of nothing; absence
+    // is what lets the kernel resolve session → workspace.
+    page();
+    fireEvent.click(await screen.findByRole('button', { name: 'submit' }));
+    await waitFor(() => expect(apiMock.submitRun).toHaveBeenCalled());
+    const body = apiMock.submitRun.mock.calls[0]![1] as Record<string, unknown>;
+    expect('permissionMode' in body).toBe(false);
   });
 
   it('seeds the composer from the session’s own settings', async () => {

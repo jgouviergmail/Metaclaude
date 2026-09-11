@@ -16,6 +16,7 @@
  */
 
 import type { ClaudeCliSession, Session } from '@metaclaude/shared';
+import { AUTO_MODEL } from '@metaclaude/shared';
 import type { SessionRepo, WorkspaceRepo } from '../kernel/repositories.js';
 
 /** The slice of the SDK's SDKSessionInfo this service reads. */
@@ -94,9 +95,11 @@ export class ClaudeSessions {
     const session = this.deps.sessions.create({
       workspaceId,
       title: target.summary,
-      model: String(workspace.settings.defaultModel),
-      effort: workspace.settings.defaultEffort,
-      permissionMode: workspace.settings.defaultPermissionMode,
+      // Inheriting: the workspace's settings are read on every run, never
+      // copied here.
+      model: AUTO_MODEL,
+      effort: null,
+      permissionMode: null,
     });
     this.deps.sessions.setClaudeSessionId(session.id, claudeSessionId);
 

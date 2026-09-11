@@ -514,6 +514,34 @@ in `packages/shared`, exported precisely so the two sides cannot drift again.
 Same family as the workspace-settings guard that refused the very form which
 round-tripped it.
 
+A fourth instance was found from the other direction: an operator set a model on
+a workspace and nothing changed. Two causes, both of which the first paragraph of
+this section already forbade. Every creator of a session — the web route, the
+standing sessions of delegation and the gateway, the steward's conversation, the
+advisor's, the board's — *copied* `defaultModel`, `defaultEffort` and
+`defaultPermissionMode` into the row, and `choosePolicy` read a non-Auto row as
+the session's own choice; so a workspace setting reached only sessions created
+after it was set, and the standing ones, alive for weeks, never. And with the
+session genuinely on Auto, the learner was consulted whenever the *message* said
+Auto — so once a category had eight trials, the learned arm replaced the model
+written into the workspace, and the setting worked exactly until the learner
+became confident.
+
+The rule that replaced it is one sentence, and it is the same for the three
+settings: **the workspace gives the base value, a session follows it until a
+pill is touched, and a touched pill keeps what was chosen whatever the workspace
+later says.** A session row holds "inherited" — Auto for the model, `null` for
+the effort and for the mode, whose own `default` is a real mode — unless
+somebody pinned it; the composer writes a touched pill to the session and shows
+what an untouched one resolves to (`Workspace · Opus`); the workspace is read on
+every run; and the learner is asked only where every level — message, session,
+workspace — said Auto. Two migrations turned every stored copy into "inherited",
+since nothing had ever written those columns after creation. One limit stays and
+is worth knowing: with the model left to the learner and the *effort* named, the
+learner is not consulted — its arms are (model, effort) pairs — and the model
+falls to the CLI's own default. It was so at the composer before; it is so at the
+workspace now.
+
 ### When the subscription refuses the arm
 
 A model can be unavailable rather than merely expensive: subscriptions meter each

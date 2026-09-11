@@ -266,7 +266,7 @@ export function mustGetWorkspace(context: AppContext, id: string): Workspace {
  */
 export function assertPermissionModeAllowed(
   context: AppContext,
-  mode: PermissionMode | undefined,
+  mode: PermissionMode | null | undefined,
 ): void {
   if (mode === 'bypassPermissions' && !context.config.allowBypassPermissions) {
     throw new HttpError(

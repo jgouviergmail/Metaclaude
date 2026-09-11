@@ -35,7 +35,7 @@ import type {
   Run,
   Workspace,
 } from '@metaclaude/shared';
-import { newId, REVISABLE_FIELDS, RevisionPayload, unifiedDiff } from '@metaclaude/shared';
+import { AUTO_MODEL, newId, REVISABLE_FIELDS, RevisionPayload, unifiedDiff } from '@metaclaude/shared';
 import {
   fitsField,
   hasField,
@@ -936,9 +936,12 @@ export class AdvisorService {
     const session = this.deps.sessions.create({
       workspaceId: workspace.id,
       title: 'Advisor',
-      model: String(workspace.settings.defaultModel),
-      effort: workspace.settings.defaultEffort,
-      permissionMode: 'auto',
+      // Inheriting: the workspace's settings are read on every run, and this
+      // session is kept for the workspace's lifetime. The mode the advisor
+      // actually runs under is pinned per run, in `ask`'s overrides.
+      model: AUTO_MODEL,
+      effort: null,
+      permissionMode: null,
     });
     this.deps.db
       .prepare(

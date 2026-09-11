@@ -1683,6 +1683,13 @@ export const fr: Record<string, string> = {
   Conflicted: 'En conflit',
   'Let Metaclaude choose from what it has learned':
     'Laisser Metaclaude choisir d’après ce qu’il a appris',
+  'Workspace · {value}': 'Espace · {value}',
+  'The workspace’s setting. Change it there and every session that has not picked its own follows.':
+    'Le réglage de l’espace. Changez-le là et toutes les sessions qui n’ont pas choisi le leur suivront.',
+  'That setting could not be saved on the session; it still applies to this page.':
+    'Ce réglage n’a pas pu être enregistré sur la session ; il s’applique tout de même à cette page.',
+  'The base values for every session of this workspace, existing ones included. A session follows them until you touch one of the three pills under its message box, then keeps what you chose. Leave model and effort on auto to let Metaclaude choose from what it has learned.':
+    'Les valeurs de base de chaque session de cet espace, les sessions existantes comprises. Une session les suit tant que vous ne touchez pas l’une des trois pastilles sous sa zone de message, puis garde ce que vous avez choisi. Laissez modèle et effort sur auto pour que Metaclaude choisisse d’après ce qu’il a appris.',
   Fable: 'Fable',
   'The Claude 5 flagship — above Opus, priced to match':
     'Le fleuron de Claude 5 — au-dessus d’Opus, tarifé en conséquence',
@@ -1694,6 +1701,9 @@ export const fr: Record<string, string> = {
   'Fastest and cheapest, for simple tasks': 'Le plus rapide et le moins cher, pour les tâches simples',
   'Opus plan': 'Opus plan',
   'Opus to plan, Sonnet to execute': 'Opus pour planifier, Sonnet pour exécuter',
+  Low: 'Faible',
+  Medium: 'Moyen',
+  High: 'Élevé',
   'Very high': 'Très élevé',
   Maximum: 'Maximum',
   "The product's own guide, and the assistant that answers from it.":

@@ -11,6 +11,7 @@
  */
 
 import type { Run, BoardTask, Session, Workspace } from '@metaclaude/shared';
+import { AUTO_MODEL } from '@metaclaude/shared';
 import type { RunRepo, SessionRepo, WorkspaceRepo } from '../kernel/repositories.js';
 import type { BoardGateway } from './board-gateway.js';
 import { BoardError } from './board.js';
@@ -142,8 +143,10 @@ function pickSession(
   return deps.sessions.create({
     workspaceId: workspace.id,
     title: `Board: ${task.title.slice(0, 120)}`,
-    model: String(workspace.settings.defaultModel),
-    effort: workspace.settings.defaultEffort,
-    permissionMode: workspace.settings.defaultPermissionMode,
+    // Inheriting: the workspace's settings are read on every run, never
+    // copied here.
+    model: AUTO_MODEL,
+    effort: null,
+    permissionMode: null,
   });
 }

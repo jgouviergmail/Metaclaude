@@ -450,6 +450,31 @@ restates the code is noise; one that records a decision or a trap is not.
   of the accessible name, so every one of those buttons needs its own
   `aria-label` or it is unnamed on the phone where the label is gone.
 
+- **A row that copies a setting at creation is a pin nobody made.** Six
+  creators wrote the workspace's model, effort and mode into the session row,
+  the composer seeded its pickers from the row and sent them back with every
+  message, and `choosePolicy` read a non-Auto value as a choice at every step
+  — so a setting changed on a workspace reached only sessions created after
+  it, and the standing ones never. The same family as `workspaces.path`, with
+  a second trap on top: the learner was gated on the *message* alone, so once
+  confident it overruled a model the workspace named. The rule now is one
+  sentence for the three: the workspace gives the base value, a session
+  follows it until a pill is touched, a touched pill stays. A row holds
+  "inherited" unless somebody pinned it (`null` for the mode — its own
+  `default` is Ask), the workspace is read at run time, and the learner is
+  asked only where every level said Auto. When a stored value will be read
+  as intent, it may hold only what somebody intended.
+- **`??` on a nullable patch field turns the reset into a no-op.**
+  `SessionRepo.update` merged `patch.permissionMode ?? current.permissionMode`,
+  so the one request that puts a field back to inheriting — `{ permissionMode:
+  null }` — read as "untouched" and left the pin in place, with a 200 and no
+  error. `effort` beside it already used `!== undefined`; the two spellings
+  in one statement were the tell. And the column behind it is NOT NULL for
+  good: with `foreign_keys = ON` four tables cascade on `sessions(id)`, and a
+  rebuild inside `migrate()`'s transaction — where the pragma is inert —
+  would take every run with it. "Inherited" is a sentinel string the
+  repository alone reads, and the migration test reads it back *through* the
+  repository so the two spellings cannot drift.
 - **A JSON list of ids is a foreign key nothing enforces.** A gateway token's
   `workspace_ids` kept naming a workspace that had been deleted, so the
   gateway — which filters the workspace list by exactly those ids — answered

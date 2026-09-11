@@ -227,8 +227,10 @@ Analytics shows the posterior for every arm in plain language — *"across 34
 runs, sonnet at high effort performs best"* — and a **Reset** button, because
 unlearning must be as easy as learning.
 
-An explicit choice always wins: pick a model in the composer and the learner
-stands aside for that message.
+An explicit choice always wins, at every level: pick a model in the composer
+and the learner stands aside for that session; name one in the workspace's
+settings and it stands aside for every session that has not picked its own.
+It is consulted only where nobody chose.
 
 ## Reflexion
 

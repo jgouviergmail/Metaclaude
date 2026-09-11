@@ -11,6 +11,44 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.94.0] — 2026-09-11
+
+### Changed
+
+- **One rule for a session's model, effort and permission mode.** The
+  workspace gives the base value; a session follows it until you touch a pill
+  in its composer; a touched pill keeps what you chose whatever the workspace
+  later says. Untouched pills now show what they inherit — `Workspace · Opus`,
+  `Workspace · High`, `Workspace · Ask` — and the first entry of each menu is
+  the way back to inheriting. A choice is written to the session the moment it
+  is made, so it survives a reload; before, the pickers were page state and a
+  reload put them back. The rule is stated under the three controls in the
+  workspace settings dialog, and the guide's three descriptions of the old
+  one are rewritten.
+
+### Fixed
+
+- **A model set on a workspace changed nothing in its sessions.** Every
+  creator of a session — the web route, the standing sessions of delegation
+  and the MCP gateway, the steward's conversation, the advisor's, the board's,
+  the CLI adoption — copied the workspace's model, effort and mode into the
+  row, and the kernel read a non-Auto row as the session's own choice. So a
+  setting reached only sessions created after it, and the standing ones,
+  alive for weeks, never; the composer then sent the copy back with every
+  message as though the operator had picked it. A second half hid under the
+  first: with the session genuinely on Auto, the learner was asked whenever
+  the *message* said Auto, and once a category had eight trials its arm
+  replaced the model written into the workspace — the setting worked exactly
+  until the learner became confident. Two migrations turn every stored copy
+  into "inherited": nothing in Metaclaude ever wrote those columns after
+  creation, so every value was a copy. The learner is now consulted only where
+  every level said Auto — which is the rule `docs/LEARNING.md` had stated all
+  along.
+- **The composer's Bypass border and banner read the pill, not what would
+  run.** A session inheriting Bypass from its workspace showed neither. Both
+  read the resolved mode now, as do the effort levels offered and whether
+  Ultracode can be.
+
 ## [0.93.5] — 2026-09-11
 
 _0.93.4 was tagged by nothing either: its browser-check job was cancelled

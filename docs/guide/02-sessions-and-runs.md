@@ -13,15 +13,23 @@ literal slash. The list is read from the CLI itself, so anything a plugin
 or a skill adds shows up without a Metaclaude release. A `/` further into
 a sentence (a path, a fraction) never interrupts.
 
-The controls under the input change what the *next* message does:
+The three pills under the input are the **session's** settings, and one rule
+governs them: the workspace gives the base value, a session follows it until
+you touch a pill, and a touched pill keeps what you chose whatever the
+workspace later says. An untouched pill shows what it inherits — `Workspace ·
+Opus`, `Workspace · High`, `Workspace · Ask` — and the first entry of its menu
+is the way back to inheriting. Your choice is written to the session the
+moment you make it, so it survives a reload and the next visit.
 
-- **Model** — what the CLI offers your subscription, by name. **Auto** hands
-  the choice to the learned policy, which picks from what has actually worked
-  for this kind of task.
+- **Model** — what the CLI offers your subscription, by name. Plain **Auto**
+  appears only when the workspace itself leaves the choice to the learned
+  policy, which picks from what has actually worked for this kind of task.
 - **Effort** — how hard the model thinks, from Low to Maximum. Only the levels
-  the chosen model supports are offered.
+  the model that will actually run supports are offered — the inherited one
+  included.
 - **Permission mode** — see the Permissions chapter. The composer border turns
-  red under Bypass, and a banner says so.
+  red under Bypass, and a banner says so, whether the session chose Bypass or
+  merely inherits it.
 - **Ultracode** — appears only when the chosen model can orchestrate: one
   toggle fans your message out across sub-agents at maximum effort. Expect
   multi-agent token spend; the hint under the composer reminds you while it is

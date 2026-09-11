@@ -241,13 +241,14 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     log: () => {},
   });
 
+  // Born inheriting all three, as the route creates them.
   const newSession = (title = '') =>
     sessions.create({
       workspaceId: workspace.id,
       title,
       model: 'default',
       effort: null,
-      permissionMode: 'default',
+      permissionMode: null,
     });
 
   return {
@@ -492,6 +493,135 @@ describe('admission', () => {
     } finally {
       fx.db.close();
     }
+  });
+
+  it('keeps a workspace’s named model once the learner is confident', async () => {
+    /*
+     * The other half of the rule above. The floor case was covered — with no
+     * evidence the workspace's choice stood — and the confident case was not:
+     * `select` answering meant the learned arm replaced a model the operator
+     * had written into the workspace, so setting one there changed nothing
+     * once a category had eight trials. Auto is the request for the learner,
+     * at the workspace level exactly as at the composer; a named model is a
+     * choice, and the learner may not overrule a choice at any level.
+     */
+    const fx = setup({ settings: { defaultModel: 'sonnet', defaultEffort: 'high' } });
+    try {
+      fx.policy.select.mockReturnValue({ arm: { model: 'haiku', effort: null }, confidence: 0.9 });
+      const session = fx.newSession();
+      const run = await fx.kernel.submit({
+        sessionId: session.id,
+        prompt: 'a question',
+        overrides: { model: AUTO_MODEL, effort: null },
+      });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+
+      expect(fx.policy.select).not.toHaveBeenCalled();
+      expect(fx.runs.get(run.id)?.policy.model).toBe('sonnet');
+      expect(fx.runs.get(run.id)?.policy.effort).toBe('high');
+      expect(fx.runs.get(run.id)?.policy.source).toBe('workspace');
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('runs a standing session under the workspace’s current model, not the one it was born under', async () => {
+    /*
+     * Every creator of a session copied `defaultModel` and `defaultEffort`
+     * into the row, and `choosePolicy` read a non-Auto row as a choice. So a
+     * standing session — the delegation's, the gateway's, the steward's, the
+     * advisor's, which live for weeks — ran under whatever the workspace said
+     * the day it was created, and changing the workspace's model afterwards
+     * reached only sessions created later. A derived value that is stored
+     * stops being derived; the row holds Auto and the workspace is read at
+     * run time.
+     */
+    const fx = setup({ settings: { defaultModel: 'haiku', defaultEffort: 'low' } });
+    try {
+      const session = fx.kernel.standingSession({
+        workspaceId: fx.workspace.id,
+        title: 'Delegations',
+        maxEvents: 100,
+      });
+      fx.workspaces.update(fx.workspace.id, {
+        settings: { defaultModel: 'sonnet', defaultEffort: 'high' },
+      });
+
+      // As delegation submits: no overrides at all.
+      const run = await fx.kernel.submit({ sessionId: session.id, prompt: 'a question' });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+
+      expect(fx.runs.get(run.id)?.policy.model).toBe('sonnet');
+      expect(fx.runs.get(run.id)?.policy.effort).toBe('high');
+      expect(fx.runs.get(run.id)?.policy.source).toBe('workspace');
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('runs an untouched session under the workspace’s current mode', async () => {
+    // Same rule as the model: a session born inheriting follows the workspace
+    // as it is *now*, not as it was.
+    const fx = setup({ settings: { defaultPermissionMode: 'default' } });
+    try {
+      const session = fx.newSession();
+      fx.workspaces.update(fx.workspace.id, { settings: { defaultPermissionMode: 'acceptEdits' } });
+      const run = await fx.kernel.submit({ sessionId: session.id, prompt: 'a question' });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+      expect(fx.runs.get(run.id)?.policy.permissionMode).toBe('acceptEdits');
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('keeps a customised session’s three settings when the workspace changes underneath', async () => {
+    // The other half of the rule: a session somebody set stays set. The
+    // learner is confident and the workspace moves; neither reaches the run.
+    const fx = setup({
+      settings: { defaultModel: 'haiku', defaultEffort: 'low', defaultPermissionMode: 'default' },
+    });
+    try {
+      fx.policy.select.mockReturnValue({ arm: { model: 'sonnet', effort: null }, confidence: 0.9 });
+      const session = fx.sessions.create({
+        workspaceId: fx.workspace.id,
+        model: 'opus',
+        effort: 'high',
+        permissionMode: 'acceptEdits',
+      });
+      fx.workspaces.update(fx.workspace.id, {
+        settings: { defaultModel: 'fable', defaultEffort: 'max', defaultPermissionMode: 'plan' },
+      });
+
+      const run = await fx.kernel.submit({ sessionId: session.id, prompt: 'a question' });
+      await vi.waitFor(() => expect(fx.finished.map((r) => r.id)).toContain(run.id));
+
+      const policy = fx.runs.get(run.id)?.policy;
+      expect(policy?.model).toBe('opus');
+      expect(policy?.effort).toBe('high');
+      expect(policy?.permissionMode).toBe('acceptEdits');
+      expect(fx.policy.select).not.toHaveBeenCalled();
+    } finally {
+      fx.db.close();
+    }
+  });
+
+  it('lets a message override the session, for the mode as for the model', async () => {
+    const session = fixture.sessions.create({
+      workspaceId: fixture.workspace.id,
+      model: 'opus',
+      effort: 'high',
+      permissionMode: 'acceptEdits',
+    });
+    const run = await fixture.kernel.submit({
+      sessionId: session.id,
+      prompt: 'a question',
+      overrides: { model: 'haiku', effort: 'low', permissionMode: 'plan' },
+    });
+    await settled(fixture, run.id);
+    const policy = fixture.runs.get(run.id)?.policy;
+    expect(policy?.model).toBe('haiku');
+    expect(policy?.effort).toBe('low');
+    expect(policy?.permissionMode).toBe('plan');
   });
 
   it('falls back to the workspace default, not the CLI default, when Auto has no evidence', async () => {
@@ -911,11 +1041,22 @@ describe('the standing session', () => {
     expect(ask(fixture, { title: 'Delegations' }).id).not.toBe(ask(fixture, { title: 'MCP: n8n' }).id);
   });
 
-  it('opens it on the workspace’s own model, effort and mode', () => {
-    const session = fixture.sessions.get(ask(fixture).id);
-    expect(session?.model).toBe(String(fixture.workspace.settings.defaultModel));
-    expect(session?.effort).toBe(fixture.workspace.settings.defaultEffort);
-    expect(session?.permissionMode).toBe(fixture.workspace.settings.defaultPermissionMode);
+  it('opens it inheriting, against a workspace that names all three', () => {
+    // The first version asserted "equal to the workspace's defaults" on a
+    // fixture whose defaults were Auto — where a copy and an inheritance are
+    // the same row — and stayed green while every creator copied. A named
+    // value is what tells the two apart.
+    const fx = setup({
+      settings: { defaultModel: 'sonnet', defaultEffort: 'high', defaultPermissionMode: 'acceptEdits' },
+    });
+    try {
+      const session = fx.sessions.get(ask(fx).id);
+      expect(session?.model).toBe(AUTO_MODEL);
+      expect(session?.effort).toBeNull();
+      expect(session?.permissionMode).toBeNull();
+    } finally {
+      fx.db.close();
+    }
   });
 
   it('refuses a workspace that does not exist', () => {

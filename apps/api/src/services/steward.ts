@@ -25,7 +25,7 @@
  * — the one decision an absent operator would want to have made themselves.
  */
 
-import { WorkspaceSettings, describeLocation, patchSchema } from '@metaclaude/shared';
+import { AUTO_MODEL, WorkspaceSettings, describeLocation, patchSchema } from '@metaclaude/shared';
 import type {
   AdvisorProposal,
   ApprovalRequest,
@@ -1028,9 +1028,11 @@ export class Steward {
     session ??= this.deps.sessions.create({
       workspaceId: own,
       title: CONVERSATION_TITLE,
-      model: String(workspace.settings.defaultModel),
-      effort: workspace.settings.defaultEffort,
-      permissionMode: workspace.settings.defaultPermissionMode,
+      // Inheriting: the workspace's settings are read on every run, never
+      // copied here.
+      model: AUTO_MODEL,
+      effort: null,
+      permissionMode: null,
     });
     const run = await this.deps.kernel.submit({
       sessionId: session.id,

@@ -8,7 +8,7 @@
 
 import { screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ClaudeCatalogue } from '@metaclaude/shared';
+import type { ClaudeCatalogue, PermissionMode } from '@metaclaude/shared';
 import { renderInFrench, renderWithProviders } from '@/test/render';
 import type { PendingAttachment } from '@/lib/attachments';
 import { Composer, type ComposerValue } from './Composer';
@@ -104,6 +104,108 @@ describe('the permission-mode control', () => {
     // which is the signature of that race rather than of a broken control.
     await renderComposerInFrench({ permissionMode: 'default' }, catalogue([capable]));
     expect(await screen.findByText('Demander')).toBeDefined();
+  });
+});
+
+/**
+ * What an inherited setting says.
+ *
+ * One rule for model, effort and mode: the workspace gives the base value, a
+ * session follows it until a pill is touched, and a touched one stays. The
+ * composer therefore has to show what an untouched pill resolves to — or an
+ * operator who sets a model on the workspace sees the session go on saying
+ * "Auto" and reads the setting as ignored, which is the report this was
+ * written for. "Auto" alone is kept for the one case where the workspace
+ * itself leaves the choice to the learner; it cannot serve for the mode,
+ * whose `auto` member is already labelled Auto.
+ */
+describe('what an inherited setting resolves to', () => {
+  type Defaults = { model: string; effort: 'low' | 'high' | null; permissionMode: PermissionMode };
+  const inherited: Partial<ComposerValue> = { model: 'default', effort: null, permissionMode: null };
+
+  function renderWithDefaults(
+    value: Partial<ComposerValue>,
+    defaults: Defaults,
+    options: { allowBypass?: boolean } = {},
+  ) {
+    const { onChange, props } = composerProps(value, catalogue([capable, incapable]));
+    renderWithProviders(
+      <Composer {...props} workspaceDefaults={defaults} allowBypass={options.allowBypass ?? false} />,
+    );
+    return { onChange };
+  }
+
+  it('names the workspace’s model, with the catalogue’s label', () => {
+    renderWithDefaults(inherited, { model: 'opus', effort: null, permissionMode: 'default' });
+    expect(screen.getByRole('button', { name: 'Workspace · Opus' })).toBeDefined();
+  });
+
+  it('shows a model id the catalogue has not enumerated as it is', () => {
+    renderWithDefaults(inherited, { model: 'claude-opus-5', effort: null, permissionMode: 'default' });
+    expect(screen.getByRole('button', { name: 'Workspace · claude-opus-5' })).toBeDefined();
+  });
+
+  it('reads plain Auto for model and effort when the workspace leaves both to the learner', () => {
+    renderWithDefaults(inherited, { model: 'default', effort: null, permissionMode: 'default' });
+    expect(screen.getAllByRole('button', { name: 'Auto' })).toHaveLength(2);
+  });
+
+  it('does the same for the effort and the mode', () => {
+    renderWithDefaults(inherited, { model: 'default', effort: 'high', permissionMode: 'acceptEdits' });
+    expect(screen.getByRole('button', { name: 'Workspace · High' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Workspace · Accept edits' })).toBeDefined();
+  });
+
+  it('offers the inherited mode as the first entry, checked, and the way back to it', () => {
+    const { onChange } = renderWithDefaults(
+      { ...inherited, permissionMode: 'plan' },
+      { model: 'default', effort: null, permissionMode: 'acceptEdits' },
+    );
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Plan' }));
+    const back = screen.getByRole('menuitemcheckbox', { name: /Workspace · Accept edits/ });
+    expect(back.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(back);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: null }));
+  });
+
+  it('says in the entry’s hint that the workspace decides, not the learner', () => {
+    renderWithDefaults(inherited, { model: 'opus', effort: null, permissionMode: 'default' });
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Workspace · Opus' }));
+    expect(screen.getByRole('menuitemcheckbox', { name: /Workspace · Opus/ }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText(/The workspace’s setting/)).toBeDefined();
+    expect(screen.queryByText('Let Metaclaude choose from what it has learned')).toBeNull();
+  });
+
+  it('paints the danger border and banner for a Bypass the session merely inherits', () => {
+    // A safety indicator that reads the raw pill misses the case that matters
+    // most: the session says nothing and the workspace says Bypass.
+    renderWithDefaults(inherited, { model: 'default', effort: null, permissionMode: 'bypassPermissions' }, { allowBypass: true });
+    expect(screen.getByText(/Bypass mode: the agent will run commands/)).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Workspace · Bypass' }).className).toContain('text-danger');
+  });
+
+  it('offers Ultracode when the inherited model can orchestrate', () => {
+    renderWithDefaults(inherited, { model: 'opus', effort: null, permissionMode: 'default' });
+    const toggle = screen.getByRole('button', { name: /ultracode/i });
+    expect(toggle.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('narrows the effort levels by the inherited model', () => {
+    // Haiku takes no effort level: nothing but the inherited entry is offered.
+    renderWithDefaults(inherited, { model: 'haiku', effort: null, permissionMode: 'default' });
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Auto' }));
+    expect(screen.getAllByRole('menuitemcheckbox')).toHaveLength(1);
+  });
+
+  it('is not consulted once the composer pins something', () => {
+    renderWithDefaults(
+      { model: 'opus', effort: 'low', permissionMode: 'plan' },
+      { model: 'haiku', effort: 'high', permissionMode: 'acceptEdits' },
+    );
+    expect(screen.getByRole('button', { name: 'Opus' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Low' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Plan' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Workspace ·/ })).toBeNull();
   });
 });
 

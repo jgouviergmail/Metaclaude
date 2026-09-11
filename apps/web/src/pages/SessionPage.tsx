@@ -21,12 +21,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  sessionTopic,
-  workspaceTopic,
-  type EffortLevel,
-  type PermissionMode,
-} from '@metaclaude/shared';
+import { sessionTopic, workspaceTopic, type Session } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { WorkspaceSettingsModal } from '@/components/workspace/WorkspaceSettingsModal';
 import { Composer, type ComposerValue } from '@/components/transcript/Composer';
@@ -66,6 +61,8 @@ import { routes } from '@metaclaude/shared';
 import { Menu, MenuItem } from '@/components/ui/Menu';
 
 type SidePanel = 'none' | 'files' | 'git';
+/** The three composer pills that are the session's own settings. */
+type SessionSettingsPatch = Partial<Pick<Session, 'model' | 'effort' | 'permissionMode'>>;
 
 export function SessionPage() {
   const t = useT();
@@ -234,13 +231,14 @@ export function SessionPage() {
     toolControls: null,
   });
 
-  // Seed the composer from the session's own settings once it loads.
+  // Seed the composer from the session's own settings once it loads — its
+  // pins, and `null`/Auto where it inherits the workspace's.
   useEffect(() => {
     if (!session) return;
     setComposer((current) => ({
       model: String(session.model),
-      effort: (session.effort as EffortLevel | null) ?? null,
-      permissionMode: session.permissionMode as PermissionMode,
+      effort: session.effort,
+      permissionMode: session.permissionMode,
       // Per-message, never persisted on the session: reseeding must not
       // silently switch orchestration on or off under the operator.
       ultracode: current.ultracode,
@@ -260,13 +258,42 @@ export function SessionPage() {
 
   const pending = usePendingAttachments(sessionId);
 
+  /*
+   * A touched pill is the session's setting.
+   *
+   * The rule is one line: a session follows the workspace until you touch a
+   * pill, then keeps what you chose whatever the workspace later says. So a
+   * change to model, effort or mode is written to the session — that field
+   * alone, so two quick changes cannot undo each other — and the message
+   * below still carries the values, which is what makes a PATCH in flight
+   * unable to lose the race with Send. Ultracode and tool steering are not
+   * written: they are per-message by design.
+   */
+  const rememberSettings = useMutation({
+    mutationFn: (patch: SessionSettingsPatch) => api.updateSession(sessionId, patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['session', sessionId] });
+    },
+    onError: () => toast.error(t('That setting could not be saved on the session; it still applies to this page.')),
+  });
+  const changeComposer = (next: ComposerValue) => {
+    const patch: SessionSettingsPatch = {};
+    if (next.model !== composer.model) patch.model = next.model;
+    if (next.effort !== composer.effort) patch.effort = next.effort;
+    if (next.permissionMode !== composer.permissionMode) patch.permissionMode = next.permissionMode;
+    setComposer(next);
+    if (Object.keys(patch).length > 0) rememberSettings.mutate(patch);
+  };
+
   const submitRun = useMutation({
     mutationFn: (prompt: string) =>
       api.submitRun(sessionId, {
         prompt,
         model: composer.model,
         effort: composer.effort,
-        permissionMode: composer.permissionMode,
+        // Absent, not null, while the session inherits: on the wire `null`
+        // would be an explicit selection of nothing.
+        ...(composer.permissionMode !== null ? { permissionMode: composer.permissionMode } : {}),
         ultracode: composer.ultracode,
         ...(composer.toolControls ? { toolControls: composer.toolControls } : {}),
         ...(pending.readyIds.length > 0 ? { attachmentIds: pending.readyIds } : {}),
@@ -501,7 +528,7 @@ export function SessionPage() {
 
           <Composer
             value={composer}
-            onChange={setComposer}
+            onChange={changeComposer}
             onSubmit={(prompt) => submitRun.mutate(prompt)}
             attachments={pending.attachments}
             onAttachFiles={pending.attach}
@@ -515,6 +542,11 @@ export function SessionPage() {
                 .map((server) => server.name),
             }}
             {...(catalogueQuery.data ? { catalogue: catalogueQuery.data } : {})}
+            workspaceDefaults={{
+              model: String(workspace.settings.defaultModel),
+              effort: workspace.settings.defaultEffort,
+              permissionMode: workspace.settings.defaultPermissionMode,
+            }}
             onInterrupt={() => {
               socket.interrupt(sessionId);
               void api.interrupt(sessionId).catch(() => undefined);

@@ -351,6 +351,13 @@ export function WorkspaceSettingsModal({
             ))}
           </Menu>
         </div>
+        {/* The rule, where it is set, under the three controls it governs: it
+            read as "for new sessions" and was once exactly that, by defect. */}
+        <p className="text-caption leading-relaxed text-muted">
+          {t(
+            'The base values for every session of this workspace, existing ones included. A session follows them until you touch one of the three pills under its message box, then keeps what you chose. Leave model and effort on auto to let Metaclaude choose from what it has learned.',
+          )}
+        </p>
 
         <fieldset className="space-y-3">
           <legend className="text-body font-semibold text-ink">{t('Pre-approved tools')}</legend>

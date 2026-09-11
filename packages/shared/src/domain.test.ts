@@ -40,6 +40,7 @@ import {
   MarketplaceInput,
   normaliseTags,
   RunPolicy,
+  Session,
   watchesAutomations,
   watchPath,
   WorkspaceSettings,
@@ -138,6 +139,43 @@ describe('WorkspaceSettings defaults', () => {
 
   it('rejects a permission mode outside the known set', () => {
     expect(WorkspaceSettings.safeParse({ defaultPermissionMode: 'yolo' }).success).toBe(false);
+  });
+});
+
+describe('Session — what a row may leave to the workspace', () => {
+  const row = {
+    id: 'ses_1',
+    workspaceId: 'ws_1',
+    title: '',
+    claudeSessionId: null,
+    status: 'idle',
+    model: AUTO_MODEL,
+    effort: null,
+    permissionMode: null,
+    agentName: null,
+    pinned: false,
+    archived: false,
+    totalCostUsd: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    runCount: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    lastActivityAt: 0,
+    lastReadAt: 0,
+  };
+
+  it('accepts all three settings as inherited — model Auto, effort null, mode null', () => {
+    // The wire carries this row on every session frame; `parseWireFrame`
+    // refusing `null` would silently drop the session from the screen.
+    const parsed = Session.parse(row);
+    expect(parsed.permissionMode).toBeNull();
+    expect(parsed.effort).toBeNull();
+    expect(isAutoModel(parsed.model)).toBe(true);
+  });
+
+  it('still refuses a mode that is not one of the six', () => {
+    expect(Session.safeParse({ ...row, permissionMode: 'inherit' }).success).toBe(false);
   });
 });
 

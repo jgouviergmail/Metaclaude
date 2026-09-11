@@ -1339,4 +1339,37 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_revision_reviews_workspace ON revision_reviews(workspace_id, at DESC);
     `,
   },
+  {
+    version: 33,
+    name: 'sessions_follow_workspace',
+    sql: /* sql */ `
+      -- A session's model and effort were copies of the workspace's defaults,
+      -- taken the day the session was created by every one of its six
+      -- creators, and the kernel read a non-Auto row as the session's own
+      -- choice. So a model set on the workspace reached no session created
+      -- before it, and the standing ones -- the advisor's, the steward's, the
+      -- delegation's -- never at all. Nothing in Metaclaude ever wrote either
+      -- column after creation: the composer keeps its pickers in local state
+      -- and the steward's session tool takes title, pinned and archived only.
+      -- Every stored value is therefore a copy, and Auto is what each row
+      -- meant: "the workspace's, read at run time".
+      UPDATE sessions SET model = 'default', effort = NULL;
+    `,
+  },
+  {
+    version: 34,
+    name: 'sessions_inherit_permission_mode',
+    sql: /* sql */ `
+      -- The third setting, under the rule the previous migration applied to
+      -- the other two: the workspace gives the value, a session follows it
+      -- until somebody picks one, and a picked one stays. The column is NOT
+      -- NULL and cannot be relaxed -- four tables cascade on sessions(id)
+      -- and a rebuild here, where PRAGMA foreign_keys is inert, would take
+      -- every run with it -- so "inherited" is the string 'inherit', which
+      -- SessionRepo alone reads and turns into null. Every stored mode is a
+      -- copy for the same reason as before: nothing wrote the column after
+      -- creation. The automations re-send their own mode on every fire.
+      UPDATE sessions SET permission_mode = 'inherit';
+    `,
+  },
 ];

@@ -28,6 +28,7 @@ import type {
   Workspace,
 } from '@metaclaude/shared';
 import {
+  AUTO_MODEL,
   isAutoEffort,
   isAutoModel,
   newId,
@@ -466,9 +467,12 @@ export class Kernel {
       this.deps.sessions.create({
         workspaceId: workspace.id,
         title: input.title,
-        model: String(workspace.settings.defaultModel),
-        effort: workspace.settings.defaultEffort,
-        permissionMode: workspace.settings.defaultPermissionMode,
+        // Inheriting, not a copy of the workspace's values: `choosePolicy`
+        // reads the workspace on every run, and a standing session lives long
+        // enough for the settings to change under it.
+        model: AUTO_MODEL,
+        effort: null,
+        permissionMode: null,
       })
     );
   }
@@ -855,8 +859,20 @@ export class Kernel {
   /**
    * Decide model, effort and permission mode for a run.
    *
-   * Precedence: explicit request → learned policy (when enabled and confident)
-   * → workspace default. The operator's choice always wins.
+   * Precedence: the message's pin → the session's pin → the workspace's
+   * setting → the learner. The operator's choice wins at every level, and the
+   * learner is only asked where every level said Auto — a workspace that
+   * names a model has chosen, as surely as a composer pill has.
+   *
+   * The workspace is read *now*, on every run, for all three settings. Every
+   * creator of a session used to copy `defaultModel`, `defaultEffort` and
+   * `defaultPermissionMode` into the row, and the copy was then read here as
+   * the session's own choice: changing a workspace setting reached only
+   * sessions created afterwards, and the standing ones — delegation's, the
+   * gateway's, the steward's, the advisor's, alive for weeks — never. A
+   * derived value that is stored stops being derived; a session row holds
+   * "inherited" unless somebody pinned it, and a pin stays whatever the
+   * workspace later says.
    */
   private choosePolicy(
     workspace: Workspace,
@@ -876,7 +892,7 @@ export class Kernel {
       // learner's *absence* was routed to the dearest model available.
       model: isAutoModel(session.model) ? settings.defaultModel : session.model,
       effort: session.effort ?? settings.defaultEffort,
-      permissionMode: session.permissionMode || settings.defaultPermissionMode,
+      permissionMode: session.permissionMode ?? settings.defaultPermissionMode,
       thinking: settings.thinking,
       thinkingBudgetTokens: settings.thinkingBudgetTokens,
       agentName: session.agentName,
@@ -894,13 +910,21 @@ export class Kernel {
     const pinnedModel = !isAutoModel(overrides?.model);
     const pinnedEffort = !isAutoEffort(overrides?.effort);
 
-    if (settings.autoPolicyEnabled && !pinnedModel && !pinnedEffort) {
+    // The same question of the levels below the message: `base` already
+    // resolved session → workspace, so anything non-Auto in it is a choice
+    // somebody made. The learner used to be asked whenever the *message* said
+    // Auto and, once a category had eight trials, replaced a model the
+    // operator had written into the workspace — so setting one there worked
+    // exactly until the learner became confident, then silently stopped.
+    const chosenBelow = !isAutoModel(base.model) || !isAutoEffort(base.effort);
+
+    if (settings.autoPolicyEnabled && !pinnedModel && !pinnedEffort && !chosenBelow) {
       const learned = this.deps.policy.select(workspace.id, category);
       if (learned) {
         base.model = learned.arm.model;
         base.effort = learned.arm.effort;
         base.source = 'learned';
-      } else if (isAutoModel(base.model)) {
+      } else {
         /*
          * The cold-start floor: start low, and let the failures push you up.
          *

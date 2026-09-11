@@ -394,6 +394,32 @@ describe('SessionRepo', () => {
     expect(sessions.update('ses_nope', { model: 'opus' })).toBeNull();
   });
 
+  it('holds an inherited permission mode as null, in and out, and lets update() put it back', () => {
+    // The column is NOT NULL and cannot be relaxed — four tables cascade on
+    // sessions(id) and a rebuild inside migrate()'s transaction would take the
+    // runs with it — so "inherited" is a sentinel in the row and `null` at the
+    // contract. Both directions here, because a `??` on the patch would have
+    // read a reset as "untouched" and made the way back to inheriting a no-op.
+    const inherited = sessions.create({
+      workspaceId: workspace.id,
+      model: 'default',
+      effort: null,
+      permissionMode: null,
+    });
+    expect(inherited.permissionMode).toBeNull();
+    expect(sessions.get(inherited.id)?.permissionMode).toBeNull();
+
+    const pinned = sessions.update(inherited.id, { permissionMode: 'acceptEdits' })!;
+    expect(pinned.permissionMode).toBe('acceptEdits');
+
+    const untouched = sessions.update(inherited.id, { title: 'renamed' })!;
+    expect(untouched.permissionMode).toBe('acceptEdits');
+
+    const back = sessions.update(inherited.id, { permissionMode: null })!;
+    expect(back.permissionMode).toBeNull();
+    expect(sessions.list(workspace.id).find((s) => s.id === inherited.id)?.permissionMode).toBeNull();
+  });
+
   it('accumulates usage across runs, cache included', () => {
     // The cache halves are not a detail of this sum, they are most of it:
     // measured over 54 production runs, 12.04M read and 1.41M written against

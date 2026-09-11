@@ -2,9 +2,12 @@
  * Prompt composer.
  *
  * The controls that change what the agent will do — model, effort, permission
- * mode — sit inline with the input rather than in a settings page, because they
- * are per-message decisions. Defaults come from the workspace, and "Auto" hands
- * the choice to the learned policy.
+ * mode — sit inline with the input rather than in a settings page. They are the
+ * *session's* settings: untouched, a pill shows what the workspace gives and
+ * follows it; touched, the page writes the choice to the session and it stays.
+ * Ultracode and tool steering are the per-message exceptions. Plain "Auto"
+ * appears only where the workspace itself leaves model or effort to the
+ * learned policy.
  */
 
 import {
@@ -25,6 +28,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ATTACHMENT_LIMITS,
+  AUTO_MODEL,
+  isAutoModel,
   PERMISSION_MODE_INFO,
   type ClaudeCatalogue,
   type EffortLevel,
@@ -36,7 +41,7 @@ import { ATTACHMENT_ACCEPT, type PendingAttachment } from '@/lib/attachments';
 import { completeSlash, slashMatches } from '@/lib/slash';
 import { cycleMcpServer, mcpServerState, steeredCount, toggleRequiredSkill } from '@/lib/tool-controls';
 import { TOUCH_TARGET_Y } from '@/components/ui/touch-target';
-import { effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
+import { effortLabel, effortOptions, modelOptions, supportsUltracode } from '@/lib/claude-catalogue';
 import { cn, formatBytes, isModifier } from '@/lib/utils';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui/Menu';
 import { useT } from '@/lib/i18n';
@@ -44,9 +49,12 @@ import { useT } from '@/lib/i18n';
 const MODES: PermissionMode[] = ['plan', 'default', 'acceptEdits', 'auto', 'dontAsk'];
 
 export interface ComposerValue {
+  /** Auto (`default`) inherits the workspace's model. */
   model: string;
+  /** `null` inherits the workspace's effort. */
   effort: EffortLevel | null;
-  permissionMode: PermissionMode;
+  /** `null` inherits the workspace's mode; the mode's own `default` is Ask. */
+  permissionMode: PermissionMode | null;
   /** Standing multi-agent orchestration for this message. See supportsUltracode. */
   ultracode: boolean;
   /** Per-message tool steering from the Tools picker; null means Auto. */
@@ -57,6 +65,21 @@ export interface ComposerValue {
 export interface ToolPickerOptions {
   skills: string[];
   mcpServers: string[];
+}
+
+/**
+ * What an untouched pill resolves to: the workspace's own settings.
+ *
+ * A session stores "inherited" and the kernel reads the workspace at run
+ * time, so each pill has to say what that is — `Workspace · Opus` — or an
+ * operator who set one on the workspace sees nothing change in the session
+ * and reads the setting as ignored. Plain "Auto" is kept for the one case
+ * where the workspace itself leaves model or effort to the learner.
+ */
+export interface WorkspaceDefaults {
+  model: string;
+  effort: EffortLevel | null;
+  permissionMode: PermissionMode;
 }
 
 /**
@@ -83,6 +106,7 @@ export function Composer({
   onAttachFiles,
   onRemoveAttachment,
   toolOptions,
+  workspaceDefaults,
   // Defaulted at the point of use, not here: `t` is this component's own hook
   // and does not exist yet where a parameter default is evaluated.
   placeholder,
@@ -102,6 +126,8 @@ export function Composer({
   onRemoveAttachment?: (key: string) => void;
   /** The workspace's skills and MCP servers, for the Tools picker. */
   toolOptions?: ToolPickerOptions;
+  /** What Auto resolves to in this workspace; absent until the workspace loads. */
+  workspaceDefaults?: WorkspaceDefaults;
   placeholder?: string;
 }) {
   const t = useT();
@@ -207,17 +233,59 @@ export function Composer({
   // offer a model is a session nobody can start, so a CLI that could not be
   // reached costs the extra detail and nothing else.
   const models = useMemo(() => modelOptions(catalogue), [catalogue]);
-  const efforts = useMemo(() => effortOptions(catalogue, value.model), [catalogue, value.model]);
-  const offerUltracode = supportsUltracode(catalogue, value.model);
 
+  /*
+   * Everything below reasons on what will actually run — the pill's own value
+   * where it was touched, the workspace's where it was not. The effort levels
+   * offered, whether Ultracode can be, the danger border and the banners all
+   * read the resolved value: a safety indicator that read the raw pill missed
+   * the case that matters most, a session saying nothing under a workspace
+   * that says Bypass.
+   */
+  const inherits = {
+    model: workspaceDefaults?.model ?? AUTO_MODEL,
+    effort: workspaceDefaults?.effort ?? null,
+    permissionMode: workspaceDefaults?.permissionMode ?? 'default',
+  };
+  const resolvedModel = value.model === AUTO_MODEL ? inherits.model : value.model;
+  const resolvedMode = value.permissionMode ?? inherits.permissionMode;
+
+  const efforts = useMemo(() => effortOptions(catalogue, resolvedModel), [catalogue, resolvedModel]);
+  const offerUltracode = supportsUltracode(catalogue, resolvedModel);
+
+  // A model the catalogue has not enumerated is still a valid choice — an
+  // operator can name a dated id. Showing it is better than silently
+  // displaying someone else's label.
+  const modelLabel = (model: string): string =>
+    models.find((m) => m.value === model)?.label ?? model;
   const activeModel =
     models.find((m) => m.value === value.model) ??
-    // A model the catalogue has not enumerated is still a valid choice — an
-    // operator can name a dated id. Showing it is better than silently
-    // displaying someone else's label.
-    (value.model === 'default' ? models[0] : { value: value.model, label: value.model, hint: '' });
+    (value.model === AUTO_MODEL ? models[0] : { value: value.model, label: value.model, hint: '' });
   const activeEffort = efforts.find((e) => e.value === value.effort) ?? efforts[0];
-  const activeMode = PERMISSION_MODE_INFO[value.permissionMode];
+
+  // The label of the inherited entry, on the pill and in the menu alike:
+  // `Workspace · Opus` when the workspace named one, `Auto` when it left the
+  // choice to the learner — a label that cannot serve for the mode, whose
+  // `auto` member is itself called Auto.
+  const fromWorkspace = (translated: string) => t('Workspace · {value}', { value: translated });
+  const inheritedModelLabel = isAutoModel(inherits.model)
+    ? t('Auto')
+    : fromWorkspace(t(modelLabel(inherits.model)));
+  const inheritedEffortLabel =
+    inherits.effort === null ? t('Auto') : fromWorkspace(t(effortLabel(inherits.effort)));
+  const inheritedModeLabel = fromWorkspace(t(PERMISSION_MODE_INFO[inherits.permissionMode].label));
+  const workspaceHint = t(
+    'The workspace’s setting. Change it there and every session that has not picked its own follows.',
+  );
+
+  const modelPill =
+    value.model === AUTO_MODEL ? inheritedModelLabel : t(activeModel?.label ?? value.model);
+  const effortPill =
+    value.effort === null ? inheritedEffortLabel : activeEffort ? t(activeEffort.label) : null;
+  const modePill =
+    value.permissionMode === null
+      ? inheritedModeLabel
+      : t(PERMISSION_MODE_INFO[value.permissionMode].label);
 
   return (
     <div className="border-t border-line bg-surface/80 backdrop-blur">
@@ -228,7 +296,7 @@ export function Composer({
             'focus-within:border-accent',
             dragging
               ? 'border-accent bg-accent-soft/40'
-              : value.permissionMode === 'bypassPermissions'
+              : resolvedMode === 'bypassPermissions'
                 ? 'border-danger'
                 : 'border-line',
           )}
@@ -392,21 +460,32 @@ export function Composer({
                   className={cn(PILL, 'text-muted hover:bg-raised hover:text-ink')}
                 >
                   <Wand2 className="size-3.5" aria-hidden />
-                  {activeModel ? t(activeModel.label) : null}
+                  {modelPill}
                   <ChevronDown className="size-3" aria-hidden />
                 </button>
               }
             >
-              {models.map((model) => (
-                <MenuItem
-                  key={model.value}
-                  selected={model.value === value.model}
-                  onSelect={() => onChange({ ...value, model: model.value })}
-                  description={model.hint}
-                >
-                  {t(model.label)}
-                </MenuItem>
-              ))}
+              {models.map((model) =>
+                model.value === AUTO_MODEL ? (
+                  <MenuItem
+                    key={model.value}
+                    selected={value.model === AUTO_MODEL}
+                    onSelect={() => onChange({ ...value, model: AUTO_MODEL })}
+                    description={isAutoModel(inherits.model) ? t(model.hint) : workspaceHint}
+                  >
+                    {inheritedModelLabel}
+                  </MenuItem>
+                ) : (
+                  <MenuItem
+                    key={model.value}
+                    selected={model.value === value.model}
+                    onSelect={() => onChange({ ...value, model: model.value })}
+                    description={t(model.hint)}
+                  >
+                    {t(model.label)}
+                  </MenuItem>
+                ),
+              )}
             </Menu>
 
             {/* Effort ----------------------------------------------------- */}
@@ -417,7 +496,7 @@ export function Composer({
                   className={cn(PILL, 'text-muted hover:bg-raised hover:text-ink')}
                 >
                   <Gauge className="size-3.5" aria-hidden />
-                  {activeEffort ? t(activeEffort.label) : null}
+                  {effortPill}
                   <ChevronDown className="size-3" aria-hidden />
                 </button>
               }
@@ -427,8 +506,11 @@ export function Composer({
                   key={effort.label}
                   selected={effort.value === value.effort}
                   onSelect={() => onChange({ ...value, effort: effort.value })}
+                  {...(effort.value === null && inherits.effort !== null
+                    ? { description: workspaceHint }
+                    : {})}
                 >
-                  {t(effort.label)}
+                  {effort.value === null ? inheritedEffortLabel : t(effort.label)}
                 </MenuItem>
               ))}
             </Menu>
@@ -440,19 +522,30 @@ export function Composer({
                   type="button"
                   className={cn(
                     PILL,
-                    value.permissionMode === 'bypassPermissions'
+                    resolvedMode === 'bypassPermissions'
                       ? 'bg-danger-soft text-danger'
-                      : value.permissionMode === 'plan'
+                      : resolvedMode === 'plan'
                         ? 'bg-info-soft text-info'
                         : 'text-muted hover:bg-raised hover:text-ink',
                   )}
                 >
                   <Shield className="size-3.5" aria-hidden />
-                  {t(activeMode.label)}
+                  {modePill}
                   <ChevronDown className="size-3" aria-hidden />
                 </button>
               }
             >
+              {/* The way back to inheriting, first: the mode has no Auto of
+                  its own, so this entry is what "untouched" looks like. */}
+              <MenuItem
+                selected={value.permissionMode === null}
+                onSelect={() => onChange({ ...value, permissionMode: null })}
+                description={workspaceHint}
+                tone={PERMISSION_MODE_INFO[inherits.permissionMode].risk === 'high' ? 'danger' : undefined}
+              >
+                {inheritedModeLabel}
+              </MenuItem>
+              <MenuSeparator />
               {modes.map((mode) => (
                 <MenuItem
                   key={mode}
@@ -486,9 +579,10 @@ export function Composer({
                   {t('Ultracode')}
                 </button>
               </Tooltip>
-            ) : value.model === 'default' ? (
+            ) : isAutoModel(resolvedModel) ? (
               // Withheld under Auto is a design decision; withheld *silently*
-              // was how it read as missing. The inert button says why.
+              // was how it read as missing. The inert button says why. Auto
+              // here means resolved Auto — a workspace naming Opus offers it.
               <Tooltip content={t(
                 'Ultracode needs a model that can orchestrate — under Auto the learner may pick one that cannot. Choose a model (Fable, Opus…) to enable it.',
               )}>
@@ -634,12 +728,12 @@ export function Composer({
               .join(' · ')}
           </p>
         ) : null}
-        {value.permissionMode === 'bypassPermissions' ? (
+        {resolvedMode === 'bypassPermissions' ? (
           <p className="mt-2 flex items-center gap-1.5 text-caption text-danger">
             <Zap className="size-3" aria-hidden />
             {t('Bypass mode: the agent will run commands and edit files without asking.')}
           </p>
-        ) : value.permissionMode === 'plan' ? (
+        ) : resolvedMode === 'plan' ? (
           <p className="mt-2 flex items-center gap-1.5 text-caption text-muted">
             <Brain className="size-3" aria-hidden />
             {t('Plan mode: the agent will research and propose, but execute nothing.')}

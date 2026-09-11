@@ -7,6 +7,7 @@
  */
 
 import type {
+  PermissionMode,
   Run,
   RunPolicy,
   RunStatus,
@@ -250,6 +251,22 @@ export class WorkspaceRepo {
 /* Sessions                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * How "inherits the workspace's mode" is spelled in the row.
+ *
+ * `permission_mode` is NOT NULL and stays so: relaxing it means rebuilding
+ * the table, and with `foreign_keys = ON` four tables cascade on sessions(id)
+ * — a rebuild inside migrate()'s transaction, where the pragma is inert,
+ * would take every run with it. So the contract says `null` and the row says
+ * this: written through `storedPermissionMode` on create and update, read
+ * back in `toSession`, and known nowhere else.
+ */
+const INHERITED_PERMISSION_MODE = 'inherit';
+
+function storedPermissionMode(mode: PermissionMode | null): string {
+  return mode ?? INHERITED_PERMISSION_MODE;
+}
+
 function toSession(row: SessionRow): Session {
   return {
     id: row.id,
@@ -259,7 +276,10 @@ function toSession(row: SessionRow): Session {
     status: row.status as SessionStatus,
     model: row.model,
     effort: row.effort as Session['effort'],
-    permissionMode: row.permission_mode as Session['permissionMode'],
+    permissionMode:
+      row.permission_mode === INHERITED_PERMISSION_MODE
+        ? null
+        : (row.permission_mode as PermissionMode),
     agentName: row.agent_name,
     pinned: toBool(row.pinned),
     archived: toBool(row.archived),
@@ -284,7 +304,8 @@ export class SessionRepo {
     title?: string;
     model: string;
     effort: string | null;
-    permissionMode: string;
+    /** `null` inherits the workspace's mode at run time. */
+    permissionMode: PermissionMode | null;
     agentName?: string | null;
   }): Session {
     const id = newId('session');
@@ -302,7 +323,7 @@ export class SessionRepo {
         input.title ?? '',
         input.model,
         input.effort,
-        input.permissionMode,
+        storedPermissionMode(input.permissionMode),
         input.agentName ?? null,
         now,
         now,
@@ -438,7 +459,11 @@ export class SessionRepo {
         patch.title ?? current.title,
         patch.model ?? current.model,
         patch.effort !== undefined ? patch.effort : current.effort,
-        patch.permissionMode ?? current.permissionMode,
+        // `!== undefined`, as for effort: `null` is the way back to inheriting,
+        // and a `??` would read it as "untouched".
+        storedPermissionMode(
+          patch.permissionMode !== undefined ? patch.permissionMode : current.permissionMode,
+        ),
         patch.agentName !== undefined ? patch.agentName : current.agentName,
         toInt(patch.pinned ?? current.pinned),
         toInt(patch.archived ?? current.archived),

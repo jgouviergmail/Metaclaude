@@ -27,8 +27,10 @@ a live agent.
 | **Don't ask** | Nothing prompts, and nothing that would have prompted runs: only the tools this workspace pre-approves go through, plus the read-only ones that never ask. |
 | **Bypass** | No prompts at all. Disabled at deployment level unless you explicitly enabled it at installation — and meant for disposable environments only. |
 
-Modes are per-message in the composer, with defaults per workspace. Whatever
-the mode, the deployment-level rules still hold: path jailing keeps file
+The workspace sets the base mode; a session inherits it until you pick one in
+its composer, and then keeps its pick — the same rule as the model and the
+effort, and the composer's first menu entry is the way back to inheriting.
+Whatever the mode, the deployment-level rules still hold: path jailing keeps file
 access inside the workspace, and the directories an agent may reach beyond it
 are bounded by the server's policy, not by the conversation.
 

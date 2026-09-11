@@ -9,6 +9,7 @@
 import type { App } from '../http/types.js';
 import {
   ATTACHMENT_LIMITS,
+  AUTO_MODEL,
   CreateWorkspaceRequest,
   EffortLevel,
   ModelSelector,
@@ -296,7 +297,7 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     title: z.string().max(200).optional(),
     model: ModelSelector.optional(),
     effort: EffortLevel.nullable().optional(),
-    permissionMode: PermissionMode.optional(),
+    permissionMode: PermissionMode.nullable().optional(),
     agentName: z.string().max(64).nullable().optional(),
   });
 
@@ -309,14 +310,18 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     assertPermissionModeAllowed(context, parsed.data.permissionMode);
 
     const workspace = mustGetWorkspace(parsed.data.workspaceId);
-    const settings = workspace.settings;
 
+    // Stored only when the caller pinned them; inherited otherwise, and read
+    // from the workspace on every run. The row used to receive a *copy* of
+    // the workspace's defaults, the composer sent that copy back with every
+    // message as though the operator had chosen it, and a model set on the
+    // workspace therefore reached no session created before the change.
     const session = context.sessionRepo.create({
       workspaceId: workspace.id,
       ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
-      model: String(parsed.data.model ?? settings.defaultModel),
-      effort: parsed.data.effort ?? settings.defaultEffort,
-      permissionMode: parsed.data.permissionMode ?? settings.defaultPermissionMode,
+      model: String(parsed.data.model ?? AUTO_MODEL),
+      effort: parsed.data.effort ?? null,
+      permissionMode: parsed.data.permissionMode ?? null,
       agentName: parsed.data.agentName ?? null,
     });
     return reply.status(201).send({ session });
@@ -337,7 +342,9 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     title: z.string().max(200).optional(),
     model: ModelSelector.optional(),
     effort: EffortLevel.nullable().optional(),
-    permissionMode: PermissionMode.optional(),
+    // `null` is the way back to inheriting the workspace's mode; without it
+    // the composer's "Workspace" entry would be a 400.
+    permissionMode: PermissionMode.nullable().optional(),
     agentName: z.string().max(64).nullable().optional(),
     pinned: z.boolean().optional(),
     archived: z.boolean().optional(),

@@ -378,8 +378,10 @@ export const api = {
       isRunning: boolean;
     }>(`/api/sessions/${id}`),
 
-  updateSession: (id: string, body: Record<string, unknown>) =>
-    request<{ session: Session }>(`/api/sessions/${id}`, { method: 'PATCH', body }),
+  updateSession: (
+    id: string,
+    body: Partial<Pick<Session, 'title' | 'model' | 'effort' | 'permissionMode' | 'agentName' | 'pinned' | 'archived'>>,
+  ) => request<{ session: Session }>(`/api/sessions/${id}`, { method: 'PATCH', body }),
 
   deleteSession: (id: string) =>
     request<{ ok: boolean }>(`/api/sessions/${id}`, { method: 'DELETE' }),

@@ -19,7 +19,9 @@ often are worth making visibly different.
 
 Each workspace carries its own defaults — model, effort, permission mode,
 thinking budget, memory and reflexion toggles, tool allow/deny lists — under
-its **Settings** tab. Session-level and message-level choices override them.
+its **Settings** tab. Model, effort and mode are the base values of every
+session, existing ones included: a session follows them until you touch a
+pill in its composer, then keeps what you chose.
 
 ## Files
 
