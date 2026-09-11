@@ -11,6 +11,21 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.93.4] — 2026-09-11
+
+### Fixed
+
+- **The CLI tools screen boxed every row.** Thirty-four bordered cards of equal
+  weight stacked inside one section, which is the exact shape the layout
+  primitives were written to end — a card is an object one acts on, a plugin
+  with its switch and its warnings; a tool with one box is a list item. The
+  rows are now what the app's own list of checkable tools (`McpToolPicker`)
+  is: `CheckboxField` rows, nothing around them, on a two-column `Grid` from
+  `lg` so thirty rows are not half again the height of a desktop screen. The
+  inline notice follows the idiom the Automations screen uses rather than a
+  `Card` with body text. Measured on the design bench at 1440 and 390 before
+  shipping, which is where it should have been looked at the first time.
+
 ## [0.93.3] — 2026-09-11
 
 ### Fixed

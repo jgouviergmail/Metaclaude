@@ -1,6 +1,6 @@
 {
   "name": "@metaclaude/api",
-  "version": "0.93.3",
+  "version": "0.93.4",
   "private": true,
   "license": "MIT",
   "type": "module",

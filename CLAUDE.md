@@ -1247,6 +1247,18 @@ restates the code is noise; one that records a decision or a trap is not.
   and the swap is two renames rather than a delete-and-rebuild (two runs of one
   workspace overlap, and a CLI can spawn into a half-written directory).
 
+- **A screenshot checked alone answers "does it fit", never "does it belong".**
+  The CLI-tools screen was captured on the bench three times before it
+  shipped, at 1440 and 390, light and dark, French — and every capture was
+  read for overflow, wrapping and untranslated copy, all of which passed. It
+  boxed every one of thirty-four rows in a `Card`, the exact shape the layout
+  primitives exist to end, and the operator saw it in one glance. Nothing in
+  the suite can see it either: the `boxedSections` ratchet counts a *titled*
+  group in a Card, not a list item in one. Before judging a new screen, open
+  the sibling it will sit beside — here Plugins and `McpToolPicker`, the app's
+  own list of checkable tools — and ask whether a reader could tell which one
+  was added last. A card is an object one acts on; a row with one box is a
+  list item, and the list of them has a vocabulary already.
 - **`system/init` comes with the first user message, not with the session.**
   Measured on 2.1.267: twenty seconds of listening with no prompt, then
   `reinitialize()`, then `initializationResult()` — no init frame from any of

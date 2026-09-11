@@ -26,7 +26,7 @@ import type { CliSkillRecord, CliToolRecord } from '@metaclaude/shared';
 import { AppShell, ContentHeader } from '@/components/layout/AppShell';
 import { SystemTabs } from '@/components/layout/SystemTabs';
 import { CheckboxField } from '@/components/ui/controls';
-import { Page, Section } from '@/components/ui/layout';
+import { Grid, Page, Section } from '@/components/ui/layout';
 import { Badge, Button, Card, EmptyState, Spinner } from '@/components/ui/primitives';
 import { api, ApiError } from '@/lib/api';
 import { usePlural, useT } from '@/lib/i18n';
@@ -169,20 +169,18 @@ export function CliToolsPage() {
               />
             </Card>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {/* Said once, at the top, rather than repeated on every row.
                   The list is learned from runs — the CLI names its tools only
                   on the frame it emits with a first message — so before one
                   has happened the rows below are only what this deployment
                   refuses, with nothing to say about what exists. */}
               {!report.probed ? (
-                <Card className="border-warning/25 bg-warning-soft">
-                  <p className="text-body text-ink">
-                    {t(
-                      'No run has reported what the CLI offers since the server started, so this is only what the deployment refuses. The full list appears after the first run.',
-                    )}
-                  </p>
-                </Card>
+                <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/30 p-3 text-caption leading-relaxed text-ink">
+                  {t(
+                    'No run has reported what the CLI offers since the server started, so this is only what the deployment refuses. The full list appears after the first run.',
+                  )}
+                </p>
               ) : report.seenAt !== null ? (
                 <p className="text-caption text-muted">
                   {t('As the CLI offered them to the last run, {when}.', {
@@ -191,6 +189,14 @@ export function CliToolsPage() {
                 </p>
               ) : null}
 
+              {/*
+                * Two columns once there is room, one below. Thirty-odd rows of
+                * a name and a line make a single column half again the height
+                * of a phone screen on a desktop; the grant list on the Google
+                * card is the precedent, and `Grid` carries the `min-w-0` that
+                * keeps a long code name from widening its column.
+                */}
+              <Grid cols={2} from="lg" className="gap-x-6 gap-y-2.5">
               {report.tools.map((tool) => {
                 // Read once and named: a tool the CLI has just started
                 // offering has no note here, and `TOOL_NOTES[...]` typed as a
@@ -220,27 +226,37 @@ export function CliToolsPage() {
                       ) : null}
                     </>
                   ) : undefined;
+                /*
+                 * A row, not a card. The first version boxed every tool, which
+                 * put thirty-four bordered blocks of equal weight inside one
+                 * section — the exact shape the layout primitives exist to
+                 * end. A card is an object one acts on, a plugin with its
+                 * switch and its warnings; a tool with one box is a list item,
+                 * and the app's list of checkable tools (`McpToolPicker`) is
+                 * `CheckboxField` rows in a `space-y-2.5`, nothing around them.
+                 */
                 return (
-                <Card key={tool.name} className="flex items-start justify-between gap-4">
-                  <CheckboxField
-                    checked={!tool.disabled}
-                    disabled={tool.locked !== null || save.isPending}
-                    onChange={() => toggle(tool)}
-                    label={<code className="text-body font-medium">{tool.name}</code>}
-                    {...(hint ? { hint } : {})}
-                  />
-                  {/* `shrink-0`, not decoration: a flex child shrinks before
-                      it overflows, and a `whitespace-nowrap` badge that is
-                      allowed to shrink pushes itself out of a 390px row
-                      instead of letting the label beside it wrap. */}
-                  {!tool.offered ? (
-                    <Badge tone="neutral" className="shrink-0">
-                      {t('No longer offered')}
-                    </Badge>
-                  ) : null}
-                </Card>
+                  <div key={tool.name} className="flex items-start justify-between gap-3">
+                    <CheckboxField
+                      checked={!tool.disabled}
+                      disabled={tool.locked !== null || save.isPending}
+                      onChange={() => toggle(tool)}
+                      label={<code className="font-mono">{tool.name}</code>}
+                      {...(hint ? { hint } : {})}
+                    />
+                    {/* `shrink-0`, not decoration: a flex child shrinks before
+                        it overflows, and a `whitespace-nowrap` badge that is
+                        allowed to shrink pushes itself out of a 390px row
+                        instead of letting the label beside it wrap. */}
+                    {!tool.offered ? (
+                      <Badge tone="neutral" className="shrink-0">
+                        {t('No longer offered')}
+                      </Badge>
+                    ) : null}
+                  </div>
                 );
               })}
+              </Grid>
             </div>
           )}
         </Section>
@@ -351,24 +367,23 @@ function CliSkillsSection() {
           />
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {!report.probed ? (
-            <Card className="border-warning/25 bg-warning-soft">
-              <p className="text-body text-ink">
-                {t(
-                  'The CLI could not be asked which skills it ships, so this is what it was last seen to ship. Nothing here says whether these still exist.',
-                )}
-              </p>
-            </Card>
+            <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/30 p-3 text-caption leading-relaxed text-ink">
+              {t(
+                'The CLI could not be asked which skills it ships, so this is what it was last seen to ship. Nothing here says whether these still exist.',
+              )}
+            </p>
           ) : null}
 
+          <Grid cols={2} from="lg" className="gap-x-6 gap-y-2.5">
           {report.skills.map((skill) => (
-            <Card key={skill.name} className="flex items-start justify-between gap-4">
+            <div key={skill.name} className="flex items-start justify-between gap-3">
               <CheckboxField
                 checked={skill.enabled}
                 disabled={save.isPending}
                 onChange={() => toggle(skill)}
-                label={<code className="text-body font-medium">{skill.name}</code>}
+                label={<code className="font-mono">{skill.name}</code>}
                 {...(skill.tokens !== null
                   ? {
                       hint: t('About {n} tokens in every prompt that carries it.', {
@@ -382,8 +397,9 @@ function CliSkillsSection() {
                   {t('No longer offered')}
                 </Badge>
               ) : null}
-            </Card>
+            </div>
           ))}
+          </Grid>
         </div>
       )}
     </Section>
