@@ -11,7 +11,11 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
-## [0.93.4] — 2026-09-11
+## [0.93.5] — 2026-09-11
+
+_0.93.4 was tagged by nothing either: its browser-check job was cancelled
+at the raised ceiling with every step green — see below for why — so the
+layout fix it carried first shipped in 0.93.5._
 
 ### Fixed
 
@@ -25,6 +29,17 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
   inline notice follows the idiom the Automations screen uses rather than a
   `Card` with body text. Measured on the design bench at 1440 and 390 before
   shipping, which is where it should have been looked at the first time.
+
+- **The browser job's Chromium install is cached, and has a ceiling of its
+  own.** 0.93.4 was tagged by nothing for a different reason than 0.93.0: the
+  install step, 21–24 seconds on every other run, took 13m41 on this one — a
+  download or an apt mirror having a bad quarter-hour — and the responsive
+  guard, on track at 15m32, was cancelled at the job's 30-minute ceiling three
+  minutes from green. The browser binary is now cached per Playwright version,
+  which takes the download out of the variance, and the install step carries
+  an eight-minute ceiling so a pathological one fails under its own name
+  instead of eating the guard's budget and ending the job as "cancelled" with
+  every step green.
 
 ## [0.93.3] — 2026-09-11
 

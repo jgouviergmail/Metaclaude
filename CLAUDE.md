@@ -1014,6 +1014,17 @@ restates the code is noise; one that records a decision or a trap is not.
   across three releases, one route per new screen). Check the steps and the
   duration before reading `cancelled` as a person, and raise the ceiling with
   the measurements beside it rather than guessing a new round number.
+- **A job ceiling bounds the sum, so one step's bad day is charged to the
+  last step.** 0.93.4 died the same way at the *raised* ceiling, and the
+  responsive guard was innocent: it was on track at 15m32 when "Install
+  Chromium" — 21–24 s on every other run — had taken 13m41 fetching a browser
+  or an apt mirror. The step that overran finished green and the one that was
+  cancelled had done nothing wrong, so reading the job's step list points at
+  the wrong step. Look at each step's *duration against its own norm*, not at
+  which one was running when the axe fell. Two rules follow: whatever is
+  downloaded per run and changes only with a lockfile is cached
+  (`actions/cache` on `~/.cache/ms-playwright`), and a step that can hang on a
+  network has a `timeout-minutes` of its own, so it fails under its own name.
 - **A version that was never tagged must not keep its changelog section.**
   The GitHub release body is extracted from *the section carrying that
   version number* (`ci.yml`, "Publish the GitHub release"), so when 0.93.0

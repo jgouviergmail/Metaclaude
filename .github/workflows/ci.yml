@@ -181,7 +181,24 @@ jobs:
         with:
           name: dist
 
+      # The browser binary, once per Playwright version. Measured on this
+      # runner: the install step takes 21–24 s on every run but one, where it
+      # took 13m41 — a download or an apt mirror having a bad quarter-hour —
+      # and that one starved the responsive guard of its budget and cancelled
+      # the job at the ceiling with every step green. The cache takes the
+      # download out of the variance; `--with-deps` still runs apt, which is
+      # the fast half.
+      - name: Cache Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # A ceiling of its own, so a pathological install fails *here*, under its
+      # own name, instead of eating the guard's minutes and ending the job as
+      # "cancelled" three minutes from green — which reads as a person and
+      # cost a tag once already.
       - name: Install Chromium
+        timeout-minutes: 8
         run: pnpm --filter @metaclaude/api exec playwright install --with-deps chromium
 
       # Serves the production build through the API's own static handler, so a
