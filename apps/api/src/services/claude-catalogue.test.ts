@@ -16,6 +16,7 @@ const catalogue = (over: Partial<ClaudeCatalogue> = {}): ClaudeCatalogue => ({
   models: [],
   commands: [],
   agents: [],
+  tools: [],
   mcpServers: [],
   account: null,
   unavailable: [],

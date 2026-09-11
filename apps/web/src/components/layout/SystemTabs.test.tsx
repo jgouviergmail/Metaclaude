@@ -46,6 +46,7 @@ describe('SystemTabs', () => {
       '/automations',
       '/agents',
       '/plugins',
+      '/cli-tools',
     ]);
     // And the same list the predicate reads, in the same order: the strip
     // pairs these paths with icons, `lib/sections` answers "which section owns

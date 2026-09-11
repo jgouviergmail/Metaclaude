@@ -180,8 +180,23 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
   // Typed rather than cast: the `as never` this used to reach the kernel
   // through hid a missing field for a whole release's worth of edits, and the
   // symptom was thirty-seven red tests that looked like a broken kernel.
+  /**
+   * `prepare` records the order it ran in, not merely that it ran.
+   *
+   * What it does for real — renewing an OAuth token, writing the workspace's
+   * skills to disk — is worthless if it happens after `resolve` has already
+   * read what it was meant to freshen, and "was it called" cannot tell the two
+   * apart. One shared log, two pushes, one assertion.
+   */
+  const contextCalls: string[] = [];
   const contextProvider: ContextProvider = {
-    resolve: vi.fn<ContextProvider['resolve']>().mockReturnValue({ mcpServers: {}, agents: {}, skills: [] }),
+    resolve: vi.fn<ContextProvider['resolve']>().mockImplementation(() => {
+      contextCalls.push('resolve');
+      return { mcpServers: {}, agents: {}, skills: [] };
+    }),
+    prepare: vi.fn<NonNullable<ContextProvider['prepare']>>().mockImplementation(async () => {
+      contextCalls.push('prepare');
+    }),
   };
   const finished: Run[] = [];
 
@@ -251,6 +266,7 @@ function setup(options: { maxConcurrentRuns?: number; settings?: Partial<Workspa
     memory,
     knowledge,
     contextProvider,
+    contextCalls,
     finished,
     newSession,
   };
@@ -1784,5 +1800,85 @@ describe('extension usage', () => {
     await vi.waitFor(() => expect(fixture.finished.map((r) => r.id)).toContain(run.id));
 
     expect(usageForRun(fixture.db, run.id)).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Freshening the workspace before a run reads it                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Whatever has to be *fresh at mount* is prepared here, for every run.
+ *
+ * This is the guard on a defect that shipped for a long time and could not be
+ * seen from any screen. Writing the workspace's skills to disk lived at the
+ * call sites instead — and there are eight places that submit a run, of which
+ * three had the call: the session route, the board route and the autopilot.
+ * The five without it were the scheduler, the steward, the advisor, delegation
+ * and the MCP gateway, which is to say every run nobody is watching. Those ran
+ * against whatever the last interactive message had left on disk: a skill
+ * created that morning was invisible to the nightly automation, and a skill
+ * deleted went on being offered to it for ever.
+ *
+ * The run still succeeded, so nothing reported it; and `run_extension_usages`
+ * recorded the skill as offered-and-never-opened from the *database* list,
+ * which is the sentence the weekly instruction review reads and acts on. It
+ * would have proposed rewriting a description that was never the problem.
+ *
+ * Moving it into `execute` is what makes forgetting impossible, and the table
+ * below is what says so: a trigger added later fails here rather than in
+ * production six months on.
+ */
+describe('preparing the workspace', () => {
+  const triggers = ['user', 'automation', 'loop', 'system', 'delegation', 'api'] as const;
+
+  it.each(triggers)('prepares before resolving, whatever started the run (%s)', async (triggeredBy) => {
+    const fixture = setup();
+    try {
+      const session = fixture.newSession();
+      const run = await fixture.kernel.submit({
+        sessionId: session.id,
+        prompt: 'do the thing',
+        triggeredBy,
+      });
+      await settled(fixture, run.id);
+
+      // Order, not merely presence: freshening after the read is not freshening.
+      expect(fixture.contextCalls).toEqual(['prepare', 'resolve']);
+    } finally {
+      fixture.db.close();
+    }
+  });
+
+  /**
+   * A workspace that cannot be freshened is a workspace that runs anyway.
+   *
+   * The alternative — failing the run — trades a degraded run for no run at
+   * all, on a path where the usual cause is a directory permission rather than
+   * anything about the message. `context.ts` swallows what it can inside
+   * `prepare`; this covers the case it cannot, so a future failure there is a
+   * line in the log and not a workspace that has stopped answering.
+   */
+  it('runs anyway when preparation fails', async () => {
+    const fixture = setup();
+    try {
+      (fixture.contextProvider.prepare as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('EACCES'),
+      );
+      const session = fixture.newSession();
+      const run = await fixture.kernel.submit({ sessionId: session.id, prompt: 'do the thing' });
+
+      expect((await settled(fixture, run.id)).status).toBe('succeeded');
+
+      // And it says so where the run is read. A run that behaved differently
+      // from the one before it — stale skills — must be able to account for
+      // itself on screen, not only in a log nobody opens.
+      const notes = fixture.transcript
+        .byRun(run.id)
+        .filter((event) => event.kind === 'system');
+      expect(notes.map((note) => note.message).join(' ')).toContain('could not be prepared');
+    } finally {
+      fixture.db.close();
+    }
   });
 });

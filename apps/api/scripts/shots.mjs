@@ -490,6 +490,7 @@ async function shoot(theme, viewport, suffix, options = {}) {
     ['/analytics', 'analytics'],
     ['/board', 'board'],
     ['/automations', 'automations'],
+    ['/cli-tools', 'cli-tools'],
     ['/help', 'help'],
     ['/server', 'server'],
     ['/agents', 'skills', 'Skills'],

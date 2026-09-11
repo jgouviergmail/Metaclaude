@@ -178,8 +178,13 @@ describe('which groups an operator may not reach', () => {
 });
 
 describe('the system screens', () => {
-  it('names the three: what the deployment can do', () => {
-    expect([...SYSTEM_SECTION_PATHS]).toEqual(['/automations', '/agents', '/plugins']);
+  it('names the four: what the deployment can do', () => {
+    expect([...SYSTEM_SECTION_PATHS]).toEqual([
+      '/automations',
+      '/agents',
+      '/plugins',
+      '/cli-tools',
+    ]);
   });
 
   it('matches what the route builders produce', () => {
@@ -188,6 +193,7 @@ describe('the system screens', () => {
     expect(SYSTEM_SECTION_PATHS[0]).toBe(routes.automations());
     expect(SYSTEM_SECTION_PATHS[1]).toBe(routes.agents());
     expect(SYSTEM_SECTION_PATHS[2]).toBe(routes.plugins());
+    expect(SYSTEM_SECTION_PATHS[3]).toBe(routes.cliTools());
   });
 
   it('does not list what belongs to the other section', () => {

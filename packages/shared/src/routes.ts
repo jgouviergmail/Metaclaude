@@ -77,6 +77,18 @@ export const routes = {
   automations: () => '/automations',
   agents: () => '/agents',
   plugins: () => '/plugins',
+  /**
+   * The Claude CLI's own tools, and which of them this deployment refuses.
+   *
+   * In System rather than in Settings, and the test the section applies is the
+   * one it was drawn on: what the deployment *can do*. The CLI brings a tool
+   * set of its own — `Artifact` publishes to claude.ai from inside a run,
+   * `CronCreate` schedules work outside the automations screen — and which of
+   * those the agent has is a capability of this deployment, not a preference
+   * about one project. There is no per-workspace half of it for the same
+   * reason.
+   */
+  cliTools: () => '/cli-tools',
   analytics: () => '/analytics',
   /**
    * Settings' own landing, and the shape other systems already build.
@@ -175,7 +187,12 @@ export function isOwnerOnlySection(section: string): boolean {
  * able to do so without importing a module full of icons — that pulled 1 kB
  * gzip into the entry chunk the day it was tried.
  */
-export const SYSTEM_SECTION_PATHS = ['/automations', '/agents', '/plugins'] as const;
+export const SYSTEM_SECTION_PATHS = [
+  '/automations',
+  '/agents',
+  '/plugins',
+  '/cli-tools',
+] as const;
 
 export const routePattern = {
   workspace: '/w/:workspaceId',

@@ -12,7 +12,12 @@
  */
 
 import { z } from 'zod';
-import { MAX_API_TOKEN_DAYS } from './constants.js';
+import {
+  MAX_API_TOKEN_DAYS,
+  MAX_CLI_SKILLS,
+  MAX_DISABLED_CLI_TOOLS,
+  MAX_TOOL_NAME_LENGTH,
+} from './constants.js';
 import {
   ClaudeAccountInfo,
   ClaudeAgentInfo,
@@ -188,6 +193,116 @@ export const SetRuntimeSettingRequest = z.object({
 });
 export type SetRuntimeSettingRequest = z.infer<typeof SetRuntimeSettingRequest>;
 
+/* -------------------------------------------------------------------------- */
+/* The CLI's own tools                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One of the Claude CLI's built-in tools, and what this deployment does with
+ * it.
+ *
+ * `offered` is separate from `disabled` on purpose, and both are needed. A
+ * tool the CLI no longer ships but the deployment still refuses has to stay on
+ * the screen — otherwise the row is unclearable and the stored list quietly
+ * accumulates names nobody can see. And a tool the CLI has just started
+ * offering appears as soon as it does, because the list is measured rather
+ * than written down.
+ */
+export const CliToolRecord = z.object({
+  name: z.string(),
+  /** Refused for every run of this deployment. */
+  disabled: z.boolean(),
+  /** Whether the CLI is offering it right now. */
+  offered: z.boolean(),
+  /** Why it may not be refused, when it may not. Null means it may. */
+  locked: z.string().nullable(),
+});
+export type CliToolRecord = z.infer<typeof CliToolRecord>;
+
+export const CliToolsReport = z.object({
+  tools: z.array(CliToolRecord),
+  /**
+   * Whether an operator has chosen, or this is what shipped.
+   *
+   * The same honesty `RuntimeSettingRecord` carries: a screen that showed the
+   * shipped default as though somebody had set it describes a decision nobody
+   * made, and leaves the operator unable to tell whether reverting would
+   * change anything.
+   */
+  source: z.enum(['stored', 'default']),
+  /**
+   * Whether the CLI could be asked what it offers.
+   *
+   * False means the list below is only what the deployment refuses, with
+   * nothing to say about what exists. Reported rather than shown as an empty
+   * catalogue, because "the CLI offers no tools" is never true and a screen
+   * that implies it is worse than one that admits it could not look.
+   */
+  probed: z.boolean(),
+});
+export type CliToolsReport = z.infer<typeof CliToolsReport>;
+
+/**
+ * Setting the refused list, or handing it back to the deployment's default
+ * with `null`.
+ *
+ * An empty array is a *choice* and not the same as `null`: "refuse nothing" is
+ * a decision an operator is entitled to make, and one that must not silently
+ * restore nine entries on the next read.
+ */
+export const SetCliToolsRequest = z.object({
+  disabled: z
+    .array(z.string().min(1).max(MAX_TOOL_NAME_LENGTH))
+    .max(MAX_DISABLED_CLI_TOOLS)
+    .nullable(),
+});
+export type SetCliToolsRequest = z.infer<typeof SetCliToolsRequest>;
+
+/* -------------------------------------------------------------------------- */
+/* The CLI's own skills                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One skill the Claude CLI ships inside itself, and whether this deployment
+ * offers it.
+ *
+ * These are not registry rows and never were: seventeen live in the CLI's own
+ * binary — `design`, `dataviz`, `code-review`, `update-config` — and until
+ * 0.93 every run carried all of them, on no screen and behind no switch. What
+ * this record does is put them where the operator's own skills already are: a
+ * list, a box each, off unless chosen.
+ *
+ * `tokens` is what the skill's description costs in a prompt that carries it,
+ * and it is deliberately approximate — measured, the same skill counted 362
+ * tokens against haiku and 482 against the CLI's default model. It is there to
+ * make "is this worth carrying" answerable, not to be added up.
+ */
+export const CliSkillRecord = z.object({
+  name: z.string(),
+  /** Whether runs of this deployment are offered it. */
+  enabled: z.boolean(),
+  /** Whether the installed CLI still ships it. */
+  offered: z.boolean(),
+  /** Roughly what carrying it costs a prompt. Null when it could not be read. */
+  tokens: z.number().int().nonnegative().nullable(),
+});
+export type CliSkillRecord = z.infer<typeof CliSkillRecord>;
+
+export const CliSkillsReport = z.object({
+  skills: z.array(CliSkillRecord),
+  /** Whether an operator has chosen, or nothing has been switched on. */
+  source: z.enum(['stored', 'default']),
+  /** Whether the CLI could be asked which skills it ships. */
+  probed: z.boolean(),
+});
+export type CliSkillsReport = z.infer<typeof CliSkillsReport>;
+
+/** The chosen set, whole. `null` puts the deployment back to offering none. */
+export const SetCliSkillsRequest = z.object({
+  enabled: z.array(z.string().min(1).max(MAX_TOOL_NAME_LENGTH)).max(MAX_CLI_SKILLS).nullable(),
+});
+export type SetCliSkillsRequest = z.infer<typeof SetCliSkillsRequest>;
+
 export const AgentDefinitionRecord = z.object({
   id: z.string(),
   workspaceId: z.string().nullable(),
@@ -236,6 +351,17 @@ export const ClaudeCatalogue = z.object({
   models: z.array(ClaudeModelInfo).default([]),
   commands: z.array(ClaudeCommandInfo).default([]),
   agents: z.array(ClaudeAgentInfo).default([]),
+  /**
+   * The CLI's own tools, as it offers them for a run in this directory.
+   *
+   * Measured off the opening frame rather than enumerated anywhere, because
+   * the set is platform-dependent — `PowerShell` on Windows against `Bash`
+   * elsewhere, and the plan-mode pair only in a mode that can use them — and
+   * it moves with the CLI. A list written down here would be a screen that
+   * lies after the next bump. Defaulted, so a catalogue cached before this
+   * field existed still parses.
+   */
+  tools: z.array(z.string()).default([]),
   mcpServers: z.array(ClaudeMcpServerStatus).default([]),
   account: ClaudeAccountInfo.nullable().default(null),
   /**

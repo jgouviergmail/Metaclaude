@@ -195,6 +195,35 @@ describe('skills reach the workspace', () => {
     expect(existsSync(join(workspace.path, '.claude', 'skills', 'review'))).toBe(false);
   });
 
+  /**
+   * A plugin updated in place is the one change a skill *list* cannot see.
+   *
+   * Materialisation is now skipped when nothing has moved, and what it compares
+   * for a plugin skill is necessarily indirect: the directory is copied whole
+   * rather than rewritten, so the name and the path are identical before and
+   * after an update. `PluginRuntime.revision` carries the rows' `updated_at`
+   * for exactly this, and without it the workspace would keep serving the
+   * previous version of the skill until something else forced a rebuild.
+   */
+  it('re-copies a plugin whose files changed under the same name', async () => {
+    await installPlugin('reviewer', { skills: ['review'] });
+    await registry.materialiseSkills(workspace);
+    const body = join(workspace.path, '.claude', 'skills', 'review', 'SKILL.md');
+    expect(await readFile(body, 'utf8')).not.toContain('SECOND EDITION');
+
+    const [record] = await plugins.list();
+    await writeFile(
+      join(record!.root, 'skills', 'review', 'SKILL.md'),
+      ['---', 'name: review', 'description: Review things.', '---', '', 'SECOND EDITION'].join('\n'),
+      'utf8',
+    );
+    // What an update does to the row: the files moved, the name did not.
+    db.prepare('UPDATE plugins SET updated_at = ? WHERE id = ?').run(Date.now() + 1, record!.id);
+
+    expect(await registry.materialiseSkills(workspace)).toEqual({ skills: 1, rewritten: true });
+    expect(await readFile(body, 'utf8')).toContain('SECOND EDITION');
+  });
+
   it('refuses to work through a symlinked .claude directory', async () => {
     // `resolve()` is lexical, so `<ws>/.claude` being a symlink pointed the
     // whole routine at the link's target: the `rm(root, {recursive, force})`
@@ -221,7 +250,10 @@ describe('skills reach the workspace', () => {
     // It declines rather than throwing: this runs inside a run submission, and
     // a workspace with an odd `.claude` must not become a workspace that
     // cannot run at all.
-    await expect(registry.materialiseSkills(workspace)).resolves.toBe(0);
+    await expect(registry.materialiseSkills(workspace)).resolves.toEqual({
+      skills: 0,
+      rewritten: false,
+    });
 
     expect(existsSync(join(elsewhere, 'skills', 'precious', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(elsewhere, 'skills', 'house-style'))).toBe(false);

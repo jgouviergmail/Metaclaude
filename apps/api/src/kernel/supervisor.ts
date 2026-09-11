@@ -40,12 +40,15 @@ import {
   isPreapprovedTool,
   mcpToolName,
   newId,
+  reviewDeniedToolNames,
+  splitToolName,
   reviewToolNames,
 } from '@metaclaude/shared';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { DirectoryPolicy } from '../security/directories.js';
+import type { CliSkillPlan } from '../services/cli-skills.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import {
   advisorToolNames,
@@ -214,6 +217,26 @@ export interface SupervisorDeps {
    * long refactor.
    */
   idleTimeoutMs: () => number;
+  /**
+   * The CLI's own tools this deployment refuses, for every workspace.
+   *
+   * A getter for the reason every operational setting here is one: read at the
+   * point of use, so a change applies to the next run rather than the next
+   * restart. Optional so the supervisor stays constructible on its own; absent
+   * means "refuse none", which is what it did before the screen existed.
+   */
+  disabledCliTools?: () => readonly string[];
+  /**
+   * What to tell the CLI about its *own* skills, for this run.
+   *
+   * A plan rather than a list, because the measurement forces two shapes and
+   * neither composes with the other: one flag refuses the lot including
+   * whatever a future CLI ships, and an enumerated payload is the only way to
+   * let one through. `CliSkillPolicy` owns which applies. Absent means the
+   * flag, which is what a deployment that has chosen nothing wants and what
+   * every run got before the screen existed.
+   */
+  cliSkills?: () => CliSkillPlan;
   /** Extra environment handed to the CLI subprocess (auth token lives here). */
   env: Record<string, string>;
   /** Bounds on what `additionalDirectories` may grant. */
@@ -641,6 +664,44 @@ const EMPTY_USAGE: RunUsage = {
  * *policy* at the managed tier so a cloned repository's `.claude/settings.json`
  * can pre-approve no tool, register no hook and add no MCP server.
  */
+/**
+ * What the probe keeps off the CLI's opening frame.
+ *
+ * One field, and it is here rather than inlined because it is a *measurement*
+ * that a screen then renders: the tools a run would actually be offered on
+ * this platform, which differ between them — `PowerShell` on Windows, and the
+ * plan-mode pair only in a mode that can use it. Nothing here may guess at
+ * that list; the CLI is the authority on its own tool set.
+ */
+interface ProbedInit {
+  tools: string[];
+}
+
+/**
+ * How long the catalogue waits for the CLI's opening frame.
+ *
+ * A backstop rather than a budget: the frame is the first thing the CLI emits
+ * and every other question on that channel would hang too if it never came.
+ * What this actually buys is that `Promise.all` cannot be held open by the one
+ * answer that waits on a *message* instead of a reply.
+ */
+const INIT_FRAME_DEADLINE_MS = 10_000;
+
+/** Resolve `value`, or `null` if it takes longer than `ms`. Clears its timer. */
+async function withDeadline<T>(value: Promise<T>, ms: number): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      value,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 const MANAGED_POLICY_LOCKS = {
   allowManagedPermissionRulesOnly: true,
   allowManagedHooksOnly: true,
@@ -755,7 +816,30 @@ export class AgentSupervisor {
       this.deps.allowBypassPermissions,
     );
     const settings = request.workspace.settings;
-    const forbidden = reviewToolNames(settings.disallowedTools).allowed;
+    /*
+     * Two deny lists, one answer.
+     *
+     * The workspace's own, which an operator sets per project, and the
+     * deployment's, which is about the shape of the agent itself — the CLI
+     * ships tools written for a terminal and for claude.ai, and three of them
+     * reach past Metaclaude entirely (`CronCreate` schedules work outside the
+     * automations screen and its quota guard; `Artifact` publishes to
+     * claude.ai from inside a run). Merged here rather than at the two places
+     * that consume the answer, so a name on either list is refused *and* has
+     * its pre-approval cut, which is the pairing the `cut` below exists for.
+     *
+     * `reviewDeniedToolNames` rather than `reviewToolNames`: this direction
+     * has one extra rule, and it is the repair-on-read for a workspace whose
+     * row was written before that rule existed.
+     */
+    const denied = reviewDeniedToolNames([
+      ...settings.disallowedTools,
+      ...(this.deps.disabledCliTools?.() ?? []),
+    ]);
+    for (const { name, reason } of denied.rejected) {
+      this.deps.log('warn', `refusing to disallow "${name}": it ${reason}`);
+    }
+    const forbidden = denied.allowed;
     if (mode === 'plan') return { mode, preapproved: [], forbidden };
 
     const cut = new Set(forbidden);
@@ -1055,6 +1139,23 @@ export class AgentSupervisor {
 
     const promptAppend = [request.systemPromptAppend, ...steering].filter(Boolean).join('\n\n');
 
+    /*
+     * What the CLI is told about its own skills — one flag, or a named list.
+     *
+     * Measured against CLI 2.1.267, and the two do not compose: with
+     * `disableBundledSkills` set, a `skillOverrides: { 'code-review': 'on' }`
+     * beside it still left *zero* built-in skills. The floor wins, so letting
+     * one through means not raising the floor at all and naming every other
+     * skill `off` by hand. The flag is kept for the deployment that has chosen
+     * nothing, because it is the only form that also covers a skill the
+     * installed CLI does not ship yet.
+     */
+    const plan = this.deps.cliSkills?.() ?? { kind: 'floor' as const };
+    const bundledSkills =
+      plan.kind === 'floor'
+        ? { disableBundledSkills: true }
+        : { skillOverrides: plan.overrides };
+
     const options: Options = {
       cwd: workspace.path,
       // Preset + append keeps every Claude Code behaviour the operator relies on
@@ -1111,33 +1212,51 @@ export class AgentSupervisor {
         ? { ...this.deps.env, CLAUDE_CODE_SYNC_PLUGIN_INSTALL: '1' }
         : this.deps.env,
 
-      // The settings payload rides the flag tier, which project settings
-      // cannot override — so a cloned repository's own settings.json can
-      // smuggle neither orchestration nor plugin sources past the owner.
-      //
-      // Ultracode: the CLI's standing multi-agent orchestration — xhigh effort
-      // plus dynamic workflows by default. Session-scoped in the CLI, so it is
-      // handed over at open time rather than through a mid-turn control
-      // request, which could land after the turn it was meant to shape. Absent
-      // rather than `{ ultracode: false }` when off: an explicit false is
-      // still a settings payload for the CLI to merge, and every run that
-      // never asked must stay byte-identical to before the field existed.
-      // The same absence rule covers the plugin keys.
-      // `mirrorSessions` rides the same payload: view-only upload of this
-      // workspace's sessions to claude.ai. Only meaningful when the CLI's own
-      // account sign-in is the live credential — a token is inference-only —
-      // and sent only when true, on the same absence rule as the others.
-      ...(policy.ultracode || wantsPlugins || settings.mirrorSessions
-        ? {
-            settings: {
-              ...(policy.ultracode ? { ultracode: true } : {}),
-              ...(settings.mirrorSessions ? { autoUploadSessions: true } : {}),
-              ...(wantsPlugins
-                ? { extraKnownMarketplaces: request.marketplaces, enabledPlugins }
-                : {}),
-            },
-          }
-        : {}),
+      /*
+       * The settings payload rides the flag tier, which project settings
+       * cannot override — so a cloned repository's own settings.json can
+       * smuggle neither orchestration nor plugin sources past the owner.
+       *
+       * **`disableBundledSkills` is unconditional**, and it is why this payload
+       * is no longer conditional either.
+       *
+       * The CLI ships seventeen skills of its own — `design`, `dataviz`,
+       * `update-config`, `keybindings-help`, `loop`, `schedule` and the rest —
+       * written for someone at a terminal or on claude.ai. They were listed in
+       * every Metaclaude run's prompt and were openable by the agent, while
+       * describing capabilities this deployment does not have: an operator who
+       * had switched every skill off still had seventeen, none of them theirs,
+       * and no screen said so. Measured on 2026-09-10 against CLI 2.1.267, one
+       * turn per cell: the skills section falls from **19 skills / 2,040
+       * tokens to 2 / 32**, and the slash-command list from 19 entries to 2.
+       * What a workspace offers is now what the registry and its plugins put
+       * on disk, which is the only set an operator can see or change.
+       *
+       * The tier was measured too, and the obvious reading of the SDK's own
+       * documentation is wrong. `disableBundledSkills` is declared on
+       * `Settings`, and `managedSettings` is where every other policy of ours
+       * rides — and there it does **nothing at all**: 19 skills and 2,040
+       * tokens, byte for byte the same as sending nothing. Only the flag tier
+       * bites. Shipped on the documentation rather than the measurement, this
+       * whole change would have been dead on arrival and looked delivered.
+       *
+       * Ultracode: the CLI's standing multi-agent orchestration — xhigh effort
+       * plus dynamic workflows by default. Session-scoped in the CLI, so it is
+       * handed over at open time rather than through a mid-turn control
+       * request, which could land after the turn it was meant to shape. Absent
+       * rather than `{ ultracode: false }` when off: an explicit false is
+       * still a merge instruction for the CLI, and a run that never asked for
+       * orchestration must not carry a key about it. The same absence rule
+       * covers the plugin keys and `autoUploadSessions` — view-only upload of
+       * this workspace's sessions to claude.ai, meaningful only when the CLI's
+       * own account sign-in is the live credential.
+       */
+      settings: {
+        ...bundledSkills,
+        ...(policy.ultracode ? { ultracode: true } : {}),
+        ...(settings.mirrorSessions ? { autoUploadSessions: true } : {}),
+        ...(wantsPlugins ? { extraKnownMarketplaces: request.marketplaces, enabledPlugins } : {}),
+      },
 
       // `project` is required for the CLI to discover `CLAUDE.md` and the
       // workspace's `.claude/skills/` — both of which Metaclaude actively
@@ -1891,6 +2010,54 @@ export class AgentSupervisor {
    * carries inference scope only, and runs mount servers explicitly.
    */
   /**
+   * Which skills the installed CLI ships inside itself.
+   *
+   * A probe of its own rather than a row on the catalogue, and the reason is
+   * that the two want opposite postures. The catalogue must describe what a
+   * *run* gets, so it carries the same flag a run does — which is precisely
+   * the flag that hides these. Asking both questions of one session would mean
+   * choosing which of them to answer wrongly.
+   *
+   * `detail: 'summary'` because it is enough and it is cheaper: measured, it
+   * returns the same seventeen names and costs with none of the per-category
+   * token-count calls `'full'` makes. The cost figure is approximate on
+   * purpose — the same skill counted 362 tokens against haiku and 482 against
+   * the CLI's default model — and it is there so an operator can see what
+   * carrying one would cost, not to be added up.
+   *
+   * An empty answer is returned as such and the caller decides: no CLI ships
+   * no skills, so it means the probe failed, and `CliSkillPolicy` refuses to
+   * overwrite what it knew with it.
+   */
+  async builtInSkills(workspacePath: string): Promise<Array<{ name: string; tokens: number }>> {
+    try {
+      return await this.probe(
+        {
+          cwd: workspacePath,
+          // Deliberately *without* the flag-tier payload a run carries: it
+          // would answer the question by removing its subject.
+          settingSources: ['project'],
+          managedSettings: MANAGED_POLICY_LOCKS,
+          strictMcpConfig: true,
+        },
+        async (handle) => {
+          const usage = await handle.getContextUsage({ detail: 'summary' });
+          return (usage.skills?.skillFrontmatter ?? [])
+            .filter((row) => row.source === 'built-in')
+            .map((row) => ({ name: row.name, tokens: row.tokens }));
+        },
+      );
+    } catch (error) {
+      // A page load, like the catalogue: an empty list is a section that says
+      // it could not look, and a rejection is a broken screen.
+      this.deps.log('warn', 'could not read the CLI’s own skills', {
+        message: (error as Error).message,
+      });
+      return [];
+    }
+  }
+
+  /**
    * MCP status, once the servers have stopped connecting.
    *
    * MCP startup is non-blocking by design — a run must not wait on a slow
@@ -1925,6 +2092,7 @@ export class AgentSupervisor {
       models: [],
       commands: [],
       agents: [],
+      tools: [],
       mcpServers: [],
       account: null,
       unavailable,
@@ -1950,6 +2118,13 @@ export class AgentSupervisor {
           cwd: workspacePath,
           settingSources: ['project'],
           managedSettings: MANAGED_POLICY_LOCKS,
+          // The same flag-tier payload a run carries, for the reason the probe
+          // exists at all: it must report what a run would actually get. Left
+          // off, `supportedCommands()` answered 56 entries against a run's 38
+          // — measured — and the composer's slash menu offered eighteen
+          // commands the CLI would no longer honour, every one of them a
+          // bundled skill this deployment has just stopped shipping.
+          settings: { disableBundledSkills: true },
           strictMcpConfig: true,
           ...(runtime && Object.keys(runtime.mcpServers).length > 0
             ? { mcpServers: runtime.mcpServers as Options['mcpServers'] }
@@ -1958,16 +2133,40 @@ export class AgentSupervisor {
             ? { agents: runtime.agents as Options['agents'] }
             : {}),
         },
-        async (handle) => {
+        async (handle, init) => {
         // Concurrent: these are independent control requests on one channel,
         // and asking in series would multiply the round trips by five for no
         // benefit.
-        const [models, commands, agents, mcpServers, account] = await Promise.all([
+        const [models, commands, agents, mcpServers, account, opening] = await Promise.all([
           ask('models', () => handle.supportedModels()),
           ask('commands', () => handle.supportedCommands()),
           ask('agents', () => handle.supportedAgents()),
           ask('mcpServers', () => settleMcpStatus(() => handle.mcpServerStatus())),
           ask('account', () => handle.accountInfo()),
+          /*
+           * Bounded, unlike the others: this waits on a *message* rather than
+           * on a reply, so nothing else would ever settle it if the frame did
+           * not come. The frame is the first thing the CLI emits, so the
+           * deadline is a backstop and not a budget.
+           *
+           * An *empty* answer is treated as no answer, and that is the whole
+           * point: `ask` records what failed by name, and returning quietly
+           * left `unavailable` clean while `tools` came back empty. The screen
+           * reading it then said the CLI offers no tools — which is never true
+           * — and marked every tool the deployment refuses as one the CLI had
+           * dropped. Nothing in the suite could see that; a screenshot could.
+           *
+           * Empty is safe to call a failure here because this probe passes no
+           * `disallowedTools`: it asks what the CLI *has*, not what a run is
+           * left with, so the honest answer is never none.
+           */
+          ask('tools', async () => {
+            const frame = await withDeadline(init, INIT_FRAME_DEADLINE_MS);
+            if (!frame || frame.tools.length === 0) {
+              throw new Error('the CLI named no tools on its opening frame');
+            }
+            return frame;
+          }),
         ]);
 
         return {
@@ -1991,6 +2190,20 @@ export class AgentSupervisor {
             description: agent.description ?? '',
             model: agent.model ?? null,
           })),
+          /*
+           * The CLI's own tools, as it lists them for a run in this directory.
+           *
+           * MCP tools are stripped: they are reported per server just below,
+           * with their descriptions and annotations, and this list answers a
+           * different question — what the *CLI* brings, which is what the
+           * System screen lets an operator refuse. Measured rather than
+           * enumerated here, because the set is platform-dependent
+           * (`PowerShell` on Windows, `Bash` elsewhere) and moves with the
+           * CLI: a hard-coded list would be a screen that lies after a bump.
+           */
+          tools: (opening?.tools ?? [])
+            .filter((name) => splitToolName(name).server === null)
+            .sort(),
           mcpServers: (mcpServers ?? []).map((server) => ({
             name: server.name,
             status: server.status ?? 'unknown',
@@ -2183,11 +2396,12 @@ export class AgentSupervisor {
       | 'enableFileCheckpointing'
       | 'settingSources'
       | 'managedSettings'
+      | 'settings'
       | 'strictMcpConfig'
       | 'mcpServers'
       | 'agents'
     >,
-    ask: (handle: Query) => Promise<T>,
+    ask: (handle: Query, init: Promise<ProbedInit | null>) => Promise<T>,
   ): Promise<T> {
     const stream = new PromptStream();
     const controller = new AbortController();
@@ -2202,17 +2416,41 @@ export class AgentSupervisor {
       },
     });
 
+    /*
+     * The init frame, which is a *message* rather than a control response.
+     *
+     * `initializationResult()` looks like the place to ask and does not carry
+     * the tool list — checked against the SDK's own declaration, which has
+     * `commands`, `agents` and `models` on it and no `tools`. The only place
+     * the CLI says which tools it is offering is the `system/init` frame it
+     * emits first, which this loop was already throwing away.
+     *
+     * Resolved on the drain and again when it ends, so a session that dies
+     * before initialising answers `null` rather than leaving a caller waiting;
+     * `resolve` after the first call is a no-op.
+     */
+    let settleInit: (frame: ProbedInit | null) => void = () => undefined;
+    const init = new Promise<ProbedInit | null>((resolve) => {
+      settleInit = resolve;
+    });
+
     const drained = (async () => {
       try {
-        for await (const message of handle) void message;
+        for await (const message of handle) {
+          if (message.type === 'system' && message.subtype === 'init') {
+            settleInit({ tools: [...(message.tools ?? [])] });
+          }
+        }
       } catch (error) {
         // Ends on the abort below; that is the expected way out, not a fault.
         this.deps.log('debug', 'probe session ended', { message: (error as Error).message });
+      } finally {
+        settleInit(null);
       }
     })();
 
     try {
-      return await ask(handle);
+      return await ask(handle, init);
     } finally {
       // Close first so a CLI that exits cleanly does; abort so one that does
       // not still goes. Awaiting the drain after both keeps the subprocess from

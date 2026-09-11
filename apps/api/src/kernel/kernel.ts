@@ -1187,9 +1187,37 @@ export class Kernel {
     }
 
     /* -- Execute ---------------------------------------------------------- */
-    // Renew before reading: an OAuth token has to be fresh at mount. See
-    // `ContextProvider.prepare` for why this is not folded into `resolve`.
-    await this.deps.contextProvider.prepare?.(workspace);
+    /*
+     * Freshen before reading: whatever `resolve` and the CLI are about to
+     * consume has to be current *at mount*. An OAuth access token is one; the
+     * workspace's skills on disk are the other, and they are the reason this
+     * is now guarded rather than merely awaited.
+     *
+     * `prepare` is documented as never throwing, and that was a claim about
+     * one implementation rather than a property of the seam — true while it
+     * only renewed tokens, which it swallows. Writing a directory can fail for
+     * reasons that have nothing to do with the message: a permission, a full
+     * disk, a volume that has gone away. Letting that fail the run trades a
+     * run with stale skills for no run at all, on every path including the
+     * unattended ones, and the operator would read it as the workspace having
+     * stopped answering.
+     *
+     * The note goes in the transcript rather than only in the log, because a
+     * run that behaved differently from the one before it has to be able to
+     * say so on the screen where it is read.
+     */
+    try {
+      await this.deps.contextProvider.prepare?.(workspace);
+    } catch (error) {
+      const message = (error as Error).message;
+      this.deps.log('warn', 'could not prepare the workspace for a run', { message });
+      this.note(
+        session.id,
+        run.id,
+        'warn',
+        `This workspace could not be prepared for the run (${message}). Its skills on disk may be out of date.`,
+      );
+    }
     const runtime = this.deps.contextProvider.resolve(workspace);
     // What this run was offered, recorded at the moment it was offered — see
     // `ActiveRun.extensions`. The subagents come from the same record the SDK

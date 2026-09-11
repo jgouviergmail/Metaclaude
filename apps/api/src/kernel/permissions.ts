@@ -23,6 +23,7 @@ import {
   READ_ONLY_TOOLS,
   SKILL_TOOL,
   SKILL_TOOL_FIELD,
+  TOOL_SEARCH_TOOL,
 } from '@metaclaude/shared';
 
 export type PermissionOutcome =
@@ -326,6 +327,13 @@ export function summarise(toolName: string, input: Record<string, unknown>): str
       return `Search the web for ${truncate(str('query') ?? '?', 80)}`;
     case SKILL_TOOL:
       return `Open the skill: ${truncate(str(SKILL_TOOL_FIELD) ?? '?', 100)}`;
+    // Never an approval card — the CLI answers this one itself — but it *is*
+    // in the transcript, and without a case here it fell through to the branch
+    // that prints raw JSON. An operator reading a run sees it before nearly
+    // every MCP call, so an unexplained blob there reads as the agent doing
+    // something odd rather than as the CLI fetching a tool it was told about.
+    case TOOL_SEARCH_TOOL:
+      return `Load the tools matching: ${truncate(str('query') ?? '?', 80)}`;
     default:
       return `${toolName}${describeArgs(input)}`;
   }

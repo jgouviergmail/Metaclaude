@@ -177,12 +177,8 @@ export function registerBoardRoutes(app: App, context: AppContext): void {
     if (!task) throw new HttpError(404, 'Task not found.');
     const workspace = mustGetWorkspace(context, task.workspaceId);
 
-    // Skills live in the database but the CLI discovers them on disk, so they
-    // are written out immediately before the run that will use them.
-    await context.registry.materialiseSkills(workspace).catch((error: Error) => {
-      context.log.warn({ err: error.message }, 'could not materialise skills');
-    });
-
+    // The skills the run will use are written by `ContextProvider.prepare`,
+    // which every submission path goes through — this one used to do it here.
     const started = await startTaskRun(
       {
         board: context.board,

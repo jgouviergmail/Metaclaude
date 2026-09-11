@@ -1,3 +1,14 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { McpTransport, Workspace } from '@metaclaude/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../db/index.js';
@@ -941,6 +952,181 @@ describe('MCP servers — CRUD', () => {
 
     registry.setMcpStatus(server.id, 'connected');
     expect(registry.getMcpServer(server.id)!.lastError).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* materialiseSkills                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The disk half of the registry, for the skills it owns itself.
+ *
+ * `plugin-runtime.test.ts` covers the other source feeding the same routine —
+ * a plugin's skill directory, copied whole — and between them they hold both
+ * halves of what the CLI discovers.
+ *
+ * It matters more than it did: this used to run on three of the eight paths
+ * that submit a run, immediately before the run, so a stale directory was
+ * corrected by the next thing an operator typed. It now runs on *every* run,
+ * which is what makes it correct for an automation — and what makes rewriting
+ * unconditionally the wrong shape, since a continuous automation would delete
+ * and rebuild the tree every minute for a set that never changes.
+ *
+ * So there are two promises here, and both are load-bearing: what reaches disk
+ * is exactly the enabled set, and nothing is written when nothing moved.
+ */
+describe('materialiseSkills', () => {
+  let root: string;
+  let ws: Workspace;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'mc-skills-'));
+    ws = new WorkspaceRepo(db).create({
+      name: 'Disk',
+      slug: 'disk',
+      description: '',
+      path: root,
+      color: '#6366f1',
+      icon: 'folder',
+      settings: defaultWorkspaceSettings(),
+    });
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const skillsDir = (): string => join(root, '.claude', 'skills');
+  const onDisk = (): string[] => (existsSync(skillsDir()) ? readdirSync(skillsDir()).sort() : []);
+  const bodyOf = (name: string): string =>
+    readFileSync(join(skillsDir(), name, 'SKILL.md'), 'utf8');
+
+  it('writes the enabled skills, and only those', async () => {
+    registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'when live', body: 'DO IT' });
+    registry.upsertSkill({ workspaceId: ws.id, name: 'off', description: 'd', body: 'b', enabled: false });
+
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 1, rewritten: true });
+    expect(onDisk()).toEqual(['live']);
+    // The frontmatter the CLI reads, and the body it only reads on `Skill`.
+    expect(bodyOf('live')).toBe('---\nname: live\ndescription: "when live"\n---\nDO IT');
+  });
+
+  it('does not rewrite when nothing has moved', async () => {
+    registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'd', body: 'b' });
+    await registry.materialiseSkills(ws);
+
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 1, rewritten: false });
+  });
+
+  it('rewrites when a skill’s body changes', async () => {
+    const skill = registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'd', body: 'first' });
+    await registry.materialiseSkills(ws);
+
+    registry.upsertSkill({ id: skill.id, workspaceId: ws.id, name: 'live', description: 'd', body: 'second' });
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 1, rewritten: true });
+    expect(bodyOf('live')).toContain('second');
+  });
+
+  /**
+   * The defect that pays for all of this, from the automation's side: a skill
+   * switched off has to *leave* the disk, or a scheduled run goes on being
+   * offered it for ever — and the registry, which no longer lists it, records
+   * the invocation with no id at all.
+   */
+  it('takes a skill off the disk when it is disabled, and again when deleted', async () => {
+    const skill = registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'd', body: 'b' });
+    const other = registry.upsertSkill({ workspaceId: ws.id, name: 'kept', description: 'd', body: 'b' });
+    await registry.materialiseSkills(ws);
+    expect(onDisk()).toEqual(['kept', 'live']);
+
+    registry.setSkillsEnabled([skill.id], false);
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 1, rewritten: true });
+    expect(onDisk()).toEqual(['kept']);
+
+    registry.deleteSkills([other.id]);
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 0, rewritten: true });
+    expect(onDisk()).toEqual([]);
+  });
+
+  /**
+   * The agent has `Bash` and its own workspace, so it can remove the directory
+   * it was given. A fingerprint that only remembers what *we* last wrote would
+   * then answer "nothing has moved" for the rest of the process's life, and
+   * every run after it would carry no skills — silently, since the run still
+   * succeeds. The cheap half of the check is what closes it.
+   */
+  it('rewrites when the directory was emptied underneath it', async () => {
+    registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'd', body: 'b' });
+    await registry.materialiseSkills(ws);
+
+    rmSync(skillsDir(), { recursive: true, force: true });
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 1, rewritten: true });
+    expect(onDisk()).toEqual(['live']);
+  });
+
+  it('rewrites when a stray directory appears beside the real ones', async () => {
+    registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'd', body: 'b' });
+    await registry.materialiseSkills(ws);
+
+    mkdirSync(join(skillsDir(), 'planted'), { recursive: true });
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 1, rewritten: true });
+    expect(onDisk()).toEqual(['live']);
+  });
+
+  /**
+   * Two runs of one workspace overlap in ordinary operation — the board
+   * autopilot starts one while a session is open, and `hasActiveRunForSession`
+   * bounds a session rather than a workspace. Unserialised, the second call's
+   * rebuild lands inside the first one's, and whichever loses leaves a
+   * half-written tree for a CLI that is spawning right then.
+   */
+  it('serialises overlapping calls, and each sees the state at its turn', async () => {
+    registry.upsertSkill({ workspaceId: ws.id, name: 'first', description: 'd', body: 'b' });
+    const one = registry.materialiseSkills(ws);
+    // One microtask is enough for the first call to have read its list and
+    // reached its first real await, which is what makes the write below land
+    // *during* it rather than before it.
+    await Promise.resolve();
+    registry.upsertSkill({ workspaceId: ws.id, name: 'second', description: 'd', body: 'b' });
+    const two = registry.materialiseSkills(ws);
+
+    // Sharing the in-flight promise instead of chaining would make these two
+    // answers identical, and leave `second` off the disk until the run after.
+    expect(await one).toEqual({ skills: 1, rewritten: true });
+    expect(await two).toEqual({ skills: 2, rewritten: true });
+    expect(onDisk()).toEqual(['first', 'second']);
+  });
+
+  it('leaves no staging directories behind', async () => {
+    registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'd', body: 'b' });
+    await registry.materialiseSkills(ws);
+    registry.upsertSkill({ workspaceId: ws.id, name: 'other', description: 'd', body: 'b' });
+    await registry.materialiseSkills(ws);
+
+    expect(readdirSync(join(root, '.claude')).sort()).toEqual(['skills']);
+  });
+
+  /**
+   * Same reasoning as `resolveInside` already carried, kept under test because
+   * this routine deletes a directory: a symlinked `.claude` pointed the whole
+   * thing at the link's target, and the rebuild happened *there*.
+   */
+  it('declines a symlinked .claude rather than writing through it', async () => {
+    const elsewhere = mkdtempSync(join(tmpdir(), 'mc-elsewhere-'));
+    try {
+      symlinkSync(elsewhere, join(root, '.claude'), 'dir');
+    } catch {
+      // Windows without developer mode refuses to create one. The guard is
+      // asserted on the platforms that can express the attack.
+      rmSync(elsewhere, { recursive: true, force: true });
+      return;
+    }
+    registry.upsertSkill({ workspaceId: ws.id, name: 'live', description: 'd', body: 'b' });
+
+    expect(await registry.materialiseSkills(ws)).toEqual({ skills: 0, rewritten: false });
+    expect(existsSync(join(elsewhere, 'skills'))).toBe(false);
+    rmSync(elsewhere, { recursive: true, force: true });
   });
 });
 

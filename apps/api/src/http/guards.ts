@@ -16,7 +16,12 @@ import type {
   UserRole,
   Workspace,
 } from '@metaclaude/shared';
-import { CSRF_HEADER, SESSION_COOKIE, reviewToolNames } from '@metaclaude/shared';
+import {
+  CSRF_HEADER,
+  SESSION_COOKIE,
+  reviewDeniedToolNames,
+  reviewToolNames,
+} from '@metaclaude/shared';
 import type { AppContext } from '../context.js';
 import { reviewAdditionalDirectories } from '../security/directories.js';
 import { clientKey } from '../security/ratelimit.js';
@@ -305,7 +310,13 @@ export function reviewToolSettings(
   for (const field of ['allowedTools', 'disallowedTools'] as const) {
     const names = settings[field];
     if (!names) continue;
-    const review = reviewToolNames(names);
+    // The deny direction carries one rule the allow direction does not:
+    // `ToolSearch` is how the CLI loads every other tool on demand, so
+    // refusing it puts every description back into every prompt — measured at
+    // about 15k tokens a run, with no other symptom. Pre-approving it is
+    // harmless, which is why the two lists are vetted differently.
+    const review =
+      field === 'disallowedTools' ? reviewDeniedToolNames(names) : reviewToolNames(names);
     const first = review.rejected[0];
     if (first) throw new HttpError(400, `"${first.name}" ${first.reason}.`);
     patch[field] = review.allowed;

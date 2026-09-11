@@ -11,6 +11,133 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.93.0] — 2026-09-10
+
+### Fixed
+
+- **The skills a run was given were written on three of the eight paths that
+  start one.** `materialiseSkills` writes the workspace's enabled skills to
+  `.claude/skills/`, which is the only place the CLI looks for them, and it was
+  called from the session route, the board route and the board autopilot. The
+  five without it were the scheduler, the steward, the advisor, delegation and
+  the MCP gateway — which is to say every run nobody is watching. Those ran
+  against whatever the last interactive message had left on disk: a skill
+  created in the morning was invisible to that night's automation, and one
+  switched off went on being offered to it. A workspace driven only by
+  automations never had its skills written at all.
+
+  Nothing reported it, because the run succeeded either way — and
+  `run_extension_usages` recorded the skill as *offered and never opened* from
+  the database list, which is the sentence the weekly instruction review reads
+  and acts on. It would have proposed rewriting a description that was never
+  the problem.
+
+  It now happens in `ContextProvider.prepare`, which `execute` calls before
+  `resolve` on every run, so a submission path added later cannot forget. Three
+  things follow from being on every run rather than on a typed message, and
+  each is under test: nothing is written when nothing has moved (a continuous
+  automation firing every minute would otherwise delete and rebuild the tree,
+  plugin copies included); the fingerprint is not trusted alone, because the
+  agent has `Bash` and its own workspace and can remove what it was given; and
+  the new tree is built beside the old one and renamed in, since two runs of
+  one workspace overlap in ordinary operation and the old shape emptied the
+  directory while a CLI was spawning into it.
+
+### Added
+
+- **System → CLI tools: what Claude Code brings, and what this deployment keeps
+  of it.** Metaclaude mounted the CLI's whole tool set, and the CLI is written
+  for a person at a terminal signed in to claude.ai. Most of it merely costs
+  tokens — measured against CLI 2.1.267, the built-ins occupy 23,543 in-window
+  tokens on the cached prefix of every run — and three of them reach past the
+  deployment entirely: `CronCreate` and its pair schedule recurring work in the
+  CLI's own scheduler, outside the Automations screen and outside its quota
+  guard, and `Artifact` publishes a web page to claude.ai from inside a run. No
+  screen said either was possible.
+
+  Nine are switched off out of the box. Measured: that takes the in-window
+  figure to 13,388 and the deferred half from 15,378 to 8,047 — about ten
+  thousand tokens off every run, and three doors closed. The screen reports
+  whether it is showing that default or a choice, and hands the default back.
+
+  The list is **measured, not written down**: it comes from the CLI's own
+  opening frame, because the set is platform-dependent (`PowerShell` on
+  Windows against `Bash` elsewhere) and moves with every bump — a screen built
+  on a hard-coded list lies the day the CLI changes, with nothing to notice.
+  `initializationResult()` reads like the place to ask and carries `commands`,
+  `agents` and `models` with no tools on it; the `system/init` frame is the
+  only place the CLI says.
+
+  One tool cannot be switched off, and the reason is a measurement rather than
+  a policy. `ToolSearch` is how the CLI keeps every other tool's schema — its
+  own and every MCP server's — *out* of the prompt until something needs one.
+  Refusing it takes the in-window system-tool figure from 23,543 tokens to
+  39,045 and loads every MCP schema besides, on every run, announced by
+  nothing. It is refused at the form, at the deployment's list, at a
+  workspace's own deny list, and again when the stored row is read.
+
+- **The CLI's own skills, governed the way yours are.** The same screen's
+  second section lists the seventeen skills the CLI ships inside itself, a
+  box each, off unless chosen — the shape the operator asked for once it was
+  clear these were not theirs and never had a switch. Nothing is copied: a
+  skill you switch on stays the CLI's, with its real body, current with every
+  version. Each row shows roughly what carrying it would add to a prompt.
+
+  The measurement forced the shape underneath. `disableBundledSkills` is a
+  floor nothing climbs back over: the same session with `skillOverrides:
+  { 'code-review': 'on' }` beside it still carried *zero* built-in skills. So
+  a deployment that has chosen nothing keeps the one flag — which is the only
+  form that also covers a skill a future CLI ships — and a deployment that
+  has chosen something switches to naming every known skill one by one. That
+  list is written down each time the screen reads the CLI, because a run
+  cannot spawn a probe of its own. And `managedSettings` does nothing for
+  this key either, exactly as for the flag: measured, both times.
+
+  Measured and not taken, for the record: `user-invocable-only` hides a skill
+  from the model while keeping `/name` typable, at zero prompt cost. It works.
+  It was left out because a box that means "on" should mean what it means
+  for your own skills.
+
+- **A doctor check for the one thing nothing else could see.** The CLI turns
+  tool deferral off by itself when `ANTHROPIC_BASE_URL` names a host it does
+  not recognise, when the served model is on its unsupported list, or when the
+  tool is disallowed — and the only symptom is the bill. `cli-tools` warns when
+  `ToolSearch` is no longer among the tools the CLI offers, and says what it
+  costs. An empty tool list is reported as "could not be measured" rather than
+  as a finding: no CLI offers no tools.
+
+### Changed
+
+- **A workspace offers the skills you gave it, and nothing else.** Claude Code
+  ships seventeen skills of its own — `design`, `dataviz`, `update-config`,
+  `keybindings-help`, `loop`, `schedule` and the rest — written for a terminal
+  and for claude.ai. They were listed in every Metaclaude run's prompt and were
+  openable by the agent, describing capabilities this deployment does not have:
+  an operator who had switched every one of their own skills off still had
+  seventeen, none of them theirs, on a screen that said none. Measured, one
+  turn per cell: the skills section falls from 19 skills / 2,040 tokens to 2 /
+  32, and the slash-command list from 19 entries to 2.
+
+  The tier was measured too, and the obvious reading of the SDK's own
+  documentation is wrong. `disableBundledSkills` is declared on `Settings`, and
+  `managedSettings` is where every other policy here rides — where it does
+  **nothing at all**, byte for byte the same as sending nothing. Only the flag
+  tier bites. Shipped on the documentation rather than the measurement, this
+  whole change would have been dead on arrival and looked delivered.
+
+  The catalogue probe carries the same payload, so the composer's slash menu
+  cannot outrun the CLI: without it the probe answered 56 commands against a
+  run's 38, and the menu offered eighteen the CLI would no longer honour.
+
+- **`scripts/sdk-probe.mjs` records what reaches the prompt.** Four claims the
+  above now rests on, none visible from any test: a skill contributes its
+  frontmatter and not its body (a 24 kB body measures 3 tokens), a subagent its
+  description and not its prompt (an 8 kB prompt measures 28), tool schemas are
+  deferred, and `disableBundledSkills` bites in the flag tier and not in the
+  managed one. A bump that moves any of them now shows up in the diff instead
+  of in the bill.
+
+
 ## [0.92.0] — 2026-09-10
 
 ### Added

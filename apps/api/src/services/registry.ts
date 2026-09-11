@@ -10,7 +10,8 @@
  *    is where the Claude CLI discovers them.
  */
 
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import type {
   AgentDefinitionRecord,
@@ -35,6 +36,131 @@ export class RegistryError extends Error {
     super(message);
     this.name = 'RegistryError';
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Skills on disk                                                              */
+/* -------------------------------------------------------------------------- */
+
+/** The workspace directory the CLI reads its project context from. */
+const CLAUDE_DIR = '.claude';
+
+/**
+ * The prefix every transient directory this module makes shares.
+ *
+ * One prefix for both halves of the swap — the tree being built and the tree
+ * being retired — so the sweep is one predicate rather than two that can
+ * disagree about which crash left what behind.
+ */
+const STAGING_PREFIX = '.skills-swap-';
+
+/** What one materialisation did. */
+export interface MaterialisedSkills {
+  /** How many skills the CLI will find. Plugin and registry skills together. */
+  skills: number;
+  /** Whether the directory was actually rebuilt, or already said this. */
+  rewritten: boolean;
+}
+
+/**
+ * Run `work` for `key` after whatever is already running for it.
+ *
+ * Chained rather than shared, and the distinction is the whole point. Sharing
+ * one in-flight promise between two callers is cheaper and wrong: the second
+ * caller would receive the *first* one's answer, computed before whatever it
+ * was that made the second caller ask. A run submitted a moment after a skill
+ * was saved would then start against the tree written before the save, and the
+ * next run would fix it — which is exactly the class of defect this whole
+ * change exists to end.
+ *
+ * A failure in one link must not fail the next, so the chain is followed on
+ * both settle paths and the tail is what the map holds.
+ */
+function serialise<T>(
+  queue: Map<string, Promise<unknown>>,
+  key: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const previous = queue.get(key) ?? Promise.resolve();
+  const run = previous.then(work, work);
+  const tail: Promise<void> = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  // Only the last link clears the entry: an earlier one finishing must not
+  // release a key another call is still queued behind.
+  void tail.then(() => {
+    if (queue.get(key) === tail) queue.delete(key);
+  });
+  queue.set(key, tail);
+  return run;
+}
+
+/**
+ * Whether the directory already holds exactly these names.
+ *
+ * The cheap half of "has anything moved" — one `readdir`, no `stat` per entry
+ * and no file read. It does not notice an edited body, which is what the
+ * fingerprint is for; it notices the two things a fingerprint cannot, because
+ * they happen outside this process: a directory the agent removed, and one
+ * something else planted.
+ */
+async function holds(root: string, wanted: ReadonlySet<string>): Promise<boolean> {
+  let entries: string[];
+  try {
+    entries = await readdir(root);
+  } catch {
+    // Absent is a legitimate answer when nothing is wanted, and a mismatch
+    // otherwise. Either way it is not an error worth a log line.
+    return wanted.size === 0;
+  }
+  return entries.length === wanted.size && entries.every((name) => wanted.has(name));
+}
+
+/** Remove anything a crash left mid-swap. Best effort, never fatal. */
+async function sweepStaging(parent: string): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(parent);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (!name.startsWith(STAGING_PREFIX)) continue;
+    await rm(resolve(parent, name), { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/**
+ * Put `staging` where `root` is, atomically enough.
+ *
+ * Two renames rather than one, because neither platform will rename onto an
+ * occupied directory and they refuse differently: Linux answers `ENOTEMPTY`,
+ * Windows `EPERM`. So the live tree is moved aside first and removed after the
+ * new one is in — which leaves a window of one rename with no directory at
+ * all, against the seconds the previous shape spent deleting and re-copying.
+ *
+ * If the second rename fails the first is undone, so a failure leaves the tree
+ * that was working rather than none.
+ */
+async function swapInto(root: string, staging: string): Promise<void> {
+  const retired = resolve(dirname(root), `${STAGING_PREFIX}${randomUUID()}`);
+  let moved = false;
+  try {
+    await rename(root, retired);
+    moved = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  try {
+    await rename(staging, root);
+  } catch (error) {
+    if (moved) await rename(retired, root).catch(() => undefined);
+    throw error;
+  }
+
+  if (moved) await rm(retired, { recursive: true, force: true }).catch(() => undefined);
 }
 
 /**
@@ -514,27 +640,66 @@ export class Registry {
   }
 
   /**
+   * What the disk was last made to hold, per workspace.
+   *
+   * In memory rather than in a column, and that is the honest place for it: it
+   * describes a directory this process wrote, so a restart — or a second
+   * process — has no business trusting it. Losing it costs one rebuild.
+   */
+  private readonly materialised = new Map<string, string>();
+
+  /**
    * Write the workspace's enabled skills to `.claude/skills/<name>/SKILL.md`,
    * which is where the CLI looks for them.
    *
-   * The directory is rebuilt from scratch each time so a deleted or renamed
-   * skill cannot linger on disk and keep affecting runs.
+   * Called before *every* run, which is the whole point: it used to be called
+   * from three of the eight places that submit one, so an automation, a
+   * gateway call, a delegation, the steward and the advisor all ran against
+   * whatever the last interactive message had left on disk — a skill created
+   * that morning was invisible to the nightly run, and a skill deleted went on
+   * being offered to it. Nothing could see that: the run succeeded, and the
+   * usage table recorded the skill as "offered and never opened", which is the
+   * sentence the weekly instruction review acts on.
+   *
+   * Being on every run is also why it is not the unconditional rebuild it was.
+   * Three things follow from that, and each is a promise `registry.test.ts`
+   * holds:
+   *
+   *  - **Nothing is written when nothing moved.** A continuous automation
+   *    firing every minute would otherwise delete and rebuild the tree, plugin
+   *    copies included, for a set that never changes.
+   *  - **The fingerprint is not trusted alone.** The agent has `Bash` and this
+   *    is its own workspace, so it can remove what it was given; a memory of
+   *    what *we* wrote would then answer "unchanged" for the life of the
+   *    process. The directory's own entries are compared too — one `readdir`.
+   *  - **The swap is atomic.** The old shape deleted the tree and rebuilt it in
+   *    place, so a CLI spawning during the rebuild — normal, since two runs of
+   *    one workspace overlap — could read a directory that was empty or half
+   *    written. The new tree is built beside the old one and renamed in.
    */
-  async materialiseSkills(workspace: Workspace): Promise<number> {
+  async materialiseSkills(workspace: Workspace): Promise<MaterialisedSkills> {
+    return serialise(this.materialising, workspace.id, () => this.writeSkills(workspace));
+  }
+
+  /** Materialisations in flight, chained per workspace. See `serialise`. */
+  private readonly materialising = new Map<string, Promise<unknown>>();
+
+  private async writeSkills(workspace: Workspace): Promise<MaterialisedSkills> {
     // Through the jail, not `resolve`. `resolve` is purely lexical, so a
     // symlinked `<ws>/.claude` pointed this whole routine at the link's target:
-    // the `rm(root, { recursive: true, force: true })` below deleted *that*
-    // directory's `skills`, and the `mkdir`/`cp`/`writeFile` that follow wrote
-    // into it. This runs on every run submission, before the run, with failures
+    // the removal below deleted *that* directory's `skills`, and everything
+    // after it wrote into it. This runs before every run with failures
     // swallowed into a log line — so it fires silently, and a hostile cloned
     // repo or an approval-free agent write is enough to plant the link.
     //
     // `resolveInside` realpaths the nearest existing ancestor, so it permits
     // the ordinary case where `skills` does not exist yet, and `.claude` is not
     // a blocked segment.
+    let parent: string;
     let root: string;
     try {
-      root = resolveInside(workspace.path, '.claude/skills');
+      parent = resolveInside(workspace.path, CLAUDE_DIR);
+      root = resolveInside(workspace.path, `${CLAUDE_DIR}/skills`);
     } catch (error) {
       if (!(error instanceof PathEscapeError)) throw error;
       // Declining, not throwing: a workspace with an odd `.claude` must not
@@ -542,47 +707,106 @@ export class Registry {
       this.log('error', 'refusing to materialise skills through a symlinked .claude', {
         path: workspace.path,
       });
-      return 0;
-    }
-    await rm(root, { recursive: true, force: true });
-
-    const skills = this.listSkills(workspace.id).filter((skill) => skill.enabled);
-    const fromPlugins = this.plugins?.runtime().skills ?? [];
-    if (skills.length === 0 && fromPlugins.length === 0) return 0;
-
-    await mkdir(root, { recursive: true });
-
-    // Plugins first, so a workspace skill of the same name overwrites one from
-    // a plugin. The operator's own definition is the more specific of the two
-    // and the only one they can edit.
-    //
-    // Copied whole rather than rewritten: a plugin skill may ship references
-    // and scripts beside its SKILL.md, and writing only the markdown would hand
-    // the agent instructions pointing at files that are not there.
-    for (const skill of fromPlugins) {
-      const from = dirname(skill.path);
-      const to = resolve(root, skill.name);
-      if (!isInside(root, to)) continue;
-      await cp(from, to, { recursive: true, dereference: false }).catch((error: Error) => {
-        this.log('warn', `could not materialise skill "${skill.name}" from plugin "${skill.pluginName}"`, {
-          message: error.message,
-        });
-      });
+      return { skills: 0, rewritten: false };
     }
 
-    for (const skill of skills) {
-      const directory = resolve(root, skill.name);
-      await mkdir(directory, { recursive: true });
-      const frontmatter = [
-        '---',
-        `name: ${skill.name}`,
-        `description: ${JSON.stringify(skill.description)}`,
-        '---',
-        '',
-      ].join('\n');
-      await writeFile(resolve(directory, 'SKILL.md'), frontmatter + skill.body, 'utf8');
+    const rows = this.listSkills(workspace.id).filter((skill) => skill.enabled);
+    // One call: `runtime()` walks every installed plugin, and asking twice for
+    // the skills and the revision would walk it twice on the path of every run.
+    const plugins = this.plugins?.runtime();
+    const fromPlugins = plugins?.skills ?? [];
+
+    // Plugins first, so a workspace skill of the same name wins: the operator's
+    // own definition is the more specific of the two and the only one they can
+    // edit. De-duplicated here rather than by writing twice, because the count
+    // returned has to be the number of skills the CLI will actually find.
+    const wanted = new Set<string>([
+      ...fromPlugins.map((skill) => skill.name),
+      ...rows.map((skill) => skill.name),
+    ]);
+    const fingerprint = JSON.stringify({
+      // The id would be enough to notice a deletion and not an edit; the
+      // timestamp moves on both, and on an enable/disable through the bulk
+      // route, which is the control an operator actually uses.
+      skills: rows.map((skill) => [skill.name, skill.updatedAt]),
+      plugins: [fromPlugins.map((skill) => skill.name), plugins?.revision ?? ''],
+    });
+
+    /*
+     * `wanted` is what *should* be there, and comparing against it is what
+     * makes a failure retry.
+     *
+     * A plugin whose directory cannot be copied — a permission, a broken link
+     * — is logged and skipped, so the tree comes out one short. The fingerprint
+     * then matches on the next run and `holds` does not, and the whole thing is
+     * rebuilt: a retry, once per run, which is right for a transient failure
+     * and merely noisy for a permanent one. Recording what actually landed
+     * would read as tidier and would mean never trying again.
+     */
+    if (this.materialised.get(workspace.id) === fingerprint && (await holds(root, wanted))) {
+      return { skills: wanted.size, rewritten: false };
     }
-    return skills.length + fromPlugins.length;
+
+    // Nothing to offer: the directory goes rather than being left empty, which
+    // is what it did before and what keeps a workspace that has never had a
+    // skill indistinguishable from one whose last skill was deleted.
+    if (wanted.size === 0) {
+      await rm(root, { recursive: true, force: true });
+      this.materialised.set(workspace.id, fingerprint);
+      return { skills: 0, rewritten: true };
+    }
+
+    await mkdir(parent, { recursive: true });
+    await sweepStaging(parent);
+    // A filesystem name, not a domain id: `newId` is a typed vocabulary of the
+    // things this system stores, and a directory that exists for one rename is
+    // not one of them.
+    const staging = resolve(parent, `${STAGING_PREFIX}${randomUUID()}`);
+    await mkdir(staging, { recursive: true });
+
+    try {
+      // Copied whole rather than rewritten: a plugin skill may ship references
+      // and scripts beside its SKILL.md, and writing only the markdown would
+      // hand the agent instructions pointing at files that are not there.
+      for (const skill of fromPlugins) {
+        const to = resolve(staging, skill.name);
+        if (!isInside(staging, to)) continue;
+        await cp(dirname(skill.path), to, { recursive: true, dereference: false }).catch(
+          (error: Error) => {
+            this.log(
+              'warn',
+              `could not materialise skill "${skill.name}" from plugin "${skill.pluginName}"`,
+              { message: error.message },
+            );
+          },
+        );
+      }
+
+      for (const skill of rows) {
+        const directory = resolve(staging, skill.name);
+        await mkdir(directory, { recursive: true });
+        const frontmatter = [
+          '---',
+          `name: ${skill.name}`,
+          `description: ${JSON.stringify(skill.description)}`,
+          '---',
+          '',
+        ].join('\n');
+        await writeFile(resolve(directory, 'SKILL.md'), frontmatter + skill.body, 'utf8');
+      }
+
+      await swapInto(root, staging);
+    } catch (error) {
+      await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+      // The memory is cleared rather than updated: a failed write leaves a
+      // directory nobody can describe, and the next run must rebuild it rather
+      // than believe a fingerprint for a tree that was never finished.
+      this.materialised.delete(workspace.id);
+      throw error;
+    }
+
+    this.materialised.set(workspace.id, fingerprint);
+    return { skills: wanted.size, rewritten: true };
   }
 
   /* ----------------------------- Agents -------------------------------- */

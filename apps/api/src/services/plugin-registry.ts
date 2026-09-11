@@ -45,6 +45,17 @@ export interface PluginRuntime {
   mcpServers: Record<string, unknown>;
   /** Names claimed by more than one plugin. Reported rather than swallowed. */
   conflicts: string[];
+  /**
+   * A token that changes exactly when the installed set does.
+   *
+   * `materialiseSkills` copies a plugin's skill *directory* rather than
+   * rewriting it, so it cannot tell from the skill list alone that a plugin was
+   * updated in place — the name and the path are the same before and after, and
+   * a fingerprint built from those would call a changed plugin unchanged and
+   * never re-copy it. The row's `updated_at` is what actually moves, so that is
+   * what this carries. Enabled rows only: disabling one has to move it too.
+   */
+  revision: string;
 }
 
 export interface PluginRegistryDeps {
@@ -223,9 +234,11 @@ export class PluginRegistry {
     const mcpServers: Record<string, unknown> = {};
     const conflicts: string[] = [];
     const claimed = new Map<string, string>();
+    const revision: string[] = [];
 
     for (const row of this.rows()) {
       if (row.enabled !== 1) continue;
+      revision.push(`${row.name}@${row.updated_at}`);
       const loaded = this.loadedCache.get(row.root);
       if (!loaded) continue;
 
@@ -249,7 +262,7 @@ export class PluginRegistry {
       }
     }
 
-    return { skills, mcpServers, conflicts };
+    return { skills, mcpServers, conflicts, revision: revision.join(',') };
   }
 
   /* -------------------------------- Mutate ------------------------------- */

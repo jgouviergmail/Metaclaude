@@ -12,6 +12,8 @@ import {
   languageForPath,
   mcpToolName,
   reviewToolNames,
+  reviewDeniedToolNames,
+  DEFAULT_DISABLED_CLI_TOOLS,
   splitToolName,
 } from './constants.js';
 
@@ -118,6 +120,63 @@ describe('reviewToolNames', () => {
   it('never throws, whatever it is handed', () => {
     expect(() => reviewToolNames([])).not.toThrow();
     expect(reviewToolNames([]).allowed).toEqual([]);
+  });
+});
+
+describe('reviewDeniedToolNames', () => {
+  it('keeps every rule reviewToolNames applies', () => {
+    // Derived rather than restated: the deny direction adds a rule, it does
+    // not fork the vetting. A rule added to `reviewToolNames` later has to
+    // reach this list too, and this is what says so.
+    const nasty = ['WebFetch(domain:example.com)', 'Web Search', '', 'A'.repeat(129)];
+    expect(reviewDeniedToolNames(nasty).allowed).toEqual(reviewToolNames(nasty).allowed);
+    expect(reviewDeniedToolNames(nasty).rejected.map((entry) => entry.name)).toEqual(
+      reviewToolNames(nasty).rejected.map((entry) => entry.name),
+    );
+  });
+
+  /**
+   * The one rule that only makes sense in this direction.
+   *
+   * `ToolSearch` is how the CLI keeps every other tool's schema out of the
+   * prompt until something needs it. Denying it is a 15,500-token regression
+   * on every run — measured — announced by nothing at all. Pre-approving it,
+   * by contrast, is harmless, which is why the rule is here and not in
+   * `reviewToolNames`.
+   */
+  it('refuses ToolSearch, and says why', () => {
+    const review = reviewDeniedToolNames(['Bash', 'ToolSearch', 'WebFetch']);
+
+    expect(review.allowed).toEqual(['Bash', 'WebFetch']);
+    expect(review.rejected).toHaveLength(1);
+    expect(review.rejected[0]?.name).toBe('ToolSearch');
+    expect(review.rejected[0]?.reason).toContain('loads every other tool');
+  });
+
+  it('lets ToolSearch through the pre-approval direction, which is the other list', () => {
+    expect(reviewToolNames(['ToolSearch']).allowed).toEqual(['ToolSearch']);
+  });
+});
+
+describe('DEFAULT_DISABLED_CLI_TOOLS', () => {
+  it('is a list this deployment could actually store', () => {
+    // The shipped default has to survive the vetting the form applies, or a
+    // fresh deployment would be refusing to save the state it booted with.
+    expect(reviewDeniedToolNames([...DEFAULT_DISABLED_CLI_TOOLS])).toEqual({
+      allowed: [...DEFAULT_DISABLED_CLI_TOOLS],
+      rejected: [],
+    });
+  });
+
+  it('never disables the tools Metaclaude’s own features are built on', () => {
+    // `Skill` and `Task` are measured to be deniable, and denying either takes
+    // a whole Metaclaude feature down with it: without `Skill` a skill cannot
+    // be opened at all, without `Task` a custom subagent cannot be reached.
+    // They stay listed on the screen — an operator may have their reasons —
+    // but shipping them off by default would be this system disabling itself.
+    for (const load of ['Skill', 'Task', 'Agent', 'Bash', 'Read', 'Edit', 'Write']) {
+      expect(DEFAULT_DISABLED_CLI_TOOLS).not.toContain(load);
+    }
   });
 });
 

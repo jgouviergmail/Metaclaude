@@ -10,12 +10,71 @@ a review checklist, a deploy procedure, a house style. Manage them under
 **Agents & skills**; Metaclaude writes them into the workspace before each
 run, so the CLI discovers them exactly as it would in a terminal.
 
+Before *each* run, and that is newer than it sounds. Until 0.93 the writing
+happened at three of the eight places a run can start — a message you type, a
+board card you send, and the board's autopilot — so an automation, a gateway
+call, a delegation, the steward and the advisor all ran against whatever your
+last typed message had left on disk. A skill created in the morning was
+invisible to that night's automation, and one you deleted went on being
+offered to it. Nothing said so: the run succeeded either way.
+
+A skill costs almost nothing to keep. The CLI carries only its **description**
+in the prompt and reads the body when it opens the skill, so a long procedure
+is not a tax on every run — write the description as the *condition* under
+which the skill applies, since that sentence is the whole of what the agent
+sees when deciding.
+
 The **use count** beside a skill is what it says: how many times a run has
 actually opened it. It was displayed and never incremented until 0.91, so it
 read zero everywhere; it is now real, and a skill offered to run after run with
 a count still at zero is the single most common thing the weekly instruction
 review will offer to fix — usually by rewriting the description as a condition
 rather than a summary.
+
+## What the CLI itself brings
+
+The three above are what you *add* to the agent. Underneath them sits what
+Claude Code brings on its own, and it is written for a person at a terminal
+signed in to claude.ai. **System → CLI tools** is where you see it and decide
+what your deployment keeps.
+
+Some of it merely costs tokens — the CLI's built-in tools occupy roughly 24k
+tokens of the cached prefix of every run — and some of it reaches past
+Metaclaude entirely: `CronCreate` schedules recurring work in the CLI's own
+scheduler, outside the Automations screen and outside its quota guard, and
+`Artifact` publishes a web page to claude.ai from inside a run. Nine tools are
+switched off out of the box for one of those two reasons; the badge on the
+section says whether you are on that default or on a choice of your own, and
+**Restore defaults** puts it back.
+
+The list is read from the CLI itself rather than written down here, so it
+follows your platform and the installed version. Switching a tool off removes
+it from the agent's tool list outright — the model is never offered it, rather
+than being refused it — and one tool cannot be switched off at all:
+`ToolSearch` is how the CLI loads every other tool's description on demand, so
+turning it off would put all of them back into every prompt.
+
+The CLI also ships skills of its own — seventeen of them, for designing
+pages on claude.ai, editing terminal keybindings, reviewing code and a dozen
+other things — and until 0.93 every run carried all of them, on no screen and
+behind no switch. They are not rows in your registry and cannot be made into
+some: the body of each lives inside the CLI. So the second section of the
+same screen puts them where your own skills already are — a list, a box each,
+**off unless you switch it on**. Nothing is copied; a skill you switch on
+stays the CLI's, with its real instructions, current with every version.
+
+The figure on each row is roughly what that skill's description would add to
+every prompt. It is approximate on purpose — the same skill measures 362
+tokens against one model and 482 against another — and it is there so the
+choice is informed, not to be added up.
+
+One consequence is worth knowing. With nothing switched on, a run carries a
+single flag that refuses the lot, *including* any skill a future CLI ships.
+Switch even one on and the run has to name every other skill individually,
+because — measured — an exception cannot climb back over that flag. So a
+deployment that has chosen nothing is safe against a CLI update for ever; one
+that has chosen something should glance at this screen after an update, which
+is also what teaches the deployment what the new CLI ships.
 
 ## Custom agents
 

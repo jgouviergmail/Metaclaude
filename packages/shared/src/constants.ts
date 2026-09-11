@@ -1,7 +1,7 @@
 /** Constants shared by the API and the web app. */
 
 export const APP_NAME = 'Metaclaude';
-export const APP_VERSION = '0.92.0';
+export const APP_VERSION = '0.93.0';
 
 /**
  * How long a machine token may live. A year is the outer bound, not a default.
@@ -153,6 +153,101 @@ export function reviewToolNames(names: readonly string[]): ToolNameReview {
     }
     if (seen.has(name)) continue;
     seen.add(name);
+    allowed.push(name);
+  }
+
+  return { allowed, rejected };
+}
+
+/* -------------------------------------------------------------------------- */
+/* The CLI's own tools                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The tool that loads the other tools.
+ *
+ * Not a capability, which is why it is the one name a deny list refuses. The
+ * CLI keeps every MCP tool schema — and most of its own — *out* of the prompt
+ * and hands them over on demand through this; denying it turns that off with
+ * no other symptom than the bill. Measured against CLI 2.1.267 on the same
+ * workspace, one turn each: with it, `System tools` occupies 23,543 tokens and
+ * the MCP schemas sit outside the window entirely; without it, `System tools`
+ * is 39,045 and the MCP tools are loaded. Fifteen and a half thousand tokens
+ * on every run, for a checkbox that reads like turning off a search feature.
+ */
+export const TOOL_SEARCH_TOOL = 'ToolSearch';
+
+/**
+ * The CLI tools a Metaclaude deployment starts with switched off.
+ *
+ * Claude Code brings its own tools, and it is written for a person at a
+ * terminal signed in to claude.ai. Several of those describe capabilities this
+ * deployment does not have, and three of them reach past it: `CronCreate` and
+ * its pair let a run schedule work in the CLI's own scheduler — outside the
+ * automations screen, outside their quota guard and outside anything an
+ * operator can see or stop — and `Artifact` publishes a page to claude.ai from
+ * inside a run. `RemoteTrigger`, `PushNotification`, `DesignSync` and the
+ * worktree pair are terminal and claude.ai machinery with no meaning here.
+ *
+ * Measured against CLI 2.1.267: denying exactly these nine takes the in-window
+ * `System tools` figure from 23,543 tokens to 13,388, and the deferred half
+ * from 15,378 to 8,047. Ten thousand tokens off the cached prefix of every
+ * run, and three doors closed.
+ *
+ * `MAX_DISABLED_CLI_TOOLS` above bounds what may be stored: the CLI offers
+ * around thirty built-ins, so a hundred is far past any real answer and is
+ * there to bound a hand-made request rather than to shape a form.
+ *
+ * A default, not a rule — `CliToolPolicy` stores whatever the operator sets,
+ * and the System screen lists what the CLI actually offers rather than this.
+ * A name here that a future CLI drops is inert, which is why the list may name
+ * tools this platform does not have.
+ */
+export const MAX_DISABLED_CLI_TOOLS = 100;
+
+export const DEFAULT_DISABLED_CLI_TOOLS: readonly string[] = [
+  'Artifact',
+  'CronCreate',
+  'CronDelete',
+  'CronList',
+  'DesignSync',
+  'EnterWorktree',
+  'ExitWorktree',
+  'PushNotification',
+  'RemoteTrigger',
+];
+
+/**
+ * A ceiling on how many of the CLI's own skills a deployment may name.
+ *
+ * Seventeen ship today. A hundred bounds a hand-made request without being a
+ * number anyone will meet.
+ */
+export const MAX_CLI_SKILLS = 100;
+
+/**
+ * Vet a list of tool names that are to be *refused*.
+ *
+ * `reviewToolNames`' rules and one more, which only applies in this direction:
+ * pre-approving `ToolSearch` is harmless, and denying it is a fifteen-thousand
+ * token regression with no visible symptom. So the extra rule lives here
+ * rather than in the shared vetting, and both deny lists — a workspace's own
+ * and the deployment's — go through it.
+ */
+export function reviewDeniedToolNames(names: readonly string[]): ToolNameReview {
+  const review = reviewToolNames(names);
+  const allowed: string[] = [];
+  const rejected = [...review.rejected];
+
+  for (const name of review.allowed) {
+    if (name === TOOL_SEARCH_TOOL) {
+      rejected.push({
+        name,
+        reason:
+          'is how the CLI loads every other tool on demand, so refusing it puts them all back into every prompt',
+      });
+      continue;
+    }
     allowed.push(name);
   }
 

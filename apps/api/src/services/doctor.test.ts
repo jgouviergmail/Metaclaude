@@ -30,6 +30,8 @@ function makeDoctor(overrides: Partial<DoctorDeps> = {}) {
     workspacesDir: '/srv/metaclaude/workspaces',
     diskFree: async () => 50 * GB,
     cliVersion: async () => '2.1.246 (Claude Code)',
+    offeredCliTools: async () => ['Bash', 'Read', 'ToolSearch'],
+    disabledCliTools: () => [],
     reachOut: async () => ({ ok: true, detail: 'HTTP 405 in 12 ms' }),
     credential: () => ({ mode: 'oauth', endsAt: null }),
     embeddings: () => ({ requested: 'hash', active: 'hash-v1:512', dimension: 512, state: 'ready', lastError: null, pending: { memories: 0, documents: 0, exemplars: 0 } }),
@@ -72,6 +74,7 @@ describe('a healthy system', () => {
       'network',
       'public-url',
       'claude-cli',
+      'cli-tools',
       'retrieval',
       'knowledge-files',
       'memory',
@@ -796,5 +799,63 @@ describe('the extensions check', () => {
     const result = await check();
     expect(result?.status).toBe('warn');
     expect(result?.detail).toContain('postmortem');
+  });
+});
+
+/**
+ * The one check whose subject is invisible everywhere else.
+ *
+ * The CLI keeps most tool schemas out of the prompt and hands them over
+ * through `ToolSearch` when something needs one. It turns that off by itself
+ * — an unrecognised `ANTHROPIC_BASE_URL`, a model on its unsupported list, the
+ * tool disallowed — and the only symptom is the bill: measured against CLI
+ * 2.1.267, the in-window system-tool figure goes from 23,543 tokens to 39,045
+ * on every run. Nothing else here can see it.
+ */
+describe('the deferred-tools check', () => {
+  it('passes when the CLI is still loading tools on demand', async () => {
+    const report = await makeDoctor().run();
+    const check = report.checks.find((entry) => entry.name === 'cli-tools');
+
+    expect(check?.status).toBe('ok');
+    expect(check?.summary).toContain('on demand');
+  });
+
+  it('warns, with the cost, when ToolSearch is gone', async () => {
+    const report = await makeDoctor({
+      offeredCliTools: async () => ['Bash', 'Read'],
+    }).run();
+    const check = report.checks.find((entry) => entry.name === 'cli-tools');
+
+    expect(check?.status).toBe('warn');
+    expect(check?.summary).toContain('15k');
+  });
+
+  /**
+   * "No tools" is never true of a CLI, so an empty list can only mean the
+   * question failed. Reporting it as a finding about tool search would be a
+   * measure that returns zero when it means "I could not look" — the failure
+   * mode `measure-chrome.mjs` shipped once already.
+   */
+  it('says it could not measure rather than reporting a finding', async () => {
+    for (const offeredCliTools of [
+      async () => null,
+      async () => [],
+    ] as DoctorDeps['offeredCliTools'][]) {
+      const report = await makeDoctor({ offeredCliTools }).run();
+      const check = report.checks.find((entry) => entry.name === 'cli-tools');
+
+      expect(check?.status).toBe('warn');
+      expect(check?.summary).toMatch(/could not be asked|nothing here could be measured/);
+      expect(check?.summary).not.toContain('15k');
+    }
+  });
+
+  it('counts what the deployment has switched off', async () => {
+    const report = await makeDoctor({
+      disabledCliTools: () => ['Artifact', 'CronCreate'],
+    }).run();
+
+    expect(report.checks.find((entry) => entry.name === 'cli-tools')?.detail).toContain('2 switched off');
   });
 });

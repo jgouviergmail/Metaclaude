@@ -138,6 +138,31 @@ describe('the pre-approved and forbidden tool lists', () => {
     expect(response.status).toBe(400);
   });
 
+  /**
+   * The two lists are vetted differently, and only in this direction.
+   *
+   * `ToolSearch` is how the CLI loads every other tool's schema on demand.
+   * Refusing it puts all of them back into every prompt — measured against CLI
+   * 2.1.267, the in-window system-tool figure goes from 23,543 tokens to
+   * 39,045 — with no symptom an operator could attribute to the checkbox they
+   * ticked. Pre-approving it, by contrast, is harmless, so the same name is
+   * accepted on the other list.
+   */
+  it('refuses ToolSearch on the deny list, and accepts it on the allow list', async () => {
+    const refused = await patch(`/api/workspaces/${workspaceId}`, {
+      settings: { disallowedTools: ['ToolSearch'] },
+    });
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: string }).error).toContain('loads every other tool');
+
+    const allowed = await patch(`/api/workspaces/${workspaceId}`, {
+      settings: { allowedTools: ['ToolSearch'] },
+    });
+    expect(allowed.status).toBe(200);
+    await allowed.arrayBuffer();
+    expect(await storedSettings()).toMatchObject({ allowedTools: ['ToolSearch'] });
+  });
+
   it('refuses the same shapes on creation, not only on update', async () => {
     const response = await post('/api/workspaces', {
       name: 'Born wrong',

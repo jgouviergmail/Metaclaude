@@ -133,6 +133,19 @@ describe('summarise', () => {
   });
 
   /**
+   * The CLI answers this one itself, so it never opens a card — but it is in
+   * the transcript, ahead of nearly every MCP call, because that is how the
+   * CLI fetches a tool schema it kept out of the prompt. Without a case it
+   * fell through to the branch that prints raw JSON, and an unexplained blob
+   * before every tool reads as the agent doing something odd.
+   */
+  it('says what a tool-search call is fetching', () => {
+    expect(summarise('ToolSearch', { query: 'select:mcp__docs__search' })).toBe(
+      'Load the tools matching: select:mcp__docs__search',
+    );
+  });
+
+  /**
    * A server whose name carries an underscore is stripped like any other.
    *
    * `splitToolName` exists in `packages/shared` precisely for this, with a

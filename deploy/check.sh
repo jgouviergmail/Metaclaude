@@ -1818,7 +1818,7 @@ PY
 settings_page="$REPO_ROOT/apps/web/src/pages/SettingsPage.tsx"
 # Each section's own sources: where a screen it owns must be named.
 settings_sources="$settings_page $REPO_ROOT/apps/web/src/components/layout/SettingsTabs.tsx $REPO_ROOT/apps/web/src/pages/HelpPage.tsx $REPO_ROOT/apps/web/src/pages/ServerPage.tsx $REPO_ROOT/apps/web/src/pages/AnalyticsPage.tsx"
-system_sources="$REPO_ROOT/apps/web/src/components/layout/SystemTabs.tsx $REPO_ROOT/apps/web/src/pages/AutomationsPage.tsx $REPO_ROOT/apps/web/src/pages/AgentsPage.tsx $REPO_ROOT/apps/web/src/pages/PluginsPage.tsx"
+system_sources="$REPO_ROOT/apps/web/src/components/layout/SystemTabs.tsx $REPO_ROOT/apps/web/src/pages/AutomationsPage.tsx $REPO_ROOT/apps/web/src/pages/AgentsPage.tsx $REPO_ROOT/apps/web/src/pages/PluginsPage.tsx $REPO_ROOT/apps/web/src/pages/CliToolsPage.tsx"
 if [ ! -f "$settings_page" ]; then
   bad "locating the settings screen" "$settings_page is missing"
 elif [ -z "$paths" ]; then

@@ -420,12 +420,10 @@ export function registerWorkspaceRoutes(app: App, context: AppContext): void {
     }
     assertPermissionModeAllowed(context, parsed.data.permissionMode);
 
-    // Skills live in the database but the CLI discovers them on disk, so they
-    // are written out immediately before the run that will use them.
+    // Skills live in the database and the CLI discovers them on disk. Written
+    // by `ContextProvider.prepare`, on the path of every run rather than here:
+    // this route had the call and the five unattended ones did not.
     const workspace = mustGetWorkspace(session.workspaceId);
-    await context.registry.materialiseSkills(workspace).catch((error: Error) => {
-      context.log.warn({ err: error.message }, 'could not materialise skills');
-    });
 
     // A steering directive naming something that does not exist is a typo or
     // a stale picker, and it must fail here — loudly, before the run — not as

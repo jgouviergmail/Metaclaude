@@ -2459,4 +2459,120 @@ export const fr: Record<string, string> = {
   feuilles: 'feuilles',
   'l.': 'l.',
   'Replaced since': 'Remplacé depuis',
+
+  /* Outils CLI : ce que le CLI Claude apporte, et ce que le déploiement refuse */
+  'CLI tools':
+    'Outils CLI',
+  'Restore defaults':
+    'Rétablir les valeurs par défaut',
+  'Deployment default':
+    'Valeur par défaut du déploiement',
+  'No longer offered':
+    'N’est plus proposé',
+  '{n} tool switched off':
+    '{n} outil désactivé',
+  '{n} tools switched off':
+    '{n} outils désactivés',
+  'That change could not be saved.':
+    'Cette modification n’a pas pu être enregistrée.',
+  'What the Claude CLI itself offers the agent, before any skill, agent or plugin is added. Switching one off removes it from every run of this deployment.':
+    'Ce que le CLI Claude propose lui-même à l’agent, avant toute skill, tout sous-agent et tout plugin. En désactiver un le retire de chaque run de ce déploiement.',
+  'The list comes from the CLI itself, so it follows the platform and the installed version rather than anything written down here. A tool that is off is removed from the agent’s tool list outright — the model is never offered it, rather than being refused it.':
+    'La liste vient du CLI lui-même : elle suit donc la plateforme et la version installée, et non une liste écrite ici. Un outil désactivé est retiré purement et simplement de la liste d’outils de l’agent — le modèle ne se le voit jamais proposer, plutôt que refuser.',
+  'The CLI could not be asked what it offers':
+    'Impossible de demander au CLI ce qu’il propose',
+  'This list is read from the Claude CLI when it starts. Check the CLI’s credentials on the Server screen, then reload.':
+    'Cette liste est lue auprès du CLI Claude à son démarrage. Vérifiez ses identifiants sur l’écran Serveur, puis rechargez.',
+  'The CLI could not be asked what it offers, so this is only what the deployment refuses. Nothing here says whether these tools still exist.':
+    'Impossible de demander au CLI ce qu’il propose : voici seulement ce que le déploiement refuse. Rien ici ne dit si ces outils existent encore.',
+  'Always on: it is how the CLI loads every other tool on demand, so switching it off would put all of their descriptions back into every prompt.':
+    'Toujours actif : c’est ainsi que le CLI charge tous les autres outils à la demande ; le désactiver remettrait toutes leurs descriptions dans chaque prompt.',
+  'Publishes a web page to claude.ai from inside a run.':
+    'Publie une page web sur claude.ai depuis un run.',
+  'Puts a multiple-choice question to whoever is watching.':
+    'Pose une question à choix multiples à la personne qui regarde.',
+  'Runs shell commands in the workspace.':
+    'Exécute des commandes shell dans le workspace.',
+  'Schedules recurring work in the CLI’s own scheduler, outside Automations.':
+    'Planifie un travail récurrent dans le planificateur propre au CLI, hors Automatisations.',
+  'Removes a schedule from the CLI’s own scheduler.':
+    'Supprime une planification du planificateur propre au CLI.',
+  'Lists the CLI’s own schedules.':
+    'Liste les planifications propres au CLI.',
+  'Syncs a design canvas with claude.ai.':
+    'Synchronise un canevas de design avec claude.ai.',
+  'Changes an existing file.':
+    'Modifie un fichier existant.',
+  'Switches the run into planning, where nothing is executed.':
+    'Fait passer le run en mode plan, où rien n’est exécuté.',
+  'Moves the run into a separate git worktree.':
+    'Déplace le run dans un worktree git séparé.',
+  'Leaves planning and asks to proceed.':
+    'Quitte le mode plan et demande à poursuivre.',
+  'Leaves a git worktree.':
+    'Quitte un worktree git.',
+  'Finds files by name pattern.':
+    'Trouve des fichiers par motif de nom.',
+  'Searches file contents.':
+    'Recherche dans le contenu des fichiers.',
+  'Lists the agents this session can send messages to.':
+    'Liste les agents auxquels cette session peut envoyer des messages.',
+  'Waits for a condition before carrying on.':
+    'Attend qu’une condition soit remplie avant de continuer.',
+  'Runs PowerShell commands. Windows hosts only.':
+    'Exécute des commandes PowerShell. Hôtes Windows uniquement.',
+  'Sends a notification through the CLI’s own channel, not Metaclaude’s.':
+    'Envoie une notification par le canal propre au CLI, et non par celui de Metaclaude.',
+  'Reads a file, an image or a PDF.':
+    'Lit un fichier, une image ou un PDF.',
+  'Starts work on another machine through the CLI’s remote control.':
+    'Lance un travail sur une autre machine via le contrôle à distance du CLI.',
+  'Returns review findings in the shape the CLI’s review screens render.':
+    'Renvoie des constats de revue dans la forme attendue par les écrans de revue du CLI.',
+  'Schedules the run to resume itself later.':
+    'Planifie la reprise du run par lui-même plus tard.',
+  'Sends a message to another agent or session.':
+    'Envoie un message à un autre agent ou à une autre session.',
+  'Opens one of this workspace’s skills. Turning it off disables skills entirely.':
+    'Ouvre une des skills de ce workspace. Le désactiver supprime entièrement les skills.',
+  'Delegates to a subagent. Reported as “Agent” in a transcript; turning it off disables custom agents.':
+    'Délègue à un sous-agent. Apparaît sous le nom « Agent » dans un transcript ; le désactiver supprime les sous-agents personnalisés.',
+  'Reads what a background task has produced so far.':
+    'Lit ce qu’une tâche de fond a produit jusqu’ici.',
+  'Stops a background task.':
+    'Arrête une tâche de fond.',
+  'Keeps a task list for the run.':
+    'Tient une liste de tâches pour le run.',
+  'Loads the other tools on demand, so their descriptions stay out of every prompt.':
+    'Charge les autres outils à la demande, pour que leurs descriptions restent hors de chaque prompt.',
+  'Fetches a web page.':
+    'Récupère une page web.',
+  'Searches the web.':
+    'Recherche sur le web.',
+  'Runs a multi-agent workflow. Used by Ultracode.':
+    'Exécute un workflow multi-agents. Utilisé par Ultracode.',
+  'Creates or replaces a file.':
+    'Crée ou remplace un fichier.',
+
+  /* Outils CLI : les skills que le CLI embarque */
+  'What the Claude CLI itself brings to the agent, before any skill, agent or plugin of yours is added: its tools, and its own skills. What you switch here applies to every run of this deployment.':
+    'Ce que le CLI Claude apporte lui-même à l’agent, avant toute skill, tout sous-agent et tout plugin de votre cru : ses outils, et ses propres skills. Ce que vous réglez ici s’applique à chaque run de ce déploiement.',
+  'Skills':
+    'Skills',
+  'Skills the CLI ships inside itself, for a terminal and for claude.ai. None is offered to a run unless you switch it on here; your own skills are managed under Agents & skills. The figure on each row is roughly what its description would add to every prompt.':
+    'Les skills que le CLI embarque, conçues pour un terminal et pour claude.ai. Aucune n’est proposée à un run tant que vous ne l’activez pas ici ; vos propres skills se gèrent sous Agents et skills. Le chiffre de chaque ligne est, à peu près, ce que sa description ajouterait à chaque prompt.',
+  'None offered':
+    'Aucune proposée',
+  'Offer none':
+    'N’en proposer aucune',
+  'The CLI could not be asked which skills it ships':
+    'Impossible de demander au CLI quelles skills il embarque',
+  'The CLI could not be asked which skills it ships, so this is what it was last seen to ship. Nothing here says whether these still exist.':
+    'Impossible de demander au CLI quelles skills il embarque : voici ce qu’il embarquait la dernière fois. Rien ici ne dit si elles existent encore.',
+  'About {n} tokens in every prompt that carries it.':
+    'Environ {n} tokens dans chaque prompt qui la porte.',
+  '{n} skill offered':
+    '{n} skill proposée',
+  '{n} skills offered':
+    '{n} skills proposées',
 };

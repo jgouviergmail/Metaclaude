@@ -20,7 +20,7 @@ import type { Logger } from 'pino';
 import type { Config } from './config.js';
 import { migrate, openDatabase, type Db } from './db/index.js';
 import { EventBus } from './kernel/bus.js';
-import { Kernel } from './kernel/kernel.js';
+import { Kernel, type ContextProvider } from './kernel/kernel.js';
 import {
   RunRepo,
   SessionRepo,
@@ -66,6 +66,8 @@ import { readCliLogin, writeCliLogin } from './services/claude-cli-login.js';
 import { ClaudeCredentials } from './services/claude-credentials.js';
 import { ClaudePairing } from './services/claude-pairing.js';
 import { CatalogueCache, TtlCache } from './services/claude-catalogue.js';
+import { CliToolPolicy } from './services/cli-tools.js';
+import { CliSkillPolicy } from './services/cli-skills.js';
 import { AttachmentService } from './services/attachments.js';
 import { RunRetention } from './services/run-retention.js';
 import { McpOAuth } from './services/mcp-oauth.js';
@@ -120,6 +122,17 @@ export interface AppContext {
   marketplaces: MarketplacesService;
   doctor: Doctor;
   runtimeSettings: RuntimeSettings;
+  /** Which of the Claude CLI's own tools every run of this deployment refuses. */
+  cliTools: CliToolPolicy;
+  /** Which of the Claude CLI's own skills runs of this deployment are offered. */
+  cliSkills: CliSkillPolicy;
+  /**
+   * What the installed CLI ships as skills, cached like the catalogue and for
+   * the same reason: reading it spawns a CLI. Its own tenant rather than a row
+   * on the catalogue because the two need opposite postures — the catalogue
+   * carries the flag that hides exactly these.
+   */
+  builtInSkills: TtlCache<Array<{ name: string; tokens: number }>>;
   brief: BriefService;
   synthesizer: SkillSynthesizer;
   /** Whether the CLI this image ships is behind the published one. A reading, never an action. */
@@ -174,6 +187,13 @@ export interface AppContext {
   analytics: AnalyticsService;
   scheduler: Scheduler;
   kernel: Kernel;
+  /**
+   * What a workspace contributes to a run, and what is made true before the
+   * CLI reads it. Exposed because `prepare` is the only thing that reconciles
+   * the database with the disk, and a claim about that has to be testable
+   * against the real composition rather than a fake.
+   */
+  contextProvider: ContextProvider;
 
   startedAt: number;
   shutdown: () => Promise<void>;
@@ -723,6 +743,18 @@ export async function createAppContext(
   let advisorRef: AdvisorService | null = null;
   let stewardRef: Steward | null = null;
 
+  /*
+   * Which of the CLI's own tools this deployment refuses.
+   *
+   * Constructed before the supervisor because the supervisor reads it on every
+   * run, and global rather than per-workspace on purpose: this is the shape of
+   * the agent the deployment runs, not a preference about one project.
+   */
+  const cliTools = new CliToolPolicy(db);
+  // Its sibling for the CLI's own skills. Before the supervisor for the same
+  // reason: the supervisor reads its plan on every run.
+  const cliSkills = new CliSkillPolicy(db);
+
   const supervisor = new AgentSupervisor({
     broker: () => {
       if (!kernelRef) throw new Error('The kernel is not ready yet.');
@@ -734,6 +766,10 @@ export async function createAppContext(
     idleTimeoutMs: () => runtimeSettings.number('idleTimeoutMs'),
     env: claudeEnv,
     directoryPolicy: { workspacesDir: config.workspacesDir, dataDir: config.dataDir },
+    // A getter, like the timeouts above: an operator switching a tool off
+    // applies to the next run rather than the next restart.
+    disabledCliTools: () => cliTools.disabled(),
+    cliSkills: () => cliSkills.plan(),
     log: kernelLog,
     // Same lazy shape as the broker, for the same mutual-construction reason.
     // The roster travels with the verb: the supervisor mounts the tool exactly
@@ -818,6 +854,12 @@ export async function createAppContext(
     read: (workspacePath) => supervisor.usage(workspacePath),
   });
 
+  // And the CLI's own skills — a third tenant rather than a row on the
+  // catalogue, because the catalogue carries the flag that hides exactly these.
+  const builtInSkills = new TtlCache<Array<{ name: string; tokens: number }>>({
+    read: (workspacePath) => supervisor.builtInSkills(workspacePath),
+  });
+
   // The SDK reads the CLI's own transcript store in-process — no subprocess,
   // so no cache. Injected so tests never touch the real store.
   const claudeSessions = new ClaudeSessions({
@@ -858,6 +900,86 @@ export async function createAppContext(
     keepPerWorkspace: () => runtimeSettings.number('runKeepPerWorkspace'),
   });
 
+  /*
+   * What a run is given, and what has to be true before it reads it.
+   *
+   * Hoisted out of the kernel's argument list and named, because it is one of
+   * the load-bearing seams of the whole system rather than an anonymous
+   * literal: everything a workspace contributes to a run passes through here,
+   * and `prepare` is the only place that makes the world match the database
+   * before the CLI looks at it. Exported on the context so that claim can be
+   * tested against the real composition — a fake provider can show that the
+   * kernel *calls* it and never that this one writes anything.
+   *
+   * The registry resolves per-workspace context; the marketplace sources are
+   * global and composed in here rather than taught to the registry.
+   */
+  const contextProvider: ContextProvider = {
+    resolve: (workspace) => ({
+      ...registry.resolve(workspace),
+      marketplaces: marketplaces.settingsPayload(),
+    }),
+      /*
+       * Everything that has to be current at mount, for every run.
+       *
+       * Two things, and they fail differently, so neither may take the other
+       * down. A server whose token could not be renewed is still mounted and
+       * the CLI reports `needs-auth`, which an operator can see and act on; a
+       * workspace whose skills could not be written still runs, with the
+       * directory it had. Both are degradations the run survives, and the
+       * kernel adds a transcript line if this throws anyway.
+       */
+      prepare: async (workspace) => {
+        // Only the servers this workspace would mount, and only those whose
+        // token is near its end. On a deployment with no OAuth server this
+        // does nothing and costs one filtered list.
+        const servers = registry
+          .listMcpServers(workspace.id)
+          .filter((server) => server.enabled && server.authType === 'oauth');
+        for (const server of servers) {
+          /*
+           * Guarded per server, and it is not belt-and-braces.
+           *
+           * `refreshIfExpiring` catches its own token exchange and answers
+           * `false` — so the network call, the obvious risk, is covered. What
+           * is *not* covered is above it in the same method: the metadata
+           * column is `JSON.parse`d unguarded, and `vault.get` decrypts, so a
+           * row corrupted by a hand edit or a master key that has moved throws
+           * straight out of here. Unguarded and sequential, that stopped the
+           * workspace's *skills* reaching disk — a degradation in one
+           * subsystem silently causing a different one, on every run, with the
+           * run still landing green. Two things are freshened here, they fail
+           * differently, and neither may take the other down.
+           */
+          await mcpOAuth
+            .refreshIfExpiring({
+              ...server,
+              oauthMetadata: registry.oauthMetadata(server.id),
+            })
+            .catch((error: Error) => {
+              log.warn(
+                { err: error.message, server: server.name },
+                'could not renew an MCP credential before a run',
+              );
+            });
+        }
+
+        /*
+         * The skills, on disk, where the CLI discovers them.
+         *
+         * Here rather than at the routes that submit a run, which is where it
+         * used to be: three of the eight call sites had it, and the five
+         * without were the scheduler, the steward, the advisor, delegation and
+         * the gateway — every run nobody is watching. `materialiseSkills`
+         * writes nothing when nothing has moved, which is what makes it
+         * affordable on a path that now includes a continuous automation.
+         */
+        await registry.materialiseSkills(workspace).catch((error: Error) => {
+          log.warn({ err: error.message, workspace: workspace.id }, 'could not materialise skills');
+        });
+    },
+  };
+
   const kernel = new Kernel({
     db,
     bus,
@@ -873,28 +995,7 @@ export async function createAppContext(
     availability,
     reflexion,
     consolidator,
-    // The registry resolves per-workspace context; the marketplace sources are
-    // global and composed in here rather than taught to the registry.
-    contextProvider: {
-      resolve: (workspace) => ({
-        ...registry.resolve(workspace),
-        marketplaces: marketplaces.settingsPayload(),
-      }),
-      // Only the servers this workspace would mount, and only those whose
-      // token is near its end. On a deployment with no OAuth server this
-      // does nothing and costs one filtered list.
-      prepare: async (workspace) => {
-        const servers = registry
-          .listMcpServers(workspace.id)
-          .filter((server) => server.enabled && server.authType === 'oauth');
-        for (const server of servers) {
-          await mcpOAuth.refreshIfExpiring({
-            ...server,
-            oauthMetadata: registry.oauthMetadata(server.id),
-          });
-        }
-      },
-    },
+    contextProvider,
     supervisor,
     maxConcurrentRuns: () => runtimeSettings.number('maxConcurrentRuns'),
     runTimeoutMs: () => runtimeSettings.number('runTimeoutMs'),
@@ -946,19 +1047,13 @@ export async function createAppContext(
 
   // The board autopilot: composed from the exact pieces the card's own
   // "Send to the agent" route uses, so an automatic start is byte-identical
-  // to a pressed one — skills materialised, session reused, outcome hooked.
+  // to a pressed one — session reused, outcome hooked. The skills it will
+  // find are written by `prepare`, on the path of every run.
   const autopilot = new BoardAutopilot({
     boardTasks: { board: (workspaceId) => board.list(workspaceId) },
     workspaces: workspaceRepo,
     runs: runRepo,
     start: async (taskId, username) => {
-      const task = board.get(taskId);
-      const workspace = task ? workspaceRepo.get(task.workspaceId) : null;
-      if (workspace) {
-        await registry.materialiseSkills(workspace).catch((error: Error) => {
-          log.warn({ err: error.message }, 'could not materialise skills');
-        });
-      }
       return startTaskRun(
         {
           board,
@@ -1129,6 +1224,29 @@ export async function createAppContext(
       return Number(stats.bavail) * Number(stats.bsize);
     },
     cliVersion,
+    /*
+     * What the CLI offers, from the cache the screens already read.
+     *
+     * The catalogue's own read, in the data directory, so the answer is about
+     * the CLI's built-ins rather than any workspace's skills and servers — and
+     * behind the same TTL, so opening the diagnostics page does not spawn a
+     * subprocess of its own. Null on failure: the check has to be able to tell
+     * "the CLI offers nothing", which is never true, from "I could not ask".
+     */
+    offeredCliTools: async () => {
+      try {
+        const catalogue = await claudeCatalogue.get(config.dataDir);
+        // Keyed on the answer rather than on a failure label. The catalogue has
+        // more than one way to come back empty — the tools question failing,
+        // or the CLI session never opening at all, which is recorded under a
+        // different name — and enumerating those names is a list that goes
+        // stale. No CLI offers no tools, so an empty list *is* the failure.
+        return catalogue.tools.length > 0 ? catalogue.tools : null;
+      } catch {
+        return null;
+      }
+    },
+    disabledCliTools: () => cliTools.disabled(),
     /**
      * One outbound request, to the host the CLI itself must reach.
      *
@@ -1334,6 +1452,10 @@ export async function createAppContext(
     analytics,
     scheduler,
     kernel,
+    contextProvider,
+    cliTools,
+    cliSkills,
+    builtInSkills,
     startedAt: Date.now(),
     shutdown: async () => {
       scheduler.stop();

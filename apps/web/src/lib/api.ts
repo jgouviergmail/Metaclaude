@@ -62,6 +62,8 @@ import {
   type MemorySearchResult,
   type PolicyArm,
   type ClaudeCatalogue,
+  type CliSkillsReport,
+  type CliToolsReport,
   type ClaudeCliSession,
   type Brief,
   type ClaudeUsage,
@@ -528,6 +530,31 @@ export const api = {
       method: 'PUT',
       body: { value },
     }),
+
+  /**
+   * The Claude CLI's own tools, and which of them this deployment refuses.
+   *
+   * The list is *measured* server-side off the CLI's opening frame rather than
+   * enumerated anywhere: the set is platform-dependent and moves with every
+   * CLI bump, so a screen built on a written-down list lies the day it
+   * changes. Owner-only.
+   */
+  cliTools: () => request<CliToolsReport>('/api/system/cli-tools'),
+
+  /** `null` hands the list back to the deployment's own default. */
+  setCliTools: (disabled: string[] | null) =>
+    request<CliToolsReport>('/api/system/cli-tools', { method: 'PUT', body: { disabled } }),
+
+  /**
+   * The Claude CLI's own skills — the seventeen it ships inside itself — and
+   * which of them runs of this deployment are offered. Off unless chosen, the
+   * way the operator's own are. Owner-only.
+   */
+  cliSkills: () => request<CliSkillsReport>('/api/system/cli-skills'),
+
+  /** The chosen set, whole. `null` goes back to offering none. */
+  setCliSkills: (enabled: string[] | null) =>
+    request<CliSkillsReport>('/api/system/cli-skills', { method: 'PUT', body: { enabled } }),
 
   /**
    * The CLI's own transcript store for a workspace's directory — including

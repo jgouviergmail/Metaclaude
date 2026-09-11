@@ -14,7 +14,7 @@
 
 import type { DoctorCheck, DoctorReport } from '@metaclaude/shared';
 import { REFLEXION_GRACE_MS } from '../learning/reflexion.js';
-import { APP_VERSION } from '@metaclaude/shared';
+import { APP_VERSION, TOOL_SEARCH_TOOL } from '@metaclaude/shared';
 import type { Db } from '../db/index.js';
 import { DUPLICATE_SCAN_LIMIT } from '../learning/memory.js';
 import { neglectedExtensions } from '../learning/extension-usage.js';
@@ -81,6 +81,16 @@ export interface DoctorDeps {
   diskFree: (path: string) => Promise<number>;
   /** The CLI's version string, or null when it cannot be spawned. */
   cliVersion: () => Promise<string | null>;
+  /**
+   * The CLI's own tools as it offers them, or null when it could not be asked.
+   *
+   * Null rather than an empty array for the failure, because the two mean
+   * opposite things and only one of them is a finding: no CLI offers no tools,
+   * so an empty list can only ever be "I could not look".
+   */
+  offeredCliTools: () => Promise<string[] | null>;
+  /** What this deployment refuses of them. */
+  disabledCliTools: () => readonly string[];
   /**
    * Raw content of the marker `deploy/bin/metaclaude-backup` writes into the
    * data volume after each completed archive, or null when there is none.
@@ -210,6 +220,7 @@ export class Doctor {
     await examine('network', () => this.network());
     await examine('public-url', () => this.publicUrl());
     await examine('claude-cli', () => this.claudeCli());
+    await examine('cli-tools', () => this.cliTools());
     await examine('retrieval', () => this.retrieval());
     await examine('knowledge-files', () => this.knowledgeFiles());
     await examine('memory', () => this.memory());
@@ -595,6 +606,65 @@ export class Doctor {
       }
     }
     return { name: 'claude-cli', status: 'ok', summary: version, detail: `auth: ${mode}` };
+  }
+
+  /**
+   * Whether the CLI is still loading its tools on demand.
+   *
+   * The one check here whose subject is invisible everywhere else. The CLI
+   * keeps most tool schemas — its own and every MCP server's — *out* of the
+   * prompt and hands them over through `ToolSearch` when something needs one.
+   * Measured against CLI 2.1.267 on one workspace: with it, the in-window
+   * system-tool figure is 23,543 tokens and the MCP schemas sit outside the
+   * window entirely; without it, 39,045 and the MCP tools are loaded. Fifteen
+   * and a half thousand tokens on the cached prefix of every run.
+   *
+   * Nothing announces losing it. The CLI turns it off by itself when
+   * `ANTHROPIC_BASE_URL` names a host it does not recognise, when the served
+   * model is on its unsupported list, or when the tool is disallowed — and the
+   * only symptom is the bill. `reviewDeniedToolNames` closes the door this
+   * deployment controls; this is what notices the three it does not.
+   *
+   * Warn rather than fail: every run still works, and an alarm that stops a
+   * deployment over a cost would be the wrong trade.
+   */
+  private async cliTools(): Promise<DoctorCheck> {
+    const offered = await this.deps.offeredCliTools();
+    if (offered === null) {
+      return {
+        name: 'cli-tools',
+        status: 'warn',
+        summary: 'The CLI could not be asked which tools it offers.',
+        detail: null,
+      };
+    }
+    // An empty list is the same "could not measure" in different clothing: no
+    // CLI offers nothing, so reporting it as a finding about tool search would
+    // be a measure that returns zero when it means "I could not look".
+    if (offered.length === 0) {
+      return {
+        name: 'cli-tools',
+        status: 'warn',
+        summary: 'The CLI reported no tools at all, so nothing here could be measured.',
+        detail: null,
+      };
+    }
+    if (!offered.includes(TOOL_SEARCH_TOOL)) {
+      return {
+        name: 'cli-tools',
+        status: 'warn',
+        summary:
+          'The CLI is not deferring tool schemas, so every tool description is in every prompt — about 15k extra tokens per run.',
+        detail: `${offered.length} tools offered, none of them ${TOOL_SEARCH_TOOL}`,
+      };
+    }
+    const refused = this.deps.disabledCliTools().length;
+    return {
+      name: 'cli-tools',
+      status: 'ok',
+      summary: `${offered.length} tools offered, loaded on demand`,
+      detail: refused > 0 ? `${refused} switched off by this deployment` : null,
+    };
   }
 
   /**

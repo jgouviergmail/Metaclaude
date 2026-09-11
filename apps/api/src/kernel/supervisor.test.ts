@@ -149,6 +149,12 @@ interface FakeQuery {
   commands_: Array<Record<string, unknown>>;
   agents_: Array<Record<string, unknown>>;
   mcp_: Array<Record<string, unknown>>;
+  /** What the opening frame lists as available. MCP names included. */
+  tools_: string[];
+  /** What the opening frame says is serving. `undefined` omits the field. */
+  model_: string | undefined;
+  /** What `getContextUsage` reports the session's skills to be. */
+  skillFrontmatter_: Array<{ name: string; source: string; tokens: number }>;
   /** Make `supportedCommands` throw, the way an older CLI would. */
   failCommands: boolean;
   /** What the experimental usage method answers. */
@@ -188,6 +194,14 @@ function fakeQuery() {
     commands_: [{ name: 'review', description: 'Review the diff', argumentHint: '[path]' }],
     agents_: [{ name: 'explorer', description: 'Reads widely' }],
     mcp_: [],
+    /** What the opening frame says this CLI offers. MCP names included. */
+    tools_: ['Bash', 'Read', 'Skill', 'ToolSearch', 'mcp__docs__search'],
+    model_: 'claude-opus-5',
+    skillFrontmatter_: [
+      { name: 'dataviz', source: 'built-in', tokens: 362 },
+      { name: 'code-review', source: 'built-in', tokens: 202 },
+      { name: 'house-style', source: 'projectSettings', tokens: 4 },
+    ],
     failCommands: false,
     usageResponse: {
       subscription_type: 'max',
@@ -265,6 +279,22 @@ function fakeQuery() {
 
   const query = (params: { prompt: unknown; options?: Record<string, unknown> }) => {
     control.opened.push(params.options ?? {});
+    /*
+     * The opening frame, the way the real CLI always sends one.
+     *
+     * The fake used to send it only when a test asked, which is the wrong
+     * direction of the test-double trap: omitting what the real thing always
+     * emits hides anything that reads it. The catalogue reads exactly this to
+     * report which tools a run would be offered — the CLI is the only
+     * authority on that, and `initializationResult()` does not carry it.
+     */
+    control.emit({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'sdk-session',
+      tools: control.tools_,
+      ...(control.model_ === undefined ? {} : { model: control.model_ }),
+    });
     // Faithful to the SDK: aborting the controller ends the message stream.
     // Without this the fake would let the supervisor pass a test the real thing
     // would fail, which is worse than having no test.
@@ -328,7 +358,23 @@ function fakeQuery() {
       setPermissionMode: async (mode: string) => {
         control.modes.push(mode);
       },
-      getContextUsage: async () => ({ totalTokens: 1234, maxTokens: 200_000, categories: [], rawMaxTokens: 200_000, percentage: 0.6, gridRows: [] }),
+      getContextUsage: async () => ({
+        totalTokens: 1234,
+        maxTokens: 200_000,
+        categories: [],
+        rawMaxTokens: 200_000,
+        percentage: 0.6,
+        gridRows: [],
+        // The frontmatter is where the CLI names its own skills and says what
+        // each costs — the only place it does, and what the CLI-skills screen
+        // is built on.
+        skills: {
+          totalSkills: control.skillFrontmatter_.length,
+          includedSkills: control.skillFrontmatter_.length,
+          tokens: control.skillFrontmatter_.reduce((sum, row) => sum + row.tokens, 0),
+          skillFrontmatter: control.skillFrontmatter_,
+        },
+      }),
       rewindFiles: async (userMessageId: string, options?: { dryRun?: boolean }) => {
         control.rewinds.push({ userMessageId, dryRun: options?.dryRun });
         return control.rewindResult;
@@ -363,6 +409,8 @@ function makeSupervisor(
     steward?: unknown;
     runTimeoutMs?: number;
     idleTimeoutMs?: number;
+    disabledCliTools?: readonly string[];
+    cliSkills?: { kind: 'floor' } | { kind: 'overrides'; overrides: Record<string, 'on' | 'off'> };
   } = {},
 ) {
   return new AgentSupervisor({
@@ -381,6 +429,10 @@ function makeSupervisor(
     ...(extra.memory ? { memory: extra.memory as never } : {}),
     ...(extra.sessions ? { sessions: extra.sessions as never } : {}),
     ...(extra.steward ? { steward: extra.steward as never } : {}),
+    ...(extra.disabledCliTools
+      ? { disabledCliTools: () => extra.disabledCliTools as readonly string[] }
+      : {}),
+    ...(extra.cliSkills ? { cliSkills: () => extra.cliSkills as never } : {}),
   });
 }
 
@@ -556,8 +608,13 @@ describe('the served model is captured off the wire', () => {
     expect(outcome.servedModel).toBe('claude-opus-5');
   });
 
-  it('reports null when the CLI never said', async () => {
+  it('reports null when the opening frame carries no model', async () => {
+    // Not "no init frame": the CLI always sends one — measured, and the fake
+    // now does too. What this guards is the field being absent from it, which
+    // is what an older CLI would do and what the `?? null` in `handleSystem`
+    // is actually for.
     const { query, control } = fakeQuery();
+    control.model_ = undefined;
     const supervisor = makeSupervisor(query);
 
     const run = supervisor.execute(makeRequest(), makeCallbacks());
@@ -1221,6 +1278,105 @@ describe('reading the CLI’s own catalogue', () => {
     });
   });
 
+  /**
+   * And the same flag-tier payload, derived rather than restated.
+   *
+   * A probe answers "what does Claude offer here", and the screens believe it:
+   * the composer builds its slash menu from `commands`. Measured against CLI
+   * 2.1.267, `supportedCommands()` returns 56 entries without
+   * `disableBundledSkills` and 38 with it — so a probe in the wrong posture
+   * offers eighteen commands the run would refuse, every one a bundled skill
+   * this deployment no longer ships. Comparing against `buildOptions` rather
+   * than against a literal is what stops the two drifting when a third flag
+   * joins them.
+   */
+  /**
+   * Which tools this CLI offers, from the CLI.
+   *
+   * The System screen lets an operator refuse the CLI's own tools, and the
+   * list it shows has to come from the CLI rather than from anything written
+   * down here: the set is platform-dependent — `PowerShell` on Windows against
+   * `Bash` elsewhere, the plan-mode pair only in a mode that can use them —
+   * and it moves with every bump. A screen built on a hard-coded list is a
+   * screen that lies the day the CLI changes, with nothing to notice.
+   *
+   * It comes off the opening frame because that is the only place the CLI says
+   * it. `initializationResult()` reads like the right question and carries
+   * `commands`, `agents` and `models` — no tools.
+   */
+  it('reports the CLI’s own tools, from the frame that names them', async () => {
+    const { query, control } = fakeQuery();
+    control.tools_ = ['Read', 'Bash', 'ToolSearch', 'mcp__docs__search'];
+    const supervisor = makeSupervisor(query);
+
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+
+    // Sorted, and MCP names stripped: those are reported per server just
+    // below, with their descriptions, and this list answers what the *CLI*
+    // brings — which is what the screen lets an operator refuse.
+    expect(catalogue.tools).toEqual(['Bash', 'Read', 'ToolSearch']);
+    expect(catalogue.unavailable).not.toContain('tools');
+  });
+
+  /**
+   * "The CLI offers no tools" is never true, so an empty list can only mean
+   * the question failed — and it has to be *named* as failed, not merely come
+   * back empty. The first version answered null quietly, `unavailable` stayed
+   * clean, and the screen reading it declared that the CLI offered nothing and
+   * marked every refused tool as one the CLI had dropped. Nothing in the suite
+   * could see it; a screenshot could.
+   */
+  it('names the question as unanswered rather than inventing an empty list', async () => {
+    const { query, control } = fakeQuery();
+    control.tools_ = [];
+    const supervisor = makeSupervisor(query);
+
+    const catalogue = await supervisor.catalogue(WORKSPACE);
+    expect(catalogue.tools).toEqual([]);
+    expect(catalogue.unavailable).toContain('tools');
+  });
+
+  /**
+   * The CLI's own skills, asked for in the one posture that can see them.
+   *
+   * A run — and therefore the catalogue — carries `disableBundledSkills`, which
+   * is exactly the flag that removes these. Asking both questions of one
+   * session would mean answering one of them wrongly, so this is a probe of its
+   * own, and the assertion that matters is the *absence* of the flag.
+   */
+  it('asks for the CLI’s own skills without the flag that hides them', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    const skills = await supervisor.builtInSkills(WORKSPACE);
+
+    expect(skills).toEqual([
+      { name: 'dataviz', tokens: 362 },
+      { name: 'code-review', tokens: 202 },
+    ]);
+    // The workspace's own skill is not one of the CLI's and must not be listed
+    // as something the operator can switch off here.
+    expect(skills.map((skill) => skill.name)).not.toContain('house-style');
+    expect(control.opened[0]?.settings).toBeUndefined();
+  });
+
+  it('answers an empty list rather than throwing when the CLI cannot be asked', async () => {
+    const { query, control } = fakeQuery();
+    control.skillFrontmatter_ = [];
+    const supervisor = makeSupervisor(query);
+
+    expect(await supervisor.builtInSkills(WORKSPACE)).toEqual([]);
+  });
+
+  it('carries the same flag settings a run does, so the menu cannot outrun the CLI', async () => {
+    const { query, control } = fakeQuery();
+    const supervisor = makeSupervisor(query);
+
+    await supervisor.catalogue(WORKSPACE);
+
+    expect(control.opened[0]?.settings).toEqual(supervisor.buildOptions(makeRequest()).settings);
+  });
+
   it('stays strict with nothing to mount, so the CLI cannot volunteer servers runs never see', async () => {
     const { query, control } = fakeQuery();
     const supervisor = makeSupervisor(query);
@@ -1856,6 +2012,91 @@ describe('buildOptions', () => {
     }
   });
 
+  /* ---------------------------------------------------------------------- */
+  /* The deployment's own deny list                                          */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * The CLI's tool set is not this deployment's tool set.
+   *
+   * Claude Code brings tools written for a person at a terminal signed in to
+   * claude.ai, and Metaclaude mounted all of them. Most only cost tokens —
+   * measured against CLI 2.1.267, the built-ins are 23,543 in-window tokens on
+   * the cached prefix of every run, and refusing nine of them takes that to
+   * 13,388. Three reach past the deployment outright: `CronCreate` and its
+   * pair schedule work in the CLI's own scheduler, outside the automations
+   * screen and its quota guard, and `Artifact` publishes a page to claude.ai
+   * from inside a run. No screen said either was possible.
+   */
+  it('refuses the deployment’s list alongside the workspace’s own', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      disabledCliTools: ['CronCreate', 'Artifact'],
+    });
+
+    expect(supervisor.buildOptions(withSettings({ disallowedTools: ['Bash'] })).disallowedTools)
+      .toEqual(['Bash', 'CronCreate', 'Artifact']);
+  });
+
+  it('sends the deployment’s list on a workspace that forbids nothing', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      disabledCliTools: ['Artifact'],
+    });
+
+    expect(supervisor.buildOptions(makeRequest()).disallowedTools).toEqual(['Artifact']);
+  });
+
+  it('names a tool once when both lists name it', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      disabledCliTools: ['Artifact'],
+    });
+
+    expect(supervisor.buildOptions(withSettings({ disallowedTools: ['Artifact'] })).disallowedTools)
+      .toEqual(['Artifact']);
+  });
+
+  /**
+   * `ToolSearch` is how the CLI keeps every other tool's schema out of the
+   * prompt until something needs it. Refusing it is a 15,500-token regression
+   * on every run, measured, announced by nothing — so it is dropped here as
+   * well as at the form, because this is the read every stored row goes
+   * through and a row can predate the rule.
+   */
+  it('drops ToolSearch from either list rather than obeying it', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      disabledCliTools: ['ToolSearch'],
+    });
+
+    expect(supervisor.buildOptions(makeRequest()).disallowedTools).toBeUndefined();
+    expect(
+      supervisor.buildOptions(withSettings({ disallowedTools: ['ToolSearch', 'Bash'] }))
+        .disallowedTools,
+    ).toEqual(['Bash']);
+  });
+
+  /**
+   * A refused tool must not also be pre-approved.
+   *
+   * `resolvePreapproval` already cut the workspace's own forbidden names from
+   * its pre-approval list; the deployment's list has to reach the same cut, or
+   * a workspace that pre-approved `WebFetch` would hand the CLI a permission
+   * rule for a tool the same options remove — an incoherence the CLI is under
+   * no obligation to resolve the way we would guess.
+   */
+  it('cuts a pre-approval the deployment’s list refuses', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      disabledCliTools: ['WebFetch'],
+    });
+    const request = withSettings({ allowedTools: ['WebFetch', 'WebSearch'] });
+    request.policy = { ...request.policy, permissionMode: 'dontAsk' };
+
+    const allow = (
+      supervisor.buildOptions(request).managedSettings as {
+        permissions?: { allow?: string[] };
+      }
+    ).permissions?.allow;
+    expect(allow).toEqual(['WebSearch']);
+  });
+
   /** The pre-approval, as the CLI is told about it in `dontAsk`. */
   const managedAllow = (options: ReturnType<AgentSupervisor['buildOptions']>): unknown =>
     (options.managedSettings as { permissions?: { allow?: unknown } } | undefined)?.permissions
@@ -2011,21 +2252,94 @@ describe('buildOptions', () => {
   });
 });
 
+describe('buildOptions — the CLI’s own skills', () => {
+  /**
+   * A workspace offers what its operator put there, and nothing else.
+   *
+   * The CLI ships seventeen skills of its own, written for a terminal and for
+   * claude.ai. They were listed in every run's prompt and openable by the
+   * agent, describing capabilities this deployment does not have — and an
+   * operator who had switched every one of their own skills off still had
+   * seventeen, none of them theirs, on a screen that said none.
+   */
+  it('always tells the CLI to leave its bundled skills out', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest()).settings).toEqual({
+      disableBundledSkills: true,
+    });
+  });
+
+  /**
+   * And the other shape, which exists because the two do not compose.
+   *
+   * Measured against CLI 2.1.267: with `disableBundledSkills` set, a
+   * `skillOverrides: { 'code-review': 'on' }` beside it still left *zero*
+   * built-in skills. The floor wins. So a deployment that wants one of the
+   * CLI's skills cannot raise the floor at all — every other skill has to be
+   * named `off` by hand — and the flag is kept only for the deployment that
+   * has chosen nothing, where it is strictly better because it also covers a
+   * skill the installed CLI does not ship yet.
+   */
+  it('names the skills one by one once the deployment has chosen some', () => {
+    const supervisor = makeSupervisor(fakeQuery().query, undefined, {
+      cliSkills: { kind: 'overrides', overrides: { 'code-review': 'on', dataviz: 'off' } },
+    });
+
+    const settings = supervisor.buildOptions(makeRequest()).settings;
+    expect(settings).toHaveProperty('skillOverrides', { 'code-review': 'on', dataviz: 'off' });
+    // Not both: the flag would win and the choice would be silently inert.
+    expect(settings).not.toHaveProperty('disableBundledSkills');
+  });
+
+  it('falls back to the flag when nothing wires the policy in', () => {
+    // A supervisor built without the dep behaves as every run did before the
+    // screen existed, which is what makes the dep optional rather than a
+    // second thing to remember.
+    const supervisor = makeSupervisor(fakeQuery().query);
+    expect(supervisor.buildOptions(makeRequest()).settings).toHaveProperty(
+      'disableBundledSkills',
+      true,
+    );
+  });
+
+  /**
+   * The tier is the measurement, not the reading.
+   *
+   * `disableBundledSkills` is declared on `Settings`, and `managedSettings` is
+   * where every other policy here rides — and measured against CLI 2.1.267 it
+   * does nothing there at all: the same 19 skills and 2,040 tokens as sending
+   * nothing. Only the flag tier bites. This is what keeps it from drifting
+   * back to the tier that reads more natural and does not work.
+   */
+  it('sends it in the flag tier, never in the managed one', () => {
+    const supervisor = makeSupervisor(fakeQuery().query);
+    const options = supervisor.buildOptions(makeRequest());
+
+    expect(options.settings).toHaveProperty('disableBundledSkills', true);
+    expect(options.managedSettings).not.toHaveProperty('disableBundledSkills');
+  });
+});
+
 describe('buildOptions — ultracode', () => {
   it('passes the setting to the CLI when the policy asks for it', () => {
     const supervisor = makeSupervisor(fakeQuery().query);
     const request = makeRequest();
     request.policy = { ...request.policy, ultracode: true };
 
-    expect(supervisor.buildOptions(request).settings).toEqual({ ultracode: true });
+    expect(supervisor.buildOptions(request).settings).toEqual({
+      disableBundledSkills: true,
+      ultracode: true,
+    });
   });
 
-  it('sends no settings payload at all otherwise', () => {
+  it('says nothing about orchestration otherwise', () => {
     // Absence, not `{ ultracode: false }`: an explicit false would still be a
-    // settings payload for the CLI to merge, and the pre-ultracode behaviour
-    // must stay byte-identical for every run that never asked.
+    // merge instruction for the CLI, and a run that never asked for
+    // orchestration must not carry a key about it. The payload itself is no
+    // longer optional — `disableBundledSkills` is on every run — so what is
+    // asserted is the absent key rather than the absent object.
     const supervisor = makeSupervisor(fakeQuery().query);
-    expect(supervisor.buildOptions(makeRequest()).settings).toBeUndefined();
+    expect(supervisor.buildOptions(makeRequest()).settings).not.toHaveProperty('ultracode');
   });
 });
 
@@ -2043,19 +2357,23 @@ describe('buildOptions — mirroring sessions to claude.ai', () => {
     const supervisor = makeSupervisor(fakeQuery().query);
 
     expect(supervisor.buildOptions(withMirror(makeRequest())).settings).toEqual({
+      disableBundledSkills: true,
       autoUploadSessions: true,
     });
   });
 
   it('stays absent when off, and composes with ultracode when both are on', () => {
     // The same absence rule as ultracode: off means no key at all, and the
-    // two share the one flag-tier payload rather than clobbering each other.
+    // three share the one flag-tier payload rather than clobbering each other.
     const supervisor = makeSupervisor(fakeQuery().query);
-    expect(supervisor.buildOptions(makeRequest()).settings).toBeUndefined();
+    expect(supervisor.buildOptions(makeRequest()).settings).not.toHaveProperty(
+      'autoUploadSessions',
+    );
 
     const both = withMirror(makeRequest());
     both.policy = { ...both.policy, ultracode: true };
     expect(supervisor.buildOptions(both).settings).toEqual({
+      disableBundledSkills: true,
       ultracode: true,
       autoUploadSessions: true,
     });
@@ -2624,6 +2942,7 @@ describe('buildOptions — marketplace plugins', () => {
     // switched off is omitted rather than sent as false: absence is the
     // neutral statement, false is an instruction to override lower tiers.
     expect(options.settings).toEqual({
+      disableBundledSkills: true,
       extraKnownMarketplaces: marketplaces,
       enabledPlugins: { 'formatter@tools': true },
     });
@@ -2636,15 +2955,19 @@ describe('buildOptions — marketplace plugins', () => {
     const supervisor = makeSupervisor(fakeQuery().query);
     const options = supervisor.buildOptions(withPlugins({ 'formatter@gone': true }));
 
-    expect(options.settings).toBeUndefined();
+    expect(options.settings).not.toHaveProperty('enabledPlugins');
+    expect(options.settings).not.toHaveProperty('extraKnownMarketplaces');
     expect((options.env as Record<string, string>).CLAUDE_CODE_SYNC_PLUGIN_INSTALL).toBeUndefined();
   });
 
-  it('sends nothing when no plugin is enabled, keeping the run byte-identical', () => {
+  it('says nothing about plugins when none is enabled', () => {
+    // The payload itself is no longer optional: `disableBundledSkills` rides
+    // it on every run. What must stay absent is any *plugin* key, so a
+    // deployment with no plugins never asks the CLI to resolve a source.
     const supervisor = makeSupervisor(fakeQuery().query);
     const options = supervisor.buildOptions(withPlugins({}));
 
-    expect(options.settings).toBeUndefined();
+    expect(options.settings).toEqual({ disableBundledSkills: true });
     expect((options.env as Record<string, string>).CLAUDE_CODE_SYNC_PLUGIN_INSTALL).toBeUndefined();
   });
 
@@ -2654,6 +2977,7 @@ describe('buildOptions — marketplace plugins', () => {
     request.policy = { ...request.policy, ultracode: true };
 
     expect(supervisor.buildOptions(request).settings).toEqual({
+      disableBundledSkills: true,
       ultracode: true,
       extraKnownMarketplaces: marketplaces,
       enabledPlugins: { 'formatter@tools': true },

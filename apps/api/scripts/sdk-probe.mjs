@@ -350,6 +350,163 @@ async function probeExtensionTools(query, cwd) {
   };
 }
 
+
+/**
+ * What actually reaches the prompt, and what stays out of it.
+ *
+ * Four claims Metaclaude now relies on, none of them visible from any test and
+ * none of them promised by the SDK's declarations:
+ *
+ *   - a skill contributes its *frontmatter*, not its body — so a workspace can
+ *     carry long skills without paying for them on every run;
+ *   - a subagent contributes its *description*, not its prompt;
+ *   - MCP tool schemas are deferred behind `ToolSearch` rather than loaded,
+ *     which is worth about 15k tokens a run and is turned off by the CLI on
+ *     its own for reasons a deployment cannot see;
+ *   - `disableBundledSkills` bites in the flag tier and does *nothing* in the
+ *     managed one, which is the opposite of where every other policy here
+ *     rides and was measured only because the first attempt was checked.
+ *
+ * The figures move with the model and the platform, so what is recorded is the
+ * *shape* — a body that costs single-digit tokens, a category marked deferred —
+ * rather than an exact count that would diff on noise.
+ */
+async function probeContextLoading(query, cwd) {
+  // Joined rather than written with escapes, for the reason CLAUDE.md records:
+  // this file is edited through a shell often enough, and a heredoc collapses
+  // a backslash before node ever sees the source. It happened again writing
+  // this very function.
+  const NL = String.fromCharCode(10);
+  const filler = (label, kb) =>
+    Array.from({ length: Math.ceil((kb * 1024) / 60) }, (_, i) =>
+      `${label} line ${i}: the quick brown fox jumps over the lazy dog again.`,
+    ).join(NL);
+
+  const skillDir = `${cwd}/.claude/skills/probe-long`;
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(
+    `${skillDir}/SKILL.md`,
+    ['---', 'name: probe-long', 'description: "Use for the long probe."', '---', '', filler('LONG', 24), ''].join(NL),
+    'utf8',
+  );
+
+  const agents = {
+    'probe-inspector': {
+      description: 'Answers a one-word question. Use when asked to delegate a trivial lookup.',
+      prompt: ['You answer in one word, in capitals.', '', filler('AGENT', 8)].join(NL),
+    },
+  };
+
+  /** One turn, with the context breakdown taken at its result. */
+  const measure = async (options) => {
+    const stream = new PromptStream();
+    const controller = new AbortController();
+    const seen = { tools: [], context: null, threw: null };
+    const handle = query({
+      prompt: stream,
+      options: {
+        cwd,
+        model: 'haiku',
+        maxTurns: 1,
+        settingSources: ['project'],
+        skills: 'all',
+        strictMcpConfig: true,
+        permissionMode: 'dontAsk',
+        agents,
+        abortController: controller,
+        ...options,
+      },
+    });
+    stream.push('Reply with the single word OK and nothing else.');
+    try {
+      for await (const message of handle) {
+        if (message.type === 'system' && message.subtype === 'init') {
+          seen.tools = (message.tools ?? []).filter((name) => !name.startsWith('mcp__'));
+        }
+        if (message.type === 'result') {
+          seen.context = await handle.getContextUsage({ detail: 'full' });
+          stream.close();
+        }
+      }
+    } catch (error) {
+      seen.threw = String(error?.message ?? error).slice(0, 160);
+    } finally {
+      controller.abort();
+    }
+    return seen;
+  };
+
+  const bundled = await measure({});
+  const lean = await measure({ settings: { disableBundledSkills: true } });
+  const managed = await measure({ managedSettings: { disableBundledSkills: true } });
+  // The one built-in skill every CLI so far has shipped; the exception probes
+  // below name it. A CLI that drops it makes those read as "floor wins" for
+  // the wrong reason, so its presence is recorded beside the result.
+  const EXCEPTION = 'code-review';
+  const exception = await measure({
+    settings: { disableBundledSkills: true, skillOverrides: { [EXCEPTION]: 'on' } },
+  });
+  const oneOff = await measure({ settings: { skillOverrides: { [EXCEPTION]: 'off' } } });
+
+  if (!bundled.context || !lean.context || !managed.context || !exception.context || !oneOff.context) {
+    return { status: SKIP, reason: bundled.threw ?? lean.threw ?? managed.threw ?? 'no context breakdown' };
+  }
+  const builtIn = (context) =>
+    (context.skills?.skillFrontmatter ?? []).filter((row) => row.source === 'built-in').map((row) => row.name);
+
+  const category = (context, name) => context.categories.find((row) => row.name.startsWith(name));
+  const skillTokens = (context, name) =>
+    context.skills?.skillFrontmatter?.find((row) => row.name === name)?.tokens ?? null;
+
+  return {
+    status: OK,
+    // A 24 kB body against its own frontmatter. Single digits means the body
+    // is fetched by `Skill` rather than carried in the prompt.
+    skillBodyTokens: skillTokens(bundled.context, 'probe-long'),
+    // An 8 kB prompt against its own description, same reasoning.
+    agentPromptTokens: bundled.context.agents?.[0]?.tokens ?? null,
+    /*
+     * The lever that keeps tool schemas out of the window — the CLI's own and
+     * every MCP server's alike, since both ride the same switch. It turns
+     * itself off when `ANTHROPIC_BASE_URL` names a host it does not recognise
+     * or the served model is on its unsupported list, and says nothing.
+     *
+     * No MCP server is mounted here on purpose: `tool()` wants a zod shape,
+     * and this script is piped into the production image with no package
+     * context to resolve one from. The built-in half answers the same
+     * question — measured, the deferred built-ins are 15,378 tokens against
+     * 1,952 for eight fat MCP tools, so it is also the larger half.
+     */
+    toolSearchOffered: bundled.tools.includes('ToolSearch'),
+    builtinToolsDeferred: Boolean(category(bundled.context, 'System tools (deferred)')),
+    // Which tier `disableBundledSkills` bites in. The managed one reads as the
+    // natural home and is measured to do nothing at all.
+    bundledSkills: {
+      onByDefault: bundled.context.skills?.totalSkills ?? null,
+      withFlagSettings: lean.context.skills?.totalSkills ?? null,
+      withManagedSettings: managed.context.skills?.totalSkills ?? null,
+      flagTierBites:
+        (lean.context.skills?.totalSkills ?? 0) < (bundled.context.skills?.totalSkills ?? 0),
+      managedTierBites:
+        (managed.context.skills?.totalSkills ?? 0) < (bundled.context.skills?.totalSkills ?? 0),
+    },
+    /*
+     * Whether one of the CLI's skills can be governed on its own, and whether
+     * an exception survives the floor. Measured: it cannot — the floor wins —
+     * which is why `CliSkillPolicy` has two shapes instead of one. A bump that
+     * made the exception survive would let that class be simplified; one that
+     * stopped `skillOverrides` biting at all would silently reintroduce every
+     * bundled skill the moment an operator chose one.
+     */
+    skillOverrides: {
+      exceptionSkillShipped: builtIn(bundled.context).includes(EXCEPTION),
+      exceptionSurvivesFloor: builtIn(exception.context).includes(EXCEPTION),
+      singleOffBites:
+        builtIn(bundled.context).includes(EXCEPTION) && !builtIn(oneOff.context).includes(EXCEPTION),
+    },
+  };
+}
+
 /**
  * Does a resumed turn re-apply the system-prompt append, and what does changing
  * it cost?
@@ -541,6 +698,7 @@ async function main() {
 
   findings.rateLimitsShape = await probeUsageShape(query, freshCwd());
   findings.extensionTools = await probeExtensionTools(query, freshCwd());
+  findings.contextLoading = await probeContextLoading(query, freshCwd());
   Object.assign(findings, await probeResumeAppend(query, freshCwd()));
   /*
    * The same three turns again, with `snapshot: false` stated.

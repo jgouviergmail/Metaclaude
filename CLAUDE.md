@@ -1186,6 +1186,87 @@ restates the code is noise; one that records a decision or a trap is not.
   resolved against, so trimming in one of the two consumers lands a rewrite on
   the wrong text. Trim where the list is born.
 
+- **A `Settings` field can be declared and be inert in the tier every other
+  policy rides.** `disableBundledSkills` keeps the CLI's own seventeen skills
+  — `design`, `dataviz`, `keybindings-help`, `loop` — out of a run. It is
+  declared on `Settings`, and `managedSettings` is where Metaclaude's policy
+  locks live, so that is where it went. Measured against CLI 2.1.267, one turn
+  per cell: in `managedSettings` it does **nothing at all** — 19 skills, 2,040
+  tokens, byte for byte the same as sending nothing — and in the flag
+  `settings` tier it takes them to 2 and 32. Shipped on the documentation
+  rather than the measurement it would have been dead on arrival and looked
+  delivered, which is the `rewindPoint` family with a settings object instead
+  of a field. Any new key on that payload gets the same two-cell probe.
+  Related, on the same screen: the catalogue probe has to carry the payload a
+  run carries, or `supportedCommands()` answers 56 against a run's 38 and the
+  composer offers eighteen commands the CLI will refuse.
+
+- **A derived artefact written at the call sites is written at some of them.**
+  The workspace's skills exist in the database and the CLI only reads
+  `.claude/skills/`, so something has to write them before a run. That was
+  three of the eight places that submit one — the session route, the board
+  route, the autopilot — and the five without it were the scheduler, the
+  steward, the advisor, delegation and the gateway: every run nobody is
+  watching. Those got whatever the last typed message had left behind, so a
+  skill created in the morning was invisible to the nightly automation and one
+  switched off went on being offered to it, for ever, in a workspace driven
+  only by automations. Invisible from every screen, because the run succeeds
+  either way — and `run_extension_usages` then reports the skill as *offered
+  and never opened* from the **database** list, which is the sentence the
+  weekly instruction review acts on. It would have proposed rewriting a
+  description that was never the problem. It lives in
+  `ContextProvider.prepare` now, which `execute` calls before `resolve` on
+  every run. Moving it there is what makes the next three properties
+  obligatory, and each has a test: no write when nothing moved (a continuous
+  automation would otherwise rebuild the tree every minute), the fingerprint is
+  not trusted alone (the agent has `Bash` and can delete what it was given),
+  and the swap is two renames rather than a delete-and-rebuild (two runs of one
+  workspace overlap, and a CLI can spawn into a half-written directory).
+
+- **`init.tools` says `Task`; the wire says `Agent`.** The opening frame lists
+  the delegation tool under its internal name and the tool call arrives named
+  `Agent` — both measured on CLI 2.1.267, in the same run. `disallowedTools`
+  accepts *either* spelling and removes it, which is the only reason the
+  `DELEGATION_TOOLS` alias in `packages/shared/constants.ts` is enough. Two
+  consequences worth keeping: a screen listing the CLI's tools honestly shows
+  `Task`, which needs saying in its own row or it reads as a tool nobody has
+  heard of; and denying `Skill` kills skills outright while denying `Task`
+  kills custom subagents — measured, the model flails and burns its turns
+  rather than reporting the absence. Neither is in the shipped deny-list
+  default for that reason. The tool list itself is on the `system/init`
+  *message* only: `initializationResult()` looks like the place and carries
+  `commands`, `agents` and `models` with no tools on it.
+
+- **A floor and an exception do not compose, and the SDK does not say so.**
+  `disableBundledSkills: true` beside `skillOverrides: { 'code-review': 'on' }`
+  leaves *zero* built-in skills — measured on CLI 2.1.267, and again with
+  `user-invocable-only`. The floor wins outright. Letting one of the CLI's
+  skills through therefore means dropping the floor and naming every *other*
+  skill `off` by hand, which is worse in exactly one way: a skill a future CLI
+  ships is not on the list and arrives switched on. `CliSkillPolicy.plan()`
+  keeps the floor whenever nothing is chosen for that reason, and the route
+  that reads the CLI is what teaches the run path the list — a run cannot
+  spawn a probe. Same trap as its neighbour: `skillOverrides` in
+  `managedSettings` does nothing, in `settings` it bites. The list itself
+  comes off `getContextUsage().skills.skillFrontmatter` with `source:
+  'built-in'`, and `detail: 'summary'` carries it without the per-category
+  token-count calls; the per-skill token figure is **model-dependent** (362 on
+  haiku, 482 on the CLI's default for the same skill) and may be shown as an
+  order of magnitude, never added up.
+
+- **`alwaysLoad` on the in-process servers was measured and left alone.** The
+  worry was behavioural rather than budgetary — the supervisor *tells* the
+  agent that `memory_write` exists, and a tool whose schema is deferred might
+  be reached for less readily. Measured end to end with the real steering
+  append, three passes each: one memory written out of three with the schemas
+  deferred, one out of three with them loaded. No difference the sample can
+  see, against 340 tokens for the whole memory server and an `alwaysLoad` that
+  also blocks startup until the server connects. Nothing to decide — written
+  down so it is not measured again. What the same probe *did* show is worth its
+  own line: on haiku the agent wrote the memory twice in six passes and once
+  wrote Markdown files instead, which is the defect `metaclaude_memory` exists
+  to end. That is a fact about the model, not about tool loading.
+
 ## Testing
 
 Vitest, colocated as `*.test.ts`. Use `openDatabase({ path: ':memory:' })` +

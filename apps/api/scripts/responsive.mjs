@@ -494,6 +494,7 @@ const ROUTES = [
   ['/automations', 'automations'],
   ['/agents', 'agents'],
   ['/plugins', 'plugins'],
+  ['/cli-tools', 'cli-tools'],
   ['/analytics', 'analytics'],
   ['/help', 'help'],
   ['/server', 'server'],

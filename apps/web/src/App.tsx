@@ -43,6 +43,7 @@ const AutomationsPage = lazyPage(() => import('@/pages/AutomationsPage'), 'Autom
 const BoardPage = lazyPage(() => import('@/pages/BoardPage'), 'BoardPage');
 const MemoryPage = lazyPage(() => import('@/pages/MemoryPage'), 'MemoryPage');
 const PluginsPage = lazyPage(() => import('@/pages/PluginsPage'), 'PluginsPage');
+const CliToolsPage = lazyPage(() => import('@/pages/CliToolsPage'), 'CliToolsPage');
 const SessionPage = lazyPage(() => import('@/pages/SessionPage'), 'SessionPage');
 const ServerPage = lazyPage(() => import('@/pages/ServerPage'), 'ServerPage');
 const SettingsPage = lazyPage(() => import('@/pages/SettingsPage'), 'SettingsPage');
@@ -248,6 +249,7 @@ export function App() {
           <Route path={routes.automations()} element={<AutomationsPage />} />
           <Route path={routes.agents()} element={<AgentsPage />} />
           <Route path={routes.plugins()} element={<PluginsPage />} />
+          <Route path={routes.cliTools()} element={<CliToolsPage />} />
           <Route path={routes.analytics()} element={<AnalyticsPage />} />
           <Route path={routes.help()} element={<HelpPage />} />
           <Route path={routes.settings()} element={<SettingsRedirect />} />

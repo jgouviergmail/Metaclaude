@@ -15,7 +15,14 @@ import {
   ClaudePairingCodeInput,
   PushSubscriptionInput,
   RuntimeSettingKey,
+  SetCliSkillsRequest,
+  SetCliToolsRequest,
   SetRuntimeSettingRequest,
+  TOOL_SEARCH_TOOL,
+  reviewDeniedToolNames,
+  reviewToolNames,
+  type CliSkillsReport,
+  type CliToolsReport,
   type PushStatus,
   type SystemHealth,
 } from '@metaclaude/shared';
@@ -375,6 +382,171 @@ export function registerSystemRoutes(app: App, context: AppContext): void {
       detail: parsed.data.value === null ? 'cleared' : String(parsed.data.value),
     });
     return reply.send({ settings: context.runtimeSettings.all() });
+  });
+
+  /* --------------------------- The CLI's tools -------------------------- */
+
+  /** Why `ToolSearch` may not be refused, in the words the vetting uses. */
+  const toolSearchLock = reviewDeniedToolNames([TOOL_SEARCH_TOOL]).rejected[0]?.reason ?? null;
+
+  /**
+   * What the CLI brings, and what this deployment refuses of it.
+   *
+   * Two sources joined, and neither is the whole answer. The *offered* half
+   * comes from the CLI's own opening frame, read in the data directory so it
+   * describes the built-ins rather than any workspace's skills and servers —
+   * a list written down here would be wrong on the next platform (`PowerShell`
+   * on Windows against `Bash` elsewhere) and on the next CLI bump. The
+   * *refused* half comes from the deployment's stored list, which has to be
+   * shown even for a tool the CLI no longer offers: otherwise that row is
+   * unclearable and the stored set accumulates names nobody can see.
+   *
+   * Owner-only, like the other configuration surfaces: this is the shape of
+   * the agent every workspace runs, and three of the tools it can close reach
+   * outside Metaclaude entirely.
+   */
+  const cliToolsReport = async (): Promise<CliToolsReport> => {
+    const catalogue = await context.claudeCatalogue.get(context.config.dataDir);
+    /*
+     * "Was this measured" is answered by the *answer*, not by a failure label.
+     *
+     * The catalogue has more than one way to come back with no tools — the
+     * question failing, or the CLI session never opening at all, which is
+     * recorded under its own name — and a predicate that lists the names it
+     * knows about is a predicate that goes stale on the next failure mode.
+     * Asking "did anything come back" cannot be defeated that way, and it is
+     * exact: no CLI offers no tools, and the supervisor refuses to report zero
+     * as an answer.
+     */
+    const probed = catalogue.tools.length > 0;
+    const disabled = new Set(context.cliTools.disabled());
+    const names = [...new Set([...catalogue.tools, ...disabled])].sort();
+
+    return {
+      tools: names.map((name) => ({
+        name,
+        disabled: disabled.has(name),
+        offered: catalogue.tools.includes(name),
+        locked: name === TOOL_SEARCH_TOOL ? toolSearchLock : null,
+      })),
+      source: context.cliTools.source(),
+      probed,
+    };
+  };
+
+  app.get('/api/system/cli-tools', async (request, reply) => {
+    requireOwner(request);
+    return reply.send(await cliToolsReport());
+  });
+
+  app.put('/api/system/cli-tools', async (request, reply) => {
+    const actor = requireOwner(request);
+    const parsed = SetCliToolsRequest.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+    }
+
+    /*
+     * Vetted *before* anything is written, which is not where the first
+     * version put it.
+     *
+     * Refusing with the reason rather than dropping the entry silently is the
+     * easy half: an operator who ticked `ToolSearch` is owed the sentence
+     * explaining why the box will not stay ticked. The half that has to be
+     * right is the order. Storing first and undoing afterwards looks
+     * equivalent and is not — the undo hands the deployment back its
+     * *default*, so a 400 on one bad name would have thrown away a list the
+     * operator had built. It read as correct because the obvious test starts
+     * from the default, where clearing is a no-op.
+     */
+    const review =
+      parsed.data.disabled === null
+        ? { allowed: [], rejected: [] }
+        : reviewDeniedToolNames(parsed.data.disabled);
+    const first = review.rejected[0];
+    if (first) throw new HttpError(400, `"${first.name}" ${first.reason}.`);
+
+    const stored = context.cliTools.set(parsed.data.disabled);
+
+    context.audit.record({
+      actor: actor.username,
+      action: 'system.cliTools',
+      target: `${stored.allowed.length} tool(s)`,
+      ipAddress: requestIp(context, request),
+      detail: parsed.data.disabled === null ? 'cleared' : stored.allowed.join(', '),
+    });
+    return reply.send(await cliToolsReport());
+  });
+
+  /* -------------------------- The CLI's skills -------------------------- */
+
+  /**
+   * The CLI's own skills, governed the way the operator's are.
+   *
+   * Same two-source join as the tools above, with one thing added: reading the
+   * CLI here is also how the run path learns what exists. A run cannot spawn a
+   * probe of its own, and the enumerated payload it sends once something is
+   * chosen has to name every *other* skill `off` — so the list the CLI was last
+   * seen to ship is written down each time this screen looks, and an empty
+   * answer is refused rather than remembered.
+   */
+  const cliSkillsReport = async (): Promise<CliSkillsReport> => {
+    const shipped = await context.builtInSkills.get(context.config.dataDir);
+    // Same rule as the tools: no CLI ships no skills, so empty means "could
+    // not look", whatever the reason it came back that way.
+    const probed = shipped.length > 0;
+    if (probed) context.cliSkills.rememberKnown(shipped.map((skill) => skill.name));
+
+    const cost = new Map(shipped.map((skill) => [skill.name, skill.tokens]));
+    const enabled = new Set(context.cliSkills.enabled());
+    // What is shown when the CLI could not be asked is what it was last seen
+    // to ship, so a chosen skill stays clearable — and every row then says it
+    // is not known to be offered, which is the truth.
+    const names = [
+      ...new Set([...(probed ? cost.keys() : context.cliSkills.known()), ...enabled]),
+    ].sort();
+
+    return {
+      skills: names.map((name) => ({
+        name,
+        enabled: enabled.has(name),
+        offered: cost.has(name),
+        tokens: cost.get(name) ?? null,
+      })),
+      source: context.cliSkills.source(),
+      probed,
+    };
+  };
+
+  app.get('/api/system/cli-skills', async (request, reply) => {
+    requireOwner(request);
+    return reply.send(await cliSkillsReport());
+  });
+
+  app.put('/api/system/cli-skills', async (request, reply) => {
+    const actor = requireOwner(request);
+    const parsed = SetCliSkillsRequest.safeParse(request.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid request.');
+    }
+
+    // Vetted before anything is written, for the reason the tools route says:
+    // the alternative undoes onto the *default*, which throws away a choice.
+    if (parsed.data.enabled !== null) {
+      const first = reviewToolNames(parsed.data.enabled).rejected[0];
+      if (first) throw new HttpError(400, `"${first.name}" ${first.reason}.`);
+    }
+
+    const enabled = context.cliSkills.setEnabled(parsed.data.enabled);
+
+    context.audit.record({
+      actor: actor.username,
+      action: 'system.cliSkills',
+      target: `${enabled.length} skill(s)`,
+      ipAddress: requestIp(context, request),
+      detail: parsed.data.enabled === null ? 'cleared' : enabled.join(', '),
+    });
+    return reply.send(await cliSkillsReport());
   });
 
   /**
