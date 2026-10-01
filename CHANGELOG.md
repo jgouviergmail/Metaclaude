@@ -11,6 +11,16 @@ and Metaclaude maintains it as part of shipping a change (see docs/ROADMAP.md,
 
 ## [Unreleased]
 
+## [0.95.0] — 2026-10-01
+
+### Added
+
+- The proxy can serve a static directory under one path of the site
+  (`METACLAUDE_MEDIA_PREFIX`, `METACLAUDE_MEDIA_DIR`): files Caddy serves
+  itself, immutable for a year, with the cross-origin header a page on
+  another origin needs to embed them — a video, a download. Off by default;
+  the app never sees the path.
+
 ## [0.94.0] — 2026-09-11
 
 ### Changed

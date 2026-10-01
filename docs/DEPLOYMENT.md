@@ -335,6 +335,31 @@ Note what `/api/health` does and does not tell you: it returns `ok`
 unconditionally, without checking credentials or the CLI. A misprovisioned box
 boots green and useless. After the first deploy, actually send a prompt.
 
+### 6. Optional: a static directory beside the app
+
+The proxy can serve a directory of files under one path of the site — a video a
+public page of yours embeds, a download — by Caddy itself, never reaching the
+app. Two variables in `.env`, both unset by default, which is how the feature
+stays off (the default prefix matches nothing a client sends, and the directory
+is an empty volume):
+
+```bash
+METACLAUDE_MEDIA_PREFIX=/media        # the path, under the site's own name
+METACLAUDE_MEDIA_DIR=/srv/media       # a host directory, read-only for the proxy
+sudo install -d -m 0755 /srv/media    # world-readable files under a world-executable path
+cd /opt/metaclaude && sudo docker compose up -d proxy
+curl -sI https://<your-site>/media/<a file> | grep -iE 'cache-control|cross-origin'
+```
+
+Two things the route decides for you. The files are served **immutable for a
+year** (`Cache-Control: public, max-age=31536000, immutable`): name them by
+their content — a hash in the name — and never overwrite one in place, or a
+browser keeps the old bytes until the name changes. And they carry
+`Cross-Origin-Resource-Policy: cross-origin`, so a page on another origin can
+embed them under the strictest embedder policy. Range requests, ETags and HTTP/3
+come with `file_server`; the site's own headers (HSTS, `noindex`) apply too, and
+nothing under the prefix is indexed by search engines.
+
 ---
 
 ## Continuous delivery

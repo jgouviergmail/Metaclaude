@@ -237,6 +237,10 @@ services:
       # line. Deriving it from the site means an operator who sets only
       # METACLAUDE_SITE — which is the documented minimum — cannot land there.
       METACLAUDE_SNI_DEFAULT: ${METACLAUDE_SNI_DEFAULT:-${METACLAUDE_SITE:-localhost}}
+      # The path under which the proxy serves the optional static directory
+      # (see docker/Caddyfile). The default matches nothing a client sends,
+      # which is how the feature stays off: Caddy must never see it empty.
+      METACLAUDE_MEDIA_PREFIX: ${METACLAUDE_MEDIA_PREFIX:-/.metaclaude-media-off}
       # The second address, kept on the internal CA so that pointing a domain
       # at the box does not cost the IP that was the only way in. Inert while
       # unset: `alt.metaclaude.invalid` resolves nowhere.
@@ -266,6 +270,9 @@ services:
       - caddy-config:/config
       # Only read in `file` mode. Empty otherwise, which costs nothing.
       - ${METACLAUDE_CERTS_DIR:-./docker/certs}:/certs:ro
+      # The optional static directory (docker/Caddyfile): a host path when
+      # set, an empty named volume otherwise — and read-only either way.
+      - ${METACLAUDE_MEDIA_DIR:-metaclaude-media}:/srv/media:ro
 
     networks:
       - internal
@@ -359,3 +366,7 @@ volumes:
   metaclaude-home:
   caddy-data:
   caddy-config:
+  # The inert default of the proxy's optional static directory: empty, never
+  # written. A deployment that switches the feature on names a host path
+  # (METACLAUDE_MEDIA_DIR) and this volume stays unused.
+  metaclaude-media:
